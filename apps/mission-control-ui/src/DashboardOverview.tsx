@@ -43,21 +43,37 @@ interface MetricCardProps {
 }
 
 function MetricCard({ icon: Icon, label, value, subtitle, accent = "text-primary" }: MetricCardProps) {
+  // Derive a faint background tint from the accent color class
+  const iconBg =
+    accent.includes("emerald") ? "bg-emerald-500/10 border-emerald-500/20" :
+    accent.includes("amber")   ? "bg-amber-500/10 border-amber-500/20" :
+    accent.includes("destructive") || accent.includes("red") ? "bg-red-500/10 border-red-500/20" :
+    accent.includes("violet")  ? "bg-violet-500/10 border-violet-500/20" :
+    "bg-primary/10 border-primary/20";
+
   return (
-    <Card className="p-5">
-      <div className="flex items-start justify-between mb-3">
-        <div className="rounded-md bg-muted p-2 border border-border">
+    <Card className="p-5 hover:shadow-md transition-shadow relative overflow-hidden group">
+      {/* Subtle top-edge accent line */}
+      <div className={`absolute top-0 left-0 right-0 h-[2px] ${
+        accent.includes("emerald") ? "bg-emerald-500/60" :
+        accent.includes("amber")   ? "bg-amber-500/60" :
+        accent.includes("destructive") || accent.includes("red") ? "bg-red-500/60" :
+        accent.includes("violet")  ? "bg-violet-500/60" :
+        "bg-primary/60"
+      }`} />
+      <div className="flex items-start justify-between mb-4">
+        <div className={`rounded-xl ${iconBg} p-2.5 border`}>
           <Icon className={`h-4 w-4 ${accent}`} strokeWidth={1.5} />
         </div>
       </div>
-      <div className={`text-2xl font-semibold tracking-tight ${accent} mb-0.5`}>
+      <div className={`text-3xl font-bold tracking-tight tabular-nums ${accent} mb-1`}>
         {value}
       </div>
-      <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
         {label}
       </div>
       {subtitle && (
-        <div className="text-xs text-muted-foreground/60 mt-1">
+        <div className="text-[11px] text-muted-foreground/60 mt-1.5 leading-relaxed">
           {subtitle}
         </div>
       )}

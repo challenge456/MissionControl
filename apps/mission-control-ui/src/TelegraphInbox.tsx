@@ -1,25 +1,39 @@
 /**
- * Telegraph Inbox
- *
- * Threads grouped by project with message counts and last activity.
- * Click to expand into TelegraphThread view.
+ * Telegraph Inbox — theme-aware rewrite
  */
 
 import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { ArrowLeft, Plus, Send, MessageSquare } from "lucide-react";
 
-const colors = {
-  bgPage: "#0f172a",
-  bgCard: "#1e293b",
-  bgInput: "#0f172a",
-  border: "#334155",
-  textPrimary: "#e2e8f0",
-  textSecondary: "#94a3b8",
-  textMuted: "#64748b",
-  accentBlue: "#3b82f6",
-  accentGreen: "#10b981",
+type Thread = {
+  _id: Id<"telegraphThreads">;
+  title: string;
+  channel: string;
+  participants?: string[];
+  messageCount: number;
+  lastMessageAt?: number;
+  linkedTaskId?: string;
+  messages?: Message[];
+};
+
+type Message = {
+  _id: string;
+  senderId: string;
+  senderType: string;
+  content: string;
+  _creationTime: number;
+};
+
+const CHANNEL_BADGE: Record<string, string> = {
+  TELEGRAM: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30",
+  INTERNAL: "bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30",
 };
 
 export function TelegraphInbox({ projectId }: { projectId: Id<"projects"> | null }) {
@@ -32,9 +46,9 @@ export function TelegraphInbox({ projectId }: { projectId: Id<"projects"> | null
   const selectedThread = useQuery(
     api.telegraph.getThread,
     selectedThreadId ? { threadId: selectedThreadId } : "skip"
-  );
-  const createThread = useMutation(api.telegraph.createThread);
-  const sendMessage = useMutation(api.telegraph.sendMessage);
+  ) as Thread | null | undefined;
+  const createThread  = useMutation(api.telegraph.createThread);
+  const sendMessage   = useMutation(api.telegraph.sendMessage);
 
   const handleCreateThread = async () => {
     if (!newThreadTitle.trim()) return;
@@ -62,183 +76,153 @@ export function TelegraphInbox({ projectId }: { projectId: Id<"projects"> | null
     setMessageText("");
   };
 
+  /* ── Thread detail view ── */
   if (selectedThreadId && selectedThread) {
     return (
-      <main style={{ flex: 1, overflow: "auto", padding: "24px" }}>
+      <main className="flex-1 overflow-auto p-6">
         <button
           onClick={() => setSelectedThreadId(null)}
-          style={{ background: "none", border: "none", color: colors.accentBlue, cursor: "pointer", marginBottom: 16, fontSize: "0.85rem" }}
+          className="flex items-center gap-1.5 text-sm text-primary hover:underline mb-5"
         >
-          ← Back to Inbox
+          <ArrowLeft className="h-3.5 w-3.5" /> Back to Inbox
         </button>
 
-        <div style={{ background: colors.bgCard, border: "1px solid " + colors.border, borderRadius: 8, maxWidth: 700 }}>
-          <div style={{ padding: 16, borderBottom: "1px solid " + colors.border, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <Card className="max-w-2xl overflow-hidden">
+          {/* Header */}
+          <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-3">
             <div>
-              <h3 style={{ color: colors.textPrimary, margin: 0 }}>{selectedThread.title}</h3>
-              <span style={{ color: colors.textMuted, fontSize: "0.8rem" }}>
+              <h3 className="font-semibold text-foreground">{selectedThread.title}</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
                 {selectedThread.channel} · {selectedThread.participants?.length ?? 0} participants · {selectedThread.messageCount} messages
-              </span>
+              </p>
             </div>
             {selectedThread.linkedTaskId && (
-              <span style={{ padding: "3px 8px", borderRadius: 4, background: colors.accentBlue + "22", color: colors.accentBlue, fontSize: "0.75rem", fontWeight: 600 }}>
+              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 text-xs">
                 Linked to Task
-              </span>
+              </Badge>
             )}
           </div>
 
-          <div style={{ padding: 16, maxHeight: 500, overflow: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
-            {(selectedThread.messages ?? []).map((msg: any) => (
+          {/* Messages */}
+          <div className="p-4 max-h-[500px] overflow-auto flex flex-col gap-3">
+            {(selectedThread.messages ?? []).map((msg: Message) => (
               <div
                 key={msg._id}
-                style={{
-                  background: msg.senderType === "HUMAN" ? colors.accentBlue + "11" : colors.bgInput,
-                  border: "1px solid " + colors.border,
-                  borderRadius: 6,
-                  padding: 10,
-                }}
+                className={cn(
+                  "rounded-lg p-3 border",
+                  msg.senderType === "HUMAN"
+                    ? "bg-primary/8 border-primary/20 ml-8"
+                    : "bg-muted/50 border-border"
+                )}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                  <span style={{ color: colors.accentBlue, fontSize: "0.8rem", fontWeight: 600 }}>
-                    {msg.senderId} ({msg.senderType})
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-semibold text-primary">
+                    {msg.senderId} <span className="text-muted-foreground font-normal">({msg.senderType})</span>
                   </span>
-                  <span style={{ color: colors.textMuted, fontSize: "0.75rem" }}>
+                  <span className="text-[10px] text-muted-foreground">
                     {new Date(msg._creationTime).toLocaleTimeString()}
                   </span>
                 </div>
-                <div style={{ color: colors.textPrimary, fontSize: "0.9rem" }}>{msg.content}</div>
+                <p className="text-sm text-foreground">{msg.content}</p>
               </div>
             ))}
             {(selectedThread.messages ?? []).length === 0 && (
-              <div style={{ color: colors.textMuted, textAlign: "center", padding: 40 }}>No messages yet.</div>
+              <div className="text-center py-12 text-muted-foreground text-sm">No messages yet.</div>
             )}
           </div>
 
-          <div style={{ padding: 16, borderTop: "1px solid " + colors.border, display: "flex", gap: 8 }}>
+          {/* Compose */}
+          <div className="px-4 py-3 border-t border-border flex gap-2">
             <input
               value={messageText}
               onChange={(e) => setMessageText(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
+              onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()}
               placeholder="Type a message..."
-              style={{
-                flex: 1,
-                padding: "8px 12px",
-                borderRadius: 6,
-                border: "1px solid " + colors.border,
-                background: colors.bgInput,
-                color: colors.textPrimary,
-                fontSize: "0.9rem",
-                outline: "none",
-              }}
+              className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
-            <button
-              onClick={handleSendMessage}
-              disabled={!messageText.trim()}
-              style={{
-                padding: "8px 16px",
-                borderRadius: 6,
-                border: "none",
-                background: colors.accentBlue,
-                color: "#fff",
-                cursor: "pointer",
-                fontWeight: 600,
-              }}
-            >
-              Send
-            </button>
+            <Button size="sm" onClick={handleSendMessage} disabled={!messageText.trim()}>
+              <Send className="h-3.5 w-3.5 mr-1.5" /> Send
+            </Button>
           </div>
-        </div>
+        </Card>
       </main>
     );
   }
 
+  /* ── Inbox list view ── */
   return (
-    <main style={{ flex: 1, overflow: "auto", padding: "24px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-        <h2 style={{ color: colors.textPrimary, margin: 0 }}>Telegraph Inbox</h2>
-        <button
-          onClick={() => setComposing(true)}
-          style={{
-            padding: "8px 16px",
-            borderRadius: 6,
-            border: "none",
-            background: colors.accentBlue,
-            color: "#fff",
-            cursor: "pointer",
-            fontWeight: 600,
-            fontSize: "0.85rem",
-          }}
-        >
-          New Thread
-        </button>
+    <main className="flex-1 overflow-auto p-6">
+      <div className="flex items-center justify-between mb-5">
+        <div>
+          <h2 className="text-base font-semibold text-foreground">Telegraph Inbox</h2>
+          <p className="text-xs text-muted-foreground">{(threads ?? []).length} threads</p>
+        </div>
+        <Button size="sm" onClick={() => setComposing(true)}>
+          <Plus className="h-3.5 w-3.5 mr-1.5" /> New Thread
+        </Button>
       </div>
 
+      {/* Compose row */}
       {composing && (
-        <div style={{ background: colors.bgCard, border: "1px solid " + colors.border, borderRadius: 8, padding: 16, marginBottom: 16, display: "flex", gap: 8 }}>
+        <Card className="p-4 mb-4 flex gap-2">
           <input
             value={newThreadTitle}
             onChange={(e) => setNewThreadTitle(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleCreateThread()}
             placeholder="Thread title..."
             autoFocus
-            style={{
-              flex: 1,
-              padding: "8px 12px",
-              borderRadius: 6,
-              border: "1px solid " + colors.border,
-              background: colors.bgInput,
-              color: colors.textPrimary,
-              fontSize: "0.9rem",
-              outline: "none",
-            }}
+            className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
-          <button onClick={handleCreateThread} style={{ padding: "8px 16px", borderRadius: 6, border: "none", background: colors.accentGreen, color: "#fff", cursor: "pointer", fontWeight: 600 }}>
+          <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleCreateThread}>
             Create
-          </button>
-          <button onClick={() => { setComposing(false); setNewThreadTitle(""); }} style={{ padding: "8px 16px", borderRadius: 6, border: "1px solid " + colors.border, background: "transparent", color: colors.textSecondary, cursor: "pointer" }}>
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => { setComposing(false); setNewThreadTitle(""); }}>
             Cancel
-          </button>
-        </div>
+          </Button>
+        </Card>
       )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {(threads ?? []).map((thread: any) => (
-          <div
+      {/* Thread list */}
+      <div className="flex flex-col gap-2">
+        {(threads ?? []).map((thread: Thread) => (
+          <Card
             key={thread._id}
             onClick={() => setSelectedThreadId(thread._id)}
-            style={{
-              background: colors.bgCard,
-              border: "1px solid " + colors.border,
-              borderRadius: 8,
-              padding: 14,
-              cursor: "pointer",
-              transition: "border-color 0.15s",
-            }}
+            className="px-5 py-4 cursor-pointer hover:shadow-md hover:border-primary/30 transition-all"
           >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ color: thread.channel === "TELEGRAM" ? "#f59e0b" : colors.accentBlue, fontSize: "0.75rem", fontWeight: 600 }}>
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <Badge
+                  variant="outline"
+                  className={cn("text-[10px] font-bold px-2 py-0.5 shrink-0", CHANNEL_BADGE[thread.channel] ?? CHANNEL_BADGE.INTERNAL)}
+                >
                   {thread.channel}
-                </span>
-                <span style={{ color: colors.textPrimary, fontWeight: 600, fontSize: "0.95rem" }}>{thread.title}</span>
+                </Badge>
+                <p className="text-sm font-semibold text-foreground truncate">{thread.title}</p>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ color: colors.textMuted, fontSize: "0.8rem" }}>{thread.messageCount} msgs</span>
-                <span style={{ color: colors.textMuted, fontSize: "0.75rem" }}>
+              <div className="flex items-center gap-3 shrink-0">
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <MessageSquare className="h-3 w-3" />
+                  {thread.messageCount}
+                </span>
+                <span className="text-[11px] text-muted-foreground">
                   {thread.lastMessageAt ? new Date(thread.lastMessageAt).toLocaleDateString() : "—"}
                 </span>
               </div>
             </div>
-            <div style={{ color: colors.textMuted, fontSize: "0.8rem", marginTop: 4 }}>
+            <p className="text-xs text-muted-foreground mt-1.5 pl-0">
               {thread.participants?.length ?? 0} participants
               {thread.linkedTaskId && " · Linked to task"}
-            </div>
-          </div>
+            </p>
+          </Card>
         ))}
+
         {(threads ?? []).length === 0 && (
-          <div style={{ color: colors.textMuted, textAlign: "center", padding: 40, background: colors.bgCard, borderRadius: 8, border: "1px solid " + colors.border }}>
-            No threads yet. Create one to start communicating.
-          </div>
+          <Card className="py-16 text-center">
+            <MessageSquare className="h-8 w-8 text-muted-foreground/30 mx-auto mb-3" />
+            <p className="text-sm text-muted-foreground">No threads yet.</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">Create one to start communicating.</p>
+          </Card>
         )}
       </div>
     </main>

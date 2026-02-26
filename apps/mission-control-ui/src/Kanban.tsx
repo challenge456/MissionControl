@@ -45,6 +45,7 @@ import {
   Sparkles,
   type LucideIcon,
 } from "lucide-react";
+import { PlanningModal } from "./PlanningModal";
 
 type TaskStatus = Doc<"tasks">["status"];
 
@@ -82,6 +83,30 @@ const COLUMN_DOT: Record<string, string> = {
   FAILED: "bg-red-400",
   DONE: "bg-emerald-400",
   CANCELED: "bg-gray-400",
+};
+
+const COLUMN_TOP_STRIP: Record<string, string> = {
+  INBOX:           "bg-blue-500/50",
+  ASSIGNED:        "bg-amber-500/50",
+  IN_PROGRESS:     "bg-blue-500/50",
+  REVIEW:          "bg-sky-500/50",
+  NEEDS_APPROVAL:  "bg-red-500/50",
+  BLOCKED:         "bg-orange-500/50",
+  FAILED:          "bg-red-500/50",
+  DONE:            "bg-emerald-500/50",
+  CANCELED:        "bg-gray-500/40",
+};
+
+const COLUMN_BADGE_COLOR: Record<string, string> = {
+  INBOX:           "bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30",
+  ASSIGNED:        "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30",
+  IN_PROGRESS:     "bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30",
+  REVIEW:          "bg-sky-500/15 text-sky-600 dark:text-sky-400 border-sky-500/30",
+  NEEDS_APPROVAL:  "bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30",
+  BLOCKED:         "bg-orange-500/15 text-orange-600 dark:text-orange-400 border-orange-500/30",
+  FAILED:          "bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30",
+  DONE:            "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
+  CANCELED:        "bg-gray-500/15 text-gray-500 dark:text-gray-400 border-gray-500/30",
 };
 
 const PRIORITY_LABELS: Record<number, { label: string; variant: "destructive" | "default" | "secondary" | "outline" }> = {
@@ -144,6 +169,7 @@ export function Kanban({
   };
 }) {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const [planningTaskId, setPlanningTaskId] = useState<Id<"tasks"> | null>(null);
   const [lastMove, setLastMove] = useState<{
     taskId: Id<"tasks">;
     fromStatus: TaskStatus;
@@ -285,6 +311,7 @@ export function Kanban({
               allowedMap={allowedMap ?? {}}
               onSelectTask={onSelectTask}
               onMoveTo={handleMoveTo}
+              onPlanTask={col.status === "INBOX" ? setPlanningTaskId : undefined}
             />
           ))}
         </div>
@@ -303,6 +330,11 @@ export function Kanban({
           </div>
         ) : null}
       </DragOverlay>
+      <PlanningModal
+        taskId={planningTaskId}
+        onClose={() => setPlanningTaskId(null)}
+        onSuccess={() => setPlanningTaskId(null)}
+      />
     </DndContext>
   );
 }
@@ -317,6 +349,7 @@ function Column({
   allowedMap,
   onSelectTask,
   onMoveTo,
+  onPlanTask,
 }: {
   label: string;
   icon: LucideIcon;
@@ -327,6 +360,7 @@ function Column({
   allowedMap: Record<string, string[]>;
   onSelectTask: (id: Id<"tasks">) => void;
   onMoveTo: (taskId: Id<"tasks">, fromStatus: TaskStatus, toStatus: TaskStatus) => void;
+  onPlanTask?: (taskId: Id<"tasks">) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
 
@@ -334,19 +368,21 @@ function Column({
     <div
       ref={setNodeRef}
       className={cn(
-        "flex min-w-[264px] max-w-[264px] flex-col rounded-lg border transition-colors",
+        "flex min-w-[264px] max-w-[264px] flex-col rounded-lg border transition-colors overflow-hidden",
         COLUMN_BG[status],
         isOver
           ? "border-primary/50 bg-primary/10"
           : "border-border"
       )}
     >
+      {/* Colored top accent strip */}
+      <div className={cn("h-[3px] w-full shrink-0", COLUMN_TOP_STRIP[status])} />
+
       {/* Lane header */}
-      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border/50">
-        <span className={cn("h-2 w-2 rounded-full", COLUMN_DOT[status])} />
-        <Icon className={cn("h-3.5 w-3.5", colorClass)} />
-        <span className="text-sm font-semibold text-foreground">{label}</span>
-        <Badge variant="secondary" className="ml-auto h-5 text-[10px] font-medium px-1.5">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-border/50 bg-muted/20">
+        <Icon className={cn("h-3.5 w-3.5 shrink-0", colorClass)} />
+        <span className="text-[11px] font-bold uppercase tracking-wider text-foreground/80">{label}</span>
+        <Badge variant="outline" className={cn("ml-auto h-5 text-[10px] font-bold px-1.5 border", COLUMN_BADGE_COLOR[status])}>
           {tasks.length}
         </Badge>
       </div>
@@ -362,6 +398,7 @@ function Column({
               allowedToStatuses={(allowedMap[t.status] as TaskStatus[] | undefined) ?? []}
               onSelect={() => onSelectTask(t._id)}
               onMoveTo={(toStatus) => onMoveTo(t._id, t.status, toStatus)}
+              onPlanTask={onPlanTask}
             />
           ))}
           {tasks.length === 0 && (
@@ -391,12 +428,14 @@ function Card({
   allowedToStatuses,
   onSelect,
   onMoveTo,
+  onPlanTask,
 }: {
   task: Task;
   agentMap: Map<Id<"agents">, { name: string; emoji?: string }>;
   allowedToStatuses: TaskStatus[];
   onSelect: () => void;
   onMoveTo: (toStatus: TaskStatus) => void;
+  onPlanTask?: (taskId: Id<"tasks">) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: task._id,
@@ -520,27 +559,40 @@ function Card({
       </div>
 
       {/* Hover actions */}
-      {allowedToStatuses.length > 0 && (
+      {(allowedToStatuses.length > 0 || onPlanTask) && (
         <div className="mt-2 pt-2 border-t border-border/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2 text-muted-foreground">
-                <ArrowRight className="h-3 w-3 mr-1" />
-                Move
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-44">
-              {allowedToStatuses.map((s: TaskStatus) => (
-                <DropdownMenuItem
-                  key={s}
-                  onClick={(e) => { e.stopPropagation(); onMoveTo(s); }}
-                >
-                  <span className={cn("h-2 w-2 rounded-full mr-2", COLUMN_DOT[s])} />
-                  {STATUS_LABELS[s]}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {onPlanTask && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 text-[10px] px-2 text-muted-foreground"
+              onClick={(e) => { e.stopPropagation(); onPlanTask(task._id); }}
+            >
+              <Sparkles className="h-3 w-3 mr-1" />
+              Plan with AI
+            </Button>
+          )}
+          {allowedToStatuses.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2 text-muted-foreground">
+                  <ArrowRight className="h-3 w-3 mr-1" />
+                  Move
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-44">
+                {allowedToStatuses.map((s: TaskStatus) => (
+                  <DropdownMenuItem
+                    key={s}
+                    onClick={(e) => { e.stopPropagation(); onMoveTo(s); }}
+                  >
+                    <span className={cn("h-2 w-2 rounded-full mr-2", COLUMN_DOT[s])} />
+                    {STATUS_LABELS[s]}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           <Button
             variant="ghost"
             size="sm"

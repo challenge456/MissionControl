@@ -1,233 +1,190 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Doc, Id } from "../../../convex/_generated/dataModel";
 import { useToast } from "./Toast";
+import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { PageHeader } from "./components/PageHeader";
+import { DiscoverAgentsModal } from "./DiscoverAgentsModal";
+import {
+  Bot, Activity, ShieldAlert, ListTodo, Clock, Cpu, Wrench, DollarSign, AlertTriangle, Radio,
+} from "lucide-react";
 
-const STATUS_COLORS: Record<string, string> = {
-  ACTIVE: "#22c55e",
-  PAUSED: "#eab308",
-  DRAINED: "#94a3b8",
-  QUARANTINED: "#ef4444",
-  OFFLINE: "#64748b",
+const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
+  ACTIVE:      { label: "Active",      className: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" },
+  PAUSED:      { label: "Paused",      className: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30" },
+  DRAINED:     { label: "Drained",     className: "bg-slate-500/15 text-slate-600 dark:text-slate-400 border-slate-500/30" },
+  QUARANTINED: { label: "Quarantined", className: "bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30" },
+  OFFLINE:     { label: "Offline",     className: "bg-zinc-500/15 text-zinc-600 dark:text-zinc-400 border-zinc-500/30" },
 };
 
 export function AgentRegistryView({ projectId }: { projectId: Id<"projects"> | null }) {
+  const [discoverOpen, setDiscoverOpen] = useState(false);
   const agents = useQuery(api.agents.listAll, projectId ? { projectId } : {});
-  const tasks = useQuery(api.tasks.listAll, projectId ? { projectId } : {});
-
+  const tasks  = useQuery(api.tasks.listAll,  projectId ? { projectId } : {});
   const updateStatus = useMutation(api.agents.updateStatus);
-  const pauseAll = useMutation(api.agents.pauseAll);
-  const resumeAll = useMutation(api.agents.resumeAll);
-  const resetAll = useMutation(api.agents.resetAll);
-  const { toast } = useToast();
+  const pauseAll     = useMutation(api.agents.pauseAll);
+  const resumeAll    = useMutation(api.agents.resumeAll);
+  const resetAll     = useMutation(api.agents.resetAll);
+  const { toast }    = useToast();
 
   const taskCountByAgent = useMemo(() => {
     const map = new Map<Id<"agents">, number>();
     if (!tasks) return map;
-    for (const task of tasks) {
-      for (const assigneeId of task.assigneeIds) {
-        map.set(assigneeId, (map.get(assigneeId) ?? 0) + 1);
-      }
-    }
+    for (const task of tasks)
+      for (const id of task.assigneeIds)
+        map.set(id, (map.get(id) ?? 0) + 1);
     return map;
   }, [tasks]);
 
   if (!agents || !tasks) {
     return (
-      <main style={{ flex: 1, overflow: "auto", padding: 24 }}>
-        <h2 style={{ color: "#e2e8f0", marginTop: 0 }}>Agent Registry</h2>
-        <p style={{ color: "#64748b" }}>Loading agents...</p>
+      <main className="flex-1 overflow-auto p-6">
+        <div className="h-6 w-40 rounded skeleton-shimmer mb-2" />
+        <div className="h-4 w-56 rounded skeleton-shimmer" />
       </main>
     );
   }
 
-  const activeCount = agents.filter((agent) => agent.status === "ACTIVE").length;
-  const quarantinedCount = agents.filter((agent) => agent.status === "QUARANTINED").length;
+  const activeCount      = agents.filter((a) => a.status === "ACTIVE").length;
+  const quarantinedCount = agents.filter((a) => a.status === "QUARANTINED").length;
+  const assignedCount    = tasks.filter((t) => t.assigneeIds.length > 0).length;
 
   async function setStatus(agent: Doc<"agents">, status: string, reason: string) {
     const isDangerous = status === "QUARANTINED" || status === "DRAINED";
-    if (isDangerous) {
-      const ok = window.confirm(`Set ${agent.name} to ${status}?`);
-      if (!ok) return;
-    }
+    if (isDangerous && !window.confirm(`Set ${agent.name} to ${status}?`)) return;
     try {
       await updateStatus({ agentId: agent._id, status, reason });
-      toast(`${agent.name} -> ${status}`);
-    } catch (error) {
-      toast(error instanceof Error ? error.message : "Status update failed", true);
+      toast(`${agent.name} → ${status}`);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Status update failed", true);
     }
   }
 
   return (
-    <main style={{ flex: 1, overflow: "auto", padding: 24 }}>
-      <h2 style={{ color: "#e2e8f0", marginTop: 0, marginBottom: 10 }}>Agent Registry</h2>
+    <main className="flex-1 overflow-auto">
+      <PageHeader
+        title="Agent Registry"
+        description={`${agents.length} agents · ${activeCount} active`}
+        actions={
+          <Button size="sm" variant="outline" onClick={() => setDiscoverOpen(true)}>
+            <Radio className="h-3.5 w-3.5 mr-1.5" />
+            Discover agents
+          </Button>
+        }
+      />
+      <DiscoverAgentsModal
+        projectId={projectId}
+        open={discoverOpen}
+        onClose={() => setDiscoverOpen(false)}
+        onImported={() => toast("Agent imported")}
+      />
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
-          gap: 12,
-          marginBottom: 16,
-        }}
-      >
-        <StatCard label="Agents" value={String(agents.length)} />
-        <StatCard label="Active" value={String(activeCount)} color="#22c55e" />
-        <StatCard label="Quarantined" value={String(quarantinedCount)} color="#ef4444" />
-        <StatCard label="Assigned tasks" value={String(tasks.filter((task) => task.assigneeIds.length > 0).length)} />
+      {/* Stats */}
+      <div className="px-6 pb-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <StatCard icon={Bot}         label="Total Agents"    value={agents.length} />
+        <StatCard icon={Activity}    label="Active"          value={activeCount}      accent="text-emerald-500" />
+        <StatCard icon={ShieldAlert} label="Quarantined"     value={quarantinedCount} accent="text-red-500" />
+        <StatCard icon={ListTodo}    label="Assigned Tasks"  value={assignedCount} />
       </div>
 
-      <section
-        style={{
-          padding: 14,
-          borderRadius: 8,
-          border: "1px solid #334155",
-          background: "#0f172a",
-          marginBottom: 16,
-        }}
-      >
-        <div style={{ color: "#94a3b8", fontSize: "0.8rem", marginBottom: 10 }}>
-          Operator Controls
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button
-            type="button"
-            onClick={async () => {
-              if (!window.confirm("Pause all active agents?")) return;
-              try {
-                const result = await pauseAll({
-                  projectId: projectId ?? undefined,
-                  reason: "Operator pause from registry",
-                  userId: "operator",
-                });
-                toast(`Paused ${(result as { paused: number }).paused} agent(s)`);
-              } catch (error) {
-                toast(error instanceof Error ? error.message : "Pause failed", true);
-              }
-            }}
-            style={dangerButton}
-          >
-            Pause Squad
-          </button>
-          <button
-            type="button"
-            onClick={async () => {
-              try {
-                const result = await resumeAll({
-                  projectId: projectId ?? undefined,
-                  reason: "Operator resume from registry",
-                  userId: "operator",
-                });
-                toast(`Resumed ${(result as { resumed: number }).resumed} agent(s)`);
-              } catch (error) {
-                toast(error instanceof Error ? error.message : "Resume failed", true);
-              }
-            }}
-            style={successButton}
-          >
-            Resume Squad
-          </button>
-          <button
-            type="button"
-            onClick={async () => {
-              try {
-                const result = await resetAll({ projectId: projectId ?? undefined });
-                toast(`Reset ${(result as { resetCount: number }).resetCount} agent(s)`);
-              } catch (error) {
-                toast(error instanceof Error ? error.message : "Reset failed", true);
-              }
-            }}
-            style={neutralButton}
-          >
-            Reset Quarantined/Offline
-          </button>
-        </div>
-      </section>
+      {/* Operator controls */}
+      <div className="px-6 pb-4">
+        <Card className="p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+            Operator Controls
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="destructive"
+              onClick={async () => {
+                if (!window.confirm("Pause all active agents?")) return;
+                try {
+                  const r = await pauseAll({ projectId: projectId ?? undefined, reason: "Operator pause", userId: "operator" });
+                  toast(`Paused ${(r as { paused: number }).paused} agent(s)`);
+                } catch (e) { toast(e instanceof Error ? e.message : "Failed", true); }
+              }}>
+              Pause Squad
+            </Button>
+            <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={async () => {
+                try {
+                  const r = await resumeAll({ projectId: projectId ?? undefined, reason: "Operator resume", userId: "operator" });
+                  toast(`Resumed ${(r as { resumed: number }).resumed} agent(s)`);
+                } catch (e) { toast(e instanceof Error ? e.message : "Failed", true); }
+              }}>
+              Resume Squad
+            </Button>
+            <Button size="sm" variant="outline"
+              onClick={async () => {
+                try {
+                  const r = await resetAll({ projectId: projectId ?? undefined });
+                  toast(`Reset ${(r as { resetCount: number }).resetCount} agent(s)`);
+                } catch (e) { toast(e instanceof Error ? e.message : "Failed", true); }
+              }}>
+              Reset Quarantined/Offline
+            </Button>
+          </div>
+        </Card>
+      </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {/* Agent cards */}
+      <div className="px-6 pb-6 flex flex-col gap-3">
         {agents.map((agent) => {
-          const lastHeartbeat = agent.lastHeartbeatAt
-            ? new Date(agent.lastHeartbeatAt).toLocaleString()
-            : "Never";
-          const assignedCount = taskCountByAgent.get(agent._id) ?? 0;
-          const budgetRemaining = agent.budgetDaily - agent.spendToday;
+          const lastHB   = agent.lastHeartbeatAt ? new Date(agent.lastHeartbeatAt).toLocaleString() : "Never";
+          const aCount   = taskCountByAgent.get(agent._id) ?? 0;
+          const remaining = agent.budgetDaily - agent.spendToday;
+          const cfg      = STATUS_CONFIG[agent.status] ?? STATUS_CONFIG.OFFLINE;
 
           return (
-            <article
-              key={agent._id}
-              style={{
-                background: "#0f172a",
-                border: "1px solid #334155",
-                borderRadius: 8,
-                padding: 14,
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: "1.2rem" }}>{agent.emoji || "🤖"}</span>
+            <Card key={agent._id} className="p-4 hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-muted border border-border flex items-center justify-center text-xl shrink-0">
+                    {agent.emoji || "🤖"}
+                  </div>
                   <div>
-                    <div style={{ fontWeight: 700, color: "#e2e8f0" }}>{agent.name}</div>
-                    <div style={{ fontSize: "0.8rem", color: "#94a3b8" }}>{agent.role}</div>
+                    <p className="font-semibold text-foreground leading-tight">{agent.name}</p>
+                    <p className="text-[11px] text-muted-foreground uppercase tracking-wider">{agent.role}</p>
                   </div>
                 </div>
-                <span
-                  style={{
-                    fontSize: "0.75rem",
-                    fontWeight: 700,
-                    color: "#fff",
-                    background: STATUS_COLORS[agent.status] ?? "#64748b",
-                    borderRadius: 4,
-                    padding: "2px 8px",
-                  }}
-                >
-                  {agent.status}
-                </span>
+                <Badge variant="outline" className={cn("text-[11px] font-semibold px-2.5 py-0.5", cfg.className)}>
+                  {cfg.label}
+                </Badge>
               </div>
 
-              <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 8 }}>
-                <Field label="Capabilities" value={agent.allowedTaskTypes.length ? agent.allowedTaskTypes.join(", ") : "All task types"} />
-                <Field label="Tools" value={agent.allowedTools?.length ? agent.allowedTools.join(", ") : "Default toolset"} />
-                <Field label="Last heartbeat" value={lastHeartbeat} />
-                <Field label="Assigned tasks" value={String(assignedCount)} />
-                <Field label="Budget (today)" value={`$${agent.spendToday.toFixed(2)} / $${agent.budgetDaily.toFixed(2)}`} />
-                <Field label="Budget remaining" value={`$${budgetRemaining.toFixed(2)}`} />
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4 p-3 rounded-lg bg-muted/40 border border-border/50">
+                <AgentField icon={Cpu}      label="Capabilities" value={agent.allowedTaskTypes.length ? agent.allowedTaskTypes.join(", ") : "All types"} />
+                <AgentField icon={Wrench}   label="Tools"        value={agent.allowedTools?.length ? agent.allowedTools.join(", ") : "Default toolset"} />
+                <AgentField icon={Clock}    label="Last Heartbeat" value={lastHB} />
+                <AgentField icon={ListTodo} label="Assigned"     value={String(aCount)} />
+                <AgentField icon={DollarSign} label="Spend / Budget" value={`$${agent.spendToday.toFixed(2)} / $${agent.budgetDaily.toFixed(2)}`} />
+                <AgentField icon={DollarSign} label="Remaining"  value={`$${remaining.toFixed(2)}`} accent={remaining < 1 ? "text-red-500" : "text-emerald-600 dark:text-emerald-400"} />
               </div>
 
-              <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  onClick={() => setStatus(agent, "ACTIVE", "Operator activated agent")}
-                  disabled={agent.status === "ACTIVE"}
-                  style={miniButton}
-                >
-                  Activate
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStatus(agent, "PAUSED", "Operator paused agent")}
-                  disabled={agent.status === "PAUSED"}
-                  style={miniButton}
-                >
-                  Pause
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStatus(agent, "DRAINED", "Operator drained agent")}
-                  disabled={agent.status === "DRAINED"}
-                  style={miniButton}
-                >
-                  Drain
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStatus(agent, "QUARANTINED", "Operator quarantined agent")}
+              <div className="flex flex-wrap gap-2 pt-3 border-t border-border">
+                {[
+                  { label: "Activate", s: "ACTIVE" },
+                  { label: "Pause",    s: "PAUSED" },
+                  { label: "Drain",    s: "DRAINED" },
+                ].map(({ label, s }) => (
+                  <Button key={s} size="sm" variant="outline"
+                    disabled={agent.status === s}
+                    onClick={() => setStatus(agent, s, `Operator ${label.toLowerCase()}d agent`)}
+                    className="h-7 text-xs">
+                    {label}
+                  </Button>
+                ))}
+                <Button size="sm" variant="outline"
                   disabled={agent.status === "QUARANTINED"}
-                  style={dangerMiniButton}
-                >
-                  Quarantine
-                </button>
+                  onClick={() => setStatus(agent, "QUARANTINED", "Operator quarantined agent")}
+                  className="h-7 text-xs border-red-500/40 text-red-600 hover:bg-red-500/10 dark:text-red-400">
+                  <AlertTriangle className="h-3 w-3 mr-1" />Quarantine
+                </Button>
               </div>
-            </article>
+            </Card>
           );
         })}
       </div>
@@ -235,59 +192,30 @@ export function AgentRegistryView({ projectId }: { projectId: Id<"projects"> | n
   );
 }
 
-function StatCard({ label, value, color }: { label: string; value: string; color?: string }) {
+function StatCard({ icon: Icon, label, value, accent = "text-foreground" }: {
+  icon: React.ElementType; label: string; value: number | string; accent?: string;
+}) {
   return (
-    <div style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: 12 }}>
-      <div style={{ fontSize: "0.78rem", color: "#94a3b8" }}>{label}</div>
-      <div style={{ fontSize: "1.2rem", fontWeight: 700, color: color || "#e2e8f0", marginTop: 4 }}>
-        {value}
+    <Card className="p-4">
+      <div className="flex items-center gap-1.5 mb-2">
+        <Icon className="h-3.5 w-3.5 text-muted-foreground" strokeWidth={1.5} />
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</span>
       </div>
-    </div>
+      <p className={cn("text-2xl font-bold tracking-tight", accent)}>{value}</p>
+    </Card>
   );
 }
 
-function Field({ label, value }: { label: string; value: string }) {
+function AgentField({ icon: Icon, label, value, accent }: {
+  icon: React.ElementType; label: string; value: string; accent?: string;
+}) {
   return (
-    <div>
-      <div style={{ fontSize: "0.72rem", color: "#64748b" }}>{label}</div>
-      <div style={{ fontSize: "0.82rem", color: "#cbd5e1", marginTop: 2 }}>{value}</div>
+    <div className="min-w-0">
+      <div className="flex items-center gap-1 mb-0.5">
+        <Icon className="h-2.5 w-2.5 text-muted-foreground/60" strokeWidth={1.5} />
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-medium">{label}</p>
+      </div>
+      <p className={cn("text-xs text-foreground/80 truncate", accent)}>{value}</p>
     </div>
   );
 }
-
-const miniButton: React.CSSProperties = {
-  padding: "6px 10px",
-  background: "#1e293b",
-  border: "1px solid #334155",
-  borderRadius: 6,
-  color: "#e2e8f0",
-  fontSize: "0.78rem",
-  cursor: "pointer",
-};
-
-const dangerMiniButton: React.CSSProperties = {
-  ...miniButton,
-  border: "1px solid #dc2626",
-  color: "#fecaca",
-  background: "#7f1d1d",
-};
-
-const dangerButton: React.CSSProperties = {
-  ...miniButton,
-  background: "#7f1d1d",
-  border: "1px solid #ef4444",
-  color: "#fecaca",
-};
-
-const successButton: React.CSSProperties = {
-  ...miniButton,
-  background: "#14532d",
-  border: "1px solid #22c55e",
-  color: "#bbf7d0",
-};
-
-const neutralButton: React.CSSProperties = {
-  ...miniButton,
-  background: "#334155",
-};
-

@@ -38,8 +38,8 @@ export function TabBar({ tabs, activeTab, onTabChange, className }: TabBarProps)
   return (
     <div
       className={cn(
-        "flex items-center gap-1.5 px-4 py-2",
-        "border-b border-border/70 bg-background",
+        "flex items-center gap-1 px-4 py-2.5",
+        "border-b border-border/60 bg-background/95 backdrop-blur-sm",
         className
       )}
       role="tablist"
@@ -55,23 +55,23 @@ export function TabBar({ tabs, activeTab, onTabChange, className }: TabBarProps)
             onClick={() => onTabChange(tab.id)}
             onKeyDown={(event) => handleKeyDown(event, index)}
             className={cn(
-              "relative rounded-md px-3 py-1.5",
-              "text-xs font-semibold tracking-wide",
-              "transition-colors duration-150",
+              "relative rounded-lg px-3.5 py-1.5",
+              "text-[11.5px] font-semibold tracking-wide",
+              "transition-all duration-150",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
               isActive
                 ? "text-foreground"
-                : "text-muted-foreground hover:text-foreground"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
             )}
           >
             {isActive && (
               <motion.div
                 layoutId="tab-bar-pill"
-                className="absolute inset-0 rounded-md bg-muted border border-border"
+                className="absolute inset-0 rounded-lg bg-muted border border-border shadow-sm"
                 transition={{
                   type: "spring",
-                  stiffness: 400,
-                  damping: 30,
+                  stiffness: 450,
+                  damping: 32,
                 }}
               />
             )}
@@ -80,11 +80,11 @@ export function TabBar({ tabs, activeTab, onTabChange, className }: TabBarProps)
               {tab.count !== undefined && tab.count > 0 && (
                 <span
                   className={cn(
-                    "min-w-[18px] h-[18px] flex items-center justify-center",
-                    "rounded-full text-[10px] font-bold",
+                    "min-w-[18px] h-[17px] flex items-center justify-center",
+                    "rounded-full text-[9px] font-bold px-1",
                     isActive
-                      ? "bg-primary/20 text-primary"
-                      : "bg-muted text-muted-foreground"
+                      ? "bg-primary/15 text-primary"
+                      : "bg-muted/80 text-muted-foreground"
                   )}
                 >
                   {tab.count}

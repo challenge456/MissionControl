@@ -60,10 +60,12 @@ import type * as migrations_backfillInstanceRefs from "../migrations/backfillIns
 import type * as mission from "../mission.js";
 import type * as monitoring from "../monitoring.js";
 import type * as notifications from "../notifications.js";
+import type * as openclawDiscovery from "../openclawDiscovery.js";
 import type * as operations_opEvents from "../operations/opEvents.js";
 import type * as operatorControls from "../operatorControls.js";
 import type * as orgAssignments from "../orgAssignments.js";
 import type * as orgMembers from "../orgMembers.js";
+import type * as planning from "../planning.js";
 import type * as policy from "../policy.js";
 import type * as prd from "../prd.js";
 import type * as projects from "../projects.js";
@@ -170,10 +172,12 @@ declare const fullApi: ApiFromModules<{
   mission: typeof mission;
   monitoring: typeof monitoring;
   notifications: typeof notifications;
+  openclawDiscovery: typeof openclawDiscovery;
   "operations/opEvents": typeof operations_opEvents;
   operatorControls: typeof operatorControls;
   orgAssignments: typeof orgAssignments;
   orgMembers: typeof orgMembers;
+  planning: typeof planning;
   policy: typeof policy;
   prd: typeof prd;
   projects: typeof projects;

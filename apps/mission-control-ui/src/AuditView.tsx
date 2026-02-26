@@ -2,164 +2,198 @@ import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
+import { Card } from "@/components/ui/card";
+import { PageHeader } from "./components/PageHeader";
+import { FileText, ShieldCheck, Clock, XCircle, Filter } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 function fmtTime(ts?: number) {
   if (!ts) return "n/a";
   return new Date(ts).toLocaleString();
 }
 
-export function AuditView({ projectId }: { projectId: Id<"projects"> | null }) {
-  const [limit, setLimit] = useState(100);
-  const [changeTypeFilter, setChangeTypeFilter] = useState("");
+const PILL_VARIANTS: Record<string, string> = {
+  ACTIVE:           "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30",
+  APPROVED:         "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30",
+  ALLOW:            "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30",
+  GREEN:            "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30",
+  PENDING:          "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30",
+  YELLOW:           "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30",
+  NEEDS_APPROVAL:   "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30",
+  DENIED:           "bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/30",
+  RED:              "bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/30",
+  FAILED:           "bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/30",
+  TASK_TRANSITIONED:"bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30",
+  APPROVAL_REQUESTED:"bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/30",
+};
 
-  const changes = useQuery(api["governance/changeRecords"].listChangeRecords, {
-    type: changeTypeFilter || undefined,
-    limit,
-  });
-  const approvals = useQuery(api["governance/approvalRecords"].listApprovals, {});
-
+function StatusPill({ value }: { value: string }) {
+  const cls = PILL_VARIANTS[value.toUpperCase()] ?? "bg-muted text-foreground border-border";
   return (
-    <main className="flex-1 overflow-auto p-6">
-      <div className="mb-4">
-        <h2 className="text-lg font-semibold text-foreground">ARM Audit</h2>
-        <p className="text-sm text-muted-foreground">
-          Governance trail for approvals, lifecycle transitions, deployments, and policy decisions.
-        </p>
-      </div>
-
-      <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="Change Records" value={(changes ?? []).length} />
-        <Stat label="Approval Records" value={(approvals ?? []).length} />
-        <Stat label="Pending Approvals" value={(approvals ?? []).filter((row) => row.status === "PENDING").length} />
-        <Stat label="Denied Decisions" value={(approvals ?? []).filter((row) => row.status === "DENIED").length} />
-      </div>
-
-      <section className="mb-4 rounded-md border border-border bg-card p-4">
-        <div className="mb-3 flex flex-wrap items-end gap-3">
-          <label className="text-sm">
-            <div className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">Change type</div>
-            <input
-              className="rounded border border-border bg-secondary px-2 py-1 text-foreground"
-              placeholder="e.g. DEPLOYMENT_ACTIVATED"
-              value={changeTypeFilter}
-              onChange={(e) => setChangeTypeFilter(e.target.value)}
-            />
-          </label>
-          <label className="text-sm">
-            <div className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">Limit</div>
-            <select
-              className="rounded border border-border bg-secondary px-2 py-1 text-foreground"
-              value={limit}
-              onChange={(e) => setLimit(Number(e.target.value))}
-            >
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-              <option value={200}>200</option>
-            </select>
-          </label>
-        </div>
-
-        <div className="overflow-auto">
-          <table className="w-full min-w-[980px] text-left text-sm">
-            <thead className="text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="px-2 py-1">Time</th>
-                <th className="px-2 py-1">Type</th>
-                <th className="px-2 py-1">Summary</th>
-                <th className="px-2 py-1">Project</th>
-                <th className="px-2 py-1">Instance</th>
-                <th className="px-2 py-1">Version</th>
-                <th className="px-2 py-1">Related</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(changes ?? []).map((change) => (
-                <tr key={change._id} className="border-t border-border">
-                  <td className="px-2 py-2 text-xs text-muted-foreground">{fmtTime(change.timestamp)}</td>
-                  <td className="px-2 py-2">
-                    <StatusPill value={change.type} />
-                  </td>
-                  <td className="px-2 py-2">{change.summary}</td>
-                  <td className="px-2 py-2 font-mono text-xs text-muted-foreground">{change.projectId ?? "n/a"}</td>
-                  <td className="px-2 py-2 font-mono text-xs text-muted-foreground">{change.instanceId ?? "n/a"}</td>
-                  <td className="px-2 py-2 font-mono text-xs text-muted-foreground">{change.versionId ?? "n/a"}</td>
-                  <td className="px-2 py-2 text-xs text-muted-foreground">
-                    {change.relatedTable ?? "n/a"} {change.relatedId ? `• ${change.relatedId}` : ""}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {(changes ?? []).length === 0 && (
-            <div className="rounded border border-dashed border-border p-3 text-sm text-muted-foreground">
-              No change records found.
-            </div>
-          )}
-        </div>
-      </section>
-
-      <section className="rounded-md border border-border bg-card p-4">
-        <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Approval Records
-        </div>
-        <div className="overflow-auto">
-          <table className="w-full min-w-[840px] text-left text-sm">
-            <thead className="text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="px-2 py-1">Requested</th>
-                <th className="px-2 py-1">Action</th>
-                <th className="px-2 py-1">Risk</th>
-                <th className="px-2 py-1">Status</th>
-                <th className="px-2 py-1">Decided</th>
-                <th className="px-2 py-1">Reason</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(approvals ?? []).map((approval) => (
-                <tr key={approval._id} className="border-t border-border">
-                  <td className="px-2 py-2 text-xs text-muted-foreground">{fmtTime(approval.requestedAt)}</td>
-                  <td className="px-2 py-2">{approval.actionType}</td>
-                  <td className="px-2 py-2">
-                    <StatusPill value={approval.riskLevel} />
-                  </td>
-                  <td className="px-2 py-2">
-                    <StatusPill value={approval.status} />
-                  </td>
-                  <td className="px-2 py-2 text-xs text-muted-foreground">{fmtTime(approval.decidedAt)}</td>
-                  <td className="px-2 py-2 text-xs text-muted-foreground">{approval.decisionReason ?? approval.justification}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {(approvals ?? []).length === 0 && (
-            <div className="rounded border border-dashed border-border p-3 text-sm text-muted-foreground">
-              No approval records found.
-            </div>
-          )}
-        </div>
-      </section>
-    </main>
+    <span className={cn("inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap", cls)}>
+      {value}
+    </span>
   );
 }
 
-function StatusPill({ value }: { value: string }) {
-  const v = value.toUpperCase();
-  const classes =
-    v === "ACTIVE" || v === "APPROVED" || v === "ALLOW" || v === "GREEN"
-      ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/40"
-      : v === "PENDING" || v === "YELLOW" || v === "NEEDS_APPROVAL"
-      ? "bg-amber-500/15 text-amber-300 border-amber-500/40"
-      : v === "DENIED" || v === "RED" || v === "FAILED"
-      ? "bg-red-500/15 text-red-300 border-red-500/40"
-      : "bg-secondary text-foreground border-border";
-  return <span className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${classes}`}>{value}</span>;
+function StatCard({ icon: Icon, label, value, accent }: {
+  icon: React.ElementType; label: string; value: number; accent?: string;
+}) {
+  return (
+    <Card className="p-4">
+      <div className="flex items-center gap-2 mb-2">
+        <Icon className="h-3.5 w-3.5 text-muted-foreground" strokeWidth={1.5} />
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</span>
+      </div>
+      <p className={cn("text-2xl font-bold tracking-tight tabular-nums", accent ?? "text-foreground")}>{value}</p>
+    </Card>
+  );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+function TableSection({
+  title,
+  children,
+  controls,
+  empty,
+}: {
+  title: string;
+  children: React.ReactNode;
+  controls?: React.ReactNode;
+  empty: boolean;
+}) {
   return (
-    <div className="rounded-md border border-border bg-card p-3">
-      <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
-      <div className="mt-1 text-xl font-semibold text-foreground">{value}</div>
-    </div>
+    <Card className="overflow-hidden">
+      <div className="px-5 py-3 border-b border-border flex items-center justify-between gap-3 flex-wrap bg-muted/30">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</p>
+        {controls}
+      </div>
+      {empty ? (
+        <div className="py-12 text-center text-sm text-muted-foreground">No records found.</div>
+      ) : (
+        <div className="overflow-auto">{children}</div>
+      )}
+    </Card>
+  );
+}
+
+export function AuditView({ projectId: _projectId }: { projectId: Id<"projects"> | null }) {
+  const [limit, setLimit] = useState(100);
+  const [changeTypeFilter, setChangeTypeFilter] = useState("");
+
+  const changes   = useQuery(api["governance/changeRecords"].listChangeRecords, { type: changeTypeFilter || undefined, limit });
+  const approvals = useQuery(api["governance/approvalRecords"].listApprovals, {});
+
+  const pendingCount = (approvals ?? []).filter((r) => r.status === "PENDING").length;
+  const deniedCount  = (approvals ?? []).filter((r) => r.status === "DENIED").length;
+
+  return (
+    <main className="flex-1 overflow-auto">
+      <PageHeader
+        title="ARM Audit"
+        description="Governance trail for approvals, lifecycle transitions, deployments, and policy decisions."
+      />
+
+      {/* Stats */}
+      <div className="px-6 py-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <StatCard icon={FileText}   label="Change Records"   value={(changes ?? []).length} />
+        <StatCard icon={ShieldCheck} label="Approval Records" value={(approvals ?? []).length} />
+        <StatCard icon={Clock}      label="Pending Approvals" value={pendingCount} accent={pendingCount > 0 ? "text-amber-500" : undefined} />
+        <StatCard icon={XCircle}    label="Denied Decisions"  value={deniedCount}  accent={deniedCount  > 0 ? "text-red-500"   : undefined} />
+      </div>
+
+      <div className="px-6 pb-4 flex flex-col gap-4">
+        {/* Change records */}
+        <TableSection
+          title="Change Records"
+          empty={(changes ?? []).length === 0}
+          controls={
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-2">
+                <Filter className="h-3 w-3 text-muted-foreground" />
+                <input
+                  className="rounded-md border border-border bg-background px-2.5 py-1 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring w-44"
+                  placeholder="Filter by type…"
+                  value={changeTypeFilter}
+                  onChange={(e) => setChangeTypeFilter(e.target.value)}
+                />
+              </div>
+              <select
+                className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                value={limit}
+                onChange={(e) => setLimit(Number(e.target.value))}
+              >
+                <option value={50}>50 rows</option>
+                <option value={100}>100 rows</option>
+                <option value={200}>200 rows</option>
+              </select>
+            </div>
+          }
+        >
+          <table className="w-full min-w-[980px] text-left text-xs">
+            <thead>
+              <tr className="bg-muted/50 border-b border-border">
+                {["Time", "Type", "Summary", "Project", "Instance", "Version", "Related"].map((h) => (
+                  <th key={h} className="px-3 py-2.5 font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {(changes ?? []).map((change, i) => (
+                <tr
+                  key={change._id}
+                  className={cn(
+                    "border-b border-border/50 hover:bg-muted/40 transition-colors",
+                    i % 2 === 0 ? "" : "bg-muted/20"
+                  )}
+                >
+                  <td className="px-3 py-2.5 text-muted-foreground whitespace-nowrap font-mono">{fmtTime(change.timestamp)}</td>
+                  <td className="px-3 py-2.5"><StatusPill value={change.type} /></td>
+                  <td className="px-3 py-2.5 text-foreground/80 max-w-[280px] truncate">{change.summary}</td>
+                  <td className="px-3 py-2.5 font-mono text-muted-foreground truncate max-w-[140px]">{change.projectId ?? "n/a"}</td>
+                  <td className="px-3 py-2.5 font-mono text-muted-foreground truncate max-w-[120px]">{change.instanceId ?? "n/a"}</td>
+                  <td className="px-3 py-2.5 font-mono text-muted-foreground truncate max-w-[120px]">{change.versionId ?? "n/a"}</td>
+                  <td className="px-3 py-2.5 text-muted-foreground truncate max-w-[180px]">
+                    {change.relatedTable ?? "n/a"}{change.relatedId ? ` · ${change.relatedId}` : ""}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableSection>
+
+        {/* Approval records */}
+        <TableSection title="Approval Records" empty={(approvals ?? []).length === 0}>
+          <table className="w-full min-w-[840px] text-left text-xs">
+            <thead>
+              <tr className="bg-muted/50 border-b border-border">
+                {["Requested", "Action", "Risk", "Status", "Decided", "Reason"].map((h) => (
+                  <th key={h} className="px-3 py-2.5 font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {(approvals ?? []).map((approval, i) => (
+                <tr
+                  key={approval._id}
+                  className={cn(
+                    "border-b border-border/50 hover:bg-muted/40 transition-colors",
+                    i % 2 === 0 ? "" : "bg-muted/20"
+                  )}
+                >
+                  <td className="px-3 py-2.5 text-muted-foreground whitespace-nowrap font-mono">{fmtTime(approval.requestedAt)}</td>
+                  <td className="px-3 py-2.5 text-foreground/80">{approval.actionType}</td>
+                  <td className="px-3 py-2.5"><StatusPill value={approval.riskLevel} /></td>
+                  <td className="px-3 py-2.5"><StatusPill value={approval.status} /></td>
+                  <td className="px-3 py-2.5 text-muted-foreground whitespace-nowrap font-mono">{fmtTime(approval.decidedAt)}</td>
+                  <td className="px-3 py-2.5 text-muted-foreground truncate max-w-[200px]">
+                    {approval.decisionReason ?? approval.justification ?? "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableSection>
+      </div>
+    </main>
   );
 }

@@ -32,7 +32,7 @@ Aligned with [OpenClaw Security Audit Guidance](https://docs.openclaw.ai/gateway
 | Network domain allowlists | Implemented | Only approved domains in `ALLOWLISTS.network` |
 | No direct network exposure from agents | Implemented | Agents act through Convex actions; no direct socket access |
 | External API calls audited | Partial | Tool calls logged in `toolCalls` table; need better external call tracking |
-| Webhook endpoints authenticated | Partial | Webhook signatures not fully validated |
+| Webhook endpoints authenticated | Implemented | Stripe webhook validates Stripe-Signature (HMAC-SHA256) when STRIPE_WEBHOOK_SECRET is set; outbound webhooks sign with X-Webhook-Signature |
 
 ## 4. Credential Storage
 

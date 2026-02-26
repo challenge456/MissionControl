@@ -622,6 +622,11 @@ export default defineSchema({
       estimatedCost: v.optional(v.number()),
       estimatedDuration: v.optional(v.string()),
     })),
+    // AI planning Q&A (clarifying questions and answers before work plan)
+    planningQa: v.optional(v.array(v.object({
+      question: v.string(),
+      answer: v.string(),
+    }))),
     
     // Deliverable
     deliverable: v.optional(v.object({

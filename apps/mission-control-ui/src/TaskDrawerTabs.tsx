@@ -298,6 +298,19 @@ function OverviewTab({
         <SourceBadge source={task.source} sourceRef={task.sourceRef} createdBy={task.createdBy} />
       </Section>
 
+      {task.planningQa && task.planningQa.length > 0 && (
+        <Section title="Planning Q&A">
+          <dl className="space-y-2 text-sm">
+            {task.planningQa.map((qa: { question: string; answer: string }, i: number) => (
+              <div key={i}>
+                <dt className="font-medium text-foreground/90">{qa.question}</dt>
+                <dd className="text-foreground/80 pl-2 mt-0.5">{qa.answer}</dd>
+              </div>
+            ))}
+          </dl>
+        </Section>
+      )}
+
       {task.workPlan && (
         <Section title="Work Plan">
           <ul className="list-disc pl-5 text-sm text-foreground/80 space-y-1.5">

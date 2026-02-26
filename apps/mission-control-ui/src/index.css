@@ -54,44 +54,48 @@
 :root {
   --radius: 0.625rem;
 
-  --background: #0f1115;
-  --foreground: #f8fafc;
-  --card: #171a21;
-  --card-foreground: #f8fafc;
-  --popover: #171a21;
-  --popover-foreground: #f8fafc;
+  --background: #0c0e14;
+  --foreground: #f1f5f9;
+  --card: #13161f;
+  --card-foreground: #f1f5f9;
+  --popover: #13161f;
+  --popover-foreground: #f1f5f9;
 
-  --primary: #2563eb;
+  --primary: #3b82f6;
   --primary-foreground: #eff6ff;
 
-  --secondary: #1e232d;
+  --secondary: #1a1f2e;
   --secondary-foreground: #dbe3f0;
 
-  --muted: #1d212b;
-  --muted-foreground: #9ca3af;
+  --muted: #181d28;
+  --muted-foreground: #8b95a8;
 
-  --accent: #1f2531;
+  --accent: #1c2233;
   --accent-foreground: #f1f5f9;
 
-  --destructive: #dc2626;
+  --destructive: #ef4444;
   --destructive-foreground: #fef2f2;
 
-  --border: #2a3140;
-  --input: #2a3140;
+  --border: #232a38;
+  --input: #232a38;
   --ring: #3b82f6;
 
-  --sidebar: #11141b;
+  --sidebar: #0e1018;
   --sidebar-foreground: #e2e8f0;
-  --sidebar-accent: #1d2430;
+  --sidebar-accent: #181d28;
   --sidebar-accent-foreground: #f8fafc;
-  --sidebar-border: #2a3140;
+  --sidebar-border: #232a38;
   --sidebar-ring: #3b82f6;
-  --sidebar-primary: #2563eb;
+  --sidebar-primary: #3b82f6;
   --sidebar-primary-foreground: #eff6ff;
+
+  /* Card shadow for dark mode */
+  --card-shadow: 0 1px 3px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.03);
+  --card-shadow-hover: 0 4px 16px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05);
 }
 
 [data-theme="light"] {
-  --background: #f6f8fb;
+  --background: #f4f7fb;
   --foreground: #0f172a;
   --card: #ffffff;
   --card-foreground: #0f172a;
@@ -101,30 +105,34 @@
   --primary: #2563eb;
   --primary-foreground: #eff6ff;
 
-  --secondary: #edf2f7;
+  --secondary: #eef2f8;
   --secondary-foreground: #0f172a;
 
-  --muted: #eef2f7;
-  --muted-foreground: #64748b;
+  --muted: #edf1f8;
+  --muted-foreground: #5a6478;
 
-  --accent: #eff3f8;
+  --accent: #eef3fa;
   --accent-foreground: #0f172a;
 
   --destructive: #dc2626;
   --destructive-foreground: #fef2f2;
 
-  --border: #d8e0eb;
-  --input: #d8e0eb;
+  --border: #dce3ee;
+  --input: #dce3ee;
   --ring: #2563eb;
 
-  --sidebar: #ffffff;
+  --sidebar: #f8fafd;
   --sidebar-foreground: #0f172a;
-  --sidebar-accent: #eef2f7;
+  --sidebar-accent: #edf2f9;
   --sidebar-accent-foreground: #0f172a;
-  --sidebar-border: #d8e0eb;
+  --sidebar-border: #dce3ee;
   --sidebar-ring: #2563eb;
   --sidebar-primary: #2563eb;
   --sidebar-primary-foreground: #eff6ff;
+
+  /* Card shadow for light mode */
+  --card-shadow: 0 1px 3px rgba(15,23,42,0.07), 0 0 0 1px rgba(15,23,42,0.04);
+  --card-shadow-hover: 0 4px 16px rgba(15,23,42,0.1), 0 0 0 1px rgba(15,23,42,0.06);
 }
 
 * {
@@ -229,4 +237,74 @@ a:focus-visible {
     min-height: 44px;
     min-width: 44px;
   }
+}
+
+/* ── Global card polish ── */
+[class*="rounded-"] {
+  transition: box-shadow 0.2s ease, border-color 0.15s ease;
+}
+
+/* Better table rows */
+tbody tr {
+  transition: background-color 0.1s ease;
+}
+tbody tr:hover {
+  background-color: color-mix(in srgb, var(--muted) 60%, transparent);
+}
+
+/* Subtle stat number treatment */
+.stat-value {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* Smooth page transitions */
+main {
+  transition: opacity 0.15s ease;
+}
+
+/* Better select/input focus glow */
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  border-color: var(--ring) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 20%, transparent);
+}
+
+/* Page header separator */
+.page-header-sep {
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--background) 97%, var(--primary)),
+    var(--background) 100%
+  );
+}
+
+/* Kanban column feel */
+.kanban-col-header {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Badge glow for important badges */
+.badge-glow-red {
+  box-shadow: 0 0 0 2px color-mix(in srgb, #ef4444 25%, transparent);
+}
+.badge-glow-green {
+  box-shadow: 0 0 0 2px color-mix(in srgb, #22c55e 25%, transparent);
+}
+
+/* Animated gradient shimmer for active states */
+@keyframes gradient-shift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Nav active indicator glow */
+.nav-active-glow {
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--primary) 60%, transparent));
 }
