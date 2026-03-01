@@ -14,9 +14,14 @@ const DOC_LINKS = [
 ];
 
 const QUICK_LINKS = [
-  { label: "GitHub Repository",  href: "https://github.com/jaydubya818/MissionControl" },
-  { label: "Convex Dashboard",   href: "https://convex.dev" },
-  { label: "Notion Workspace",   href: "https://notion.so" },
+  { label: "GitHub Repository",    href: "https://github.com/jaydubya818/MissionControl",                    icon: "🐙" },
+  { label: "Convex Dashboard",     href: "https://dashboard.convex.dev",                                     icon: "⚡" },
+  { label: "Notion Workspace",     href: "https://notion.so",                                                icon: "📓" },
+  { label: "Obsidian Vault",       href: "obsidian://open",                                                  icon: "🪨" },
+  { label: "Vercel Dashboard",     href: "https://vercel.com/jaydubya818/mission-control-mission-control-ui", icon: "▲" },
+  { label: "Vercel Deployment",    href: "https://mission-control-lb526p6dl-jaydubya818.vercel.app",         icon: "🚀" },
+  { label: "Taskmaster Tasks",     href: "https://github.com/jaydubya818/MissionControl/blob/main/.taskmaster/tasks/tasks.json", icon: "✅" },
+  { label: "Cursor IDE",          href: "cursor://",                                                          icon: "🖱️" },
 ];
 
 export function DocsView() {
@@ -60,11 +65,12 @@ export function DocsView() {
               <a
                 key={link.href}
                 href={link.href}
-                target="_blank"
+                target={link.href.startsWith("obsidian://") || link.href.startsWith("cursor://") ? "_self" : "_blank"}
                 rel="noopener noreferrer"
                 className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors group"
               >
-                <span className="text-sm font-medium text-foreground group-hover:text-primary transition-colors">
+                <span className="flex items-center gap-3 text-sm font-medium text-foreground group-hover:text-primary transition-colors">
+                  <span className="text-base">{link.icon}</span>
                   {link.label}
                 </span>
                 <ExternalLink className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
