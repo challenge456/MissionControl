@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { ExternalLink, FileText, ChevronRight, Search, MessageSquare, BookOpen, Loader2, Zap, RotateCcw, Send, X } from "lucide-react";
 import { useAction, useQuery, useMutation } from "convex/react";
-import { api } from "../convex/_generated/api";
+import { api } from "../../../convex/_generated/api";
 import { Card } from "@/components/ui/card";
 import { PageHeader } from "./components/PageHeader";
 import { TabBar } from "./components/TabBar";
