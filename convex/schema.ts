@@ -2597,4 +2597,32 @@ export default defineSchema({
     .index("by_event_type", ["eventType"])
     .index("by_timestamp", ["timestamp"])
     .index("by_external_id", ["externalId"]),
+
+  // -------------------------------------------------------------------------
+  // KNOWLEDGE BASE (RAG / Semantic Search over docs)
+  // -------------------------------------------------------------------------
+  knowledgeChunks: defineTable({
+    source: v.string(),
+    title: v.string(),
+    content: v.string(),
+    chunkIndex: v.number(),
+    embedding: v.array(v.float64()),
+  })
+    .index("by_source", ["source"])
+    .vectorIndex("by_embedding", {
+      vectorField: "embedding",
+      dimensions: 1536,
+    }),
+
+  knowledgeChatHistory: defineTable({
+    sessionId: v.string(),
+    role: v.union(v.literal("user"), v.literal("assistant")),
+    content: v.string(),
+    sources: v.optional(v.array(v.object({
+      title: v.string(),
+      source: v.string(),
+      excerpt: v.string(),
+    }))),
+  })
+    .index("by_session", ["sessionId"]),
 });
