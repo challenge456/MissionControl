@@ -20,17 +20,47 @@ const DOC_LINKS = [
   { title: "Quick Start",          path: "docs/guides/QUICK_START_NOW.md",         icon: "🚀", description: "Get up and running" },
   { title: "Runbook",              path: "docs/runbook/RUNBOOK.md",                 icon: "📖", description: "Operations runbook" },
   { title: "Implementation Plan",  path: "docs/planning/IMPLEMENTATION_PLAN.md",  icon: "📝", description: "Implementation roadmap" },
+  { title: "Architecture",         path: "docs/ARCHITECTURE.md",                   icon: "🏛️", description: "System architecture" },
+  { title: "Agent Guide",          path: "docs/AGENT_GUIDE.md",                    icon: "🤖", description: "Working with agents" },
+  { title: "Security Audit",       path: "docs/SECURITY_AUDIT.md",                 icon: "🔒", description: "Security review" },
+  { title: "Decisions",            path: "docs/DECISIONS.md",                      icon: "⚖️", description: "Architecture decisions" },
 ];
 
-const QUICK_LINKS = [
-  { label: "GitHub Repository",    href: "https://github.com/jaydubya818/MissionControl",                     icon: "🐙" },
-  { label: "Convex Dashboard",     href: "https://dashboard.convex.dev",                                      icon: "⚡" },
-  { label: "Notion Workspace",     href: "https://notion.so",                                                 icon: "📓" },
-  { label: "Obsidian Vault",       href: "obsidian://open",                                                   icon: "🪨" },
-  { label: "Vercel Dashboard",     href: "https://vercel.com/jaydubya818/mission-control-mission-control-ui", icon: "▲" },
-  { label: "Vercel Deployment",    href: "https://mission-control-lb526p6dl-jaydubya818.vercel.app",          icon: "🚀" },
-  { label: "Taskmaster Tasks",     href: "https://github.com/jaydubya818/MissionControl/blob/main/.taskmaster/tasks/tasks.json", icon: "✅" },
-  { label: "Cursor IDE",           href: "cursor://",                                                         icon: "🖱️" },
+interface QuickLinkItem {
+  label: string;
+  href: string;
+  icon: string;
+  category: string;
+}
+
+const QUICK_LINKS: QuickLinkItem[] = [
+  // Project
+  { label: "GitHub Repository",         href: "https://github.com/jaydubya818/MissionControl",                                    icon: "🐙", category: "Project" },
+  { label: "Vercel Dashboard",          href: "https://vercel.com/jaydubya818/mission-control-mission-control-ui",                icon: "▲",  category: "Project" },
+  { label: "Convex Dashboard",          href: "https://dashboard.convex.dev",                                                     icon: "⚡", category: "Project" },
+  { label: "Taskmaster Tasks",          href: "https://github.com/jaydubya818/MissionControl/blob/main/.taskmaster/tasks/tasks.json", icon: "✅", category: "Project" },
+
+  // AI Tools
+  { label: "Claude (claude.ai)",        href: "https://claude.ai",                                                                icon: "🟠", category: "AI Tools" },
+  { label: "Claude API Docs",           href: "https://docs.anthropic.com/en/api/getting-started",                               icon: "🟠", category: "AI Tools" },
+  { label: "Claude Model Reference",    href: "https://docs.anthropic.com/en/docs/about-claude/models/overview",                 icon: "🟠", category: "AI Tools" },
+  { label: "Codex (OpenAI)",            href: "https://platform.openai.com/docs/guides/code",                                    icon: "🟢", category: "AI Tools" },
+  { label: "OpenAI Platform",           href: "https://platform.openai.com",                                                     icon: "🟢", category: "AI Tools" },
+  { label: "OpenAI API Docs",           href: "https://platform.openai.com/docs/api-reference",                                  icon: "🟢", category: "AI Tools" },
+  { label: "Cursor IDE",                href: "cursor://",                                                                       icon: "🖱️", category: "AI Tools" },
+  { label: "Cursor Docs",               href: "https://docs.cursor.com",                                                         icon: "🖱️", category: "AI Tools" },
+
+  // Workspace
+  { label: "Notion Workspace",          href: "https://notion.so",                                                               icon: "📓", category: "Workspace" },
+  { label: "Obsidian Vault",            href: "obsidian://open",                                                                 icon: "🪨", category: "Workspace" },
+
+  // Infra & Services
+  { label: "Convex Docs",               href: "https://docs.convex.dev",                                                         icon: "📚", category: "Infra" },
+  { label: "Convex Vector Search",      href: "https://docs.convex.dev/search/vector-search",                                    icon: "🔍", category: "Infra" },
+  { label: "Tailwind CSS Docs",         href: "https://tailwindcss.com/docs",                                                    icon: "💨", category: "Infra" },
+  { label: "shadcn/ui Components",      href: "https://ui.shadcn.com/docs/components",                                           icon: "🎨", category: "Infra" },
+  { label: "Lucide Icons",              href: "https://lucide.dev/icons",                                                        icon: "✨", category: "Infra" },
+  { label: "Telegram Bot API",          href: "https://core.telegram.org/bots/api",                                              icon: "✈️", category: "Infra" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -48,53 +78,67 @@ const TABS = [
 // ---------------------------------------------------------------------------
 
 function KnowledgeTab() {
-  return (
-    <div className="px-6 pb-6">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 mb-8">
-        {DOC_LINKS.map((doc) => (
-          <a
-            key={doc.path}
-            href={`/${doc.path}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block group"
-          >
-            <Card className="p-4 h-full flex items-center gap-3 hover:shadow-md hover:border-primary/30 transition-all cursor-pointer group-hover:bg-muted/30">
-              <div className="h-10 w-10 rounded-xl bg-muted border border-border flex items-center justify-center text-xl shrink-0">
-                {doc.icon}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-foreground truncate">{doc.title}</p>
-                <p className="text-xs text-muted-foreground truncate">{doc.description}</p>
-              </div>
-              <ChevronRight className="h-4 w-4 text-muted-foreground/50 group-hover:text-primary transition-colors shrink-0" />
-            </Card>
-          </a>
-        ))}
-      </div>
+  const categories = Array.from(new Set(QUICK_LINKS.map((l) => l.category)));
 
+  return (
+    <div className="px-6 pb-6 space-y-8">
+      {/* Project docs grid */}
       <div>
-        <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-          <FileText className="h-4 w-4 text-muted-foreground" />
-          Quick Links
-        </h2>
-        <Card className="divide-y divide-border">
-          {QUICK_LINKS.map((link) => (
+        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Project Docs</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          {DOC_LINKS.map((doc) => (
             <a
-              key={link.href}
-              href={link.href}
-              target={link.href.startsWith("obsidian://") || link.href.startsWith("cursor://") ? "_self" : "_blank"}
+              key={doc.path}
+              href={`/${doc.path}`}
+              target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors group"
+              className="block group"
             >
-              <span className="flex items-center gap-3 text-sm font-medium text-foreground group-hover:text-primary transition-colors">
-                <span className="text-base">{link.icon}</span>
-                {link.label}
-              </span>
-              <ExternalLink className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
+              <Card className="p-4 h-full flex items-center gap-3 hover:shadow-md hover:border-primary/30 transition-all cursor-pointer group-hover:bg-muted/30">
+                <div className="h-10 w-10 rounded-xl bg-muted border border-border flex items-center justify-center text-xl shrink-0">
+                  {doc.icon}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-foreground truncate">{doc.title}</p>
+                  <p className="text-xs text-muted-foreground truncate">{doc.description}</p>
+                </div>
+                <ChevronRight className="h-4 w-4 text-muted-foreground/50 group-hover:text-primary transition-colors shrink-0" />
+              </Card>
             </a>
           ))}
-        </Card>
+        </div>
+      </div>
+
+      {/* Quick links grouped by category */}
+      <div>
+        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
+          <FileText className="h-3.5 w-3.5" />
+          Quick Links
+        </h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {categories.map((cat) => (
+            <div key={cat}>
+              <p className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-widest mb-2 px-1">{cat}</p>
+              <Card className="divide-y divide-border">
+                {QUICK_LINKS.filter((l) => l.category === cat).map((link) => (
+                  <a
+                    key={link.href}
+                    href={link.href}
+                    target={link.href.startsWith("obsidian://") || link.href.startsWith("cursor://") ? "_self" : "_blank"}
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between px-4 py-2.5 hover:bg-muted/50 transition-colors group"
+                  >
+                    <span className="flex items-center gap-3 text-sm font-medium text-foreground group-hover:text-primary transition-colors">
+                      <span className="text-base w-5 text-center">{link.icon}</span>
+                      {link.label}
+                    </span>
+                    <ExternalLink className="h-3.5 w-3.5 text-muted-foreground/50 group-hover:text-primary transition-colors shrink-0" />
+                  </a>
+                ))}
+              </Card>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
