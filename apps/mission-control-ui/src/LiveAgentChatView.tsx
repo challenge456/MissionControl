@@ -189,23 +189,84 @@ export function LiveAgentChatView({ projectId }: { projectId: Id<"projects"> | n
     );
   }
 
+  // Fictitious demo data when orchestration is unreachable (e.g. production without backend)
+  const fictitiousAgents = [
+    { id: "demo-support", name: "Support Bot" },
+    { id: "demo-research", name: "Research Agent" },
+    { id: "demo-task", name: "Task Runner" },
+  ];
+  const fictitiousMessages: Array<{ role: string; content: string }> = [
+    { role: "user", content: "What can you help me with today?" },
+    {
+      role: "assistant",
+      content:
+        "I can help with support tickets, research summaries, and task coordination. This is demo data — connect to the orchestration server for live chat.",
+    },
+    { role: "user", content: "Show me a sample response." },
+    {
+      role: "assistant",
+      content:
+        "Here’s a sample: Mission Control connects to the OpenClaw Gateway for streaming chat. In production, run the orchestration server and set VITE_ORCHESTRATION_URL so this view shows real agents and messages.",
+    },
+  ];
+
   if (statusError) {
     return (
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-auto flex flex-col">
         <PageHeader
           title="Live Agent Chat"
           description="Connect to the OpenClaw Gateway for streaming chat with agents."
         />
-        <div className="px-6 py-8 flex flex-col items-center justify-center">
-          <AlertCircle className="h-12 w-12 text-amber-500 mb-4" />
-          <p className="text-sm text-muted-foreground text-center max-w-md mb-2">
-            {statusError}
+        <div className="px-4 py-2 border-b border-border bg-amber-500/10 flex items-center gap-2 text-amber-700 dark:text-amber-400">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <p className="text-xs">
+            Orchestration server unavailable — showing demo data. In dev, run the server at{" "}
+            <code className="bg-muted px-1 rounded">http://localhost:4100</code> or set{" "}
+            <code className="bg-muted px-1 rounded">VITE_ORCHESTRATION_URL</code>.
           </p>
-          <p className="text-xs text-muted-foreground text-center max-w-md">
-            In dev, the UI proxies to the orchestration server. Ensure it is running at{" "}
-            <code className="bg-muted px-1 rounded">http://localhost:4100</code>. If you use a
-            different URL, set <code className="bg-muted px-1 rounded">VITE_ORCHESTRATION_URL</code>.
-          </p>
+        </div>
+        <div className="flex-1 flex min-h-0 px-6 py-4">
+          <div className="w-56 border-r border-border pr-4 flex flex-col gap-1">
+            <p className="text-xs font-semibold text-muted-foreground uppercase mb-2">Agents (demo)</p>
+            {fictitiousAgents.map((a) => (
+              <div
+                key={a.id}
+                className="text-left px-3 py-2 rounded-md text-sm bg-muted/50 text-muted-foreground cursor-default"
+              >
+                {a.name}
+              </div>
+            ))}
+          </div>
+          <div className="flex-1 flex flex-col min-w-0 pl-4">
+            <Card className="flex-1 flex flex-col min-h-0 p-4 overflow-hidden">
+              <div className="flex-1 overflow-auto space-y-2 mb-4">
+                {fictitiousMessages.map((m, i) => (
+                  <div
+                    key={i}
+                    className={`rounded-lg px-3 py-2 text-sm ${
+                      m.role === "user" ? "bg-primary/10 ml-8" : "bg-muted/50 mr-8"
+                    }`}
+                  >
+                    <span className="text-[10px] font-semibold text-muted-foreground uppercase">
+                      {m.role}
+                    </span>
+                    <p className="mt-0.5 whitespace-pre-wrap">{m.content}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2 border-t border-border pt-3 opacity-60">
+                <input
+                  type="text"
+                  disabled
+                  placeholder="Connect to orchestration server to send messages…"
+                  className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm text-muted-foreground"
+                />
+                <Button size="sm" disabled>
+                  Send
+                </Button>
+              </div>
+            </Card>
+          </div>
         </div>
       </main>
     );
