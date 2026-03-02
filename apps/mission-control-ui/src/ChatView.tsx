@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id, Doc } from "../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
+import { PageHeader } from "./components/PageHeader";
 
 interface ChatViewProps {
   projectId: Id<"projects"> | null;
@@ -41,11 +42,15 @@ export function ChatView({ projectId }: ChatViewProps) {
   if (availableTasks.length === 0) {
     return (
       <main className="flex flex-1 overflow-hidden bg-background">
+        <PageHeader
+          title="Chat"
+          description="Task threads and agent conversations. Create a task from the Mission Queue to start."
+        />
         <div className="flex flex-1 flex-col items-center justify-center p-12 text-center">
           <div className="mb-4 text-6xl">💬</div>
-          <div className="mb-2 text-2xl font-semibold text-foreground">No Tasks Yet</div>
-          <div className="text-base text-muted-foreground">
-            Create a task to start chatting about it
+          <div className="mb-2 text-2xl font-semibold text-foreground">No tasks yet</div>
+          <div className="text-base text-muted-foreground max-w-sm">
+            Create a task from the Mission Queue (Operations) to start a thread and collaborate with agents.
           </div>
         </div>
       </main>
@@ -53,10 +58,15 @@ export function ChatView({ projectId }: ChatViewProps) {
   }
 
   return (
-    <main className="flex flex-1 overflow-hidden bg-background">
+    <main className="flex flex-1 overflow-hidden bg-background flex flex-col">
+      <PageHeader
+        title="Chat"
+        description={`${availableTasks.length} task threads · Pick one to view or continue the conversation`}
+      />
+      <div className="flex flex-1 min-h-0">
       <div className="flex w-80 flex-col overflow-hidden border-r border-border">
-        <div className="flex items-center justify-between border-b border-border px-5 py-5">
-          <h2 className="text-xl font-semibold text-foreground">Task Threads</h2>
+        <div className="flex items-center justify-between border-b border-border px-5 py-3">
+          <h2 className="text-sm font-semibold text-foreground">Threads</h2>
           <div className="rounded-xl bg-primary px-2.5 py-1 text-sm font-semibold text-white">
             {availableTasks.length}
           </div>
@@ -109,6 +119,7 @@ export function ChatView({ projectId }: ChatViewProps) {
             </div>
           </div>
         )}
+      </div>
       </div>
     </main>
   );
@@ -379,7 +390,7 @@ function Message({ message, onReply }: MessageProps) {
       className={cn(
         "rounded-lg border border-border bg-card px-4 py-3",
         isAgent && "border-l-[3px] border-l-blue-400",
-        isSystem && "border-l-[3px] border-l-emerald-500"
+        isSystem && "border-l-[3px] border-l-primary"
       )}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}

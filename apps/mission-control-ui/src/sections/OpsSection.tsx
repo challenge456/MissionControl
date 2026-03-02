@@ -11,6 +11,7 @@ import { TelemetryView } from "../TelemetryView";
 import { PageHeader } from "../components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { LoopDetectionPanel } from "../LoopDetectionPanel";
+import { FileUp, PauseCircle, ShieldCheck, Users } from "lucide-react";
 
 export interface OpsSectionProps {
   currentView: MainView;
@@ -78,16 +79,40 @@ export function OpsSection({
             description={`${taskCount} tasks across all states`}
             actions={
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={onOpenImportPrd}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onOpenImportPrd}
+                  className="h-8 gap-1.5 text-xs font-medium border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+                >
+                  <FileUp className="h-3.5 w-3.5" />
                   Import PRD
                 </Button>
-                <Button variant="outline" size="sm" onClick={onPauseSquad}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onPauseSquad}
+                  className="h-8 gap-1.5 text-xs font-medium border-amber-500/30 text-amber-300 hover:bg-amber-500/10 hover:text-amber-200 hover:border-amber-400/50"
+                >
+                  <PauseCircle className="h-3.5 w-3.5" />
                   Pause Squad
                 </Button>
-                <Button variant="outline" size="sm" onClick={onOpenStandup}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onOpenStandup}
+                  className="h-8 gap-1.5 text-xs font-medium"
+                >
+                  <Users className="h-3.5 w-3.5" />
                   Standup
                 </Button>
-                <Button variant="outline" size="sm" onClick={onOpenPolicy}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onOpenPolicy}
+                  className="h-8 gap-1.5 text-xs font-medium border-slate-500/50 hover:border-slate-400"
+                >
+                  <ShieldCheck className="h-3.5 w-3.5" />
                   Policy
                 </Button>
               </div>

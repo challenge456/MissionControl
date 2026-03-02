@@ -1,7 +1,18 @@
+import { useMutation } from "convex/react";
+import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import type { MainView } from "./TopNav";
 import type { Modals, ModalKey } from "./hooks/useModalState";
 import { Button } from "@/components/ui/button";
+import { CreateAgentModal } from "./CreateAgentModal";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { CreateTaskModal } from "./CreateTaskModal";
 import { ApprovalsModal } from "./ApprovalsModal";
 import { PolicyModal } from "./PolicyModal";
@@ -22,6 +33,8 @@ import { AgentDetailFlyout } from "./AgentDetailFlyout";
 import { MissionModal } from "./MissionModal";
 import { MissionSuggestionsDrawer } from "./MissionSuggestionsDrawer";
 import { ImportPrdModal } from "./ImportPrdModal";
+import { StartQcRunModal } from "./StartQcRunModal";
+import { AlertRulesModal } from "./AlertRulesModal";
 
 // ============================================================================
 // MODAL LAYER
@@ -43,6 +56,7 @@ interface ModalLayerProps {
   onConfirmPauseSquad: () => void;
   onResumeSquad: () => void;
   onToast: (msg: string, error?: boolean) => void;
+  onNavigateToGateway?: () => void;
 }
 
 export function ModalLayer({
@@ -59,39 +73,66 @@ export function ModalLayer({
   onConfirmPauseSquad,
   onResumeSquad,
   onToast,
+  onNavigateToGateway,
 }: ModalLayerProps) {
+  const registerAgent = useMutation(api.agents.register);
+
+  const handleCreateAgentSubmit = async (form: import("./CreateAgentModal").CreateAgentForm) => {
+    const meta: Record<string, string> = {};
+    if (form.email) meta.email = form.email;
+    if (form.telegram) meta.telegram = form.telegram;
+    if (form.whatsapp) meta.whatsapp = form.whatsapp;
+    if (form.discord) meta.discord = form.discord;
+    try {
+      await registerAgent({
+        projectId: projectId ?? undefined,
+        name: form.name,
+        emoji: form.emoji || undefined,
+        role: form.role,
+        workspacePath: form.workspacePath,
+        allowedTaskTypes: form.allowedTaskTypes ? form.allowedTaskTypes.split(",").map((s) => s.trim()).filter(Boolean) : undefined,
+        allowedTools: form.allowedTools ? form.allowedTools.split(",").map((s) => s.trim()).filter(Boolean) : undefined,
+        budgetDaily: form.budgetDaily ? Number(form.budgetDaily) : undefined,
+        budgetPerRun: form.budgetPerRun ? Number(form.budgetPerRun) : undefined,
+        canSpawn: form.canSpawn,
+        maxSubAgents: form.canSpawn ? Number(form.maxSubAgents || 0) : 0,
+        parentAgentId: undefined,
+        metadata: Object.keys(meta).length > 0 ? meta : undefined,
+      });
+      close("createAgent");
+      onToast("Agent created");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to create agent.";
+      onToast(message, true);
+      throw err;
+    }
+  };
+
   return (
     <>
-      {/* ── Pause confirmation dialog ── */}
-      {modals.pauseConfirm && (
-        <>
-          <div
-            className="fixed inset-0 z-[1000] bg-black/50"
-            onClick={() => close("pauseConfirm")}
-          />
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Confirm pause squad"
-            className="fixed left-1/2 top-1/2 z-[1001] w-[min(92vw,460px)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-background p-5 shadow-2xl"
-          >
-            <h2 className="text-base font-semibold text-foreground">
-              Pause all active agents?
-            </h2>
-            <p className="mt-2 text-sm text-muted-foreground">
+      {/* ── Pause confirmation (shared Dialog for focus/escape) ── */}
+      <Dialog open={modals.pauseConfirm} onOpenChange={(open) => !open && close("pauseConfirm")}>
+        <DialogContent
+          aria-describedby="pause-confirm-description"
+          onPointerDownOutside={() => close("pauseConfirm")}
+          onEscapeKeyDown={() => close("pauseConfirm")}
+        >
+          <DialogHeader>
+            <DialogTitle>Pause all active agents?</DialogTitle>
+            <DialogDescription id="pause-confirm-description">
               Active agents will stop until resumed. This action can be reversed with Resume.
-            </p>
-            <div className="mt-5 flex justify-end gap-2">
-              <Button variant="outline" size="sm" onClick={() => close("pauseConfirm")}>
-                Cancel
-              </Button>
-              <Button variant="destructive" size="sm" onClick={onConfirmPauseSquad}>
-                Pause Squad
-              </Button>
-            </div>
-          </div>
-        </>
-      )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" size="sm" onClick={() => close("pauseConfirm")}>
+              Cancel
+            </Button>
+            <Button variant="destructive" size="sm" onClick={onConfirmPauseSquad}>
+              Pause Squad
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {modals.createTask && (
         <CreateTaskModal
@@ -106,6 +147,14 @@ export function ModalLayer({
           projectId={projectId}
           onClose={() => close("importPrd")}
           onCreated={(count) => onToast(`${count} tasks created from PRD`)}
+        />
+      )}
+
+      {modals.startQcRun && (
+        <StartQcRunModal
+          projectId={projectId}
+          onClose={() => close("startQcRun")}
+          onStarted={(runId) => onToast(`QC run ${runId} started`)}
         />
       )}
 
@@ -134,30 +183,43 @@ export function ModalLayer({
       )}
 
       {modals.agentDashboard && (
-        <AgentDashboard projectId={projectId} onClose={() => close("agentDashboard")} />
+        <AgentDashboard
+          projectId={projectId}
+          onClose={() => close("agentDashboard")}
+          onSelectAgent={(id) => {
+            setSidebarSelectedAgentId(id);
+            close("agentDashboard");
+            open("agentsFlyout");
+          }}
+        />
       )}
 
       {modals.costAnalytics && (
         <CostAnalytics projectId={projectId} onClose={() => close("costAnalytics")} />
       )}
 
+      {modals.createAgent && (
+        <CreateAgentModal
+          open={modals.createAgent}
+          projectId={projectId}
+          onClose={() => close("createAgent")}
+          onCreate={handleCreateAgentSubmit}
+        />
+      )}
+
+      {modals.alertRules && (
+        <AlertRulesModal projectId={projectId} onClose={() => close("alertRules")} />
+      )}
+
       {modals.budgetBurnDown && (
-        <div
-          className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) close("budgetBurnDown");
-          }}
-        >
-          <div className="relative w-[min(90vw,800px)] max-h-[85vh] overflow-auto rounded-xl border border-border bg-background">
-            <button
-              onClick={() => close("budgetBurnDown")}
-              className="absolute top-3 right-3 z-10 text-muted-foreground hover:text-foreground text-xl bg-transparent border-none cursor-pointer"
-            >
-              &times;
-            </button>
+        <Dialog open onOpenChange={(open) => !open && close("budgetBurnDown")}>
+          <DialogContent className="max-w-[800px] max-h-[85vh] overflow-auto">
+            <DialogHeader>
+              <DialogTitle>Budget burn-down</DialogTitle>
+            </DialogHeader>
             <BudgetBurnDown projectId={projectId} />
-          </div>
-        </div>
+          </DialogContent>
+        </Dialog>
       )}
 
       {modals.advancedAnalytics && (
@@ -197,6 +259,15 @@ export function ModalLayer({
             close("commandPalette");
             open("operatorControls");
           }}
+          onOpenCostAnalytics={() => {
+            close("commandPalette");
+            open("costAnalytics");
+          }}
+          onOpenCreateAgent={() => {
+            close("commandPalette");
+            open("createAgent");
+          }}
+          onNavigateToGateway={onNavigateToGateway}
         />
       )}
 
@@ -257,7 +328,6 @@ export function ModalLayer({
         <AgentDetailFlyout
           agentId={sidebarSelectedAgentId}
           onClose={() => setSidebarSelectedAgentId(null)}
-          leftOffset={sidebarWidth}
           onEdit={(agentId) => {
             window.localStorage.setItem("mc.org.focusAgentId", agentId);
             setSidebarSelectedAgentId(null);

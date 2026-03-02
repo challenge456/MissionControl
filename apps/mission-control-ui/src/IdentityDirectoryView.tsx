@@ -11,11 +11,12 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
+import { PageHeader } from "./components/PageHeader";
 
 type Tab = "directory" | "compliance" | "soul";
 
 const VALIDATION_BADGE: Record<string, { bg: string; text: string }> = {
-  VALID: { bg: "bg-emerald-500/15", text: "text-emerald-500" },
+  VALID: { bg: "bg-primary/15", text: "text-primary" },
   PARTIAL: { bg: "bg-amber-500/15", text: "text-amber-500" },
   INVALID: { bg: "bg-red-500/15", text: "text-red-500" },
 };
@@ -47,27 +48,35 @@ export function IdentityDirectoryView({ projectId }: { projectId: Id<"projects">
   });
 
   return (
-    <main className="flex-1 overflow-auto p-6">
-      <div className="flex items-center justify-between mb-5">
-        <h2 className="text-foreground font-semibold text-xl">Identity Directory</h2>
-        <div className="flex gap-2">
-          {(["directory", "compliance"] as Tab[]).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={cn(
-                "px-3.5 py-1.5 rounded-md border text-sm font-semibold capitalize cursor-pointer transition-colors",
-                tab === t
-                  ? "border-blue-500 bg-blue-500/15 text-blue-500"
-                  : "border-border bg-transparent text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-      </div>
+    <main className="flex-1 overflow-auto">
+      <PageHeader
+        title="Identity Directory"
+        description={
+          tab === "compliance"
+            ? "Compliance status and soul validation across agents."
+            : "Agent identities: creature, vibe, emoji. Search and manage souls."
+        }
+        actions={
+          <div className="flex gap-2">
+            {(["directory", "compliance"] as Tab[]).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={cn(
+                  "px-3.5 py-1.5 rounded-md border text-sm font-semibold capitalize cursor-pointer transition-colors",
+                  tab === t
+                    ? "border-primary bg-primary/15 text-primary"
+                    : "border-border bg-transparent text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        }
+      />
 
+      <div className="px-6 pb-6">
       {tab === "directory" && (
         <>
           <input
@@ -125,7 +134,7 @@ export function IdentityDirectoryView({ projectId }: { projectId: Id<"projects">
         <div>
           <div className="grid grid-cols-4 gap-4 mb-6">
             {([
-              { label: "Valid", count: complianceReport.valid, classes: "text-emerald-500" },
+              { label: "Valid", count: complianceReport.valid, classes: "text-primary" },
               { label: "Partial", count: complianceReport.partial, classes: "text-amber-500" },
               { label: "Invalid", count: complianceReport.invalid, classes: "text-red-500" },
               { label: "Missing", count: complianceReport.missing, classes: "text-muted-foreground" },
@@ -171,7 +180,7 @@ export function IdentityDirectoryView({ projectId }: { projectId: Id<"projects">
                     setTab("soul");
                   }
                 }}
-                className="px-3 py-1.5 rounded-md border border-blue-500 bg-transparent text-blue-500 cursor-pointer text-xs font-semibold hover:bg-blue-500/10 transition-colors"
+                className="px-3 py-1.5 rounded-md border border-primary bg-transparent text-primary cursor-pointer hover:bg-primary/10 transition-colors"
               >
                 Fix It
               </button>
@@ -246,7 +255,7 @@ export function IdentityDirectoryView({ projectId }: { projectId: Id<"projects">
                 </pre>
                 <button
                   onClick={() => setEditingSoul(true)}
-                  className="mt-3 px-4 py-2 rounded-md border border-blue-500 bg-transparent text-blue-500 cursor-pointer font-semibold text-sm hover:bg-blue-500/10 transition-colors"
+                  className="mt-3 px-4 py-2 rounded-md border border-primary bg-transparent text-primary cursor-pointer hover:bg-primary/10 transition-colors"
                 >
                   Edit Soul
                 </button>
@@ -264,6 +273,7 @@ export function IdentityDirectoryView({ projectId }: { projectId: Id<"projects">
           </div>
         </div>
       )}
+      </div>
     </main>
   );
 }

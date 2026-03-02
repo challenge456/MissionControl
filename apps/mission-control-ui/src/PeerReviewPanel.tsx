@@ -23,7 +23,7 @@ export function PeerReviewPanel({ taskId, projectId }: PeerReviewPanelProps) {
       {/* Stats Summary */}
       <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3 mb-5">
         <StatCard label="Total Reviews" value={reviews.length} icon="📝" />
-        <StatCard label="Praise" value={stats.byType.PRAISE} icon="👏" colorClass="text-emerald-500" />
+        <StatCard label="Praise" value={stats.byType.PRAISE} icon="👏" colorClass="text-primary" />
         <StatCard label="Refutes" value={stats.byType.REFUTE} icon="⚠️" colorClass="text-amber-500" />
         <StatCard label="Changesets" value={stats.byType.CHANGESET} icon="🔧" colorClass="text-blue-500" />
         <StatCard label="Avg Score" value={stats.avgScore.toFixed(1)} icon="⭐" />
@@ -32,7 +32,7 @@ export function PeerReviewPanel({ taskId, projectId }: PeerReviewPanelProps) {
       {/* Create Review Button */}
       <button
         onClick={() => setShowCreateReview(true)}
-        className="w-full p-3 bg-blue-500 hover:bg-blue-600 border-none rounded-md text-white text-sm font-medium cursor-pointer mb-5 transition-colors"
+        className="w-full p-3 bg-primary hover:bg-primary/85 border-none rounded-md text-primary-foreground text-sm font-medium cursor-pointer mb-5 transition-colors"
       >
         + Create Review
       </button>
@@ -78,14 +78,14 @@ function StatCard({ label, value, icon, colorClass }: { label: string; value: nu
 }
 
 const TYPE_BORDER_CLASSES: Record<string, string> = {
-  PRAISE: "border-emerald-500",
+  PRAISE: "border-primary",
   REFUTE: "border-amber-500",
   CHANGESET: "border-blue-500",
   APPROVE: "border-blue-500",
 };
 
 const TYPE_TEXT_CLASSES: Record<string, string> = {
-  PRAISE: "text-emerald-500",
+  PRAISE: "text-primary",
   REFUTE: "text-amber-500",
   CHANGESET: "text-blue-500",
   APPROVE: "text-blue-500",
@@ -178,7 +178,7 @@ function ReviewCard({ review }: any) {
           "text-[11px] px-2 py-1 rounded font-semibold",
           review.status === "PENDING"
             ? "bg-orange-900 text-amber-400"
-            : "bg-emerald-950 text-emerald-500"
+            : "bg-primary/5 text-primary"
         )}>
           {review.status}
         </span>
@@ -210,7 +210,7 @@ function ReviewCard({ review }: any) {
           <div className="flex gap-2">
             <button
               onClick={() => handleRespond(true)}
-              className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 border-none rounded text-white text-xs cursor-pointer transition-colors"
+              className="px-3 py-1.5 bg-primary hover:bg-primary border-none rounded text-white text-xs cursor-pointer transition-colors"
             >
               Accept
             </button>
@@ -359,7 +359,7 @@ function CreateReviewModal({ taskId, projectId, onClose }: any) {
               "px-4 py-2 border-none rounded-md text-white text-sm transition-colors",
               summary.trim()
                 ? "bg-blue-500 hover:bg-blue-600 cursor-pointer"
-                : "bg-slate-700 cursor-not-allowed"
+                : "bg-accent cursor-not-allowed"
             )}
           >
             Create Review

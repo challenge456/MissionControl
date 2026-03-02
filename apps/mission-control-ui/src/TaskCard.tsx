@@ -15,8 +15,8 @@ interface TaskCardProps {
 const PRIORITY_CLASSES: Record<number, { card: string }> = {
   1: { card: "bg-orange-900 border-orange-600" },
   2: { card: "bg-orange-900 border-orange-500" },
-  3: { card: "bg-slate-800 border-slate-600" },
-  4: { card: "bg-slate-900 border-slate-700" },
+  3: { card: "bg-card border-slate-600" },
+  4: { card: "bg-background border-slate-700" },
 };
 
 const STATUS_BADGE_CLASSES: Record<string, string> = {
@@ -26,7 +26,7 @@ const STATUS_BADGE_CLASSES: Record<string, string> = {
   REVIEW: "bg-blue-500",
   NEEDS_APPROVAL: "bg-red-500",
   BLOCKED: "bg-red-600",
-  DONE: "bg-emerald-500",
+  DONE: "bg-primary",
   CANCELED: "bg-slate-500",
 };
 
@@ -64,7 +64,7 @@ export function TaskCard({ task, agents, onClick, isDragging, onUpdate }: TaskCa
           )}>
             {task.status}
           </span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700 text-muted-foreground">
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-muted-foreground">
             P{task.priority}
           </span>
         </div>
@@ -101,13 +101,13 @@ export function TaskCard({ task, agents, onClick, isDragging, onUpdate }: TaskCa
             {task.type}
           </span>
           {task.actualCost > 0 && (
-            <span className="text-[11px] text-emerald-500">
+            <span className="text-[11px] text-primary">
               ${task.actualCost.toFixed(2)}
             </span>
           )}
         </div>
         {assignedAgent && (
-          <div className="text-[11px] px-2 py-0.5 rounded-full bg-slate-700 text-foreground">
+          <div className="text-[11px] px-2 py-0.5 rounded-full bg-accent text-foreground">
             {assignedAgent.emoji || "🤖"} {assignedAgent.name}
           </div>
         )}

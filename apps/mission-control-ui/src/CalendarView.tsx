@@ -3,6 +3,9 @@ import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id, Doc } from "../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
+import { PageHeader } from "./components/PageHeader";
+import { Button } from "@/components/ui/button";
+import { Calendar, RefreshCw } from "lucide-react";
 
 interface CalendarViewProps {
   projectId: Id<"projects"> | null;
@@ -11,7 +14,7 @@ interface CalendarViewProps {
 const taskTypeBorderClass: Record<string, string> = {
   CONTENT: "border-l-blue-500",
   SOCIAL: "border-l-amber-500",
-  EMAIL_MARKETING: "border-l-emerald-500",
+  EMAIL_MARKETING: "border-l-primary",
   CUSTOMER_RESEARCH: "border-l-yellow-500",
   SEO_RESEARCH: "border-l-blue-500",
   ENGINEERING: "border-l-red-500",
@@ -44,48 +47,53 @@ export function CalendarView({ projectId }: CalendarViewProps) {
   const tasksByDay = groupTasksByDay(scheduledTasks, weekDays);
 
   return (
-    <main className="flex-1 overflow-auto bg-background p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-foreground mt-0 mb-1">Scheduled Tasks</h1>
-        <p className="text-base text-muted-foreground mt-0 mb-4">Henry&apos;s automated routines</p>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setViewMode("week")}
-            className={cn(
-              "px-4 py-2 border rounded-md text-sm font-medium cursor-pointer transition-all duration-200",
-              viewMode === "week"
-                ? "bg-primary border-primary text-white"
-                : "bg-card border-border text-muted-foreground"
-            )}
-            aria-pressed={viewMode === "week"}
-          >
-            Week
-          </button>
-          <button
-            onClick={() => setViewMode("today")}
-            className={cn(
-              "px-4 py-2 border rounded-md text-sm font-medium cursor-pointer transition-all duration-200",
-              viewMode === "today"
-                ? "bg-primary border-primary text-white"
-                : "bg-card border-border text-muted-foreground"
-            )}
-            aria-pressed={viewMode === "today"}
-          >
-            Today
-          </button>
-          <button
-            className="px-3 py-2 bg-card border border-border rounded-md text-base cursor-pointer transition-all duration-200"
-            aria-label="Refresh"
-            onClick={() => window.location.reload()}
-          >
-            🔄
-          </button>
-        </div>
-      </div>
+    <main className="flex-1 overflow-auto bg-background">
+      <PageHeader
+        title="Calendar"
+        description={
+          scheduledTasks.length > 0
+            ? `${scheduledTasks.length} scheduled · ${recurringTasks.length} recurring`
+            : "Schedule tasks with due dates or recurrence for agent routines."
+        }
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant={viewMode === "week" ? "default" : "outline"}
+              onClick={() => setViewMode("week")}
+              className="h-8 text-xs"
+            >
+              Week
+            </Button>
+            <Button
+              size="sm"
+              variant={viewMode === "today" ? "default" : "outline"}
+              onClick={() => setViewMode("today")}
+              className="h-8 text-xs"
+            >
+              Today
+            </Button>
+            <Button size="sm" variant="ghost" className="h-8 w-8 p-0" aria-label="Refresh">
+              <RefreshCw className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        }
+      />
 
-      {recurringTasks.length > 0 && (
+      <div className="px-6 py-4">
+      {scheduledTasks.length === 0 && (
+        <div className="rounded-xl border border-dashed border-border bg-muted/20 p-12 text-center">
+          <Calendar className="h-12 w-12 mx-auto text-muted-foreground/40 mb-4" />
+          <h3 className="text-sm font-semibold text-foreground mb-1">No scheduled tasks</h3>
+          <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+            Add a due date or recurrence to tasks from the task drawer to see them here. Great for standups, reviews, and recurring agent routines.
+          </p>
+        </div>
+      )}
+
+      {scheduledTasks.length > 0 && recurringTasks.length > 0 && (
         <div className="mb-8">
-          <h2 className="text-xl font-semibold text-foreground mt-0 mb-3">⚡ Always Running</h2>
+          <h2 className="text-xl font-semibold text-foreground mt-0 mb-3">Always running</h2>
           <div className="flex gap-3 flex-wrap">
             {recurringTasks.map((task) => (
               <div key={task._id} className="py-3 px-4 bg-card border border-border rounded-lg">
@@ -99,7 +107,7 @@ export function CalendarView({ projectId }: CalendarViewProps) {
         </div>
       )}
 
-      {viewMode === "week" && (
+      {scheduledTasks.length > 0 && viewMode === "week" && (
         <div className="grid grid-cols-7 gap-3">
           {weekDays.map((day, i) => {
             const dayTasks = tasksByDay[i] || [];
@@ -131,7 +139,7 @@ export function CalendarView({ projectId }: CalendarViewProps) {
         </div>
       )}
 
-      {viewMode === "today" && (
+      {scheduledTasks.length > 0 && viewMode === "today" && (
         <div className="max-w-[800px] mx-auto">
           <h2 className="text-2xl font-semibold text-foreground mt-0 mb-6">
             {today.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
@@ -143,6 +151,7 @@ export function CalendarView({ projectId }: CalendarViewProps) {
           </div>
         </div>
       )}
+      </div>
     </main>
   );
 }

@@ -34,10 +34,10 @@ export function MonitoringDashboard({ onClose }: MonitoringDashboardProps) {
         zIndex: 1000,
       }}>
         <div style={{
-          background: "#1e293b",
+          background: "var(--card)",
           padding: "40px",
           borderRadius: "12px",
-          color: "#e2e8f0",
+          color: "var(--foreground)",
         }}>
           Loading monitoring data...
         </div>
@@ -85,20 +85,20 @@ export function MonitoringDashboard({ onClose }: MonitoringDashboardProps) {
     >
       <div
         style={{
-          background: "#1e293b",
+          background: "var(--card)",
           borderRadius: "12px",
           maxWidth: "1400px",
           width: "100%",
           maxHeight: "90vh",
           overflow: "auto",
-          color: "#e2e8f0",
+          color: "var(--foreground)",
         }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div style={{
           padding: "24px",
-          borderBottom: "1px solid #334155",
+          borderBottom: "1px solid var(--border)",
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
@@ -107,7 +107,7 @@ export function MonitoringDashboard({ onClose }: MonitoringDashboardProps) {
             <h2 style={{ margin: 0, fontSize: "24px", fontWeight: 600 }}>
               📊 Monitoring & Observability
             </h2>
-            <p style={{ margin: "4px 0 0 0", color: "#94a3b8", fontSize: "14px" }}>
+            <p style={{ margin: "4px 0 0 0", color: "var(--muted-foreground)", fontSize: "14px" }}>
               Real-time system monitoring and audit logs
             </p>
           </div>
@@ -116,7 +116,7 @@ export function MonitoringDashboard({ onClose }: MonitoringDashboardProps) {
             style={{
               background: "transparent",
               border: "none",
-              color: "#94a3b8",
+              color: "var(--muted-foreground)",
               fontSize: "24px",
               cursor: "pointer",
               padding: "0 8px",
@@ -129,7 +129,7 @@ export function MonitoringDashboard({ onClose }: MonitoringDashboardProps) {
         {/* Tabs */}
         <div style={{
           display: "flex",
-          borderBottom: "1px solid #334155",
+          borderBottom: "1px solid var(--border)",
           padding: "0 24px",
         }}>
           <TabButton
@@ -176,7 +176,7 @@ function TabButton({ label, active, onClick, count }: { label: string; active: b
         background: "transparent",
         border: "none",
         borderBottom: active ? "2px solid #3b82f6" : "2px solid transparent",
-        color: active ? "#3b82f6" : "#94a3b8",
+        color: active ? "#3b82f6" : "var(--muted-foreground)",
         padding: "12px 16px",
         fontSize: "14px",
         fontWeight: 500,
@@ -189,7 +189,7 @@ function TabButton({ label, active, onClick, count }: { label: string; active: b
       {label}
       {count !== undefined && (
         <span style={{
-          background: active ? "#3b82f6" : "#475569",
+          background: active ? "#3b82f6" : "var(--border)",
           color: "white",
           borderRadius: "12px",
           padding: "2px 8px",
@@ -248,7 +248,7 @@ function sanitizeMetadata(obj: unknown): unknown {
 function ErrorsTab({ errors, getSeverityColor, getSeverityIcon }: any) {
   if (errors.length === 0) {
     return (
-      <div style={{ textAlign: "center", padding: "40px", color: "#94a3b8" }}>
+      <div style={{ textAlign: "center", padding: "40px", color: "var(--muted-foreground)" }}>
         <div style={{ fontSize: "48px", marginBottom: "16px" }}>✅</div>
         <div style={{ fontSize: "18px", fontWeight: 500 }}>No Errors!</div>
         <div style={{ fontSize: "14px", marginTop: "8px" }}>System is running smoothly</div>
@@ -271,7 +271,7 @@ function ErrorsTab({ errors, getSeverityColor, getSeverityIcon }: any) {
           <div
             key={idx}
             style={{
-              background: "#0f172a",
+              background: "var(--background)",
               borderRadius: "8px",
               padding: "16px",
               border: `1px solid ${getSeverityColor(severity)}`,
@@ -284,7 +284,7 @@ function ErrorsTab({ errors, getSeverityColor, getSeverityIcon }: any) {
                   <div style={{ fontSize: "14px", fontWeight: 600, textTransform: "uppercase" }}>
                     {severity}
                   </div>
-                  <div style={{ fontSize: "12px", color: "#64748b" }}>
+                  <div style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>
                     {new Date(error._creationTime).toLocaleString()}
                   </div>
                 </div>
@@ -298,7 +298,7 @@ function ErrorsTab({ errors, getSeverityColor, getSeverityIcon }: any) {
                     padding: "8px",
                     fontSize: "12px",
                     fontFamily: "monospace",
-                    color: "#94a3b8",
+                    color: "var(--muted-foreground)",
                     overflow: "auto",
                   }}>
                     {JSON.stringify(sanitizeMetadata(error.metadata), null, 2)}
@@ -351,7 +351,7 @@ function PerformanceTab({ stats }: any) {
       </div>
 
       <div style={{
-        background: "#0f172a",
+        background: "var(--background)",
         borderRadius: "8px",
         padding: "20px",
       }}>
@@ -375,7 +375,7 @@ function PerformanceTab({ stats }: any) {
                 }}
               >
                 <span style={{ fontSize: "14px" }}>{operation}</span>
-                <span style={{ fontSize: "14px", color: duration > 1000 ? "#ef4444" : "#94a3b8" }}>
+                <span style={{ fontSize: "14px", color: duration > 1000 ? "#ef4444" : "var(--muted-foreground)" }}>
                   {Math.round(duration)}ms
                 </span>
               </div>
@@ -383,7 +383,7 @@ function PerformanceTab({ stats }: any) {
             })}
           </div>
         ) : (
-          <div style={{ textAlign: "center", color: "#64748b", padding: "20px" }}>
+          <div style={{ textAlign: "center", color: "var(--muted-foreground)", padding: "20px" }}>
             No performance data yet
           </div>
         )}
@@ -395,7 +395,7 @@ function PerformanceTab({ stats }: any) {
 function AuditTab({ logs }: any) {
   if (logs.length === 0) {
     return (
-      <div style={{ textAlign: "center", padding: "40px", color: "#94a3b8" }}>
+      <div style={{ textAlign: "center", padding: "40px", color: "var(--muted-foreground)" }}>
         <div style={{ fontSize: "48px", marginBottom: "16px" }}>📋</div>
         <div style={{ fontSize: "18px", fontWeight: 500 }}>No Audit Logs</div>
         <div style={{ fontSize: "14px", marginTop: "8px" }}>Activity will appear here</div>
@@ -405,7 +405,7 @@ function AuditTab({ logs }: any) {
 
   return (
     <div style={{
-      background: "#0f172a",
+      background: "var(--background)",
       borderRadius: "8px",
       padding: "16px",
       maxHeight: "600px",
@@ -446,16 +446,16 @@ function AuditTab({ logs }: any) {
 function MetricCard({ label, value, icon, highlight }: any) {
   return (
     <div style={{
-      background: highlight ? "#7c2d12" : "#0f172a",
+      background: highlight ? "#7c2d12" : "var(--background)",
       borderRadius: "6px",
       padding: "16px",
-      border: highlight ? "1px solid #ea580c" : "1px solid #1e293b",
+      border: highlight ? "1px solid #ea580c" : "1px solid var(--card)",
     }}>
       <div style={{ fontSize: "24px", marginBottom: "8px" }}>{icon}</div>
       <div style={{ fontSize: "28px", fontWeight: 600, marginBottom: "4px" }}>
         {value}
       </div>
-      <div style={{ fontSize: "12px", color: "#94a3b8", display: "flex", justifyContent: "space-between" }}>
+      <div style={{ fontSize: "12px", color: "var(--muted-foreground)", display: "flex", justifyContent: "space-between" }}>
         <span>{label}</span>
       </div>
     </div>

@@ -385,7 +385,7 @@ function ChatTab() {
         <div className="flex items-center gap-2">
           <MessageSquare className="h-4 w-4 text-primary" />
           <span className="text-sm font-semibold text-foreground">Chat with Repo</span>
-          <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", isIndexed ? "bg-green-500/15 text-green-500" : "bg-yellow-500/15 text-yellow-500")}>
+          <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", isIndexed ? "bg-primary/15 text-primary" : "bg-yellow-500/15 text-yellow-500")}>
             {isIndexed ? "Ready" : "Not indexed"}
           </span>
         </div>

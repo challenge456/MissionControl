@@ -2,6 +2,7 @@ import { CSSProperties } from "react";
 
 export type MainView =
   | "home"
+  | "atc"
   | "tasks"
   | "agents"
   | "directory"
@@ -40,7 +41,14 @@ export type MainView =
   | "gherkin"
   | "metrics"
   | "qc-dashboard"
-  | "qc-runs";
+  | "qc-runs"
+  | "qc-environments"
+  | "qc-findings"
+  | "qc-metrics"
+  | "qc-rulesets"
+  | "gateway"
+  | "live-chat"
+  | "schedules";
 
 /** Top-level command center sections */
 export type CommandSection =

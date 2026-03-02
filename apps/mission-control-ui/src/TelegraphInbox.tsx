@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Plus, Send, MessageSquare } from "lucide-react";
+import { PageHeader } from "./components/PageHeader";
 
 type Thread = {
   _id: Id<"telegraphThreads">;
@@ -150,17 +151,23 @@ export function TelegraphInbox({ projectId }: { projectId: Id<"projects"> | null
   }
 
   /* ── Inbox list view ── */
+  const threadCount = (threads ?? []).length;
   return (
-    <main className="flex-1 overflow-auto p-6">
-      <div className="flex items-center justify-between mb-5">
-        <div>
-          <h2 className="text-base font-semibold text-foreground">Telegraph Inbox</h2>
-          <p className="text-xs text-muted-foreground">{(threads ?? []).length} threads</p>
-        </div>
-        <Button size="sm" onClick={() => setComposing(true)}>
-          <Plus className="h-3.5 w-3.5 mr-1.5" /> New Thread
-        </Button>
-      </div>
+    <main className="flex-1 overflow-auto">
+      <PageHeader
+        title="Telegraph"
+        description={
+          threadCount > 0
+            ? `${threadCount} threads · Internal and Telegram channels`
+            : "Agent and operator messaging. Create a thread to coordinate with the squad."
+        }
+        actions={
+          <Button size="sm" onClick={() => setComposing(true)}>
+            <Plus className="h-3.5 w-3.5 mr-1.5" /> New Thread
+          </Button>
+        }
+      />
+      <div className="px-6 py-4">
 
       {/* Compose row */}
       {composing && (
@@ -173,7 +180,7 @@ export function TelegraphInbox({ projectId }: { projectId: Id<"projects"> | null
             autoFocus
             className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
-          <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleCreateThread}>
+          <Button size="sm" className="bg-primary hover:bg-primary/85 text-white" onClick={handleCreateThread}>
             Create
           </Button>
           <Button size="sm" variant="outline" onClick={() => { setComposing(false); setNewThreadTitle(""); }}>
@@ -218,12 +225,15 @@ export function TelegraphInbox({ projectId }: { projectId: Id<"projects"> | null
         ))}
 
         {(threads ?? []).length === 0 && (
-          <Card className="py-16 text-center">
-            <MessageSquare className="h-8 w-8 text-muted-foreground/30 mx-auto mb-3" />
-            <p className="text-sm text-muted-foreground">No threads yet.</p>
-            <p className="text-xs text-muted-foreground/60 mt-1">Create one to start communicating.</p>
+          <Card className="py-16 text-center border-dashed">
+            <MessageSquare className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
+            <p className="text-sm font-medium text-foreground">No threads yet</p>
+            <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
+              Click &quot;New Thread&quot; above to create a channel for operator–agent or squad coordination.
+            </p>
           </Card>
         )}
+      </div>
       </div>
     </main>
   );

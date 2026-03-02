@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { SkeletonCard } from "@/components/ui/skeleton-card";
+import { PageHeader } from "./components/PageHeader";
 import { cn } from "@/lib/utils";
 
 interface ContentPipelineViewProps {
@@ -26,13 +27,13 @@ const PIPELINE_COLUMNS = [
   { id: "idea",      label: "Ideas",      color: "border-t-zinc-400",   bg: "bg-zinc-500/10"    },
   { id: "drafting",  label: "Drafting",   color: "border-t-sky-500",    bg: "bg-sky-500/10"     },
   { id: "review",    label: "Review",     color: "border-t-amber-500",  bg: "bg-amber-500/10"   },
-  { id: "published", label: "Published",  color: "border-t-emerald-500",bg: "bg-emerald-500/10" },
+  { id: "published", label: "Published",  color: "border-t-primary",bg: "bg-primary/10" },
 ];
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; dot: string }> = {
   DRAFT:     { label: "Draft",     color: "text-zinc-400",     bg: "bg-zinc-500/10",    dot: "bg-zinc-500"    },
   SUBMITTED: { label: "Submitted", color: "text-sky-400",      bg: "bg-sky-500/10",     dot: "bg-sky-500"     },
-  APPROVED:  { label: "Approved",  color: "text-emerald-400",  bg: "bg-emerald-500/10", dot: "bg-emerald-500" },
+  APPROVED:  { label: "Approved",  color: "text-primary",  bg: "bg-primary/10", dot: "bg-primary" },
   REJECTED:  { label: "Rejected",  color: "text-destructive",  bg: "bg-destructive/10", dot: "bg-destructive" },
   PUBLISHED: { label: "Published", color: "text-primary",      bg: "bg-primary/10",     dot: "bg-primary"     },
 };
@@ -265,7 +266,7 @@ function ContentDropDetail({
                 <button
                   onClick={() => handleAction("APPROVED")}
                   disabled={loading !== null}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-primary hover:bg-primary/85 transition-colors disabled:opacity-50"
                 >
                   {loading === "APPROVED" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
                   Approve
@@ -555,16 +556,15 @@ export function ContentPipelineView({ projectId }: ContentPipelineViewProps) {
 
   return (
     <main className="flex-1 overflow-hidden flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-border/50 gap-4 flex-wrap">
-        <div>
-          <h1 className="text-sm font-semibold tracking-tight text-foreground">Content Pipeline</h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {stats ? `${stats.total} drops · ${stats.byStatus.PUBLISHED ?? 0} published · ${stats.byStatus.SUBMITTED ?? 0} pending review` : "Track content from idea to publication"}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Seed button */}
+      <PageHeader
+        title="Content Pipeline"
+        description={
+          stats
+            ? `${stats.total} drops · ${stats.byStatus.PUBLISHED ?? 0} published · ${stats.byStatus.SUBMITTED ?? 0} pending review`
+            : "Track content from idea to publication. Ideas → Drafting → Review → Published."
+        }
+        actions={
+          <div className="flex items-center gap-2 flex-wrap">
           {contentDrops.length === 0 && (
             <button
               onClick={handleSeed}
@@ -608,7 +608,8 @@ export function ContentPipelineView({ projectId }: ContentPipelineViewProps) {
             ))}
           </div>
         </div>
-      </div>
+      }
+      />
 
       {/* Filters (Drops tab only) */}
       {tab === "drops" && contentDrops.length > 0 && (
@@ -730,7 +731,7 @@ export function ContentPipelineView({ projectId }: ContentPipelineViewProps) {
                       <div className="flex items-center gap-2">
                         <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{item.type}</span>
                         {item.priority > 0 && (
-                          <span className={cn("text-[9px] font-bold", item.priority === 3 ? "text-destructive" : item.priority === 2 ? "text-amber-500" : "text-emerald-500")}>
+                          <span className={cn("text-[9px] font-bold", item.priority === 3 ? "text-destructive" : item.priority === 2 ? "text-amber-500" : "text-primary")}>
                             P{item.priority}
                           </span>
                         )}

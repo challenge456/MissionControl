@@ -73,7 +73,7 @@ export function MeetingsView({ projectId }: { projectId: Id<"projects"> | null }
             <span
               className={cn(
                 "rounded px-2.5 py-0.5 text-xs font-semibold",
-                selectedMeeting.status === "COMPLETED" && "bg-emerald-500/15 text-emerald-500",
+                selectedMeeting.status === "COMPLETED" && "bg-primary/15 text-primary",
                 selectedMeeting.status === "SCHEDULED" && "bg-primary/15 text-primary",
                 selectedMeeting.status === "CANCELLED" && "bg-muted text-muted-foreground",
                 selectedMeeting.status !== "COMPLETED" &&
@@ -137,7 +137,7 @@ export function MeetingsView({ projectId }: { projectId: Id<"projects"> | null }
                   <span
                     className={cn(
                       "flex-1 text-sm",
-                      item.completed ? "text-emerald-500" : "text-foreground"
+                      item.completed ? "text-primary" : "text-foreground"
                     )}
                   >
                     {item.description}
@@ -146,13 +146,13 @@ export function MeetingsView({ projectId }: { projectId: Id<"projects"> | null }
                     <span className="text-xs text-muted-foreground/70">→ {item.assigneeAgentId}</span>
                   )}
                   {item.taskId && (
-                    <span className="text-xs font-semibold text-emerald-500">Task Created</span>
+                    <span className="text-xs font-semibold text-primary">Task Created</span>
                   )}
                 </div>
               ))}
               <button
                 onClick={handleConvert}
-                className="mt-2.5 rounded-md border-none bg-emerald-500 px-4 py-2 text-sm font-semibold text-white"
+                className="mt-2.5 rounded-md border-none bg-primary px-4 py-2 text-sm font-semibold text-white"
               >
                 Convert Action Items to Tasks
               </button>
@@ -213,7 +213,7 @@ export function MeetingsView({ projectId }: { projectId: Id<"projects"> | null }
           <button
             onClick={handleSchedule}
             disabled={!title.trim()}
-            className="rounded-md border-none bg-emerald-500 px-5 py-2.5 text-sm font-bold text-white"
+            className="rounded-md border-none bg-primary px-5 py-2.5 text-sm font-bold text-white"
           >
             Schedule
           </button>
@@ -234,7 +234,7 @@ export function MeetingsView({ projectId }: { projectId: Id<"projects"> | null }
                   className={cn(
                     "rounded px-2 py-0.5 text-[0.7rem] font-semibold",
                     m.status === "COMPLETED"
-                      ? "bg-emerald-500/15 text-emerald-500"
+                      ? "bg-primary/15 text-primary"
                       : "bg-primary/15 text-primary"
                   )}
                 >

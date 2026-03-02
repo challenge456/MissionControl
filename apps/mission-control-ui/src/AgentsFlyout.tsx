@@ -29,7 +29,7 @@ function SidebarButton({
     default: "bg-muted hover:bg-muted/80 text-foreground",
     warning: "bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/20",
     danger: "bg-red-500/10 hover:bg-red-500/20 text-red-400 border-red-500/20",
-    success: "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/20",
+    success: "bg-primary/10 hover:bg-primary/15 text-primary border-primary/20",
   };
 
   return (
@@ -89,7 +89,7 @@ function AgentRow({
       <span
         className={cn(
           "w-2 h-2 rounded-full shrink-0",
-          isActive ? "bg-emerald-500" : "bg-muted-foreground/40"
+          isActive ? "bg-primary" : "bg-muted-foreground/40"
         )}
         title={agent.status}
         aria-hidden

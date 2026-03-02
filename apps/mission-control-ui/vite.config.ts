@@ -15,5 +15,13 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     host: true,
+    proxy: {
+      // Forward orchestration server in dev so UI can reach it same-origin (no CORS)
+      "/gateway": {
+        target: "http://localhost:4100",
+        changeOrigin: true,
+        ws: true,
+      },
+    },
   },
 });

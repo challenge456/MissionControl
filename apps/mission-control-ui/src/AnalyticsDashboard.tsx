@@ -112,7 +112,7 @@ export function AnalyticsDashboard({ projectId, onClose }: AnalyticsDashboardPro
     });
   }
 
-  const RANK_COLORS = ["bg-amber-400", "bg-slate-400", "bg-amber-700", "bg-slate-700"];
+  const RANK_COLORS = ["bg-amber-400", "bg-slate-400", "bg-amber-700", "bg-accent"];
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[1000] p-5 overflow-y-auto">
@@ -232,7 +232,7 @@ export function AnalyticsDashboard({ projectId, onClose }: AnalyticsDashboardPro
                 return (
                   <div key={i} className="flex-1 flex flex-col items-center">
                     <div
-                      className="w-full bg-emerald-500 rounded-t"
+                      className="w-full bg-primary rounded-t"
                       style={{ height: `${height}%`, minHeight: count > 0 ? "4px" : "0" }}
                       title={`${count} tasks`}
                     />

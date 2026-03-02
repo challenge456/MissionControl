@@ -48,16 +48,14 @@ crons.daily(
   internal.telegram.prepareDailyCEOBrief
 );
 
-// Detect stale agent heartbeats every 2 minutes
-// Recovery: quarantine agent, block tasks, create alerts
-// DISABLED: No agent runtime sending heartbeats yet (Phase 2).
-// The cron quarantines every agent within 2 minutes of seeding.
-// Re-enable once agent-runner sends real heartbeats.
-// crons.interval(
-//   "detect stale heartbeats",
-//   { minutes: 2 },
-//   internal.agents.detectStaleAgents
-// );
+// Detect stale agent heartbeats every 2 minutes (runs no-op unless HEARTBEAT_RECOVERY_ENABLED=true in Convex env)
+// Recovery: quarantine agent, block tasks, create alerts. Threshold: HEARTBEAT_STALE_MINUTES (default 5).
+// Set HEARTBEAT_IGNORE_NEVER=true to skip agents that have never sent a heartbeat.
+crons.interval(
+  "detect stale heartbeats",
+  { minutes: 2 },
+  internal.agents.detectStaleAgents
+);
 
 // Auto-route execution requests every 5 minutes
 crons.interval(
@@ -78,6 +76,13 @@ crons.interval(
   "execute scheduled jobs",
   { minutes: 1 },
   internal.scheduledJobs.executeDue
+);
+
+// Evaluate alert rules (e.g. daily cost exceeded) every hour
+crons.interval(
+  "evaluate alert rules",
+  { hours: 1 },
+  internal.alertRules.evaluateRules
 );
 
 export default crons;

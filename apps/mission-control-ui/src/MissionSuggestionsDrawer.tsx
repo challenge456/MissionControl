@@ -48,7 +48,7 @@ const TYPE_CLASSES: Record<string, string> = {
   CONTENT: "bg-blue-500/10 text-blue-500 border-blue-500/20",
   SOCIAL: "bg-pink-500/10 text-pink-500 border-pink-500/20",
   EMAIL_MARKETING: "bg-cyan-500/10 text-cyan-500 border-cyan-500/20",
-  CUSTOMER_RESEARCH: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
+  CUSTOMER_RESEARCH: "bg-primary/10 text-primary border-primary/20",
   SEO_RESEARCH: "bg-yellow-500/10 text-yellow-600 border-yellow-500/20",
   ENGINEERING: "bg-blue-500/10 text-blue-500 border-blue-500/20",
   DOCS: "bg-blue-500/10 text-blue-500 border-blue-500/20",
@@ -201,7 +201,7 @@ export function MissionSuggestionsDrawer({ projectId, onClose }: MissionSuggesti
                             aria-label={isCreated ? "Task created" : "Create task"}
                           >
                             {isCreated ? (
-                              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                              <CheckCircle2 className="h-4 w-4 text-primary" />
                             ) : (
                               <Plus className="h-4 w-4" />
                             )}

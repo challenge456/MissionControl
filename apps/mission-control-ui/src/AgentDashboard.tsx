@@ -2,14 +2,21 @@ import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface AgentDashboardProps {
   projectId: Id<"projects"> | null;
   onClose: () => void;
+  onSelectAgent?: (agentId: Id<"agents">) => void;
 }
 
 const statusClassMap: Record<string, string> = {
-  ACTIVE: "bg-emerald-500/15 text-emerald-500",
+  ACTIVE: "bg-primary/15 text-primary",
   PAUSED: "bg-yellow-500/15 text-yellow-500",
   OFFLINE: "bg-slate-500/15 text-muted-foreground",
   DRAINED: "bg-slate-500/15 text-muted-foreground",
@@ -22,7 +29,7 @@ const roleClassMap: Record<string, string> = {
   LEAD: "bg-orange-500/15 text-orange-500",
 };
 
-export function AgentDashboard({ projectId, onClose }: AgentDashboardProps) {
+export function AgentDashboard({ projectId, onClose, onSelectAgent }: AgentDashboardProps) {
   const agents = useQuery(
     api.agents.listAll,
     projectId ? { projectId } : {}
@@ -102,13 +109,36 @@ export function AgentDashboard({ projectId, onClose }: AgentDashboardProps) {
         <div className="flex-1 overflow-y-auto p-6">
           <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-4">
             {agentMetrics.map(({ agent, ...metrics }) => (
-              <div key={agent._id} className="bg-background rounded-lg p-4 border border-border">
-                {/* Agent Header */}
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl">{agent.emoji || "🤖"}</span>
-                    <div>
-                      <h3 className="font-semibold text-foreground m-0 text-base">{agent.name}</h3>
+              <TooltipProvider key={agent._id}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div
+                      role={onSelectAgent ? "button" : undefined}
+                      tabIndex={onSelectAgent ? 0 : undefined}
+                      onClick={onSelectAgent ? () => onSelectAgent(agent._id) : undefined}
+                      onKeyDown={
+                        onSelectAgent
+                          ? (e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                onSelectAgent(agent._id);
+                              }
+                            }
+                          : undefined}
+                      className={cn(
+                        "bg-background rounded-lg p-4 border border-border",
+                        onSelectAgent && "cursor-pointer hover:border-primary/50 hover:bg-muted/30 transition-colors"
+                      )}
+                      aria-label={onSelectAgent ? `Agent ${agent.name}. Click to open details.` : undefined}
+                    >
+                      {/* Agent Header */}
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                          <span className="text-2xl">{agent.emoji || "🤖"}</span>
+                          <div>
+                            <h3 className="font-semibold text-foreground m-0 text-base" title={agent._id}>
+                              {agent.name}
+                            </h3>
                       <div className="flex items-center gap-2 mt-1">
                         <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", roleClassMap[agent.role])}>
                           {agent.role}
@@ -136,7 +166,9 @@ export function AgentDashboard({ projectId, onClose }: AgentDashboardProps) {
                     <div className="text-xs text-muted-foreground mb-0.5">Runs</div>
                     <div className="text-lg font-semibold text-foreground">{metrics.totalRuns}</div>
                     <div className="text-xs text-muted-foreground">
-                      {metrics.successRate.toFixed(0)}% success
+                      {(metrics.successRate != null && !Number.isNaN(metrics.successRate)
+                        ? metrics.successRate.toFixed(0)
+                        : "—")}% success
                     </div>
                   </div>
                   <div>
@@ -163,19 +195,23 @@ export function AgentDashboard({ projectId, onClose }: AgentDashboardProps) {
                 <div>
                   <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
                     <span>Budget Utilization</span>
-                    <span>{metrics.utilization.toFixed(0)}%</span>
+                    <span>
+                      {(metrics.utilization != null && !Number.isNaN(metrics.utilization)
+                        ? metrics.utilization.toFixed(0)
+                        : "—")}%
+                    </span>
                   </div>
                   <div className="w-full bg-border rounded-full h-2 overflow-hidden">
                     <div
                       className={cn(
                         "h-2 rounded-full transition-[width] duration-300",
-                        metrics.utilization >= 90
+                        (metrics.utilization ?? 0) >= 90
                           ? "bg-red-500"
-                          : metrics.utilization >= 70
+                          : (metrics.utilization ?? 0) >= 70
                             ? "bg-yellow-500"
-                            : "bg-emerald-500"
+                            : "bg-primary"
                       )}
-                      style={{ width: `${Math.min(metrics.utilization, 100)}%` }}
+                      style={{ width: `${Math.min(metrics.utilization ?? 0, 100)}%` }}
                     />
                   </div>
                   <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
@@ -197,7 +233,15 @@ export function AgentDashboard({ projectId, onClose }: AgentDashboardProps) {
                     </div>
                   </div>
                 )}
-              </div>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-[280px]">
+                    <div className="font-medium">{agent.name}</div>
+                    <div className="text-[0.65rem] text-muted-foreground break-all">{agent._id}</div>
+                    {onSelectAgent && <div className="text-[0.65rem] mt-0.5">Click to open agent details</div>}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             ))}
           </div>
         </div>

@@ -28,7 +28,10 @@ const INITIAL: {
   missionModal: boolean;
   suggestionsDrawer: boolean;
   importPrd: boolean;
+  startQcRun: boolean;
   pauseConfirm: boolean;
+  alertRules: boolean;
+  createAgent: boolean;
 } = {
   createTask: false,
   approvals: false,
@@ -49,7 +52,10 @@ const INITIAL: {
   missionModal: false,
   suggestionsDrawer: false,
   importPrd: false,
+  startQcRun: false,
   pauseConfirm: false,
+  alertRules: false,
+  createAgent: false,
 };
 
 export type ModalKey = keyof typeof INITIAL;

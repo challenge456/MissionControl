@@ -57,7 +57,7 @@ const COLUMNS: { status: TaskStatus; label: string; color: string; icon: LucideI
   { status: "NEEDS_APPROVAL", label: "Needs Approval", color: "text-red-400", icon: ShieldAlert },
   { status: "BLOCKED", label: "Blocked", color: "text-orange-400", icon: Ban },
   { status: "FAILED", label: "Failed", color: "text-red-400", icon: AlertTriangle },
-  { status: "DONE", label: "Done", color: "text-emerald-400", icon: CheckCircle2 },
+  { status: "DONE", label: "Done", color: "text-primary", icon: CheckCircle2 },
   { status: "CANCELED", label: "Canceled", color: "text-gray-400", icon: XCircle },
 ];
 
@@ -69,7 +69,7 @@ const COLUMN_BG: Record<string, string> = {
   NEEDS_APPROVAL: "bg-red-500/5",
   BLOCKED: "bg-orange-500/5",
   FAILED: "bg-red-500/5",
-  DONE: "bg-emerald-500/5",
+  DONE: "bg-primary/5",
   CANCELED: "bg-gray-500/5",
 };
 
@@ -81,7 +81,7 @@ const COLUMN_DOT: Record<string, string> = {
   NEEDS_APPROVAL: "bg-red-400",
   BLOCKED: "bg-orange-400",
   FAILED: "bg-red-400",
-  DONE: "bg-emerald-400",
+  DONE: "bg-primary",
   CANCELED: "bg-gray-400",
 };
 
@@ -93,7 +93,7 @@ const COLUMN_TOP_STRIP: Record<string, string> = {
   NEEDS_APPROVAL:  "bg-red-500/50",
   BLOCKED:         "bg-orange-500/50",
   FAILED:          "bg-red-500/50",
-  DONE:            "bg-emerald-500/50",
+  DONE:            "bg-primary/50",
   CANCELED:        "bg-gray-500/40",
 };
 
@@ -105,7 +105,7 @@ const COLUMN_BADGE_COLOR: Record<string, string> = {
   NEEDS_APPROVAL:  "bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30",
   BLOCKED:         "bg-orange-500/15 text-orange-600 dark:text-orange-400 border-orange-500/30",
   FAILED:          "bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30",
-  DONE:            "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
+  DONE:            "bg-primary/15 text-primary/70 dark:text-primary border-primary/30",
   CANCELED:        "bg-gray-500/15 text-gray-500 dark:text-gray-400 border-gray-500/30",
 };
 

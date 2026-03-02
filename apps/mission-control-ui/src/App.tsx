@@ -27,6 +27,7 @@ import { QualitySection } from "./sections/QualitySection";
 // Modal layer + state
 import { ModalLayer } from "./ModalLayer";
 import { useModalState } from "./hooks/useModalState";
+import { PrivacyProvider } from "./contexts/PrivacyContext";
 
 // ============================================================================
 // PROJECT CONTEXT
@@ -109,14 +110,18 @@ const SECTION_TABS: Record<CommandSection, TabItem[] | null> = {
     { id: "telemetry", label: "Telemetry" },
   ],
   agents: [
+    { id: "atc", label: "ATC" },
     { id: "agents", label: "Registry" },
-    { id: "directory", label: "Directory" },
+    { id: "directory", label: "Templates" },
     { id: "identity", label: "Identities" },
     { id: "policies", label: "Policies" },
     { id: "deployments", label: "Deployments" },
+    { id: "gateway", label: "Gateway" },
+    { id: "schedules", label: "Schedules" },
   ],
   chat: [
     { id: "chat", label: "Chat" },
+    { id: "live-chat", label: "Live" },
     { id: "council", label: "Council" },
     { id: "command", label: "Command" },
   ],
@@ -155,16 +160,20 @@ const SECTION_TABS: Record<CommandSection, TabItem[] | null> = {
   quality: [
     { id: "qc-dashboard", label: "Dashboard" },
     { id: "qc-runs", label: "Runs" },
+    { id: "qc-environments", label: "Environments" },
+    { id: "qc-findings", label: "Findings" },
+    { id: "qc-metrics", label: "Metrics" },
+    { id: "qc-rulesets", label: "Rulesets" },
   ],
 };
 
 function viewToSection(view: MainView): CommandSection {
   if (view === "home") return "home";
   if (["tasks", "dag", "calendar", "audit", "telemetry"].includes(view)) return "ops";
-  if (["agents", "directory", "identity", "policies", "deployments"].includes(view)) return "agents";
-  if (["chat", "council", "command"].includes(view)) return "chat";
+  if (["atc", "agents", "directory", "identity", "policies", "deployments", "gateway", "schedules"].includes(view)) return "agents";
+  if (["chat", "live-chat", "council", "command"].includes(view)) return "chat";
   if (["captures", "projects", "content-pipeline"].includes(view)) return "content";
-  if (["qc-dashboard", "qc-runs"].includes(view)) return "quality";
+  if (["qc-dashboard", "qc-runs", "qc-environments", "qc-findings", "qc-metrics", "qc-rulesets"].includes(view)) return "quality";
   if (["telegraph", "meetings", "voice", "people", "org", "office", "crm"].includes(view)) return "comms";
   if (["docs", "search", "memory"].includes(view)) return "knowledge";
   if ([
@@ -349,6 +358,19 @@ export default function App() {
             onClose={() => {}}
             onOpenMissionModal={() => open("missionModal")}
             onOpenSuggestionsDrawer={() => open("suggestionsDrawer")}
+            onNavigate={setCurrentView}
+            onOpenApprovals={() => open("approvals")}
+            onOpenCostAnalytics={() => open("costAnalytics")}
+            onOpenAlertRules={() => open("alertRules")}
+            onTaskSelect={setSelectedTaskId}
+            onNavigateToGateway={() => {
+              handleSectionChange("agents");
+              handleTabChange("gateway");
+            }}
+            onSelectAgent={(id) => {
+              setSidebarSelectedAgentId(id);
+              open("agentsFlyout");
+            }}
           />
         );
       case "ops":
@@ -377,7 +399,23 @@ export default function App() {
           />
         );
       case "agents":
-        return <AgentsSection currentView={currentView} projectId={projectId} />;
+        return (
+          <AgentsSection
+            currentView={currentView}
+            projectId={projectId}
+            onNavigateToIdentity={() => setCurrentView("identity")}
+            onNavigateToTask={(taskId) => {
+              setSelectedTaskId(taskId);
+              setCurrentView("tasks");
+            }}
+            onNavigateToTasks={() => setCurrentView("tasks")}
+            onNavigateToAgent={(agentId) => {
+              setSidebarSelectedAgentId(agentId);
+              setCurrentView("agents");
+            }}
+            onOpenCreateAgent={() => open("createAgent")}
+          />
+        );
       case "chat":
         return (
           <ChatSection
@@ -420,6 +458,7 @@ export default function App() {
             selectedQcRunId={selectedQcRunId}
             setSelectedQcRunId={setSelectedQcRunId}
             onNavigate={setCurrentView}
+            onOpenStartQcRun={() => open("startQcRun")}
           />
         );
       default:
@@ -430,7 +469,8 @@ export default function App() {
   // ── Render ───────────────────────────────────────────────────────────────
   return (
     <ProjectContext.Provider value={{ projectId, setProjectId, project }}>
-      <div className="flex h-screen flex-col bg-background text-foreground">
+      <PrivacyProvider>
+      <div className="flex h-screen flex-col bg-background text-foreground neon-app-bg">
         <AppTopBar
           projectSwitcher={<ProjectSwitcher />}
           searchBar={
@@ -491,8 +531,13 @@ export default function App() {
           onConfirmPauseSquad={handleConfirmPauseSquad}
           onResumeSquad={handleResumeSquad}
           onToast={toast}
+          onNavigateToGateway={() => {
+            handleSectionChange("agents");
+            handleTabChange("gateway");
+          }}
         />
       </div>
+      </PrivacyProvider>
     </ProjectContext.Provider>
   );
 }

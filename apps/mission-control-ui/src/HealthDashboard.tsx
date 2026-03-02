@@ -30,10 +30,10 @@ export function HealthDashboard({ onClose }: HealthDashboardProps) {
         zIndex: 1000,
       }}>
         <div style={{
-          background: "#1e293b",
+          background: "var(--card)",
           padding: "40px",
           borderRadius: "12px",
-          color: "#e2e8f0",
+          color: "var(--foreground)",
         }}>
           Loading health status...
         </div>
@@ -79,20 +79,20 @@ export function HealthDashboard({ onClose }: HealthDashboardProps) {
     >
       <div
         style={{
-          background: "#1e293b",
+          background: "var(--card)",
           borderRadius: "12px",
           maxWidth: "1200px",
           width: "100%",
           maxHeight: "90vh",
           overflow: "auto",
-          color: "#e2e8f0",
+          color: "var(--foreground)",
         }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div style={{
           padding: "24px",
-          borderBottom: "1px solid #334155",
+          borderBottom: "1px solid var(--border)",
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
@@ -101,7 +101,7 @@ export function HealthDashboard({ onClose }: HealthDashboardProps) {
             <h2 style={{ margin: 0, fontSize: "24px", fontWeight: 600 }}>
               🏥 System Health
             </h2>
-            <p style={{ margin: "4px 0 0 0", color: "#94a3b8", fontSize: "14px" }}>
+            <p style={{ margin: "4px 0 0 0", color: "var(--muted-foreground)", fontSize: "14px" }}>
               Last updated: {new Date().toLocaleTimeString()}
             </p>
           </div>
@@ -110,7 +110,7 @@ export function HealthDashboard({ onClose }: HealthDashboardProps) {
             style={{
               background: "transparent",
               border: "none",
-              color: "#94a3b8",
+              color: "var(--muted-foreground)",
               fontSize: "24px",
               cursor: "pointer",
               padding: "0 8px",
@@ -123,7 +123,7 @@ export function HealthDashboard({ onClose }: HealthDashboardProps) {
         {/* Overall Status */}
         <div style={{ padding: "24px" }}>
           <div style={{
-            background: "#0f172a",
+            background: "var(--background)",
             borderRadius: "8px",
             padding: "20px",
             marginBottom: "24px",
@@ -137,7 +137,7 @@ export function HealthDashboard({ onClose }: HealthDashboardProps) {
                 <div style={{ fontSize: "18px", fontWeight: 600, textTransform: "capitalize" }}>
                   {healthStatus.status}
                 </div>
-                <div style={{ fontSize: "14px", color: "#94a3b8" }}>
+                <div style={{ fontSize: "14px", color: "var(--muted-foreground)" }}>
                   {healthStatus.message}
                 </div>
               </div>
@@ -155,7 +155,7 @@ export function HealthDashboard({ onClose }: HealthDashboardProps) {
               <div
                 key={component}
                 style={{
-                  background: "#0f172a",
+                  background: "var(--background)",
                   borderRadius: "8px",
                   padding: "16px",
                   border: `1px solid ${getStatusColor(check.status)}`,
@@ -169,11 +169,11 @@ export function HealthDashboard({ onClose }: HealthDashboardProps) {
                     {component}
                   </div>
                 </div>
-                <div style={{ fontSize: "12px", color: "#94a3b8" }}>
+                <div style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>
                   {check.message}
                 </div>
                 {check.responseTime && (
-                  <div style={{ fontSize: "11px", color: "#64748b", marginTop: "4px" }}>
+                  <div style={{ fontSize: "11px", color: "var(--muted-foreground)", marginTop: "4px" }}>
                     Response: {check.responseTime}ms
                   </div>
                 )}
@@ -183,7 +183,7 @@ export function HealthDashboard({ onClose }: HealthDashboardProps) {
 
           {/* Metrics */}
           <div style={{
-            background: "#0f172a",
+            background: "var(--background)",
             borderRadius: "8px",
             padding: "20px",
           }}>
@@ -267,18 +267,18 @@ interface MetricCardProps {
 function MetricCard({ label, value, icon, subtitle, highlight }: MetricCardProps) {
   return (
     <div style={{
-      background: highlight ? "#7c2d12" : "#0f172a",
+      background: highlight ? "#7c2d12" : "var(--background)",
       borderRadius: "6px",
       padding: "12px",
-      border: highlight ? "1px solid #ea580c" : "1px solid #1e293b",
+      border: highlight ? "1px solid #ea580c" : "1px solid var(--card)",
     }}>
       <div style={{ fontSize: "20px", marginBottom: "4px" }}>{icon}</div>
       <div style={{ fontSize: "24px", fontWeight: 600, marginBottom: "2px" }}>
         {value}
       </div>
-      <div style={{ fontSize: "12px", color: "#94a3b8" }}>{label}</div>
+      <div style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>{label}</div>
       {subtitle && (
-        <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
+        <div style={{ fontSize: "11px", color: "var(--muted-foreground)", marginTop: "2px" }}>
           {subtitle}
         </div>
       )}

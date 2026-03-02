@@ -12,7 +12,7 @@ import {
   CommandSeparator,
   CommandShortcut,
 } from "@/components/ui/command";
-import { Bot, Plus, Shield, AlertTriangle } from "lucide-react";
+import { Bot, Plus, Shield, AlertTriangle, DollarSign, Radio } from "lucide-react";
 
 interface CommandPaletteProps {
   projectId: Id<"projects"> | null;
@@ -22,6 +22,9 @@ interface CommandPaletteProps {
   onOpenApprovals: () => void;
   onOpenAgents: () => void;
   onOpenControls?: () => void;
+  onOpenCostAnalytics?: () => void;
+  onOpenCreateAgent?: () => void;
+  onNavigateToGateway?: () => void;
 }
 
 export function CommandPalette({
@@ -32,6 +35,9 @@ export function CommandPalette({
   onOpenApprovals,
   onOpenAgents,
   onOpenControls,
+  onOpenCostAnalytics,
+  onOpenCreateAgent,
+  onNavigateToGateway,
 }: CommandPaletteProps) {
   const [search, setSearch] = useState("");
 
@@ -47,11 +53,14 @@ export function CommandPalette({
       { id: "new-task", label: "Create New Task", icon: <Plus className="h-4 w-4" />, shortcut: "Cmd+N", action: onCreateTask },
       { id: "open-approvals", label: "Open Approvals Center", icon: <Shield className="h-4 w-4" />, shortcut: "Cmd+Shift+A", action: onOpenApprovals },
       { id: "open-agents", label: "Open Agent Registry", icon: <Bot className="h-4 w-4" />, shortcut: "Cmd+2", action: onOpenAgents },
+      ...(onOpenCostAnalytics ? [{ id: "cost-analytics", label: "Cost Analytics", icon: <DollarSign className="h-4 w-4" />, shortcut: "", action: onOpenCostAnalytics }] : []),
+      ...(onOpenCreateAgent ? [{ id: "create-agent", label: "Create Agent", icon: <Bot className="h-4 w-4" />, shortcut: "", action: onOpenCreateAgent }] : []),
+      ...(onNavigateToGateway ? [{ id: "connect-gateway", label: "Connect Gateway", icon: <Radio className="h-4 w-4" />, shortcut: "", action: onNavigateToGateway }] : []),
       ...(onOpenControls
         ? [{ id: "open-controls", label: "Open Operator Controls", icon: <AlertTriangle className="h-4 w-4" />, shortcut: "Cmd+Shift+C", action: onOpenControls }]
         : []),
     ],
-    [onCreateTask, onOpenApprovals, onOpenAgents, onOpenControls]
+    [onCreateTask, onOpenApprovals, onOpenAgents, onOpenControls, onOpenCostAnalytics, onOpenCreateAgent, onNavigateToGateway]
   );
 
   const filteredCommands = commands.filter((command) =>

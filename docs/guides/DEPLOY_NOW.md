@@ -310,6 +310,16 @@ Watch the system work:
 
 ---
 
+## Access control (Gateway / Live UI)
+
+When exposing the Mission Control UI or the orchestration server (e.g. Gateway WebSocket proxy) beyond loopback:
+
+- Require an access token or authentication so only authorized operators can connect.
+- Set `STUDIO_ACCESS_TOKEN` (or equivalent) in the environment and document it in your deployment runbook; the proxy or UI can validate this for sensitive endpoints.
+- Never store the OpenClaw Gateway token in the browser; keep it server-side only (e.g. `GATEWAY_TOKEN` on the orchestration server).
+
+---
+
 ## 📚 Documentation
 
 - **Full Guide:** [docs/ALL_PHASES_COMPLETE.md](docs/ALL_PHASES_COMPLETE.md)

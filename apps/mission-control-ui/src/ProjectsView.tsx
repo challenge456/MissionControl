@@ -239,7 +239,7 @@ function AgentBadge({ agent }: AgentBadgeProps) {
         ? "bg-red-500"
         : agent.status === "OFFLINE"
           ? "bg-slate-500"
-          : "bg-emerald-500";
+          : "bg-primary";
 
   return (
     <div className="flex items-center gap-2.5 p-2 bg-muted border border-border rounded-md">

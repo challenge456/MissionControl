@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id, Doc } from "../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
+import { PageHeader } from "./components/PageHeader";
 
 interface CouncilViewProps {
   projectId: Id<"projects"> | null;
@@ -54,15 +55,18 @@ export function CouncilView({ projectId }: CouncilViewProps) {
   const pending = pendingApprovals ?? [];
 
   return (
-    <main className="flex-1 overflow-auto bg-background p-6">
-      <div className="mb-6">
-        <h1 className="mb-1 text-3xl font-semibold text-foreground">Council</h1>
-        <p className="mt-0 text-base text-muted-foreground">
-          Multi-agent decision-making and consensus visualization
-        </p>
-      </div>
+    <main className="flex-1 overflow-auto bg-background">
+      <PageHeader
+        title="Council"
+        description={
+          pending.length > 0
+            ? `${decisions.length} decisions · ${pending.length} awaiting your decision`
+            : "Multi-agent decision-making and consensus visualization."
+        }
+      />
 
-      <div className="mb-6 flex flex-wrap gap-4">
+      <div className="px-6 pb-6">
+      <div className="py-4 flex flex-wrap gap-4">
         <MetricCard
           value={decisions.length}
           label="Decisions Made"
@@ -71,7 +75,7 @@ export function CouncilView({ projectId }: CouncilViewProps) {
         <MetricCard
           value={decisions.filter((d) => d.status === "APPROVED").length}
           label="Approved"
-          colorClass="text-emerald-500"
+          colorClass="text-primary"
         />
         <MetricCard
           value={decisions.filter((d) => d.status === "DENIED").length}
@@ -91,7 +95,7 @@ export function CouncilView({ projectId }: CouncilViewProps) {
         />
       </div>
 
-      <div className="mb-5 flex gap-1 border-b border-border">
+      <div className="mb-5 flex gap-1 border-b border-border pt-1">
         <TabButton
           active={activeTab === "decisions"}
           label={`Decisions (${decisions.length})`}
@@ -175,6 +179,7 @@ export function CouncilView({ projectId }: CouncilViewProps) {
           )}
         </div>
       )}
+      </div>
     </main>
   );
 }
@@ -275,14 +280,14 @@ function DecisionCard({ decision, agentMap }: DecisionCardProps) {
     <div
       className={cn(
         "rounded-lg border border-border bg-card px-5 py-4 border-l-4",
-        isApproved ? "border-l-emerald-500" : "border-l-red-500"
+        isApproved ? "border-l-primary" : "border-l-red-500"
       )}
     >
       <div className="mb-2.5 flex items-center justify-between">
         <div
           className={cn(
             "text-xs font-bold tracking-wide",
-            isApproved ? "text-emerald-500" : "text-red-500"
+            isApproved ? "text-primary" : "text-red-500"
           )}
         >
           {isApproved ? "✓ APPROVED" : "✗ DENIED"}
@@ -459,7 +464,7 @@ function PendingApprovalCard({ approval, agentMap }: PendingApprovalCardProps) {
             <button
               onClick={handleApprove}
               disabled={isActing}
-              className="rounded-md bg-emerald-500 px-4.5 py-2 font-[inherit] text-sm font-semibold text-white"
+              className="rounded-md bg-primary px-4.5 py-2 font-[inherit] text-sm font-semibold text-white"
             >
               {isActing ? "..." : "✓ Approve"}
             </button>

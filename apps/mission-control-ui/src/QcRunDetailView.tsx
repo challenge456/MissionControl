@@ -34,7 +34,7 @@ function RiskGradeBadge({ grade }: { grade: "GREEN" | "YELLOW" | "RED" | undefin
   if (!grade) return <Badge variant="outline">N/A</Badge>;
   
   const colors = {
-    GREEN: "bg-green-500/10 text-green-600 border-green-500/20",
+    GREEN: "bg-primary/10 text-primary border-primary/20",
     YELLOW: "bg-yellow-500/10 text-yellow-600 border-yellow-500/20",
     RED: "bg-red-500/10 text-red-600 border-red-500/20",
   };
@@ -50,7 +50,7 @@ function SeverityBadge({ severity }: { severity: "RED" | "YELLOW" | "GREEN" | "I
   const colors = {
     RED: "bg-red-500/10 text-red-600 border-red-500/20",
     YELLOW: "bg-yellow-500/10 text-yellow-600 border-yellow-500/20",
-    GREEN: "bg-green-500/10 text-green-600 border-green-500/20",
+    GREEN: "bg-primary/10 text-primary border-primary/20",
     INFO: "bg-blue-500/10 text-blue-600 border-blue-500/20",
   };
   
@@ -144,7 +144,7 @@ export function QcRunDetailView({ runId, onBack }: QcRunDetailViewProps) {
               <>
                 <span className="text-red-600 font-medium">{run.findingCounts.red}</span>
                 <span className="text-yellow-600 font-medium">{run.findingCounts.yellow}</span>
-                <span className="text-green-600 font-medium">{run.findingCounts.green}</span>
+                <span className="text-primary font-medium">{run.findingCounts.green}</span>
                 <span className="text-blue-600 font-medium">{run.findingCounts.info}</span>
               </>
             ) : (
@@ -161,8 +161,8 @@ export function QcRunDetailView({ runId, onBack }: QcRunDetailViewProps) {
           <div className="mt-2 flex items-center gap-2">
             {run.gatePassed === true && (
               <>
-                <CheckCircle2 className="h-5 w-5 text-green-500" />
-                <span className="text-lg font-semibold text-green-600">PASSED</span>
+                <CheckCircle2 className="h-5 w-5 text-primary" />
+                <span className="text-lg font-semibold text-primary">PASSED</span>
               </>
             )}
             {run.gatePassed === false && (

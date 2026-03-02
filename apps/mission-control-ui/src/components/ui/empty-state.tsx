@@ -19,18 +19,18 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center py-16 px-6 text-center",
+        "neon-empty-state py-16 px-6",
         className
       )}
     >
       {Icon && (
-        <div className="mb-4 rounded-lg bg-muted p-4 border border-border">
-          <Icon className="h-6 w-6 text-muted-foreground" strokeWidth={1.5} />
+        <div className="neon-empty-state-icon mb-4 p-4">
+          <Icon className="h-6 w-6" strokeWidth={1.5} />
         </div>
       )}
-      <h3 className="text-sm font-medium text-foreground mb-1">{title}</h3>
+      <h3 className="neon-empty-state-title mb-1">{title}</h3>
       {description && (
-        <p className="text-xs text-muted-foreground max-w-[280px] leading-relaxed">
+        <p className="neon-empty-state-desc leading-relaxed">
           {description}
         </p>
       )}

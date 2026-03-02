@@ -1,154 +1,141 @@
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Doc } from "../../../convex/_generated/dataModel";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { ShieldCheck, CheckCircle2, Globe, Layers } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export function PolicyModal({ onClose }: { onClose: () => void }) {
   const policies = useQuery(api.policy.listAll);
   const activePolicy = useQuery(api.policy.getActive);
 
-  if (policies === undefined) {
-    return (
-      <Modal onClose={onClose}>
-        <div style={{ padding: 24 }}>Loading policy…</div>
-      </Modal>
-    );
-  }
-
-  const active = activePolicy ?? policies.find((p: Doc<"policies">) => p.active);
+  const active = activePolicy ?? policies?.find((p: Doc<"policies">) => p.active);
 
   return (
-    <Modal onClose={onClose}>
-      <h2 style={{ margin: "0 0 20px", fontSize: "1.25rem", fontWeight: 600 }}>
-        Policy
-      </h2>
-      {policies.length === 0 ? (
-        <p style={{ color: "#64748b", fontSize: "0.9rem" }}>No policies defined.</p>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {active && (
-            <div
-              style={{
-                padding: 12,
-                background: "#14532d",
-                color: "#86efac",
-                borderRadius: 8,
-                fontSize: "0.85rem",
-              }}
-            >
-              Active: {active.name} (v{active.version})
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="sm:max-w-[560px] max-h-[88vh] flex flex-col gap-0 p-0 overflow-hidden">
+        {/* Header */}
+        <DialogHeader className="px-6 pt-6 pb-4 border-b border-border shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <ShieldCheck className="h-5 w-5" />
             </div>
-          )}
-          {policies.map((p: Doc<"policies">) => (
-            <div
-              key={p._id}
-              style={{
-                padding: 16,
-                background: p.active ? "#0f172a" : "#1e293b",
-                border: "1px solid #334155",
-                borderRadius: 8,
-                opacity: p.active ? 1 : 0.8,
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                <span style={{ fontWeight: 600, fontSize: "0.9rem" }}>{p.name}</span>
-                <span style={{ fontSize: "0.75rem", color: "#64748b" }}>v{p.version}</span>
-                {p.active && (
-                  <span
-                    style={{
-                      fontSize: "0.7rem",
-                      padding: "2px 6px",
-                      background: "#22c55e",
-                      color: "#fff",
-                      borderRadius: 4,
-                    }}
-                  >
-                    ACTIVE
-                  </span>
+            <div>
+              <DialogTitle className="text-base font-semibold">Policy</DialogTitle>
+              <DialogDescription className="text-xs mt-0.5">
+                Active agent guardrails and operational rules
+              </DialogDescription>
+            </div>
+          </div>
+        </DialogHeader>
+
+        <ScrollArea className="flex-1 min-h-0">
+          <div className="px-6 py-4 space-y-4">
+            {policies === undefined ? (
+              <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
+                Loading policies…
+              </div>
+            ) : policies.length === 0 ? (
+              <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
+                No policies defined yet.
+              </div>
+            ) : (
+              <>
+                {/* Active policy banner */}
+                {active && (
+                  <div className="flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/10 px-4 py-3">
+                    <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />
+                    <div>
+                      <div className="text-sm font-semibold text-foreground">
+                        {active.name}
+                        <span className="ml-2 text-xs font-normal text-muted-foreground">v{active.version}</span>
+                      </div>
+                      <div className="text-xs text-primary/70 mt-0.5">Currently active policy</div>
+                    </div>
+                    <Badge variant="success" className="ml-auto">
+                      ACTIVE
+                    </Badge>
+                  </div>
                 )}
-              </div>
-              <div style={{ fontSize: "0.8rem", color: "#94a3b8" }}>
-                Scope: {p.scopeType}
-                {p.scopeId && ` · ${p.scopeId}`}
-              </div>
-              {p.notes && (
-                <div style={{ marginTop: 8, fontSize: "0.85rem", color: "#cbd5e1" }}>
-                  {p.notes}
-                </div>
-              )}
-              {p.rules && typeof p.rules === "object" && (
-                <pre
-                  style={{
-                    marginTop: 12,
-                    padding: 12,
-                    background: "#0f172a",
-                    borderRadius: 6,
-                    fontSize: "0.75rem",
-                    overflow: "auto",
-                    maxHeight: 200,
-                  }}
-                >
-                  {JSON.stringify(p.rules, null, 2)}
-                </pre>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </Modal>
-  );
-}
 
-function Modal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
-  return (
-    <>
-      <div
-        style={{
-          position: "fixed",
-          inset: 0,
-          background: "rgba(0,0,0,0.5)",
-          zIndex: 9998,
-        }}
-        onClick={onClose}
-        aria-hidden="true"
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        style={{
-          position: "fixed",
-          top: "50%",
-          left: "50%",
-          transform: "translate(-50%, -50%)",
-          width: "100%",
-          maxWidth: 520,
-          maxHeight: "90vh",
-          overflow: "auto",
-          background: "#1e293b",
-          border: "1px solid #334155",
-          borderRadius: 12,
-          zIndex: 9999,
-          padding: 24,
-        }}
-      >
-        <button
-          type="button"
-          onClick={onClose}
-          style={{
-            position: "absolute",
-            top: 16,
-            right: 16,
-            background: "none",
-            border: "none",
-            color: "#94a3b8",
-            fontSize: "1.5rem",
-            cursor: "pointer",
-          }}
-          aria-label="Close"
-        >
-          ×
-        </button>
-        {children}
-      </div>
-    </>
+                {/* Policy cards */}
+                <div className="space-y-3">
+                  {policies.map((p: Doc<"policies">) => (
+                    <div
+                      key={p._id}
+                      className={cn(
+                        "rounded-xl border p-4 space-y-3 transition-colors",
+                        p.active
+                          ? "border-primary/30 bg-primary/5"
+                          : "border-border bg-card"
+                      )}
+                    >
+                      {/* Card header */}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className={cn(
+                            "flex h-8 w-8 items-center justify-center rounded-md text-xs font-bold",
+                            p.active
+                              ? "bg-primary/20 text-primary"
+                              : "bg-secondary text-muted-foreground"
+                          )}>
+                            v{p.version}
+                          </div>
+                          <div>
+                            <div className="text-sm font-semibold text-foreground leading-tight">{p.name}</div>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              {p.scopeType === "GLOBAL" ? (
+                                <Globe className="h-3 w-3 text-muted-foreground" />
+                              ) : (
+                                <Layers className="h-3 w-3 text-muted-foreground" />
+                              )}
+                              <span className="text-xs text-muted-foreground">
+                                {p.scopeType}{p.scopeId ? ` · ${p.scopeId}` : ""}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        {p.active && (
+                          <Badge variant="success" className="shrink-0">
+                            ACTIVE
+                          </Badge>
+                        )}
+                      </div>
+
+                      {/* Notes */}
+                      {p.notes && (
+                        <p className="text-sm text-foreground leading-relaxed">{p.notes}</p>
+                      )}
+
+                      {/* Rules JSON */}
+                      {p.rules && typeof p.rules === "object" && (
+                        <div className="rounded-lg border border-border bg-background overflow-hidden">
+                          <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-secondary/30">
+                            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Rules</span>
+                          </div>
+                          <ScrollArea className="max-h-[180px]">
+                            <pre className="px-3 py-3 text-xs font-mono text-foreground leading-relaxed whitespace-pre-wrap">
+                              {JSON.stringify(p.rules, null, 2)}
+                            </pre>
+                          </ScrollArea>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
   );
 }

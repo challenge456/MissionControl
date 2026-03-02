@@ -186,6 +186,112 @@ export const projectScores = query({
 });
 
 /**
+ * List QC runs filtered by environment
+ */
+export const listByEnvironment = query({
+  args: {
+    projectId: v.optional(v.id("projects")),
+    environment: v.optional(v.union(
+      v.literal("local"),
+      v.literal("dev"),
+      v.literal("staging"),
+      v.literal("pilot"),
+      v.literal("production")
+    )),
+    status: v.optional(v.string()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit ?? 50;
+    if (args.projectId && args.environment) {
+      const runs = await ctx.db
+        .query("qcRuns")
+        .withIndex("by_project_env", (q) =>
+          q.eq("projectId", args.projectId!).eq("environment", args.environment!)
+        )
+        .order("desc")
+        .take(limit);
+      if (args.status) return runs.filter((r) => r.status === args.status);
+      return runs;
+    }
+    if (args.projectId) {
+      let runs = await ctx.db
+        .query("qcRuns")
+        .withIndex("by_project", (q) => q.eq("projectId", args.projectId!))
+        .order("desc")
+        .take(limit * 2);
+      if (args.environment) runs = runs.filter((r) => r.environment === args.environment);
+      if (args.status) runs = runs.filter((r) => r.status === args.status);
+      return runs.slice(0, limit);
+    }
+    if (args.environment) {
+      const runs = await ctx.db
+        .query("qcRuns")
+        .withIndex("by_environment", (q) => q.eq("environment", args.environment!))
+        .order("desc")
+        .take(limit);
+      if (args.status) return runs.filter((r) => r.status === args.status);
+      return runs;
+    }
+    return await ctx.db
+      .query("qcRuns")
+      .order("desc")
+      .take(limit);
+  },
+});
+
+/**
+ * Aggregate stats per environment for dashboard health matrix
+ */
+export const environmentSummary = query({
+  args: {
+    projectId: v.optional(v.id("projects")),
+  },
+  handler: async (ctx, args) => {
+    let runs = await ctx.db.query("qcRuns").collect();
+    if (args.projectId) {
+      runs = runs.filter((r) => r.projectId === args.projectId);
+    }
+    const envs = ["local", "dev", "staging", "pilot", "production"] as const;
+    const summary: {
+      environment: "local" | "dev" | "staging" | "pilot" | "production";
+      latestScore: number | null;
+      latestGrade: "GREEN" | "YELLOW" | "RED" | null;
+      gatePassed: boolean | null;
+      runCount: number;
+      completedCount: number;
+      passRate: number;
+      redCount: number;
+      yellowCount: number;
+      greenCount: number;
+    }[] = [];
+    for (const env of envs) {
+      const envRuns = runs.filter((r) => r.environment === env);
+      const completed = envRuns.filter((r) => r.status === "COMPLETED");
+      const sorted = [...completed].sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0));
+      const latest = sorted[0] ?? null;
+      const passed = completed.filter((r) => r.gatePassed === true).length;
+      const redCount = completed.filter((r) => r.riskGrade === "RED").length;
+      const yellowCount = completed.filter((r) => r.riskGrade === "YELLOW").length;
+      const greenCount = completed.filter((r) => r.riskGrade === "GREEN").length;
+      summary.push({
+        environment: env,
+        latestScore: latest ? latest.qualityScore ?? null : null,
+        latestGrade: latest ? latest.riskGrade ?? null : null,
+        gatePassed: latest ? latest.gatePassed ?? null : null,
+        runCount: envRuns.length,
+        completedCount: completed.length,
+        passRate: completed.length ? passed / completed.length : 0,
+        redCount,
+        yellowCount,
+        greenCount,
+      });
+    }
+    return summary;
+  },
+});
+
+/**
  * Compare two QC runs (diff)
  */
 export const diff = query({
@@ -267,6 +373,20 @@ export const start = mutation({
     )),
     initiatorId: v.optional(v.string()),
     idempotencyKey: v.optional(v.string()),
+    environment: v.optional(v.union(
+      v.literal("local"),
+      v.literal("dev"),
+      v.literal("staging"),
+      v.literal("pilot"),
+      v.literal("production")
+    )),
+    checkType: v.optional(v.union(
+      v.literal("CODE_REVIEW"),
+      v.literal("AGENT_OUTPUT"),
+      v.literal("COVERAGE"),
+      v.literal("SECURITY"),
+      v.literal("FULL_SUITE")
+    )),
   },
   handler: async (ctx, args) => {
     // Validate scopeType/scopeSpec alignment
@@ -348,6 +468,8 @@ export const start = mutation({
       initiatorId: args.initiatorId,
       startedAt: now,
       idempotencyKey: args.idempotencyKey,
+      environment: args.environment,
+      checkType: args.checkType,
     });
     
     // Audit log
@@ -507,9 +629,13 @@ export const execute = action({
       
       // TODO: Policy evaluation (qc_scan tool, YELLOW risk)
       // For now, proceed without policy check
-      
-      // Call AssuranceAgents.AI (STUB for v1)
-      const evidencePack = await mockAssuranceCall({
+      //
+      // Extension point: Replace mockAssuranceCall/mockAgentOutputCall with real QC adapters
+      // (e.g. AssuranceAgents.AI, SonarQube, or custom analyzers). Implement in a dedicated
+      // adapter module and call it here so dashboards reflect real run signals.
+      const evidencePack = run.checkType === "AGENT_OUTPUT"
+        ? await mockAgentOutputCall({ runId: run.runId })
+        : await mockAssuranceCall({
         runId: run.runId,
         repoUrl: run.repoUrl,
         commitSha: run.commitSha,
@@ -589,6 +715,46 @@ export const execute = action({
         findingCounts,
         gatePassed,
         evidenceHash,
+      });
+
+      // Record metrics for dashboards
+      const recordedAt = Date.now();
+      const env = run.environment ?? undefined;
+      await ctx.runMutation(internal.qcMetrics.record, {
+        projectId: run.projectId,
+        environment: env,
+        metricName: "quality_score",
+        value: evidencePack.qualityScore,
+        unit: "percent",
+        qcRunId: args.id,
+        recordedAt,
+      });
+      await ctx.runMutation(internal.qcMetrics.record, {
+        projectId: run.projectId,
+        environment: env,
+        metricName: "gate_passed",
+        value: gatePassed ? 1 : 0,
+        unit: "count",
+        qcRunId: args.id,
+        recordedAt,
+      });
+      await ctx.runMutation(internal.qcMetrics.record, {
+        projectId: run.projectId,
+        environment: env,
+        metricName: "findings_red",
+        value: findingCounts.red,
+        unit: "count",
+        qcRunId: args.id,
+        recordedAt,
+      });
+      await ctx.runMutation(internal.qcMetrics.record, {
+        projectId: run.projectId,
+        environment: env,
+        metricName: "findings_yellow",
+        value: findingCounts.yellow,
+        unit: "count",
+        qcRunId: args.id,
+        recordedAt,
       });
       
       // If RED, create alert and notify
@@ -711,5 +877,51 @@ async function mockAssuranceCall(request: {
     qualityScore: 82,
     policyNotes: ["All gates passed except docs drift"],
     summary: `# QC Run ${request.runId}\n\n**Status:** PASSED (with warnings)\n\n## Findings\n- 1 YELLOW: README outdated\n- 1 GREEN: Coverage acceptable\n\n## Coverage\n- Unit: 78%\n- Integration: 60%\n- E2E: 53%`,
+  };
+}
+
+/**
+ * Mock agent output QC (task completion, format compliance, hallucination detection)
+ */
+async function mockAgentOutputCall(request: { runId: string }): Promise<QCEvidencePack> {
+  return {
+    schemaVersion: "1.0.0",
+    producer: "assurance-agents-stub/agent-output/0.1.0",
+    runId: request.runId,
+    repoUrl: "",
+    commitSha: "",
+    timestamp: new Date().toISOString(),
+    docsIndex: [],
+    requirementTraceability: [],
+    findings: [
+      {
+        severity: "GREEN",
+        category: "TASK_INCOMPLETE",
+        title: "Task completion rate",
+        description: "Agent task completion rate within acceptable range",
+        confidence: 0.92,
+      },
+      {
+        severity: "YELLOW",
+        category: "OUTPUT_FORMAT_ERROR",
+        title: "Format compliance",
+        description: "One output did not match expected schema",
+        confidence: 0.78,
+      },
+    ],
+    coverageSummary: {
+      unit: { covered: 0, total: 0, percentage: 0 },
+      integration: { covered: 0, total: 0, percentage: 0 },
+      e2e: { covered: 0, total: 0, percentage: 0 },
+      missingAreas: [],
+    },
+    deliveryGates: [
+      { name: "Task completion", passed: true, rationale: "Completion rate above threshold", severity: "GREEN" },
+      { name: "Format compliance", passed: true, rationale: "Minor format issues only", severity: "YELLOW" },
+    ],
+    riskGrade: "GREEN",
+    qualityScore: 88,
+    policyNotes: [],
+    summary: `# Agent Output QC ${request.runId}\n\n**Status:** PASSED\n\nTask completion and format compliance within acceptable range.`,
   };
 }

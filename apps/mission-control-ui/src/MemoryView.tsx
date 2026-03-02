@@ -557,7 +557,7 @@ export function MemoryView({ projectId }: MemoryViewProps) {
                       className={cn(
                         "px-2.5 py-[3px] rounded-xl text-xs font-semibold text-white",
                         p.confidence > 0.7
-                          ? "bg-emerald-500"
+                          ? "bg-primary"
                           : p.confidence > 0.4
                             ? "bg-amber-500"
                             : "bg-muted-foreground"

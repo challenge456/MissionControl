@@ -14,19 +14,19 @@ pnpm install
 
 # 2. Configure environment
 cp .env.example .env.local
-# Edit .env.local with your Convex URL
+# Set CONVEX_URL and VITE_CONVEX_URL (run `npx convex dev` once to get the URL)
 
 # 3. Start development
-pnpm run dev          # UI + Convex
-pnpm run dev:orchestration  # Orchestration server
+pnpm run dev                    # Convex + UI (http://localhost:5173)
+pnpm run dev:orchestration      # Orchestration server (http://localhost:4100), optional
 ```
 
 ## Architecture
 
 - **UI:** React 18 + Vite → http://localhost:5173
-- **Backend:** Convex (serverless functions + database)
-- **Orchestration:** Hono server for agent lifecycle
-- **CLI:** `mc` command for agents (see `scripts/mc`)
+- **Backend:** Convex (serverless functions + database; no Express)
+- **Orchestration:** Hono server (coordinator loop + agent runtime) → http://localhost:4100
+- **CLI:** `mc` command (see `scripts/mc`). Diagnostics: `./scripts/mc-doctor.sh`
 
 ## CLI Usage
 
@@ -56,9 +56,10 @@ mc claim               # Claim next task
 
 ## Documentation
 
+- [Runbook](docs/MISSION_CONTROL_RUNBOOK.md) — Operations, E2E, CI
+- [Troubleshooting](docs/guides/TROUBLESHOOTING.md) — Diagnostics and common fixes
 - [Setup Guide](docs/BOOT_CONTRACT.md)
 - [Workflows](docs/WORKFLOWS.md)
-- [Runbook](docs/MISSION_CONTROL_RUNBOOK.md)
 
 ## License
 

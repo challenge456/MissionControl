@@ -6,6 +6,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { QuotaFuelGauge } from "@/components/QuotaFuelGauge";
+import { usePrivacy } from "@/contexts/PrivacyContext";
 import {
   Search,
   Plus,
@@ -27,6 +29,8 @@ import {
   Bot,
   Sparkles,
   Target,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useQuery } from "convex/react";
@@ -92,6 +96,7 @@ export function AppTopBar({
   });
 
   const missionData = useQuery(api.mission.getMission, projectId ? { projectId } : {});
+  const { privacyMode, togglePrivacyMode } = usePrivacy();
 
   useEffect(() => {
     const root = document.documentElement;
@@ -106,7 +111,7 @@ export function AppTopBar({
   }, [theme]);
 
   return (
-    <header className="flex h-12 items-center gap-3 border-b border-border bg-background px-4">
+      <header className="flex h-11 items-center gap-3 border-b border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-[var(--blur-panel)] px-4">
       {/* Left: project + search */}
       <div className="flex items-center gap-2 flex-1 min-w-0">
         {projectSwitcher}
@@ -128,7 +133,7 @@ export function AppTopBar({
       <div className="hidden lg:flex items-center gap-4">
         {missionData?.missionStatement && (
           <>
-            <div className="flex items-center gap-2 max-w-[400px] px-3 py-1.5 bg-muted border border-border rounded-md">
+            <div className="flex items-center gap-2 max-w-[400px] px-3 py-1.5 bg-[var(--glass-bg)] border border-[var(--glass-border)] rounded-lg">
               <Target className="h-3 w-3 text-muted-foreground shrink-0" strokeWidth={1.5} />
               <span className="text-xs text-foreground/80 truncate">
                 {missionData.missionStatement}
@@ -149,7 +154,7 @@ export function AppTopBar({
         )}
         <div className="flex items-center gap-4 text-xs font-medium text-muted-foreground">
           <span className="flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+            <span className="h-1.5 w-1.5 rounded-full bg-primary status-dot-pulse" />
             {activeCount} Active
           </span>
           <span>{taskCount} Tasks</span>
@@ -206,9 +211,14 @@ export function AppTopBar({
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 text-xs text-muted-foreground"
+              title="Insights — Cost Analytics, Provider billing, Health, Monitoring"
+            >
               <BarChart3 className="h-3.5 w-3.5 mr-1.5" />
-              <span className="hidden lg:inline">Insights</span>
+              <span className="hidden sm:inline">Insights</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52">
@@ -244,14 +254,14 @@ export function AppTopBar({
         <Button
           variant="ghost"
           size="sm"
-          className="h-8 text-xs text-orange-400 hover:text-orange-300"
+          className="h-8 text-xs text-amber-400 hover:text-amber-300 hover:shadow-[var(--glow-cyan)]"
           onClick={onOpenControls}
         >
           <AlertTriangle className="h-3.5 w-3.5 mr-1" />
           <span className="hidden lg:inline">Controls</span>
         </Button>
 
-        <Button size="sm" className="h-8 text-xs" onClick={onNewTask}>
+        <Button variant="neon" size="sm" className="h-8 text-xs" onClick={onNewTask}>
           <Plus className="h-3.5 w-3.5 mr-1" />
           New Task
         </Button>
@@ -260,10 +270,25 @@ export function AppTopBar({
         <span className="hidden xl:inline text-[11px] text-muted-foreground whitespace-nowrap ml-1">
           {timeStr} {dateStr}
         </span>
-        <span className="hidden lg:flex items-center gap-1.5 text-[11px] font-medium text-emerald-500 ml-1">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+        <span className="hidden lg:flex items-center gap-1.5 text-[11px] font-medium text-primary ml-1">
+          <span className="h-1.5 w-1.5 rounded-full bg-primary status-dot-pulse" />
           Online
         </span>
+
+        {/* Quota fuel gauge (compact) */}
+        <QuotaFuelGauge compact className="hidden lg:flex ml-1" />
+
+        {/* Privacy / demo mode — redact sensitive names in UI */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-muted-foreground"
+          onClick={togglePrivacyMode}
+          aria-label={privacyMode ? "Show sensitive info" : "Hide sensitive info (demo mode)"}
+          title={privacyMode ? "Privacy on — click to show names" : "Privacy off — click to redact for demos"}
+        >
+          {privacyMode ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+        </Button>
 
         {/* Theme toggle */}
         <Button

@@ -26,7 +26,7 @@ function eventPillClass(type: string) {
   if (type.includes("STARTED") || type.includes("STEP"))
     return "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30";
   if (type.includes("COMPLETED") || type.includes("DONE"))
-    return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30";
+    return "bg-primary/15 text-primary border-primary/30";
   if (type.includes("DECISION"))
     return "bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/30";
   return "bg-muted text-muted-foreground border-border";
@@ -82,7 +82,11 @@ export function TelemetryView({ projectId }: { projectId: Id<"projects"> | null 
     <main className="flex-1 overflow-auto">
       <PageHeader
         title="ARM Telemetry"
-        description="Operational events stream for runs, tool calls, workflow steps, and decision traces."
+        description={
+          inWindow > 0
+            ? `Live stream · ${inWindow} events in last ${windowMinutes}m`
+            : "Operational events stream for runs, tool calls, workflow steps, and decision traces."
+        }
         actions={
           <Button size="sm" onClick={handleEmitTestEvent} variant="outline">
             <Zap className="h-3.5 w-3.5 mr-1.5" />
@@ -97,7 +101,7 @@ export function TelemetryView({ projectId }: { projectId: Id<"projects"> | null 
           { icon: Activity,     label: "Total Events",     value: totalEvents,             accent: "text-foreground" },
           { icon: Radio,        label: `Last ${windowMinutes}m`, value: inWindow,          accent: inWindow > 0 ? "text-blue-500" : "text-foreground" },
           { icon: Filter,       label: "Filtered Rows",    value: (events ?? []).length,   accent: "text-foreground" },
-          { icon: CheckCircle2, label: "Latest Event",     value: stats?.latestTimestamp ? 1 : 0, accent: "text-emerald-500" },
+          { icon: CheckCircle2, label: "Latest Event",     value: stats?.latestTimestamp ? 1 : 0, accent: "text-primary" },
         ].map(({ icon: Icon, label, value, accent }) => (
           <Card key={label} className="p-4">
             <div className="flex items-center gap-1.5 mb-2">

@@ -47,7 +47,7 @@ export function CodePipelineView({ projectId, onTaskSelect }: CodePipelineViewPr
       case "REVIEW":
         return <Clock className="h-3.5 w-3.5 text-blue-400" />;
       case "DONE":
-        return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />;
+        return <CheckCircle2 className="h-3.5 w-3.5 text-primary" />;
       case "CANCELED":
         return <XCircle className="h-3.5 w-3.5 text-zinc-500" />;
       default:
@@ -188,7 +188,7 @@ export function CodePipelineView({ projectId, onTaskSelect }: CodePipelineViewPr
                   onClick={() => onTaskSelect?.(task._id)}
                 >
                   <div className="flex items-center gap-3">
-                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400/60" />
+                    <CheckCircle2 className="h-3.5 w-3.5 text-primary/60" />
                     <p className="text-xs text-foreground/70 truncate flex-1">
                       {task.title}
                     </p>

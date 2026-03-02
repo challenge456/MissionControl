@@ -8,14 +8,22 @@
  * Endpoints:
  *   GET /health          - Health check
  *   GET /status          - Coordinator + agent status
+ *   GET /gateway/status  - Gateway connection configured (url + token presence)
  *   POST /tick           - Manually trigger a coordinator tick
  *   POST /agents/spawn   - Spawn an agent from a persona YAML
  *   POST /agents/stop    - Stop a running agent
+ *
+ * WebSocket:
+ *   /gateway/ws          - Proxy to OpenClaw Gateway (Studio parity)
  */
 
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
 import { ConvexHttpClient } from "convex/browser";
+import { createGatewayProxy } from "./gateway-proxy.js";
+import { requireAuth } from "./auth.js";
+import { ConvexQueries, ConvexMutations } from "./convexCalls.js";
 import { CoordinatorLoop } from "@mission-control/coordinator";
 import { AgentLifecycle } from "@mission-control/agent-runtime";
 import { MemoryManager } from "@mission-control/memory";
@@ -68,9 +76,9 @@ async function runTick(): Promise<any> {
   try {
     // 1. Fetch current state from Convex
     const [inboxTasks, allTasks, agents] = await Promise.all([
-      client.query("tasks:listByStatus" as any, { status: "INBOX" }),
-      client.query("tasks:listAll" as any, {}),
-      client.query("agents:listAll" as any, {}),
+      client.query(ConvexQueries.tasks.listByStatus as any, { status: "INBOX" }),
+      client.query(ConvexQueries.tasks.listAll as any, {}),
+      client.query(ConvexQueries.agents.listAll as any, {}),
     ]);
 
     // 2. Build coordinator state
@@ -120,7 +128,7 @@ async function runTick(): Promise<any> {
       for (let i = 0; i < decomp.subtasks.length; i++) {
         const sub = decomp.subtasks[i];
         try {
-          await client.mutation("tasks:create" as any, {
+          await client.mutation(ConvexMutations.tasks.create as any, {
             title: sub.title,
             description: sub.description,
             type: sub.type,
@@ -139,7 +147,7 @@ async function runTick(): Promise<any> {
     // 5. Apply delegations: assign agents to tasks
     for (const delegation of actions.delegations) {
       try {
-        await client.mutation("taskRouter:autoAssign" as any, {
+        await client.mutation(ConvexMutations.taskRouter.autoAssign as any, {
           taskId: delegation.taskId,
           actorType: "SYSTEM",
           idempotencyKey: `delegate-${delegation.taskId}-${Date.now()}`,
@@ -152,7 +160,7 @@ async function runTick(): Promise<any> {
     // 6. Create alerts for stuck tasks
     for (const stuck of actions.stuckAlerts) {
       try {
-        await client.mutation("alerts:create" as any, {
+        await client.mutation(ConvexMutations.alerts.create as any, {
           severity: "WARNING",
           type: "STUCK_TASK",
           title: `Task stuck: ${stuck.taskTitle}`,
@@ -238,7 +246,10 @@ async function stopAgent(personaName: string): Promise<void> {
 
 const app = new Hono();
 
-// Health check
+// CORS so UI (different origin/port) can call gateway/status and other endpoints
+app.use("*", cors());
+
+// Health check (unauthenticated for load balancers)
 app.get("/health", (c) => {
   return c.json({
     status: "ok",
@@ -249,6 +260,12 @@ app.get("/health", (c) => {
     activeAgents: Array.from(activeAgents.keys()),
   });
 });
+
+// Protected routes: require Bearer token when ORCHESTRATION_API_TOKEN or MC_API_TOKEN is set
+// GET /gateway/status is left unauthenticated so the UI can check configured/token status (no secrets returned)
+app.use("/status", requireAuth());
+app.use("/tick", requireAuth());
+app.use("/agents/*", requireAuth());
 
 // Detailed status
 app.get("/status", (c) => {
@@ -323,6 +340,45 @@ app.get("/agents/personas", (c) => {
   }
 });
 
+// Gateway connection status (Studio parity: does not expose URL or token)
+app.get("/gateway/status", async (c) => {
+  try {
+    const conn = await client.query(ConvexQueries.gatewayConnection.get as any, {});
+    const urlConfigured = Boolean(conn?.url?.trim());
+    const tokenConfigured = Boolean(
+      typeof process.env.GATEWAY_TOKEN === "string" && process.env.GATEWAY_TOKEN.trim().length > 0
+    );
+    return c.json({
+      configured: urlConfigured && tokenConfigured,
+      urlConfigured,
+      tokenConfigured,
+    });
+  } catch {
+    return c.json({
+      configured: false,
+      urlConfigured: false,
+      tokenConfigured: Boolean(
+        typeof process.env.GATEWAY_TOKEN === "string" && process.env.GATEWAY_TOKEN.trim().length > 0
+      ),
+    });
+  }
+});
+
+// ============================================================================
+// GATEWAY WEBSOCKET PROXY (OpenClaw Studio parity)
+// ============================================================================
+
+const gatewayProxy = createGatewayProxy({
+  loadUpstreamSettings: async () => {
+    const conn = await client.query(ConvexQueries.gatewayConnection.get as any, {});
+    const url = conn?.url?.trim() ?? "";
+    const token = (process.env.GATEWAY_TOKEN ?? "").trim();
+    return { url, token };
+  },
+  log: (msg) => console.log(`[gateway] ${msg}`),
+  logError: (msg, err) => console.error(`[gateway] ${msg}`, err),
+});
+
 // ============================================================================
 // START
 // ============================================================================
@@ -367,7 +423,12 @@ process.on("SIGTERM", async () => {
   process.exit(0);
 });
 
-serve({ fetch: app.fetch, port: PORT }, () => {
+const server = serve({ fetch: app.fetch, port: PORT }, () => {
   console.log(`[orchestration] Server listening on http://localhost:${PORT}`);
   console.log(`[orchestration] Health: http://localhost:${PORT}/health`);
+  console.log(`[orchestration] Gateway WS: ws://localhost:${PORT}/gateway/ws`);
+});
+
+server.on("upgrade", (req, socket, head) => {
+  gatewayProxy.handleUpgrade(req, socket, head);
 });

@@ -4,7 +4,8 @@ import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { Card } from "@/components/ui/card";
 import { PageHeader } from "./components/PageHeader";
-import { FileText, ShieldCheck, Clock, XCircle, Filter } from "lucide-react";
+import { FileText, ShieldCheck, Clock, XCircle, Filter, Download } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 function fmtTime(ts?: number) {
@@ -13,10 +14,10 @@ function fmtTime(ts?: number) {
 }
 
 const PILL_VARIANTS: Record<string, string> = {
-  ACTIVE:           "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30",
-  APPROVED:         "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30",
-  ALLOW:            "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30",
-  GREEN:            "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30",
+  ACTIVE:           "bg-primary/15 text-primary border-primary/30",
+  APPROVED:         "bg-primary/15 text-primary border-primary/30",
+  ALLOW:            "bg-primary/15 text-primary border-primary/30",
+  GREEN:            "bg-primary/15 text-primary border-primary/30",
   PENDING:          "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30",
   YELLOW:           "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30",
   NEEDS_APPROVAL:   "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30",
@@ -86,11 +87,36 @@ export function AuditView({ projectId: _projectId }: { projectId: Id<"projects">
   const pendingCount = (approvals ?? []).filter((r) => r.status === "PENDING").length;
   const deniedCount  = (approvals ?? []).filter((r) => r.status === "DENIED").length;
 
+  const handleExport = () => {
+    const changeRows = (changes ?? []).map((c) =>
+      [fmtTime(c.timestamp), c.type, c.summary, c.projectId ?? "", c.instanceId ?? "", c.versionId ?? "", `${c.relatedTable ?? ""} ${c.relatedId ?? ""}`].join(",")
+    );
+    const approvalRows = (approvals ?? []).map((a) =>
+      [fmtTime(a.requestedAt), a.actionType, a.riskLevel, a.status, fmtTime(a.decidedAt), (a.decisionReason ?? a.justification ?? "").replace(/"/g, '""')].join(",")
+    );
+    const csv =
+      "Change Records\nTime,Type,Summary,Project,Instance,Version,Related\n" + changeRows.join("\n") +
+      "\n\nApproval Records\nRequested,Action,Risk,Status,Decided,Reason\n" + approvalRows.join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `arm-audit-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <main className="flex-1 overflow-auto">
       <PageHeader
         title="ARM Audit"
         description="Governance trail for approvals, lifecycle transitions, deployments, and policy decisions."
+        actions={
+          <Button size="sm" variant="outline" onClick={handleExport}>
+            <Download className="h-3.5 w-3.5 mr-1.5" />
+            Export CSV
+          </Button>
+        }
       />
 
       {/* Stats */}

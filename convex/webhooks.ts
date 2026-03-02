@@ -8,6 +8,25 @@ import { v } from "convex/values";
 import { mutation, query, action, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 
+/** HMAC-SHA256 hex using Web Crypto (Convex default runtime). */
+async function hmacSha256Hex(secret: string, data: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(data)
+  );
+  return Array.from(new Uint8Array(sig))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 // ============================================================================
 // QUERIES
 // ============================================================================
@@ -200,33 +219,29 @@ export const triggerEvent = internalMutation({
 });
 
 // ============================================================================
-// DELIVERY (Actions)
+// DELIVERY (Actions) — uses Web Crypto for HMAC (no Node runtime)
 // ============================================================================
 
 export const deliverPending = action({
   args: {},
   handler: async (ctx): Promise<{ delivered: number }> => {
-    // Get pending deliveries directly
     const deliveries = await ctx.runMutation(internal.webhooks.getPendingDeliveries, {});
-    
+
     let delivered = 0;
-    
+
     for (const delivery of deliveries) {
       const webhook = await ctx.runMutation(internal.webhooks.getWebhook, {
         webhookId: delivery.webhookId,
       });
-      
+
       if (!webhook) continue;
-      
+
       try {
-        // Create HMAC signature
-        const crypto = await import("crypto");
-        const signature = crypto
-          .createHmac("sha256", webhook.secret)
-          .update(JSON.stringify(delivery.payload))
-          .digest("hex");
-        
-        // Deliver webhook
+        const signature = await hmacSha256Hex(
+          webhook.secret,
+          JSON.stringify(delivery.payload)
+        );
+
         const response = await fetch(delivery.url, {
           method: "POST",
           headers: {
@@ -237,11 +252,10 @@ export const deliverPending = action({
           },
           body: JSON.stringify(delivery.payload),
         });
-        
+
         const responseBody = await response.text();
-        
+
         if (response.ok) {
-          // Success
           await ctx.runMutation(internal.webhooks.markDelivered, {
             deliveryId: delivery._id,
             webhookId: delivery.webhookId,
@@ -250,7 +264,6 @@ export const deliverPending = action({
           });
           delivered++;
         } else {
-          // Failed
           await ctx.runMutation(internal.webhooks.markFailed, {
             deliveryId: delivery._id,
             webhookId: delivery.webhookId,
@@ -259,7 +272,6 @@ export const deliverPending = action({
           });
         }
       } catch (error) {
-        // Error
         await ctx.runMutation(internal.webhooks.markFailed, {
           deliveryId: delivery._id,
           webhookId: delivery.webhookId,
@@ -267,7 +279,7 @@ export const deliverPending = action({
         });
       }
     }
-    
+
     return { delivered };
   },
 });

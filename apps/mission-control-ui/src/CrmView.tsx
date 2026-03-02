@@ -16,7 +16,7 @@ const CRM_COLUMNS = [
   { id: "contacted", label: "Contacted", color: "border-t-blue-500" },
   { id: "meeting", label: "Meeting", color: "border-t-blue-500" },
   { id: "proposal", label: "Proposal", color: "border-t-amber-500" },
-  { id: "active", label: "Active", color: "border-t-emerald-500" },
+  { id: "active", label: "Active", color: "border-t-primary" },
 ];
 
 export function CrmView({ projectId }: CrmViewProps) {

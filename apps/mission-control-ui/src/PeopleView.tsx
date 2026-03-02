@@ -78,7 +78,7 @@ export function PeopleView({ projectId }: PeopleViewProps) {
           </p>
         </div>
         <button
-          className="px-5 py-2.5 text-sm font-semibold bg-blue-500 hover:bg-blue-600 border-none rounded-lg text-white cursor-pointer transition-opacity whitespace-nowrap"
+          className="px-5 py-2.5 text-sm font-semibold bg-primary hover:bg-primary/85 border-none rounded-lg text-primary-foreground cursor-pointer transition-opacity whitespace-nowrap"
           onClick={() => setShowAddModal(true)}
         >
           + Add Member
@@ -155,7 +155,7 @@ export function PeopleView({ projectId }: PeopleViewProps) {
             Add team members to build your directory and assign roles
           </div>
           <button
-            className="mt-4 px-5 py-2.5 text-sm font-semibold bg-blue-500 hover:bg-blue-600 border-none rounded-lg text-white cursor-pointer transition-opacity whitespace-nowrap"
+            className="mt-4 px-5 py-2.5 text-sm font-semibold bg-primary hover:bg-primary/85 border-none rounded-lg text-primary-foreground cursor-pointer transition-opacity whitespace-nowrap"
             onClick={() => setShowAddModal(true)}
           >
             + Add First Member
@@ -229,7 +229,7 @@ function PersonCard({ member, getProjectName, onClick }: PersonCardProps) {
         <div className="flex items-center gap-1.5">
           <div className={cn(
             "w-2 h-2 rounded-full",
-            member.active ? "bg-emerald-500" : "bg-slate-500"
+            member.active ? "bg-primary" : "bg-slate-500"
           )} />
           <span className="text-xs text-muted-foreground">
             {member.active ? "Active" : "Inactive"}

@@ -1,12 +1,31 @@
+/**
+ * Deployments View — Environment Deployment Board
+ *
+ * One column per environment (dev, staging, prod). Each column shows the
+ * currently ACTIVE deployment, version badge, Deploy and Rollback CTAs.
+ */
+
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { PageHeader } from "./components/PageHeader";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useToast } from "./Toast";
+import { cn } from "@/lib/utils";
+import { Rocket, RotateCcw, Server } from "lucide-react";
 
 function fmtTime(ts?: number) {
-  if (!ts) return "n/a";
+  if (!ts) return "—";
   return new Date(ts).toLocaleString();
 }
 
@@ -14,13 +33,11 @@ export function DeploymentsView({ projectId }: { projectId: Id<"projects"> | nul
   const { toast } = useToast();
   const [selectedTenantId, setSelectedTenantId] = useState<Id<"tenants"> | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<Id<"agentTemplates"> | null>(null);
-  const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<Id<"environments"> | null>(null);
-  const [selectedTargetVersionId, setSelectedTargetVersionId] = useState<Id<"agentVersions"> | null>(null);
-  const [selectedPreviousVersionId, setSelectedPreviousVersionId] = useState<Id<"agentVersions"> | null>(null);
+  const [deployEnvId, setDeployEnvId] = useState<Id<"environments"> | null>(null);
+  const [deployVersionId, setDeployVersionId] = useState<Id<"agentVersions"> | null>(null);
+  const [rollbackDeploymentId, setRollbackDeploymentId] = useState<Id<"deployments"> | null>(null);
 
-  const tenants = useQuery(api["registry/tenants"].listTenants, {
-    activeOnly: false,
-  });
+  const tenants = useQuery(api["registry/tenants"].listTenants, { activeOnly: false });
   const templates = useQuery(api["registry/agentTemplates"].listTemplates, {
     tenantId: selectedTenantId ?? undefined,
     projectId: projectId ?? undefined,
@@ -44,261 +61,230 @@ export function DeploymentsView({ projectId }: { projectId: Id<"projects"> | nul
   const rollbackDeployment = useMutation(api["governance/deployments"].rollbackDeployment);
 
   useEffect(() => {
-    if (!selectedTenantId && tenants && tenants.length > 0) {
-      setSelectedTenantId(tenants[0]._id);
-    }
+    if (!selectedTenantId && tenants?.length) setSelectedTenantId(tenants[0]._id);
   }, [selectedTenantId, tenants]);
 
   useEffect(() => {
-    if (!selectedTemplateId && templates && templates.length > 0) {
-      setSelectedTemplateId(templates[0]._id);
-    }
+    if (!selectedTemplateId && templates?.length) setSelectedTemplateId(templates[0]._id);
   }, [selectedTemplateId, templates]);
 
-  useEffect(() => {
-    if (!selectedEnvironmentId && environments && environments.length > 0) {
-      setSelectedEnvironmentId(environments[0]._id);
-    }
-  }, [selectedEnvironmentId, environments]);
-
-  useEffect(() => {
-    if (!selectedTargetVersionId && versions && versions.length > 0) {
-      setSelectedTargetVersionId(versions[0]._id);
-    }
-  }, [selectedTargetVersionId, versions]);
-
   const versionMap = useMemo(() => {
-    const map = new Map<string, any>();
-    for (const version of versions ?? []) {
-      map.set(version._id, version);
-    }
+    const map = new Map<Id<"agentVersions">, { version: number; status: string }>();
+    for (const v of versions ?? []) map.set(v._id, { version: v.version, status: v.status });
     return map;
   }, [versions]);
 
-  const environmentMap = useMemo(() => {
-    const map = new Map<string, any>();
-    for (const row of environments ?? []) {
-      map.set(row._id, row);
+  const activeByEnv = useMemo(() => {
+    const map = new Map<Id<"environments">, typeof deployments[0]>();
+    for (const d of deployments ?? []) {
+      if (d.status === "ACTIVE") map.set(d.environmentId, d);
     }
     return map;
-  }, [environments]);
+  }, [deployments]);
 
-  const handleCreateDeployment = async () => {
-    if (!selectedTemplateId || !selectedEnvironmentId || !selectedTargetVersionId) {
-      toast("Select tenant/template/environment/target version first.", true);
+  const pendingByEnv = useMemo(() => {
+    const map = new Map<Id<"environments">, (typeof deployments)[0][]>();
+    for (const d of deployments ?? []) {
+      if (d.status === "PENDING") {
+        const list = map.get(d.environmentId) ?? [];
+        list.push(d);
+        map.set(d.environmentId, list);
+      }
+    }
+    return map;
+  }, [deployments]);
+
+  const handleDeploy = async () => {
+    if (!selectedTemplateId || !deployEnvId || !deployVersionId) {
+      toast("Select environment and version.", true);
       return;
     }
     try {
-      await createDeployment({
+      const active = activeByEnv.get(deployEnvId);
+      const dep = await createDeployment({
         tenantId: selectedTenantId ?? undefined,
         templateId: selectedTemplateId,
-        environmentId: selectedEnvironmentId,
-        targetVersionId: selectedTargetVersionId,
-        previousVersionId: selectedPreviousVersionId ?? undefined,
-        rolloutPolicy: {
-          strategy: "all_at_once",
-          maxUnavailable: 0,
-        },
-        metadata: {
-          source: "deployments.ui",
-        },
+        environmentId: deployEnvId,
+        targetVersionId: deployVersionId,
+        previousVersionId: active?.targetVersionId ?? undefined,
+        metadata: { source: "deployments.ui" },
       });
-      toast("Deployment created.");
-    } catch (error) {
-      toast(error instanceof Error ? error.message : "Failed to create deployment", true);
+      await activateDeployment({ deploymentId: dep._id });
+      toast("Deployed and activated.");
+      setDeployEnvId(null);
+      setDeployVersionId(null);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Deploy failed", true);
     }
   };
 
-  const handleActivate = async (deploymentId: Id<"deployments">) => {
+  const handleRollback = async () => {
+    if (!rollbackDeploymentId) return;
     try {
-      await activateDeployment({ deploymentId });
-      toast("Deployment activated.");
-    } catch (error) {
-      toast(error instanceof Error ? error.message : "Activation failed", true);
-    }
-  };
-
-  const handleRollback = async (deploymentId: Id<"deployments">) => {
-    try {
-      await rollbackDeployment({ deploymentId });
-      toast("Rollback deployment created.");
-    } catch (error) {
-      toast(error instanceof Error ? error.message : "Rollback failed", true);
+      await rollbackDeployment({ deploymentId: rollbackDeploymentId });
+      toast("Rollback created.");
+      setRollbackDeploymentId(null);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Rollback failed", true);
     }
   };
 
   return (
-    <main className="flex-1 overflow-auto p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-foreground">ARM Deployments</h2>
-          <p className="text-sm text-muted-foreground">
-            Promote approved versions through environments with activate and rollback controls.
-          </p>
-        </div>
+    <main className="flex-1 overflow-auto">
+      <PageHeader
+        title="Deployments"
+        description="Promote approved versions through environments. Activate and rollback from the board."
+      />
+
+      <div className="px-6 pb-4 flex flex-wrap items-center gap-3">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Tenant</span>
+        <select
+          value={selectedTenantId ?? ""}
+          onChange={(e) => setSelectedTenantId((e.target.value || null) as Id<"tenants"> | null)}
+          className="rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+        >
+          <option value="">Select tenant</option>
+          {(tenants ?? []).map((t) => (
+            <option key={t._id} value={t._id}>{t.name}</option>
+          ))}
+        </select>
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground ml-2">Template</span>
+        <select
+          value={selectedTemplateId ?? ""}
+          onChange={(e) => setSelectedTemplateId((e.target.value || null) as Id<"agentTemplates"> | null)}
+          className="rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+        >
+          <option value="">Select template</option>
+          {(templates ?? []).map((t) => (
+            <option key={t._id} value={t._id}>{t.name}</option>
+          ))}
+        </select>
       </div>
 
-      <section className="mb-4 rounded-md border border-border bg-card p-4">
-        <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Create Deployment
+      {!selectedTemplateId ? (
+        <div className="px-6 pb-6 text-center py-12 text-muted-foreground text-sm">
+          Select a tenant and template to view the deployment board.
         </div>
-        <div className="grid gap-3 md:grid-cols-5">
-          <SelectPanel
-            label="Tenant"
-            value={selectedTenantId ?? ""}
-            onChange={(value) => setSelectedTenantId(value as Id<"tenants">)}
-            options={(tenants ?? []).map((row) => ({ value: row._id, label: row.name }))}
-          />
-          <SelectPanel
-            label="Template"
-            value={selectedTemplateId ?? ""}
-            onChange={(value) => setSelectedTemplateId(value as Id<"agentTemplates">)}
-            options={(templates ?? []).map((row) => ({ value: row._id, label: row.name }))}
-          />
-          <SelectPanel
-            label="Environment"
-            value={selectedEnvironmentId ?? ""}
-            onChange={(value) => setSelectedEnvironmentId(value as Id<"environments">)}
-            options={(environments ?? []).map((row) => ({ value: row._id, label: `${row.name} (${row.type})` }))}
-          />
-          <SelectPanel
-            label="Target Version"
-            value={selectedTargetVersionId ?? ""}
-            onChange={(value) => setSelectedTargetVersionId(value as Id<"agentVersions">)}
-            options={(versions ?? []).map((row) => ({ value: row._id, label: `v${row.version} (${row.status})` }))}
-          />
-          <SelectPanel
-            label="Previous Version"
-            value={selectedPreviousVersionId ?? ""}
-            onChange={(value) => setSelectedPreviousVersionId((value || null) as Id<"agentVersions"> | null)}
-            options={[
-              { value: "", label: "None" },
-              ...(versions ?? []).map((row) => ({ value: row._id, label: `v${row.version}` })),
-            ]}
-          />
-        </div>
-        <div className="mt-3">
-          <Button size="sm" onClick={handleCreateDeployment}>
-            Create Deployment
-          </Button>
-        </div>
-      </section>
+      ) : (
+        <div className="px-6 pb-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {(environments ?? []).map((env) => {
+            const active = activeByEnv.get(env._id);
+            const pendingList = pendingByEnv.get(env._id) ?? [];
+            const targetVersion = active ? versionMap.get(active.targetVersionId) : null;
+            const previousVersion = active?.previousVersionId ? versionMap.get(active.previousVersionId) : null;
 
-      <section className="rounded-md border border-border bg-card p-4">
-        <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Deployment History
-        </div>
-        <div className="overflow-auto">
-          <table className="w-full min-w-[960px] text-left text-sm">
-            <thead className="text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="px-2 py-1">Status</th>
-                <th className="px-2 py-1">Template</th>
-                <th className="px-2 py-1">Environment</th>
-                <th className="px-2 py-1">Target</th>
-                <th className="px-2 py-1">Previous</th>
-                <th className="px-2 py-1">Created</th>
-                <th className="px-2 py-1">Activated</th>
-                <th className="px-2 py-1">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(deployments ?? []).map((deployment) => (
-                <tr key={deployment._id} className="border-t border-border">
-                  <td className="px-2 py-2">
-                    <StatusPill value={deployment.status} />
-                  </td>
-                  <td className="px-2 py-2 font-mono text-xs text-muted-foreground">{deployment.templateId}</td>
-                  <td className="px-2 py-2">
-                    {environmentMap.get(deployment.environmentId)?.name ?? deployment.environmentId}
-                  </td>
-                  <td className="px-2 py-2">
-                    {versionLabel(versionMap.get(deployment.targetVersionId), deployment.targetVersionId)}
-                  </td>
-                  <td className="px-2 py-2">
-                    {deployment.previousVersionId
-                      ? versionLabel(versionMap.get(deployment.previousVersionId), deployment.previousVersionId)
-                      : "n/a"}
-                  </td>
-                  <td className="px-2 py-2 text-xs text-muted-foreground">{fmtTime(deployment.createdAt)}</td>
-                  <td className="px-2 py-2 text-xs text-muted-foreground">{fmtTime(deployment.activatedAt)}</td>
-                  <td className="px-2 py-2">
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={deployment.status !== "PENDING"}
-                        onClick={() => handleActivate(deployment._id)}
-                      >
-                        Activate
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={deployment.status !== "ACTIVE" || !deployment.previousVersionId}
-                        onClick={() => handleRollback(deployment._id)}
-                      >
-                        Rollback
-                      </Button>
+            return (
+              <Card key={env._id} className="p-4 flex flex-col">
+                <div className="flex items-center gap-2 mb-4">
+                  <Server className="h-4 w-4 text-muted-foreground" />
+                  <span className="font-semibold text-foreground uppercase tracking-wider">{env.name}</span>
+                  <span className="text-[10px] text-muted-foreground">({env.type})</span>
+                </div>
+
+                {active ? (
+                  <>
+                    <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 mb-3">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-lg font-bold text-foreground">v{targetVersion?.version ?? "?"}</span>
+                        <span className="rounded border border-primary/30 bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary/70 dark:text-primary">
+                          ACTIVE
+                        </span>
+                      </div>
+                      {previousVersion && (
+                        <div className="text-[10px] text-muted-foreground">was v{previousVersion.version}</div>
+                      )}
+                      <div className="text-[10px] text-muted-foreground/70 mt-1">
+                        Activated {fmtTime(active.activatedAt)}
+                      </div>
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {(deployments ?? []).length === 0 && (
-            <div className="rounded border border-dashed border-border p-3 text-sm text-muted-foreground">
-              No deployments found.
-            </div>
-          )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs border-amber-500/40 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10"
+                      disabled={!active.previousVersionId}
+                      onClick={() => setRollbackDeploymentId(active._id)}
+                    >
+                      <RotateCcw className="h-3 w-3 mr-1" />
+                      Rollback
+                    </Button>
+                  </>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-border bg-muted/20 p-3 mb-3 text-center text-sm text-muted-foreground">
+                    No active deployment
+                  </div>
+                )}
+
+                {pendingList.length > 0 && (
+                  <div className="text-[10px] text-muted-foreground mb-2">
+                    {pendingList.length} pending
+                  </div>
+                )}
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs mt-auto"
+                  onClick={() => setDeployEnvId(env._id)}
+                >
+                  <Rocket className="h-3 w-3 mr-1" />
+                  Deploy
+                </Button>
+              </Card>
+            );
+          })}
         </div>
-      </section>
+      )}
+
+      {(environments ?? []).length === 0 && selectedTenantId && (
+        <div className="px-6 pb-6 text-center py-12 text-muted-foreground text-sm">
+          No environments for this tenant.
+        </div>
+      )}
+
+      {/* Deploy modal */}
+      <Dialog open={!!deployEnvId} onOpenChange={(open) => !open && setDeployEnvId(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Deploy version</DialogTitle>
+            <DialogDescription>
+              Select a version to deploy to this environment. It will be activated immediately.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <label className="block text-sm font-medium mb-2">Version</label>
+            <select
+              value={deployVersionId ?? ""}
+              onChange={(e) => setDeployVersionId((e.target.value || null) as Id<"agentVersions"> | null)}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            >
+              <option value="">Select version</option>
+              {(versions ?? []).map((v) => (
+                <option key={v._id} value={v._id}>v{v.version} ({v.status})</option>
+              ))}
+            </select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeployEnvId(null)}>Cancel</Button>
+            <Button onClick={handleDeploy} disabled={!deployVersionId}>Deploy</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rollback confirmation */}
+      <Dialog open={!!rollbackDeploymentId} onOpenChange={(open) => !open && setRollbackDeploymentId(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rollback deployment?</DialogTitle>
+            <DialogDescription>
+              This will create a rollback to the previous version. The current deployment will be retired.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRollbackDeploymentId(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleRollback}>Rollback</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
-  );
-}
-
-function versionLabel(version: any, fallbackId: string) {
-  if (!version) return fallbackId;
-  return `v${version.version} (${version.status})`;
-}
-
-function StatusPill({ value }: { value: string }) {
-  const classes =
-    value === "ACTIVE"
-      ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/40"
-      : value === "PENDING" || value === "ROLLING_BACK"
-      ? "bg-amber-500/15 text-amber-300 border-amber-500/40"
-      : "bg-secondary text-foreground border-border";
-
-  return <span className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${classes}`}>{value}</span>;
-}
-
-function SelectPanel({
-  label,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: Array<{ value: string; label: string }>;
-}) {
-  return (
-    <label className="text-sm">
-      <div className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
-      <select
-        className="w-full rounded border border-border bg-secondary px-2 py-1 text-foreground"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-      >
-        <option value="">Select {label}</option>
-        {options.map((option) => (
-          <option key={`${label}-${option.value}`} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
   );
 }

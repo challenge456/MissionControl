@@ -1,79 +1,121 @@
 /**
  * QC Dashboard View
- * 
+ *
  * Overview of quality control runs, trends, and key metrics.
+ * Environment filter, Start QC Run modal, latest findings, environment health strip.
  */
 
+import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { ShieldCheck, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, Clock, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+const ENV_OPTIONS = [
+  "ALL",
+  "local",
+  "dev",
+  "staging",
+  "pilot",
+  "production",
+] as const;
+type EnvFilter = (typeof ENV_OPTIONS)[number];
 
 interface QcDashboardViewProps {
   projectId: Id<"projects"> | null;
   onRunSelect?: (runId: Id<"qcRuns">) => void;
+  onOpenStartQcRun?: () => void;
 }
 
 function RiskGradeBadge({ grade }: { grade: "GREEN" | "YELLOW" | "RED" | undefined }) {
-  if (!grade) return <Badge variant="outline">N/A</Badge>;
-  
-  const colors = {
-    GREEN: "bg-green-500/10 text-green-600 border-green-500/20",
-    YELLOW: "bg-yellow-500/10 text-yellow-600 border-yellow-500/20",
-    RED: "bg-red-500/10 text-red-600 border-red-500/20",
+  if (!grade) return <Badge variant="muted">N/A</Badge>;
+
+  const variantMap: Record<string, "success" | "warning" | "error"> = {
+    GREEN: "success",
+    YELLOW: "warning",
+    RED: "error",
   };
-  
+
   return (
-    <Badge variant="outline" className={cn("font-mono", colors[grade])}>
+    <Badge variant={variantMap[grade]} className="font-mono">
       {grade}
     </Badge>
   );
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const colors: Record<string, string> = {
-    COMPLETED: "bg-green-500/10 text-green-600 border-green-500/20",
-    RUNNING: "bg-blue-500/10 text-blue-600 border-blue-500/20",
-    PENDING: "bg-gray-500/10 text-gray-600 border-gray-500/20",
-    FAILED: "bg-red-500/10 text-red-600 border-red-500/20",
-    CANCELED: "bg-gray-500/10 text-gray-600 border-gray-500/20",
+  const variantMap: Record<string, "success" | "muted" | "error"> = {
+    COMPLETED: "success",
+    RUNNING: "muted",
+    PENDING: "muted",
+    FAILED: "error",
+    CANCELED: "muted",
   };
-  
+
   return (
-    <Badge variant="outline" className={cn("text-xs", colors[status] || "")}>
+    <Badge variant={variantMap[status] ?? "muted"} className="text-xs">
       {status}
     </Badge>
   );
 }
 
-export function QcDashboardView({ projectId, onRunSelect }: QcDashboardViewProps) {
-  const runs = useQuery(api.qcRuns.list, { projectId: projectId ?? undefined, limit: 20 });
-  const scores = useQuery(api.qcRuns.projectScores, projectId ? { projectId, limit: 10 } : "skip");
+export function QcDashboardView({ projectId, onRunSelect, onOpenStartQcRun }: QcDashboardViewProps) {
+  const [envFilter, setEnvFilter] = useState<EnvFilter>("ALL");
 
-  if (!runs) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-sm text-muted-foreground">Loading QC runs...</div>
-      </div>
-    );
-  }
+  const runsList = useQuery(
+    api.qcRuns.list,
+    { projectId: projectId ?? undefined, limit: 50 }
+  );
+  const runsByEnv = useQuery(
+    api.qcRuns.listByEnvironment,
+    envFilter !== "ALL" && projectId
+      ? { projectId, environment: envFilter, limit: 50 }
+      : "skip"
+  );
+  const envSummary = useQuery(api.qcRuns.environmentSummary, { projectId: projectId ?? undefined });
 
-  const completedRuns = runs.filter((r) => r.status === "COMPLETED");
-  const latestRun = completedRuns[0];
-  const previousRun = completedRuns[1];
+  const runs = (envFilter === "ALL" ? runsList : runsByEnv) ?? [];
 
-  // Compute trend
+  const completedRuns = runs
+    .filter((r) => r.status === "COMPLETED")
+    .sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0));
+  const latestRun = completedRuns[0] ?? null;
+  const previousRun = completedRuns[1] ?? null;
+  const scoresForTrend = completedRuns
+    .filter((r) => r.qualityScore !== undefined)
+    .slice(0, 10)
+    .map((r) => ({
+      runId: r.runId,
+      runSequence: r.runSequence,
+      qualityScore: r.qualityScore!,
+      riskGrade: r.riskGrade,
+      completedAt: r.completedAt,
+    }))
+    .reverse();
+
+  const latestFindings = useQuery(
+    api.qcFindings.listByRun,
+    latestRun?._id ? { qcRunId: latestRun._id, severity: "RED" } : "skip"
+  );
+  const topRedFindings = (latestFindings ?? []).slice(0, 5);
+
   let trend: "up" | "down" | "neutral" = "neutral";
   if (latestRun && previousRun && latestRun.qualityScore !== undefined && previousRun.qualityScore !== undefined) {
     if (latestRun.qualityScore > previousRun.qualityScore) trend = "up";
     else if (latestRun.qualityScore < previousRun.qualityScore) trend = "down";
   }
 
-  // Aggregate stats
   const totalRuns = runs.length;
   const redRuns = completedRuns.filter((r) => r.riskGrade === "RED").length;
   const yellowRuns = completedRuns.filter((r) => r.riskGrade === "YELLOW").length;
@@ -81,6 +123,21 @@ export function QcDashboardView({ projectId, onRunSelect }: QcDashboardViewProps
   const avgQualityScore = completedRuns.length > 0
     ? Math.round(completedRuns.reduce((sum, r) => sum + (r.qualityScore ?? 0), 0) / completedRuns.length)
     : 0;
+
+  if (envFilter === "ALL" && !runsList) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-sm text-muted-foreground">Loading QC runs...</div>
+      </div>
+    );
+  }
+  if (envFilter !== "ALL" && runsByEnv === undefined) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-sm text-muted-foreground">Loading QC runs...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 overflow-auto p-6 space-y-6">
@@ -95,11 +152,50 @@ export function QcDashboardView({ projectId, onRunSelect }: QcDashboardViewProps
             Automated quality checks, coverage analysis, and delivery gates
           </p>
         </div>
-        <Button size="sm" className="gap-2">
+        <Button size="sm" className="gap-2" onClick={onOpenStartQcRun}>
           <Play className="h-4 w-4" />
           Start QC Run
         </Button>
       </div>
+
+      {/* Environment filter tabs */}
+      <Tabs value={envFilter} onValueChange={(v) => setEnvFilter(v as EnvFilter)}>
+        <TabsList className="flex flex-wrap h-auto gap-1">
+          {ENV_OPTIONS.map((env) => (
+            <TabsTrigger key={env} value={env} className="text-xs">
+              {env === "ALL" ? "All" : env}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+
+      {/* Environment health strip */}
+      {envSummary && envSummary.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-muted-foreground">Environments:</span>
+          {envSummary.map((s) => (
+            <TooltipProvider key={s.environment}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div
+                    className={cn(
+                      "h-2 w-2 rounded-full",
+                      s.latestGrade === "RED" && "bg-red-500",
+                      s.latestGrade === "YELLOW" && "bg-yellow-500",
+                      s.latestGrade === "GREEN" && "bg-green-500",
+                      !s.latestGrade && "bg-muted-foreground/50"
+                    )}
+                    aria-label={`${s.environment}: ${s.latestGrade ?? "no runs"}`}
+                  />
+                </TooltipTrigger>
+                <TooltipContent>
+                  {s.environment}: {s.latestGrade ?? "—"} {s.latestScore != null ? `(${s.latestScore})` : ""} · {s.runCount} runs
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ))}
+        </div>
+      )}
 
       {/* Key Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -107,7 +203,7 @@ export function QcDashboardView({ projectId, onRunSelect }: QcDashboardViewProps
           <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Latest Score</div>
           <div className="mt-2 flex items-baseline gap-2">
             <div className="text-3xl font-bold">{latestRun?.qualityScore ?? "--"}</div>
-            {trend === "up" && <TrendingUp className="h-4 w-4 text-green-500" />}
+            {trend === "up" && <TrendingUp className="h-4 w-4 text-primary" />}
             {trend === "down" && <TrendingDown className="h-4 w-4 text-red-500" />}
           </div>
           <div className="mt-1 text-xs text-muted-foreground">
@@ -154,20 +250,52 @@ export function QcDashboardView({ projectId, onRunSelect }: QcDashboardViewProps
       </div>
 
       {/* Quality Score Trend */}
-      {scores && scores.length > 0 && (
+      {scoresForTrend.length > 0 && (
         <Card className="p-6">
           <h3 className="text-sm font-semibold mb-4">Quality Score Trend</h3>
           <div className="flex items-end gap-2 h-32">
-            {scores.reverse().map((s, i) => {
-              const height = (s.qualityScore / 100) * 100;
-              const color = s.riskGrade === "RED" ? "bg-red-500" : s.riskGrade === "YELLOW" ? "bg-yellow-500" : "bg-green-500";
-              return (
-                <div key={s.runId} className="flex-1 flex flex-col items-center gap-1">
-                  <div className={cn("w-full rounded-t", color)} style={{ height: `${height}%` }} />
-                  <div className="text-[0.6rem] text-muted-foreground">#{s.runSequence}</div>
-                </div>
-              );
-            })}
+            <TooltipProvider>
+              {scoresForTrend.map((s) => {
+                const height = (s.qualityScore / 100) * 100;
+                const color = s.riskGrade === "RED" ? "bg-red-500" : s.riskGrade === "YELLOW" ? "bg-yellow-500" : "bg-green-500";
+                return (
+                  <Tooltip key={s.runId}>
+                    <TooltipTrigger asChild>
+                      <div className="flex-1 flex flex-col items-center gap-1 cursor-default">
+                        <div className={cn("w-full rounded-t", color)} style={{ height: `${height}%` }} />
+                        <div className="text-[0.6rem] text-muted-foreground">#{s.runSequence}</div>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      Run {s.runId}: {s.qualityScore} {s.riskGrade ?? ""}
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })}
+            </TooltipProvider>
+          </div>
+        </Card>
+      )}
+
+      {/* Latest Findings (RED) */}
+      {topRedFindings.length > 0 && (
+        <Card className="p-6">
+          <h3 className="text-sm font-semibold mb-4">Latest RED Findings</h3>
+          <div className="space-y-2">
+            {topRedFindings.map((f) => (
+              <div
+                key={f._id}
+                className="rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-sm"
+              >
+                <div className="font-medium">{f.title}</div>
+                <div className="text-muted-foreground text-xs mt-1">{f.description}</div>
+                {f.filePaths?.length ? (
+                  <div className="text-xs mt-1 font-mono text-muted-foreground">
+                    {f.filePaths.slice(0, 2).join(", ")}
+                  </div>
+                ) : null}
+              </div>
+            ))}
           </div>
         </Card>
       )}
@@ -200,7 +328,7 @@ export function QcDashboardView({ projectId, onRunSelect }: QcDashboardViewProps
                   <AlertTriangle className="h-4 w-4 text-red-500" />
                 )}
                 {run.status === "COMPLETED" && run.gatePassed === true && (
-                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+                  <CheckCircle2 className="h-4 w-4 text-primary" />
                 )}
                 {run.status === "RUNNING" && (
                   <Clock className="h-4 w-4 text-blue-500 animate-pulse" />

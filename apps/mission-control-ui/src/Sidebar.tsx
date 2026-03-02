@@ -56,11 +56,11 @@ export function Sidebar({
 
   return (
     <aside
-      className="flex flex-col border-r border-border bg-card shrink-0 overflow-hidden transition-[width] duration-200"
+      className="flex flex-col border-r border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-[var(--blur-panel)] shrink-0 overflow-hidden transition-[width] duration-200"
       style={{ width, minWidth: width }}
     >
       {/* Header */}
-      <div className={cn("px-3 py-3 border-b border-border flex items-center shrink-0", collapsed ? "justify-center" : "justify-between")}>
+      <div className={cn("px-3 py-3 border-b border-[var(--glass-border)] flex items-center shrink-0", collapsed ? "justify-center" : "justify-between")}>
         {!collapsed && (
           <>
             <span className="font-semibold text-xs uppercase tracking-wider text-foreground">
@@ -162,7 +162,7 @@ function AgentRow({ agent, onClick }: { agent: Doc<"agents">; onClick?: () => vo
       aria-label={`${agent.name}, ${roleShort}, ${statusLabel}`}
       disabled={!onClick}
     >
-      <span className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-sm shrink-0">
+      <span className="w-7 h-7 rounded-full bg-accent flex items-center justify-center text-xs font-medium shrink-0 text-foreground">
         {agent.emoji || agent.name.charAt(0)}
       </span>
       <div className="flex-1 min-w-0">
@@ -172,7 +172,7 @@ function AgentRow({ agent, onClick }: { agent: Doc<"agents">; onClick?: () => vo
       <span
         className={cn(
           "w-2 h-2 rounded-full shrink-0",
-          isActive ? "bg-emerald-500" : "bg-muted-foreground/40"
+          isActive ? "bg-primary status-dot-pulse" : "bg-muted-foreground/40"
         )}
         title={agent.status}
         aria-hidden
@@ -198,7 +198,7 @@ function SidebarButton({
     default: "bg-muted hover:bg-muted/80 text-foreground",
     warning: "bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/20",
     danger: "bg-red-500/10 hover:bg-red-500/20 text-red-400 border-red-500/20",
-    success: "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/20",
+    success: "bg-primary/10 hover:bg-primary/20 text-primary border-primary/20",
   };
 
   return (

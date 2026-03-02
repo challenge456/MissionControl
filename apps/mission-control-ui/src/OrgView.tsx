@@ -22,6 +22,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { EmptyState } from "@/components/ui/empty-state";
+import { CreateAgentModal, type CreateAgentForm } from "@/CreateAgentModal";
 import { Users, X, ChevronDown, Plus } from "lucide-react";
 
 interface OrgViewProps {
@@ -55,7 +56,7 @@ function countNodesByType(nodes: any[], type: OrgNodeType): number {
 }
 
 const AGENT_STATUS_CLASSES: Record<string, string> = {
-  ACTIVE: "text-emerald-500",
+  ACTIVE: "text-primary",
   PAUSED: "text-amber-500",
   DRAINED: "text-muted-foreground",
   QUARANTINED: "text-red-500",
@@ -63,7 +64,7 @@ const AGENT_STATUS_CLASSES: Record<string, string> = {
 };
 
 const AGENT_STATUS_BG: Record<string, string> = {
-  ACTIVE: "bg-emerald-500/10 text-emerald-500",
+  ACTIVE: "bg-primary/10 text-primary",
   PAUSED: "bg-amber-500/10 text-amber-500",
   DRAINED: "bg-muted text-muted-foreground",
   QUARANTINED: "bg-red-500/10 text-red-500",
@@ -72,7 +73,7 @@ const AGENT_STATUS_BG: Record<string, string> = {
 
 const ROLE_COLORS: Record<string, string> = {
   LEAD: "bg-blue-500",
-  SPECIALIST: "bg-emerald-500",
+  SPECIALIST: "bg-primary",
   INTERN: "bg-teal-500",
 };
 
@@ -279,6 +280,9 @@ export function OrgView({ projectId }: OrgViewProps) {
             .split(",")
             .map((s) => s.trim())
             .filter(Boolean),
+          allowedTools: form.allowedTools
+            ? form.allowedTools.split(",").map((s) => s.trim()).filter(Boolean)
+            : undefined,
           budgetDaily: form.budgetDaily ? Number(form.budgetDaily) : undefined,
           budgetPerRun: form.budgetPerRun ? Number(form.budgetPerRun) : undefined,
           canSpawn: form.canSpawn,
@@ -292,6 +296,7 @@ export function OrgView({ projectId }: OrgViewProps) {
         setActionError(null);
       } catch (err: any) {
         setActionError(err?.message || "Failed to create agent. Please try again.");
+        throw err;
       }
     },
     [registerAgent, projectId, createParentId]
@@ -429,6 +434,7 @@ export function OrgView({ projectId }: OrgViewProps) {
 
       <CreateAgentModal
         open={showCreateModal}
+        projectId={projectId}
         parentAgentId={createParentId}
         onClose={handleCloseCreate}
         onCreate={handleCreateAgent}
@@ -516,7 +522,7 @@ function OrgDetailDrawer({
   }
 
   const avatarColor = isAgent
-    ? detail.role === "LEAD" ? "bg-blue-500" : detail.role === "SPECIALIST" ? "bg-emerald-500" : "bg-teal-500"
+    ? detail.role === "LEAD" ? "bg-blue-500" : detail.role === "SPECIALIST" ? "bg-primary" : "bg-teal-500"
     : "bg-blue-500";
 
   return (
@@ -688,7 +694,7 @@ function AgentDetailContent({
             <div className="text-xs text-muted-foreground mb-1.5">Allowed Tools</div>
             <div className="flex flex-wrap gap-1.5">
               {agent.allowedTools.map((t: string) => (
-                <Badge key={t} variant="outline" className="text-xs bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
+                <Badge key={t} variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">
                   {t}
                 </Badge>
               ))}
@@ -715,8 +721,8 @@ function AgentDetailContent({
               const spent = agent.spendToday ?? 0;
               const remaining = daily - spent;
               const ratio = daily > 0 ? spent / daily : 0;
-              const ratioClass = ratio > 0.9 ? "text-red-500" : ratio > 0.7 ? "text-amber-500" : "text-emerald-500";
-              const barColor = ratio > 0.9 ? "bg-red-500" : ratio > 0.7 ? "bg-amber-500" : "bg-emerald-500";
+              const ratioClass = ratio > 0.9 ? "text-red-500" : ratio > 0.7 ? "text-amber-500" : "text-primary";
+              const barColor = ratio > 0.9 ? "bg-red-500" : ratio > 0.7 ? "bg-amber-500" : "bg-primary";
               return (
                 <>
                   <DetailRow label="Daily Budget" value={`$${daily.toFixed(2)}`} />
@@ -823,7 +829,7 @@ function AgentDocumentCard({
               {title}
             </span>
             {!empty && (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-primary/10 text-primary border-primary/20">
                 active
               </Badge>
             )}
@@ -1034,9 +1040,9 @@ function UnifiedOrgNode({ node, selectedId, onSelect }: UnifiedOrgNodeProps) {
       borderAccent = "border-blue-500";
       ringAccent = "ring-blue-500/25";
     } else if (node.agentRole === "SPECIALIST") {
-      avatarColor = "bg-emerald-500";
-      borderAccent = "border-emerald-500";
-      ringAccent = "ring-emerald-500/25";
+      avatarColor = "bg-primary";
+      borderAccent = "border-primary";
+      ringAccent = "ring-primary/25";
     } else {
       avatarColor = "bg-teal-500";
       borderAccent = "border-teal-500";
@@ -1065,7 +1071,7 @@ function UnifiedOrgNode({ node, selectedId, onSelect }: UnifiedOrgNodeProps) {
             </div>
           </div>
           {node.active && (
-            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" aria-label="Active" />
+            <div className="w-2.5 h-2.5 rounded-full bg-primary shrink-0" aria-label="Active" />
           )}
         </div>
 
@@ -1114,7 +1120,7 @@ function UnifiedOrgNode({ node, selectedId, onSelect }: UnifiedOrgNodeProps) {
                   <div
                     className={cn(
                       "h-full rounded-full transition-[width] duration-300",
-                      (node.spendToday || 0) / node.budgetDaily > 0.9 ? "bg-amber-500" : "bg-emerald-500"
+                      (node.spendToday || 0) / node.budgetDaily > 0.9 ? "bg-amber-500" : "bg-primary"
                     )}
                     style={{ width: `${Math.min(100, ((node.spendToday || 0) / node.budgetDaily) * 100)}%` }}
                   />
@@ -1135,219 +1141,6 @@ function UnifiedOrgNode({ node, selectedId, onSelect }: UnifiedOrgNodeProps) {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Create Agent Modal                                                 */
-/* ------------------------------------------------------------------ */
-
-interface CreateAgentForm {
-  name: string;
-  emoji: string;
-  role: string;
-  workspacePath: string;
-  allowedTaskTypes: string;
-  budgetDaily: string;
-  budgetPerRun: string;
-  canSpawn: boolean;
-  maxSubAgents: string;
-  email: string;
-  telegram: string;
-  whatsapp: string;
-  discord: string;
-}
-
-const defaultCreateForm: CreateAgentForm = {
-  name: "",
-  emoji: "",
-  role: "SPECIALIST",
-  workspacePath: "/workspace",
-  allowedTaskTypes: "",
-  budgetDaily: "",
-  budgetPerRun: "",
-  canSpawn: false,
-  maxSubAgents: "0",
-  email: "",
-  telegram: "",
-  whatsapp: "",
-  discord: "",
-};
-
-const roleOptions = [
-  { value: "INTERN", label: "Intern", desc: "Limited access, lower budget ($2/day)" },
-  { value: "SPECIALIST", label: "Specialist", desc: "Standard agent, focused tasks ($5/day)" },
-  { value: "LEAD", label: "Lead", desc: "Full access, coordination role ($12/day)" },
-];
-
-function CreateAgentModal({
-  open,
-  parentAgentId,
-  onClose,
-  onCreate,
-}: {
-  open: boolean;
-  parentAgentId?: Id<"agents">;
-  onClose: () => void;
-  onCreate: (form: CreateAgentForm) => void;
-}) {
-  const [form, setForm] = useState<CreateAgentForm>(defaultCreateForm);
-
-  const update = (field: keyof CreateAgentForm, value: any) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
-  };
-
-  const canSubmit = form.name.trim().length > 0 && form.role && form.workspacePath.trim().length > 0;
-
-  return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-[560px] max-h-[90vh] flex flex-col p-0">
-        <DialogHeader className="px-6 py-5 border-b border-border">
-          <DialogTitle>{parentAgentId ? "Add Sub-Agent" : "Add New Agent"}</DialogTitle>
-        </DialogHeader>
-
-        <ScrollArea className="flex-1 px-6">
-          {/* Identity */}
-          <ModalSection title="Identity">
-            <div className="flex gap-3">
-              <div className="flex-1">
-                <label className="block text-xs text-muted-foreground mb-1">Name *</label>
-                <Input value={form.name} onChange={(e) => update("name", e.target.value)} placeholder="e.g. Research Agent" autoFocus />
-              </div>
-              <div className="w-20">
-                <label className="block text-xs text-muted-foreground mb-1">Emoji</label>
-                <Input value={form.emoji} onChange={(e) => update("emoji", e.target.value)} placeholder="🤖" />
-              </div>
-            </div>
-          </ModalSection>
-
-          {/* Role */}
-          <ModalSection title="Role">
-            <div className="flex flex-col gap-2">
-              {roleOptions.map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => update("role", opt.value)}
-                  className={cn(
-                    "p-3 rounded-lg border text-left transition-colors",
-                    form.role === opt.value
-                      ? "border-primary bg-primary/5"
-                      : "border-border bg-background hover:bg-muted"
-                  )}
-                >
-                  <div className="flex justify-between items-center">
-                    <span className="font-semibold text-sm text-foreground">{opt.label}</span>
-                    {form.role === opt.value && (
-                      <span className="text-primary text-sm">✓</span>
-                    )}
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-0.5">{opt.desc}</div>
-                </button>
-              ))}
-            </div>
-          </ModalSection>
-
-          {/* Configuration */}
-          <ModalSection title="Configuration">
-            <div className="mb-3">
-              <label className="block text-xs text-muted-foreground mb-1">Workspace Path *</label>
-              <Input value={form.workspacePath} onChange={(e) => update("workspacePath", e.target.value)} placeholder="/workspace" />
-            </div>
-            <div className="mb-3">
-              <label className="block text-xs text-muted-foreground mb-1">Allowed Task Types</label>
-              <Input value={form.allowedTaskTypes} onChange={(e) => update("allowedTaskTypes", e.target.value)} placeholder="ENGINEERING, CONTENT, RESEARCH (comma-separated)" />
-              <p className="text-xs text-muted-foreground mt-1">Leave empty to allow all task types</p>
-            </div>
-          </ModalSection>
-
-          {/* Budget */}
-          <ModalSection title="Budget">
-            <p className="text-xs text-muted-foreground mb-3">Leave empty to use role-based defaults</p>
-            <div className="flex gap-3">
-              <div className="flex-1">
-                <label className="block text-xs text-muted-foreground mb-1">Daily Budget ($)</label>
-                <Input
-                  type="number"
-                  value={form.budgetDaily}
-                  onChange={(e) => update("budgetDaily", e.target.value)}
-                  placeholder={form.role === "LEAD" ? "12.00" : form.role === "SPECIALIST" ? "5.00" : "2.00"}
-                  step="0.50"
-                />
-              </div>
-              <div className="flex-1">
-                <label className="block text-xs text-muted-foreground mb-1">Per-Run Budget ($)</label>
-                <Input
-                  type="number"
-                  value={form.budgetPerRun}
-                  onChange={(e) => update("budgetPerRun", e.target.value)}
-                  placeholder={form.role === "LEAD" ? "1.50" : form.role === "SPECIALIST" ? "0.75" : "0.25"}
-                  step="0.25"
-                />
-              </div>
-            </div>
-          </ModalSection>
-
-          {/* Contact */}
-          <ModalSection title="Contact Channels">
-            <div className="mb-3">
-              <label className="block text-xs text-muted-foreground mb-1">Email (for monitoring inbox/outbox)</label>
-              <Input type="email" value={form.email} onChange={(e) => update("email", e.target.value)} placeholder="agent@sellerfi.ai" />
-            </div>
-            <div className="flex gap-3">
-              <div className="flex-1">
-                <label className="block text-xs text-muted-foreground mb-1">Telegram</label>
-                <Input value={form.telegram} onChange={(e) => update("telegram", e.target.value)} placeholder="@username" />
-              </div>
-              <div className="flex-1">
-                <label className="block text-xs text-muted-foreground mb-1">WhatsApp</label>
-                <Input value={form.whatsapp} onChange={(e) => update("whatsapp", e.target.value)} placeholder="+1234567890" />
-              </div>
-            </div>
-          </ModalSection>
-
-          {/* Spawning */}
-          <ModalSection title="Sub-Agent Spawning">
-            <div className="flex items-center gap-3 mb-3">
-              <button
-                onClick={() => update("canSpawn", !form.canSpawn)}
-                className={cn(
-                  "relative w-10 h-6 rounded-full transition-colors shrink-0",
-                  form.canSpawn ? "bg-primary" : "bg-border"
-                )}
-                aria-label="Toggle sub-agent spawning"
-              >
-                <div className={cn("absolute top-[3px] left-[3px] w-[18px] h-[18px] rounded-full bg-white transition-transform", form.canSpawn && "translate-x-4")} />
-              </button>
-              <span className="text-sm text-foreground">Can spawn sub-agents</span>
-            </div>
-            {form.canSpawn && (
-              <div className="w-[120px]">
-                <label className="block text-xs text-muted-foreground mb-1">Max Sub-Agents</label>
-                <Input type="number" value={form.maxSubAgents} onChange={(e) => update("maxSubAgents", e.target.value)} min="0" max="10" />
-              </div>
-            )}
-          </ModalSection>
-        </ScrollArea>
-
-        <DialogFooter className="px-6 py-4 border-t border-border">
-          <Button onClick={() => onCreate(form)} disabled={!canSubmit}>
-            Create Agent
-          </Button>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function ModalSection({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="pt-5 pb-4 border-b border-border">
-      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">{title}</h3>
-      {children}
     </div>
   );
 }

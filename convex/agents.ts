@@ -570,17 +570,26 @@ export const recordSpend = mutation({
 /**
  * Detect stale agents that haven't sent a heartbeat within the threshold.
  * Recovery flow:
- *   1. Detect: Check lastHeartbeatAt against staleThresholdMs (default 2 min)
+ *   1. Detect: Check lastHeartbeatAt against staleThresholdMs (env: HEARTBEAT_STALE_MINUTES, default 5)
  *   2. Alert: Create a CRITICAL alert in the alerts table
  *   3. Quarantine: Set agent status to QUARANTINED
  *   4. Reassign: Move agent's in-progress tasks to BLOCKED
+ *
+ * Enable via Convex env: HEARTBEAT_RECOVERY_ENABLED=true.
+ * Optionally set HEARTBEAT_IGNORE_NEVER=true to skip agents that have never sent a heartbeat (e.g. seeded only).
  */
 export const detectStaleAgents = internalMutation({
   args: {},
   handler: async (ctx) => {
+    if (process.env.HEARTBEAT_RECOVERY_ENABLED !== "true") {
+      return { checked: 0, staleCount: 0, staleAgents: [], skipped: "HEARTBEAT_RECOVERY_ENABLED not set" };
+    }
+
     const now = Date.now();
-    const STALE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes without heartbeat
-    
+    const staleMinutes = parseInt(process.env.HEARTBEAT_STALE_MINUTES ?? "5", 10) || 5;
+    const STALE_THRESHOLD_MS = Math.min(Math.max(staleMinutes * 60 * 1000, 60_000), 60 * 60 * 1000); // 1 min to 1 hour
+    const ignoreNeverHeartbeat = process.env.HEARTBEAT_IGNORE_NEVER === "true";
+
     // Get all agents that should be heartbeating (ACTIVE or DRAINED)
     const activeAgents = await ctx.db
       .query("agents")
@@ -597,7 +606,8 @@ export const detectStaleAgents = internalMutation({
     
     for (const agent of monitoredAgents) {
       const lastHB = agent.lastHeartbeatAt;
-      
+      if (ignoreNeverHeartbeat && (lastHB == null || lastHB === 0)) continue;
+
       // No heartbeat ever, or heartbeat too old
       if (!lastHB || now - lastHB > STALE_THRESHOLD_MS) {
         const staleDuration = lastHB ? now - lastHB : Infinity;

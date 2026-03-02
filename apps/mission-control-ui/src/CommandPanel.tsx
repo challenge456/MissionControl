@@ -33,9 +33,9 @@ interface QuickAction {
 const QUICK_ACTIONS: QuickAction[] = [
   { id: "reverse-prompt",  label: "Reverse Prompt",     description: "AI suggests tasks to advance your mission",  icon: Sparkles,      accent: "text-primary",       variant: "default"  },
   { id: "pause-all",       label: "Pause All Agents",   description: "Immediately halt all active agents",         icon: Pause,         accent: "text-amber-500",     variant: "warning"  },
-  { id: "resume-all",      label: "Resume All Agents",  description: "Resume all paused agents",                   icon: Play,          accent: "text-emerald-500",   variant: "success"  },
+  { id: "resume-all",      label: "Resume All Agents",  description: "Resume all paused agents",                   icon: Play,          accent: "text-primary",   variant: "success"  },
   { id: "run-standup",     label: "Run Standup",        description: "Generate squad standup report",              icon: RefreshCw,     accent: "text-primary",       variant: "default"  },
-  { id: "approve-all",     label: "Bulk Approve",       description: "Approve all pending low-risk items",         icon: CheckCircle2,  accent: "text-emerald-500",   variant: "success"  },
+  { id: "approve-all",     label: "Bulk Approve",       description: "Approve all pending low-risk items",         icon: CheckCircle2,  accent: "text-primary",   variant: "success"  },
   { id: "broadcast",       label: "Broadcast",          description: "Send directive to all active agents",        icon: Radio,         accent: "text-primary",       variant: "info"     },
   { id: "health-check",    label: "Health Check",       description: "Run system diagnostics across all services", icon: Activity,      accent: "text-sky-400",       variant: "info"     },
   { id: "emergency-stop",  label: "Emergency Stop",     description: "Kill switch — quarantine all agents",        icon: AlertTriangle, accent: "text-destructive",   variant: "danger"   },
@@ -45,7 +45,7 @@ const variantHover: Record<string, string> = {
   default: "hover:bg-accent hover:border-border",
   warning: "hover:bg-amber-500/5 hover:border-amber-500/20",
   danger:  "hover:bg-destructive/5 hover:border-destructive/20",
-  success: "hover:bg-emerald-500/5 hover:border-emerald-500/20",
+  success: "hover:bg-primary/5 hover:border-primary/20",
   info:    "hover:bg-sky-500/5 hover:border-sky-400/20",
 };
 
@@ -55,7 +55,7 @@ const variantHover: Record<string, string> = {
 
 function statusColor(status: string) {
   switch (status) {
-    case "ACTIVE":      return "bg-emerald-500";
+    case "ACTIVE":      return "bg-primary";
     case "PAUSED":      return "bg-amber-500";
     case "DRAINED":     return "bg-sky-400";
     case "QUARANTINED": return "bg-destructive";
@@ -86,8 +86,7 @@ function SectionHeader({ icon: Icon, title, count }: { icon: LucideIcon; title: 
 
 function AgentFleet({ projectId, onToast }: { projectId: Id<"projects"> | null; onToast: (msg: string, err?: boolean) => void }) {
   const agents = useQuery(api.agents.listAll, projectId ? { projectId } : {});
-  const pauseAll = useMutation(api.agents.pauseAll);
-  const resumeAll = useMutation(api.agents.resumeAll);
+  const updateStatus = useMutation(api.agents.updateStatus);
 
   if (!agents || agents.length === 0) {
     return (
@@ -98,10 +97,10 @@ function AgentFleet({ projectId, onToast }: { projectId: Id<"projects"> | null; 
   const handleToggle = async (agent: Doc<"agents">) => {
     try {
       if (agent.status === "ACTIVE") {
-        await pauseAll({ projectId: projectId ?? undefined, reason: "Command Panel", userId: "operator" });
+        await updateStatus({ agentId: agent._id, status: "PAUSED", reason: "Command Panel" });
         onToast(`Paused ${agent.name}`);
       } else if (agent.status === "PAUSED") {
-        await resumeAll({ projectId: projectId ?? undefined, reason: "Command Panel", userId: "operator" });
+        await updateStatus({ agentId: agent._id, status: "ACTIVE", reason: "Command Panel" });
         onToast(`Resumed ${agent.name}`);
       }
     } catch (e) {
@@ -132,7 +131,7 @@ function AgentFleet({ projectId, onToast }: { projectId: Id<"projects"> | null; 
               >
                 {agent.status === "ACTIVE"
                   ? <Pause className="h-3 w-3 text-amber-500" />
-                  : <Play className="h-3 w-3 text-emerald-500" />}
+                  : <Play className="h-3 w-3 text-primary" />}
               </button>
             )}
           </div>
@@ -160,12 +159,12 @@ function ApprovalQueue({ projectId, onToast }: { projectId: Id<"projects"> | nul
   if (!approvals) return <div className="text-xs text-muted-foreground text-center py-4">Loading…</div>;
   if (approvals.length === 0) return (
     <div className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground">
-      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+      <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
       All clear — no pending approvals
     </div>
   );
 
-  const riskColor = (r: string) => r === "RED" ? "text-destructive bg-destructive/10" : r === "YELLOW" ? "text-amber-500 bg-amber-500/10" : "text-emerald-500 bg-emerald-500/10";
+  const riskColor = (r: string) => r === "RED" ? "text-destructive bg-destructive/10" : r === "YELLOW" ? "text-amber-500 bg-amber-500/10" : "text-primary bg-primary/10";
 
   const handleApprove = async (id: Id<"approvals">) => {
     setLoading(id);
@@ -203,7 +202,7 @@ function ApprovalQueue({ projectId, onToast }: { projectId: Id<"projects"> | nul
             <button
               onClick={() => handleApprove(a._id)}
               disabled={loading === a._id}
-              className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-colors disabled:opacity-40"
+              className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold bg-primary/10 text-primary hover:bg-primary/15 transition-colors disabled:opacity-40"
             >
               {loading === a._id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
               OK
@@ -287,7 +286,7 @@ function QuickTaskCreator({ projectId, onToast }: { projectId: Id<"projects"> | 
               className={cn(
                 "px-2.5 py-1 rounded text-xs font-semibold transition-colors",
                 priority === p
-                  ? p === 3 ? "bg-destructive/15 text-destructive" : p === 2 ? "bg-amber-500/15 text-amber-500" : "bg-emerald-500/15 text-emerald-500"
+                  ? p === 3 ? "bg-destructive/15 text-destructive" : p === 2 ? "bg-amber-500/15 text-amber-500" : "bg-primary/15 text-primary"
                   : "bg-muted text-muted-foreground hover:text-foreground"
               )}
             >
@@ -323,7 +322,7 @@ function ActivityFeed({ projectId }: { projectId: Id<"projects"> | null }) {
 
   const actionColor = (action: string) => {
     if (action.includes("CREATED") || action.includes("CREATE")) return "text-primary";
-    if (action.includes("APPROVED") || action.includes("DONE")) return "text-emerald-500";
+    if (action.includes("APPROVED") || action.includes("DONE")) return "text-primary";
     if (action.includes("ERROR") || action.includes("FAIL") || action.includes("DENY")) return "text-destructive";
     if (action.includes("PAUSE") || action.includes("BLOCK")) return "text-amber-500";
     return "text-muted-foreground";
@@ -403,7 +402,7 @@ function TaskPipeline({ projectId }: { projectId: Id<"projects"> | null }) {
     { label: "ASSIGNED",   color: "bg-sky-400" },
     { label: "IN_PROGRESS",color: "bg-primary" },
     { label: "REVIEW",     color: "bg-amber-400" },
-    { label: "DONE",       color: "bg-emerald-500" },
+    { label: "DONE",       color: "bg-primary" },
     { label: "BLOCKED",    color: "bg-destructive" },
   ];
   const total = allTasks.length || 1;
@@ -514,8 +513,8 @@ export function CommandPanel({ projectId, onOpenSuggestionsDrawer }: CommandPane
             </div>
             <p className="text-xs text-muted-foreground">Orchestrate agents, tasks, and approvals in real-time</p>
           </div>
-          <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-500">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="flex items-center gap-1.5 text-xs font-medium text-primary">
+            <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
             Live
           </span>
         </div>
@@ -524,11 +523,11 @@ export function CommandPanel({ projectId, onOpenSuggestionsDrawer }: CommandPane
         <Card className="p-4">
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
             {[
-              { label: "Active Agents",  value: activeCount,  color: "text-emerald-500", dot: "bg-emerald-500" },
+              { label: "Active Agents",  value: activeCount,  color: "text-primary", dot: "bg-primary" },
               { label: "Paused Agents",  value: pausedCount,  color: "text-amber-500",   dot: "bg-amber-500" },
               { label: "Pending Approvals", value: pendingCount, color: pendingCount > 0 ? "text-destructive" : "text-foreground", dot: pendingCount > 0 ? "bg-destructive" : "bg-muted-foreground" },
               { label: "Total Tasks",    value: taskCount,    color: "text-foreground",  dot: "bg-primary" },
-              { label: "Done Today",     value: doneCount,    color: "text-emerald-500", dot: "bg-emerald-500" },
+              { label: "Done Today",     value: doneCount,    color: "text-primary", dot: "bg-primary" },
             ].map((stat) => (
               <div key={stat.label} className="flex items-center gap-3">
                 <span className={cn("h-2 w-2 rounded-full shrink-0", stat.dot)} />

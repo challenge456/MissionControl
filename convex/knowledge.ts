@@ -8,7 +8,7 @@
 import { v } from "convex/values";
 import { mutation, query, action } from "./_generated/server";
 import { api } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
+import type { Id, Doc } from "./_generated/dataModel";
 
 // ---------------------------------------------------------------------------
 // CONSTANTS
@@ -263,7 +263,10 @@ export const semanticSearch = action({
     query: v.string(),
     limit: v.optional(v.number()),
   },
-  handler: async (ctx, args) => {
+  handler: async (
+    ctx,
+    args
+  ): Promise<(Doc<"knowledgeChunks"> & { score: number })[]> => {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) throw new Error("OPENAI_API_KEY not set in Convex env");
 
@@ -275,16 +278,18 @@ export const semanticSearch = action({
       limit,
     });
 
-    const chunks = await Promise.all(
-      results.map(async (r) => {
-        const doc = await ctx.runQuery(api.knowledge.getChunkById, {
-          id: r._id,
-        });
-        return doc ? { ...doc, score: r._score } : null;
-      })
-    );
+    const chunks: (Doc<"knowledgeChunks"> & { score: number } | null)[] =
+      await Promise.all(
+        results.map(async (r): Promise<Doc<"knowledgeChunks"> & { score: number } | null> => {
+          const doc: Doc<"knowledgeChunks"> | null = await ctx.runQuery(
+            api.knowledge.getChunkById,
+            { id: r._id }
+          );
+          return doc ? { ...doc, score: r._score } : null;
+        })
+      );
 
-    return chunks.filter(Boolean);
+    return chunks.filter((c): c is Doc<"knowledgeChunks"> & { score: number } => c != null);
   },
 });
 

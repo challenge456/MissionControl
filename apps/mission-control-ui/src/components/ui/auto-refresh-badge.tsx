@@ -34,7 +34,7 @@ export function AutoRefreshBadge({
         className
       )}
     >
-      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 status-dot-pulse" />
+      <span className="h-1.5 w-1.5 rounded-full bg-primary status-dot-pulse" />
       Live · {countdown}s
     </span>
   );

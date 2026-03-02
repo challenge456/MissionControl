@@ -97,6 +97,117 @@ export const listRecent = query({
   },
 });
 
+/** Aggregated usage by model for a time window (e.g. 24h). For dashboard AI usage cards. */
+export const getUsageByModel = query({
+  args: {
+    projectId: v.optional(v.id("projects")),
+    windowHours: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const windowMs = (args.windowHours ?? 24) * 60 * 60 * 1000;
+    const since = Date.now() - windowMs;
+    const limit = 5000;
+    let runs = await ctx.db
+      .query("runs")
+      .order("desc")
+      .take(limit);
+    if (args.projectId) {
+      runs = runs.filter((r) => r.projectId === args.projectId);
+    }
+    runs = runs.filter((r) => r.startedAt >= since);
+    const byModel: Record<
+      string,
+      { inputTokens: number; outputTokens: number; costUsd: number; runs: number }
+    > = {};
+    for (const r of runs) {
+      const key = r.model || "unknown";
+      if (!byModel[key]) {
+        byModel[key] = { inputTokens: 0, outputTokens: 0, costUsd: 0, runs: 0 };
+      }
+      byModel[key].inputTokens += r.inputTokens ?? 0;
+      byModel[key].outputTokens += r.outputTokens ?? 0;
+      byModel[key].costUsd += r.costUsd ?? 0;
+      byModel[key].runs += 1;
+    }
+    return Object.entries(byModel).map(([model, agg]) => ({
+      model,
+      ...agg,
+    }));
+  },
+});
+
+/** Top runs by total tokens (input + output) for dashboard "Top runs by tokens" section. */
+export const getTopRunsByTokens = query({
+  args: {
+    projectId: v.optional(v.id("projects")),
+    limit: v.optional(v.number()),
+    windowHours: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit ?? 10;
+    const windowMs = (args.windowHours ?? 24) * 60 * 60 * 1000;
+    const since = Date.now() - windowMs;
+    let runs = await ctx.db
+      .query("runs")
+      .order("desc")
+      .take(500);
+    if (args.projectId) {
+      runs = runs.filter((r) => r.projectId === args.projectId);
+    }
+    runs = runs.filter((r) => r.startedAt >= since);
+    runs = [...runs].sort(
+      (a, b) =>
+        (b.inputTokens + b.outputTokens) - (a.inputTokens + a.outputTokens)
+    );
+    return runs.slice(0, limit);
+  },
+});
+
+/** Time-series buckets for tokens and cost (e.g. last 24h by hour, 7d by day). For trend charts. */
+export const getUsageTimeSeries = query({
+  args: {
+    projectId: v.optional(v.id("projects")),
+    windowHours: v.optional(v.number()),
+    bucketHours: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const windowMs = (args.windowHours ?? 24) * 60 * 60 * 1000;
+    const bucketMs = (args.bucketHours ?? 1) * 60 * 60 * 1000;
+    const since = Date.now() - windowMs;
+    const limit = 5000;
+    let runs = await ctx.db
+      .query("runs")
+      .order("desc")
+      .take(limit);
+    if (args.projectId) {
+      runs = runs.filter((r) => r.projectId === args.projectId);
+    }
+    runs = runs.filter((r) => r.startedAt >= since);
+    const buckets: Record<
+      number,
+      { period: string; inputTokens: number; outputTokens: number; costUsd: number }
+    > = {};
+    for (const r of runs) {
+      const bucketStart = Math.floor(r.startedAt / bucketMs) * bucketMs;
+      if (!buckets[bucketStart]) {
+        buckets[bucketStart] = {
+          period: new Date(bucketStart).toISOString().slice(0, 13),
+          inputTokens: 0,
+          outputTokens: 0,
+          costUsd: 0,
+        };
+      }
+      buckets[bucketStart].inputTokens += r.inputTokens ?? 0;
+      buckets[bucketStart].outputTokens += r.outputTokens ?? 0;
+      buckets[bucketStart].costUsd += r.costUsd ?? 0;
+    }
+    return Object.entries(buckets)
+      .map(([t, v]) => ({ ...v, _t: Number(t) }))
+      .sort((a, b) => a._t - b._t)
+      .map(({ _t, ...v }) => v);
+  },
+});
+
 // ============================================================================
 // MUTATIONS
 // ============================================================================

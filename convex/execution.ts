@@ -1,6 +1,10 @@
 import { v } from "convex/values";
 import { mutation, query, action } from "./_generated/server";
 
+// Extension point: executeApi / executeUi / executeHybrid currently simulate steps.
+// To wire real runners (e.g. Playwright, API client), replace evaluateSteps with
+// adapter calls that return the same shape (evaluated steps, passed/failed counts, totalTime).
+
 function buildResultId(): string {
   return `exec_${Math.random().toString(36).slice(2, 10)}`;
 }

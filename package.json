@@ -16,6 +16,7 @@
     "dev:ui": "pnpm --filter mission-control-ui dev",
     "dev:orchestration": "pnpm --filter @mission-control/orchestration-server dev",
     "build": "turbo run build",
+    "build:workspaces": "pnpm -r --filter './packages/*' build",
     "test": "turbo run test",
     "test:integration": "npx vitest run",
     "test:e2e:arm": "npx playwright test -c playwright.config.ts tests/e2e/arm-ui.e2e.spec.ts",

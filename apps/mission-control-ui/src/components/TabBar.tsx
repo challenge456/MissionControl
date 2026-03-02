@@ -39,7 +39,7 @@ export function TabBar({ tabs, activeTab, onTabChange, className }: TabBarProps)
     <div
       className={cn(
         "flex items-center gap-1 px-4 py-2.5",
-        "border-b border-border/60 bg-background/95 backdrop-blur-sm",
+        "border-b border-[var(--glass-border)] bg-[var(--glass-bg)]/90 backdrop-blur-[var(--blur-panel)]",
         className
       )}
       role="tablist"
@@ -60,14 +60,14 @@ export function TabBar({ tabs, activeTab, onTabChange, className }: TabBarProps)
               "transition-all duration-150",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
               isActive
-                ? "text-foreground"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                ? "text-[var(--neon-green)]"
+                : "text-muted-foreground hover:text-foreground hover:bg-[var(--neon-cyan-dim)]"
             )}
           >
             {isActive && (
               <motion.div
                 layoutId="tab-bar-pill"
-                className="absolute inset-0 rounded-lg bg-muted border border-border shadow-sm"
+                className="absolute inset-0 rounded-lg bg-[var(--glass-bg)] border border-[var(--glass-border-green)] shadow-[var(--glow-green)]"
                 transition={{
                   type: "spring",
                   stiffness: 450,

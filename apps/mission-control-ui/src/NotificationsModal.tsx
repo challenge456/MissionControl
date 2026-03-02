@@ -15,7 +15,7 @@ export function NotificationsModal({ onClose, onSelectTask }: { onClose: () => v
       {notifications === undefined ? (
         <div style={{ padding: 24 }}>Loading…</div>
       ) : notifications.length === 0 ? (
-        <p style={{ color: "#64748b", fontSize: "0.9rem" }}>No notifications.</p>
+        <p style={{ color: "var(--muted-foreground)", fontSize: "0.9rem" }}>No notifications.</p>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {notifications.map((n: Doc<"notifications">) => (
@@ -23,8 +23,8 @@ export function NotificationsModal({ onClose, onSelectTask }: { onClose: () => v
               key={n._id}
               style={{
                 padding: 12,
-                background: n.readAt ? "#1e293b" : "#0f172a",
-                border: "1px solid #334155",
+                background: n.readAt ? "var(--card)" : "var(--background)",
+                border: "1px solid var(--border)",
                 borderRadius: 8,
                 opacity: n.readAt ? 0.85 : 1,
               }}
@@ -35,20 +35,20 @@ export function NotificationsModal({ onClose, onSelectTask }: { onClose: () => v
                     style={{
                       fontSize: "0.7rem",
                       padding: "2px 6px",
-                      background: "#334155",
-                      color: "#94a3b8",
+                      background: "var(--border)",
+                      color: "var(--muted-foreground)",
                       borderRadius: 4,
                       marginRight: 8,
                     }}
                   >
                     {n.type}
                   </span>
-                  <span style={{ fontSize: "0.75rem", color: "#64748b" }}>
+                  <span style={{ fontSize: "0.75rem", color: "var(--muted-foreground)" }}>
                     → {agentMap.get(n.agentId)?.name ?? n.agentId}
                   </span>
                   <div style={{ fontWeight: 500, marginTop: 4 }}>{n.title}</div>
                   {n.body && (
-                    <div style={{ fontSize: "0.85rem", color: "#94a3b8", marginTop: 4 }}>{n.body.slice(0, 120)}{n.body.length > 120 ? "…" : ""}</div>
+                    <div style={{ fontSize: "0.85rem", color: "var(--muted-foreground)", marginTop: 4 }}>{n.body.slice(0, 120)}{n.body.length > 120 ? "…" : ""}</div>
                   )}
                 </div>
                 {n.taskId && onSelectTask && (
@@ -57,10 +57,10 @@ export function NotificationsModal({ onClose, onSelectTask }: { onClose: () => v
                     onClick={() => { onSelectTask(n.taskId!); onClose(); }}
                     style={{
                       padding: "4px 10px",
-                      background: "#334155",
-                      border: "1px solid #475569",
+                      background: "var(--border)",
+                      border: "1px solid var(--border)",
                       borderRadius: 6,
-                      color: "#e2e8f0",
+                      color: "var(--foreground)",
                       fontSize: "0.75rem",
                       cursor: "pointer",
                     }}
@@ -69,7 +69,7 @@ export function NotificationsModal({ onClose, onSelectTask }: { onClose: () => v
                   </button>
                 )}
               </div>
-              <div style={{ fontSize: "0.7rem", color: "#64748b", marginTop: 6 }}>
+              <div style={{ fontSize: "0.7rem", color: "var(--muted-foreground)", marginTop: 6 }}>
                 {n.readAt ? "Read" : "Unread"} · {new Date((n as { _creationTime?: number })._creationTime ?? 0).toLocaleString()}
               </div>
             </div>
@@ -96,8 +96,8 @@ function Modal({ children, onClose }: { children: React.ReactNode; onClose: () =
           maxWidth: 560,
           maxHeight: "90vh",
           overflow: "auto",
-          background: "#1e293b",
-          border: "1px solid #334155",
+          background: "var(--card)",
+          border: "1px solid var(--border)",
           borderRadius: 12,
           zIndex: 9999,
           padding: 24,
@@ -112,7 +112,7 @@ function Modal({ children, onClose }: { children: React.ReactNode; onClose: () =
             right: 16,
             background: "none",
             border: "none",
-            color: "#94a3b8",
+            color: "var(--muted-foreground)",
             fontSize: "1.5rem",
             cursor: "pointer",
           }}

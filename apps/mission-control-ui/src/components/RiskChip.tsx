@@ -12,7 +12,7 @@ const RISK_CONFIG: Record<RiskLevel, {
   GREEN: {
     label: "Low Risk",
     icon: ShieldCheck,
-    classes: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+    classes: "bg-primary/10 text-primary border-primary/20",
   },
   YELLOW: {
     label: "Medium Risk",

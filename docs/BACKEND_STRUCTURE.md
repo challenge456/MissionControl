@@ -45,6 +45,7 @@ The backend is entirely Convex. There is no Express server, no REST API, and no 
 | `approvals` | Approval requests | taskId, requestorAgentId, riskLevel (YELLOW/RED), status, justification |
 | `policies` | Policy configuration | scopeType, rules, toolRiskMap, budgetDefaults, loopThresholds |
 | `alerts` | System alerts | severity (INFO/WARNING/ERROR/CRITICAL), type, status |
+| `alertRules` | User-defined alert thresholds | projectId, type (daily_cost_exceeded), threshold, enabled |
 
 ### Collaboration
 

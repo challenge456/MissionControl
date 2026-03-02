@@ -1,15 +1,22 @@
-# Mission Control UI — Docker Compose
+# Mission Control — Docker Compose
+#
+# Full-stack profile: UI only (Convex and orchestration server run separately).
 #
 # Prerequisites:
-# 1. Convex: run `npx convex codegen` (or `pnpm dev` once) so convex/_generated exists.
-# 2. Set VITE_CONVEX_URL to your Convex deployment URL (e.g. from Convex dashboard).
+# 1. Convex: run `npx convex dev` once so convex/_generated exists.
+# 2. Set VITE_CONVEX_URL to your Convex deployment URL.
 #
 # Build and run:
 #   export VITE_CONVEX_URL=https://your-deployment.convex.cloud
 #   docker compose build
 #   docker compose up -d
 #
-# UI will be at http://localhost:3000
+# UI at http://localhost:3000
+#
+# Orchestration server (coordinator + agent runtime): run on host with
+#   pnpm run dev:orchestration
+# and set CONVEX_URL, optional ORCHESTRATION_API_TOKEN, GATEWAY_TOKEN.
+# See docs/guides/TROUBLESHOOTING.md and docs/MISSION_CONTROL_RUNBOOK.md.
 
 services:
   mission-control-ui:

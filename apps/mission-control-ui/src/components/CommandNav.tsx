@@ -47,15 +47,15 @@ export function CommandNav({
   return (
     <nav
       className={cn(
-        "relative flex items-center h-12 px-2 border-b border-border bg-background/95 backdrop-blur-sm",
+        "relative flex items-center h-12 px-2 border-b border-[var(--glass-border)] bg-[var(--glass-bg)]/90 backdrop-blur-[var(--blur-panel)]",
         className
       )}
       aria-label="Command center navigation"
     >
       <div className="flex items-center flex-1 overflow-x-auto">
         {/* Brand mark */}
-        <div className="hidden lg:flex items-center gap-2 pl-3 pr-5 mr-2 border-r border-border/60 shrink-0">
-          <div className="h-6 w-6 rounded-lg bg-primary flex items-center justify-center shadow-sm">
+        <div className="hidden lg:flex items-center gap-2 pl-3 pr-5 mr-2 border-r border-[var(--glass-border)] shrink-0">
+          <div className="h-6 w-6 rounded-lg bg-primary flex items-center justify-center shadow-[var(--glow-green)]">
             <Crosshair className="h-3.5 w-3.5 text-white" />
           </div>
           <span className="text-xs font-bold tracking-widest uppercase text-foreground/70">
@@ -79,8 +79,8 @@ export function CommandNav({
                   "transition-all duration-150",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background rounded-md",
                   isActive
-                    ? "text-primary"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                    ? "text-[var(--neon-green)]"
+                    : "text-muted-foreground hover:text-foreground hover:bg-[var(--neon-cyan-dim)]"
                 )}
                 aria-current={isActive ? "page" : undefined}
               >
@@ -88,7 +88,7 @@ export function CommandNav({
                 {isActive && (
                   <motion.div
                     layoutId="command-nav-bg"
-                    className="absolute inset-x-0.5 inset-y-1.5 rounded-md bg-primary/10"
+                    className="absolute inset-x-0.5 inset-y-1.5 rounded-md bg-[var(--neon-green)]/15"
                     transition={{ type: "spring", stiffness: 500, damping: 40 }}
                   />
                 )}
@@ -101,8 +101,8 @@ export function CommandNav({
                 {isActive && (
                   <motion.div
                     layoutId="command-nav-active"
-                    className="absolute inset-x-2 bottom-0 h-[2.5px] rounded-full bg-primary"
-                    style={{ boxShadow: "0 0 6px currentColor" }}
+                    className="absolute inset-x-2 bottom-0 h-[2.5px] rounded-full bg-[var(--neon-green)]"
+                    style={{ boxShadow: "var(--glow-green)" }}
                     transition={{ type: "spring", stiffness: 500, damping: 35 }}
                   />
                 )}

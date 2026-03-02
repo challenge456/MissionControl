@@ -2,7 +2,7 @@
 
 **Version:** 1.0  
 **Date:** 2026-02-21  
-**Branch:** feat/mc-e2e-hardening
+**Architecture:** Convex backend (no Express), Hono orchestration server, React/Vite UI. See [Troubleshooting index](guides/TROUBLESHOOTING.md) for current-architecture-only commands.
 
 ---
 
@@ -45,6 +45,13 @@ cp .env.example .env.local
 - **Port:** 4100 (ORCHESTRATION_PORT)
 - **Start:** `pnpm run dev:orchestration`
 - **Health:** `curl http://localhost:4100/health`
+
+**How to run (first time or after dependency changes):**
+1. Set `CONVEX_URL` in `.env` at repo root or in `apps/orchestration-server` (required).
+2. Build workspace packages in order:  
+   `pnpm --filter @mission-control/shared build && pnpm --filter @mission-control/state-machine build && pnpm --filter @mission-control/policy-engine build && pnpm --filter @mission-control/memory build && pnpm --filter @mission-control/coordinator build && pnpm --filter @mission-control/agent-runtime build`
+3. Start: `pnpm run dev:orchestration` (or `pnpm --filter @mission-control/orchestration-server dev`).  
+   Alternatively run full build first: `pnpm run ci:prepare` then start.
 
 ### CLI (`mc`)
 - **Location:** `scripts/mc`
@@ -108,6 +115,8 @@ cp .env.example .env.local
 ---
 
 ## Troubleshooting
+
+**Canonical index:** [docs/guides/TROUBLESHOOTING.md](guides/TROUBLESHOOTING.md) — diagnostics and common fixes for the current architecture.
 
 ### Issue: Dependencies Not Found
 
@@ -254,10 +263,22 @@ npx convex run api.workflows.run --arg '{
 
 ---
 
+## Costs & billing
+
+External provider billing (Anthropic, OpenAI, Cursor, GitHub, Vercel, Perplexity, OpenRouter, etc.) requires **manual** sign-in to each dashboard. See **[docs/COSTS.md](COSTS.md)** for:
+
+- All billing dashboard URLs
+- Status: no automated checks; manual review only
+- Current spending table to update after each review
+- Action: review regularly for spikes and approaching limits
+
+---
+
 ## Files Reference
 
 | File | Purpose |
 |------|---------|
+| `docs/COSTS.md` | Billing dashboards (manual auth), current spending checklist |
 | `docs/BOOT_CONTRACT.md` | System startup guide |
 | `docs/E2E_TEST_PLAN.md` | E2E testing specification |
 | `docs/INTEGRATION_REPORT.md` | Audit results |

@@ -67,7 +67,7 @@ const STATUS_CONFIG: Record<TaskStatus, {
   DONE: {
     label: "Done",
     icon: CheckCircle2,
-    classes: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+    classes: "bg-primary/10 text-primary border-primary/20",
   },
   CANCELED: {
     label: "Canceled",

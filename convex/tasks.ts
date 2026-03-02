@@ -208,6 +208,8 @@ export const listByStatus = query({
   },
 });
 
+const LIST_ALL_CAP = 3000;
+
 export const listAll = query({
   args: {
     projectId: v.optional(v.id("projects")),
@@ -218,9 +220,12 @@ export const listAll = query({
         .query("tasks")
         .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
         .order("desc")
-        .collect();
+        .take(LIST_ALL_CAP);
     }
-    return await ctx.db.query("tasks").order("desc").collect();
+    return await ctx.db
+      .query("tasks")
+      .order("desc")
+      .take(LIST_ALL_CAP);
   },
 });
 

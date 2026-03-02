@@ -1,0 +1,343 @@
+/**
+ * Live Agent Chat (OpenClaw Studio parity - Phase 2).
+ * Connect to Gateway via WS proxy, select an agent, send messages and show transcript.
+ */
+
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useQuery } from "convex/react";
+import { api } from "../../../convex/_generated/api";
+import type { Id } from "../../../convex/_generated/dataModel";
+import { PageHeader } from "./components/PageHeader";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { useToast } from "./Toast";
+import {
+  GatewayClient,
+  getGatewayWsUrl,
+  type GatewayConnectionState,
+  type GatewayFrame,
+} from "@/lib/gatewayClient";
+import { getOrchestrationBaseUrl } from "@/lib/orchestrationUrl";
+import { Loader2, Send, MessageSquare, AlertCircle } from "lucide-react";
+
+interface GatewayStatus {
+  configured: boolean;
+  urlConfigured: boolean;
+  tokenConfigured: boolean;
+}
+
+export function LiveAgentChatView({ projectId }: { projectId: Id<"projects"> | null }) {
+  const { toast } = useToast();
+  const [status, setStatus] = useState<GatewayStatus | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [connState, setConnState] = useState<GatewayConnectionState>("disconnected");
+  const [client, setClient] = useState<GatewayClient | null>(null);
+  const [agents, setAgents] = useState<Array<{ id: string; name?: string }>>([]);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<Array<{ role: string; content: string }>>([]);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const clientRef = useRef<GatewayClient | null>(null);
+
+  const convexAgents = useQuery(
+    api.agents.listAll,
+    projectId ? { projectId } : "skip"
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    setStatusError(null);
+    const base = getOrchestrationBaseUrl();
+    fetch(base ? `${base}/gateway/status` : "/gateway/status")
+      .then((r) => {
+        if (!r.ok) throw new Error(`Server returned ${r.status}`);
+        return r.json();
+      })
+      .then((data: GatewayStatus) => {
+        if (!cancelled) {
+          setStatus(data);
+          setStatusError(null);
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setStatus(null);
+          setStatusError(e?.message ?? "Could not reach orchestration server.");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const connect = useCallback(() => {
+    const c = new GatewayClient(getGatewayWsUrl());
+    c.setStateChange(setConnState);
+    clientRef.current = c;
+    setClient(c);
+    c.connect()
+      .then(async () => {
+        try {
+          const list = (await c.request("agents.list", {})) as unknown;
+          const arr = Array.isArray(list) ? list : (list as any)?.agents ?? (list as any)?.list ?? [];
+          setAgents(
+            arr.map((a: any) => ({
+              id: typeof a.id === "string" ? a.id : a._id ?? String(a.id ?? a.agentId ?? ""),
+              name: a.name ?? a.displayName ?? "Agent",
+            }))
+          );
+        } catch {
+          setAgents(
+            (convexAgents ?? []).map((a) => ({
+              id: a._id,
+              name: a.name,
+            }))
+          );
+        }
+      })
+      .catch((e) => {
+        toast(e?.message ?? "Connection failed", true);
+      });
+  }, [convexAgents, toast]);
+
+  const disconnect = useCallback(() => {
+    clientRef.current?.disconnect();
+    clientRef.current = null;
+    setClient(null);
+    setAgents([]);
+    setSelectedAgentId(null);
+    setMessages([]);
+    setConnState("disconnected");
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clientRef.current?.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!client || !selectedAgentId) {
+      setMessages([]);
+      return;
+    }
+    const sessionKey = `agent::${selectedAgentId}`;
+    setLoadingHistory(true);
+    client
+      .request("chat.history", { sessionKey, limit: 100 })
+      .then((payload: unknown) => {
+        const p = payload as { messages?: Array<{ role?: string; content?: string }> };
+        const list = p?.messages ?? (Array.isArray(payload) ? payload : []);
+        setMessages(
+          list.map((m: any) => ({
+            role: m.role ?? m.author ?? "assistant",
+            content: typeof m.content === "string" ? m.content : JSON.stringify(m.content ?? m),
+          }))
+        );
+      })
+      .catch(() => setMessages([]))
+      .finally(() => setLoadingHistory(false));
+
+    const unsub = client.onEvent((frame: GatewayFrame) => {
+      if (frame.event === "chat" && frame.payload) {
+        const p = frame.payload as { sessionKey?: string; message?: { role?: string; content?: string } };
+        if (p?.sessionKey === sessionKey && p?.message) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: p.message.role ?? "assistant",
+              content: typeof p.message.content === "string" ? p.message.content : JSON.stringify(p.message.content ?? ""),
+            },
+          ]);
+        }
+      }
+    });
+    return unsub;
+  }, [client, selectedAgentId]);
+
+  const sendMessage = useCallback(() => {
+    if (!client || !selectedAgentId || !input.trim()) return;
+    const sessionKey = `agent::${selectedAgentId}`;
+    setSending(true);
+    client
+      .request("chat.send", {
+        sessionKey,
+        content: input.trim(),
+        idempotencyKey: `mc-${Date.now()}`,
+      })
+      .then(() => {
+        setMessages((prev) => [...prev, { role: "user", content: input.trim() }]);
+        setInput("");
+      })
+      .catch((e) => toast(e?.message ?? "Send failed", true))
+      .finally(() => setSending(false));
+  }, [client, selectedAgentId, input, toast]);
+
+  if (status === null && !statusError) {
+    return (
+      <main className="flex-1 overflow-auto">
+        <PageHeader
+          title="Live Agent Chat"
+          description="Connect to the OpenClaw Gateway for streaming chat with agents."
+        />
+        <div className="px-6 py-8 flex flex-col items-center justify-center text-muted-foreground">
+          <Loader2 className="h-10 w-10 animate-spin mb-4" />
+          <p className="text-sm">Checking gateway configuration…</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (statusError) {
+    return (
+      <main className="flex-1 overflow-auto">
+        <PageHeader
+          title="Live Agent Chat"
+          description="Connect to the OpenClaw Gateway for streaming chat with agents."
+        />
+        <div className="px-6 py-8 flex flex-col items-center justify-center">
+          <AlertCircle className="h-12 w-12 text-amber-500 mb-4" />
+          <p className="text-sm text-muted-foreground text-center max-w-md mb-2">
+            {statusError}
+          </p>
+          <p className="text-xs text-muted-foreground text-center max-w-md">
+            In dev, the UI proxies to the orchestration server. Ensure it is running at{" "}
+            <code className="bg-muted px-1 rounded">http://localhost:4100</code>. If you use a
+            different URL, set <code className="bg-muted px-1 rounded">VITE_ORCHESTRATION_URL</code>.
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  if (!status?.configured) {
+    return (
+      <main className="flex-1 overflow-auto">
+        <PageHeader
+          title="Live Agent Chat"
+          description="Connect to the OpenClaw Gateway for streaming chat with agents."
+        />
+        <div className="px-6 py-8 flex flex-col items-center justify-center">
+          <AlertCircle className="h-12 w-12 text-amber-500 mb-4" />
+          <p className="text-sm text-muted-foreground text-center max-w-md">
+            Configure the Gateway (Agents → Gateway) with an upstream URL and set GATEWAY_TOKEN on the orchestration server, then return here to connect.
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main className="flex-1 overflow-auto flex flex-col">
+      <PageHeader
+        title="Live Agent Chat"
+        description={
+          connState === "connected"
+            ? "Connected to Gateway. Select an agent and chat."
+            : connState === "connecting"
+              ? "Connecting…"
+              : "Connect to stream chat with agents."
+        }
+        actions={
+          connState === "connected" ? (
+            <Button size="sm" variant="outline" onClick={disconnect}>
+              Disconnect
+            </Button>
+          ) : connState === "connecting" ? (
+            <Button size="sm" disabled>
+              <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> Connecting
+            </Button>
+          ) : (
+            <Button size="sm" onClick={connect}>
+              Connect
+            </Button>
+          )
+        }
+      />
+
+      <div className="flex-1 flex min-h-0 px-6 py-4">
+        {connState === "connected" && (
+          <>
+            <div className="w-56 border-r border-border pr-4 flex flex-col gap-1">
+              <p className="text-xs font-semibold text-muted-foreground uppercase mb-2">Agents</p>
+              {agents.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No agents from Gateway. Using Convex list.</p>
+              ) : null}
+              {(agents.length > 0 ? agents : (convexAgents ?? []).map((a) => ({ id: String(a._id), name: a.name }))).map(
+                (a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => setSelectedAgentId(a.id)}
+                    className={`text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                      selectedAgentId === a.id ? "bg-primary/15 text-primary" : "hover:bg-muted"
+                    }`}
+                  >
+                    {a.name ?? a.id}
+                  </button>
+                )
+              )}
+            </div>
+            <div className="flex-1 flex flex-col min-w-0 pl-4">
+              {selectedAgentId ? (
+                <>
+                  <Card className="flex-1 flex flex-col min-h-0 p-4 overflow-hidden">
+                    {loadingHistory ? (
+                      <div className="flex items-center justify-center flex-1 text-muted-foreground text-sm">
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" /> Loading history…
+                      </div>
+                    ) : (
+                      <div className="flex-1 overflow-auto space-y-2 mb-4">
+                        {messages.length === 0 && (
+                          <p className="text-sm text-muted-foreground">No messages yet. Say something below.</p>
+                        )}
+                        {messages.map((m, i) => (
+                          <div
+                            key={i}
+                            className={`rounded-lg px-3 py-2 text-sm ${
+                              m.role === "user" ? "bg-primary/10 ml-8" : "bg-muted/50 mr-8"
+                            }`}
+                          >
+                            <span className="text-[10px] font-semibold text-muted-foreground uppercase">
+                              {m.role}
+                            </span>
+                            <p className="mt-0.5 whitespace-pre-wrap">{m.content}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex gap-2 border-t border-border pt-3">
+                      <input
+                        type="text"
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
+                        placeholder="Type a message…"
+                        className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      />
+                      <Button size="sm" onClick={sendMessage} disabled={sending || !input.trim()}>
+                        {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </Card>
+                </>
+              ) : (
+                <div className="flex flex-col items-center justify-center flex-1 text-muted-foreground">
+                  <MessageSquare className="h-10 w-10 mb-2 opacity-50" />
+                  <p className="text-sm">Select an agent to start chatting.</p>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+        {connState !== "connected" && connState !== "connecting" && (
+          <div className="flex flex-col items-center justify-center flex-1 text-muted-foreground">
+            <MessageSquare className="h-10 w-10 mb-2 opacity-50" />
+            <p className="text-sm">Click Connect to attach to the Gateway.</p>
+          </div>
+        )}
+      </div>
+    </main>
+  );
+}

@@ -2071,6 +2071,22 @@ export default defineSchema({
     ),
     initiatorId: v.optional(v.string()),
 
+    // Environment and check type
+    environment: v.optional(v.union(
+      v.literal("local"),
+      v.literal("dev"),
+      v.literal("staging"),
+      v.literal("pilot"),
+      v.literal("production")
+    )),
+    checkType: v.optional(v.union(
+      v.literal("CODE_REVIEW"),
+      v.literal("AGENT_OUTPUT"),
+      v.literal("COVERAGE"),
+      v.literal("SECURITY"),
+      v.literal("FULL_SUITE")
+    )),
+
     // Results summary
     findingCounts: v.optional(v.object({
       red: v.number(),
@@ -2095,7 +2111,9 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_status", ["status"])
     .index("by_project_sequence", ["projectId", "runSequence"])
-    .index("by_idempotency", ["idempotencyKey"]),
+    .index("by_idempotency", ["idempotencyKey"])
+    .index("by_environment", ["environment"])
+    .index("by_project_env", ["projectId", "environment"]),
 
   // -------------------------------------------------------------------------
   // QC FINDINGS (Individual Check Results)
@@ -2117,7 +2135,12 @@ export default defineSchema({
       v.literal("COVERAGE_GAP"),
       v.literal("SECURITY_GAP"),
       v.literal("CONFIG_MISSING"),
-      v.literal("DELIVERY_GATE")
+      v.literal("DELIVERY_GATE"),
+      v.literal("AGENT_HALLUCINATION"),
+      v.literal("TASK_INCOMPLETE"),
+      v.literal("OUTPUT_FORMAT_ERROR"),
+      v.literal("PERFORMANCE_REGRESSION"),
+      v.literal("DEPENDENCY_RISK")
     ),
 
     title: v.string(),
@@ -2208,6 +2231,30 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_preset", ["preset"])
     .index("by_active", ["active"]),
+
+  // -------------------------------------------------------------------------
+  // QC METRICS (Time-Series Quality Data)
+  // -------------------------------------------------------------------------
+  qcMetrics: defineTable({
+    projectId: v.optional(v.id("projects")),
+    environment: v.optional(v.union(
+      v.literal("local"),
+      v.literal("dev"),
+      v.literal("staging"),
+      v.literal("pilot"),
+      v.literal("production")
+    )),
+    metricName: v.string(),
+    value: v.number(),
+    unit: v.string(),
+    qcRunId: v.optional(v.id("qcRuns")),
+    recordedAt: v.number(),
+    tags: v.optional(v.any()),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_environment", ["environment"])
+    .index("by_project_env", ["projectId", "environment"])
+    .index("by_metric_time", ["metricName", "recordedAt"]),
 
   // -------------------------------------------------------------------------
   // TEST RECORDINGS (Browser interaction capture sessions)
@@ -2438,11 +2485,40 @@ export default defineSchema({
     enabled: v.boolean(),
     createdBy: v.string(),
     metadata: v.optional(v.any()),
+    // Advanced scheduler primitives (OpenClaw ATC)
+    runPolicy: v.optional(
+      v.union(
+        v.literal("standard"),
+        v.literal("run_if_idle"),
+        v.literal("run_if_not_run_since"),
+        v.literal("run_at_least_per_period"),
+        v.literal("skip_if_last_run_within")
+      )
+    ),
+    runPolicyParams: v.optional(v.any()),
+    priority: v.optional(v.number()),
+    conflictGroup: v.optional(v.string()),
+    lastRunDuration: v.optional(v.number()),
   })
     .index("by_job", ["jobId"])
     .index("by_project", ["projectId"])
     .index("by_enabled", ["enabled"])
     .index("by_next_run", ["nextRun"]),
+
+  // -------------------------------------------------------------------------
+  // QUOTA SNAPSHOTS (LLM fuel gauge — manual or imported usage tracking)
+  // -------------------------------------------------------------------------
+  quotaSnapshots: defineTable({
+    provider: v.union(v.literal("anthropic"), v.literal("openai"), v.literal("google")),
+    planTier: v.string(),
+    usagePct: v.number(),
+    resetAt: v.number(),
+    tokensUsed: v.number(),
+    tokensLimit: v.number(),
+    recordedAt: v.number(),
+  })
+    .index("by_provider", ["provider"])
+    .index("by_recorded_at", ["recordedAt"]),
 
   // -------------------------------------------------------------------------
   // METRICS (Time-series operational metrics)
@@ -2625,4 +2701,29 @@ export default defineSchema({
     }))),
   })
     .index("by_session", ["sessionId"]),
+
+  // -------------------------------------------------------------------------
+  // GATEWAY CONNECTION (OpenClaw Studio parity: optional Gateway attach)
+  // Token is never stored in Convex; it is supplied via server env (GATEWAY_TOKEN).
+  // -------------------------------------------------------------------------
+  gatewayConnection: defineTable({
+    url: v.string(),
+    updatedAt: v.number(),
+    updatedBy: v.optional(v.string()),
+  }).index("by_updatedAt", ["updatedAt"]),
+
+  // -------------------------------------------------------------------------
+  // ALERT RULES (user-defined thresholds for cost / tokens; evaluated by cron)
+  // -------------------------------------------------------------------------
+  alertRules: defineTable({
+    projectId: v.optional(v.id("projects")),
+    type: v.union(v.literal("daily_cost_exceeded")),
+    threshold: v.number(),
+    params: v.optional(v.any()),
+    enabled: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_enabled", ["enabled"]),
 });

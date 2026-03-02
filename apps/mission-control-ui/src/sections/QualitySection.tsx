@@ -2,6 +2,10 @@ import type { Id } from "../../../../convex/_generated/dataModel";
 import type { MainView } from "../TopNav";
 import { QcDashboardView } from "../QcDashboardView";
 import { QcRunDetailView } from "../QcRunDetailView";
+import { QcEnvironmentsView } from "../QcEnvironmentsView";
+import { QcFindingsView } from "../QcFindingsView";
+import { QcMetricsView } from "../QcMetricsView";
+import { QcRulesetsView } from "../QcRulesetsView";
 
 interface QualitySectionProps {
   currentView: MainView;
@@ -9,6 +13,7 @@ interface QualitySectionProps {
   selectedQcRunId: Id<"qcRuns"> | null;
   setSelectedQcRunId: (id: Id<"qcRuns"> | null) => void;
   onNavigate: (view: MainView) => void;
+  onOpenStartQcRun?: () => void;
 }
 
 export function QualitySection({
@@ -17,6 +22,7 @@ export function QualitySection({
   selectedQcRunId,
   setSelectedQcRunId,
   onNavigate,
+  onOpenStartQcRun,
 }: QualitySectionProps) {
   if (currentView === "qc-dashboard") {
     return (
@@ -26,6 +32,7 @@ export function QualitySection({
           setSelectedQcRunId(runId);
           onNavigate("qc-runs");
         }}
+        onOpenStartQcRun={onOpenStartQcRun}
       />
     );
   }
@@ -40,5 +47,9 @@ export function QualitySection({
       />
     );
   }
+  if (currentView === "qc-environments") return <QcEnvironmentsView projectId={projectId} onNavigate={onNavigate} />;
+  if (currentView === "qc-findings") return <QcFindingsView projectId={projectId} />;
+  if (currentView === "qc-metrics") return <QcMetricsView projectId={projectId} />;
+  if (currentView === "qc-rulesets") return <QcRulesetsView projectId={projectId} />;
   return null;
 }

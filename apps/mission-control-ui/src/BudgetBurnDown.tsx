@@ -21,7 +21,7 @@ function getSpendClasses(ratio: number): { text: string; bg: string } {
   if (ratio >= 1) return { text: "text-red-500", bg: "bg-red-500" };
   if (ratio >= 0.8) return { text: "text-amber-500", bg: "bg-amber-500" };
   if (ratio >= 0.5) return { text: "text-blue-500", bg: "bg-blue-500" };
-  return { text: "text-emerald-500", bg: "bg-emerald-500" };
+  return { text: "text-primary", bg: "bg-primary" };
 }
 
 function getStatusLabel(ratio: number): string {
@@ -95,7 +95,7 @@ export function BudgetBurnDown({ projectId }: BudgetBurnDownProps) {
       <div className="grid grid-cols-[repeat(auto-fit,minmax(130px,1fr))] gap-2.5 mb-5">
         <SummaryCard label="Total Budget" value={`$${budgetData.totalBudget.toFixed(2)}`} colorClass="text-foreground" />
         <SummaryCard label="Total Spent" value={`$${budgetData.totalSpent.toFixed(2)}`} colorClass={totalClasses.text} />
-        <SummaryCard label="Remaining" value={`$${Math.max(0, budgetData.totalBudget - budgetData.totalSpent).toFixed(2)}`} colorClass="text-emerald-500" />
+        <SummaryCard label="Remaining" value={`$${Math.max(0, budgetData.totalBudget - budgetData.totalSpent).toFixed(2)}`} colorClass="text-primary" />
         <SummaryCard label="Active Agents" value={String(budgetData.activeCount)} colorClass="text-blue-500" />
         {budgetData.overBudgetCount > 0 && (
           <SummaryCard label="Over Budget" value={String(budgetData.overBudgetCount)} colorClass="text-red-500" />
@@ -136,7 +136,7 @@ export function BudgetBurnDown({ projectId }: BudgetBurnDownProps) {
                 </span>
                 <span className={cn(
                   "w-2 h-2 rounded-full inline-block",
-                  agent.status === "ACTIVE" ? "bg-emerald-500"
+                  agent.status === "ACTIVE" ? "bg-primary"
                     : agent.status === "PAUSED" ? "bg-amber-500"
                     : "bg-slate-500"
                 )} />

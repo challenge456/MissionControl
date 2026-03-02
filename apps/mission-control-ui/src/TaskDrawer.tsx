@@ -359,7 +359,7 @@ function TimelineItem({ item, isLast }: { item: TimelineEntry; isLast: boolean }
         <div
           className={cn(
             "w-2.5 h-2.5 rounded-full shrink-0",
-            isTransition ? "bg-primary" : "bg-emerald-500"
+            isTransition ? "bg-primary" : "bg-primary"
           )}
         />
         {!isLast && <div className="w-0.5 flex-1 bg-border mt-1" />}

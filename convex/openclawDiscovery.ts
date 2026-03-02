@@ -2,12 +2,14 @@
  * OpenClaw Agent Discovery
  *
  * Discover agents from an OpenClaw Gateway and import them into the registry.
- * Set OPENCLAW_GATEWAY_URL (e.g. http://localhost:18789) and optionally
- * OPENCLAW_GATEWAY_TOKEN in Convex environment variables for discovery.
+ * Gateway URL: canonical source is gatewayConnection table (set in UI Gateway settings);
+ * fallback is OPENCLAW_GATEWAY_URL in Convex env. Token: OPENCLAW_GATEWAY_TOKEN or
+ * GATEWAY_TOKEN in Convex env (same as orchestration server).
  */
 
 import { v } from "convex/values";
 import { action, mutation } from "./_generated/server";
+import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 
 export type DiscoveredAgent = {
@@ -21,19 +23,26 @@ export type DiscoveredAgent = {
 
 /**
  * Call the OpenClaw Gateway to list running agents.
+ * URL: gatewayConnection table (canonical) then OPENCLAW_GATEWAY_URL env.
+ * Token: OPENCLAW_GATEWAY_TOKEN or GATEWAY_TOKEN in Convex env.
  * Tries GET {baseUrl}/agents and GET {baseUrl}/api/agents.
- * Returns empty array if env is unset or gateway does not expose a list endpoint.
  */
 export const discoverAgents = action({
   args: {},
-  handler: async (): Promise<{ agents: DiscoveredAgent[]; error?: string }> => {
-    const baseUrl = process.env.OPENCLAW_GATEWAY_URL;
-    const token = process.env.OPENCLAW_GATEWAY_TOKEN;
+  handler: async (ctx): Promise<{ agents: DiscoveredAgent[]; error?: string }> => {
+    const conn = await ctx.runQuery(api.gatewayConnection.get, {});
+    const baseUrl =
+      (conn?.url?.trim()) || process.env.OPENCLAW_GATEWAY_URL || "";
+    const token =
+      process.env.OPENCLAW_GATEWAY_TOKEN?.trim() ||
+      process.env.GATEWAY_TOKEN?.trim() ||
+      "";
 
     if (!baseUrl || !baseUrl.startsWith("http")) {
       return {
         agents: [],
-        error: "OPENCLAW_GATEWAY_URL is not set or invalid. Set it in Convex dashboard (e.g. http://localhost:18789).",
+        error:
+          "Gateway URL is not set. Set it in Mission Control Gateway settings or OPENCLAW_GATEWAY_URL in Convex env (e.g. http://localhost:18789).",
       };
     }
 

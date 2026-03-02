@@ -10,13 +10,13 @@ export type StatusDotVariant =
   | "live";
 
 const variantStyles: Record<StatusDotVariant, string> = {
-  healthy: "bg-emerald-500",
+  healthy: "bg-primary",
   warning: "bg-amber-500",
   error: "bg-red-500",
   offline: "bg-zinc-500",
-  active: "bg-emerald-500",
+  active: "bg-primary",
   paused: "bg-amber-500",
-  live: "bg-emerald-400",
+  live: "bg-primary",
 };
 
 export interface StatusDotProps {

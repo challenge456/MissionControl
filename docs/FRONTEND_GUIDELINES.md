@@ -1,438 +1,242 @@
-# Mission Control -- Frontend Guidelines
+# Mission Control — Frontend Guidelines
 
-**Last Updated:** February 8, 2026  
-**App:** apps/mission-control-ui  
-**Approach:** Dark theme, inline React styles, no component library
+_Last updated: 2026-02-28. This document reflects the current state of the codebase. All prior versions referencing inline styles, `src/styles/colors.js`, or "No Tailwind" are obsolete._
 
 ---
 
-## Styling Approach
+## Stack
 
-- **Primary:** Inline React `style` props on elements
-- **Global CSS:** `apps/mission-control-ui/src/index.css` for layout, scrollbars, responsive breakpoints
-- **No Tailwind.** No CSS modules. No styled-components.
-- **No component library.** All components are custom-built.
-- **Animations:** framer-motion (`motion.div`, `AnimatePresence`, layout animations)
-- **Drag-and-drop:** @dnd-kit/core + @dnd-kit/sortable (Kanban board)
-
----
-
-## Design Tokens
-
-All colors should be referenced via the design tokens module (`src/styles/colors.js`) rather than hardcoded hex values. This ensures consistency and makes theme updates easier.
-
-```javascript
-// src/styles/colors.js
-export const colors = {
-  // Backgrounds
-  bgPage: '#0f172a',
-  bgCard: '#1e293b',
-  bgHover: '#25334d',
-  bgBorder: '#334155',
-  bgMuted: '#475569',
-  
-  // Text
-  textPrimary: '#e2e8f0',
-  textSecondary: '#94a3b8',
-  textMuted: '#64748b',
-  
-  // Accents
-  accentBlue: '#3b82f6',
-  accentBlueDark: '#2563eb',
-  accentGreen: '#10b981',
-  accentGreenBright: '#22c55e',
-  accentOrange: '#f59e0b',
-  accentOrangeBright: '#f97316',
-  accentPurple: '#8b5cf6',
-  accentPurpleDark: '#7c3aed',
-  accentRed: '#ef4444',
-  accentRedDark: '#dc2626',
-  accentYellow: '#fbbf24',
-};
-```
-
-Import and use tokens in components:
-
-```javascript
-import { colors } from '../styles/colors';
-
-<div style={{ background: colors.bgCard, color: colors.textPrimary }}>
-```
-
-## Color Palette
-
-### Backgrounds
-
-| Token | Hex | Usage |
-|---|---|---|
-| bg-page | `#0f172a` | Page background, deepest layer |
-| bg-card | `#1e293b` | Cards, sidebar, modals, panels |
-| bg-hover | `#25334d` | Hover states on interactive elements |
-| bg-border | `#334155` | Secondary backgrounds, borders |
-| bg-muted | `#475569` | Lighter borders, dividers |
-
-### Text
-
-| Token | Hex | Usage |
-|---|---|---|
-| text-primary | `#e2e8f0` | Primary text, headings |
-| text-secondary | `#94a3b8` | Secondary text, descriptions |
-| text-muted | `#64748b` | Tertiary text, timestamps, labels |
-
-### Accents
-
-| Token | Hex | Usage |
-|---|---|---|
-| accent-blue | `#3b82f6` | Primary actions, links, ASSIGNED status |
-| accent-blue-dark | `#2563eb` | Blue hover states |
-| accent-green | `#10b981` | Success, ACTIVE status, DONE |
-| accent-green-bright | `#22c55e` | Bright green accents |
-| accent-orange | `#f59e0b` | Warnings, IN_PROGRESS status |
-| accent-orange-bright | `#f97316` | Orange hover states |
-| accent-purple | `#8b5cf6` | REVIEW status, analytics |
-| accent-purple-dark | `#7c3aed` | Purple hover states |
-| accent-red | `#ef4444` | Errors, BLOCKED, NEEDS_APPROVAL |
-| accent-red-dark | `#dc2626` | Red hover states |
-| accent-yellow | `#fbbf24` | Priority indicators |
-
-### Task Status Colors
-
-| Status | Color |
+| Layer | Tool |
 |---|---|
-| INBOX | `#6b7280` |
-| ASSIGNED | `#3b82f6` |
-| IN_PROGRESS | `#f59e0b` |
-| REVIEW | `#8b5cf6` |
-| NEEDS_APPROVAL | `#ef4444` |
-| BLOCKED | `#dc2626` |
-| DONE | `#10b981` |
-| CANCELED | `#64748b` |
-
-### Priority Colors
-
-| Priority | Background | Border | Text |
-|---|---|---|---|
-| 1 (Critical) | `#7c2d12` | `#ea580c` | `#fbbf24` |
-| 2 (High) | `#7c2d12` | `#f97316` | `#fb923c` |
-| 3 (Normal) | `#1e293b` | `#475569` | `#94a3b8` |
-| 4 (Low) | `#0f172a` | `#334155` | `#64748b` |
-
-### Risk Level Colors
-
-| Risk | Color |
-|---|---|
-| GREEN | `#10b981` |
-| YELLOW | `#f59e0b` |
-| RED | `#ef4444` |
+| Framework | React 18 + TypeScript 5.3 |
+| Build | Vite 5 |
+| Styling | Tailwind CSS v4 |
+| Components | shadcn/ui (Radix UI primitives) |
+| Animations | Framer Motion |
+| Icons | Lucide React |
+| Data | Convex (`useQuery` / `useMutation`) |
+| D&D | @dnd-kit |
 
 ---
 
-## Typography
+## Design Token System
 
-| Property | Value |
-|---|---|
-| Font family | `system-ui, -apple-system, sans-serif` |
-| Font sizes | `0.875rem` (14px) to `1.1rem` (18px) |
-| Body text | `1rem` (16px) — meets WCAG legibility baseline |
-| Small text | `0.875rem` (14px) — minimum for accessibility |
-| Headings | `0.85rem` - `1.1rem` (14px-18px) |
-| Font weights | 500 (medium), 600 (semibold), 700 (bold) |
-| Letter spacing | `0.03em` - `0.05em` for uppercase labels |
-| Text transform | `uppercase` for section headers and status labels |
+All colors, radii, and typography are defined as **CSS variables** in `apps/mission-control-ui/src/index.css`. Never hardcode hex values.
 
-**WCAG Compliance Note:** Body text is set to 16px (1rem) and small text to 14px (0.875rem) to meet WCAG AA legibility requirements. For text smaller than 14px, ensure sufficient color contrast (4.5:1 for normal text, 3:1 for large text ≥18px or bold ≥14px). All interactive elements must have focus indicators (see Focus Styles section below).
-
----
-
-## Spacing
-
-| Scale | Value | Usage |
-|---|---|---|
-| xs | `4px` | Tight gaps, icon margins |
-| sm | `6px` - `8px` | Small gaps, compact padding |
-| md | `10px` - `12px` | Standard padding, gaps |
-| lg | `14px` - `16px` | Card padding, section gaps |
-| xl | `20px` - `24px` | Modal padding, large gaps |
-
----
-
-## Borders & Radii
-
-| Element | Border Radius |
-|---|---|
-| Buttons, badges | `4px` |
-| Default elements | `6px` |
-| Cards, inputs | `8px` |
-| Modals, panels | `10px` - `12px` |
-
-| Element | Border |
-|---|---|
-| Cards | `1px solid #334155` |
-| Inputs | `1px solid #475569` |
-| Dividers | `1px solid #334155` |
-
----
-
-## Layout
-
-### Three-Column Layout (Desktop)
+### Core Tokens (dark theme — `:root`)
 
 ```
-+-------------------+---------------------+------------------+
-| Sidebar (260px)   | Main Content (flex)  | Live Feed (320px)|
-| - Agent list      | - Kanban board       | - Activity stream|
-| - Action buttons  | - Filters            | - Agent filters  |
-+-------------------+---------------------+------------------+
+--background:  #0b1120   (page background)
+--foreground:  #e2e8f0   (primary text)
+--card:        #111827   (elevated card surface)
+--muted:       #161f30   (muted surface)
+--muted-foreground: #7a8799
+--border:      #1e2d40
+--input:       #1e2d40
+--ring:        #10b981   (focus rings)
+
+--primary:     #10b981   (emerald-green — main accent, CTAs, active states)
+--primary-foreground: #ffffff
+
+--secondary:   #1a2235
+--secondary-foreground: #d1d9e6
+
+--accent:      #1c2a3a   (hover surface for ghost elements)
+--accent-foreground: #e2e8f0
+
+--sidebar:     #090e1b
+--sidebar-border: #1a2438
+--sidebar-primary: #10b981
+
+--success:     #10b981
+--success-muted: #064e3b
+--success-muted-foreground: #34d399
+
+--destructive: #ef4444
 ```
 
-- Sidebar: `260px` width, collapsible to `48px`
-- Main content: `flex: 1`, scrollable
-- Live Feed: `320px` width, right panel
+### Radius
 
-### Header
+`--radius: 0.5rem`. Use `rounded-lg` (default), `rounded-xl` (modals), `rounded-full` (pills/badges), `rounded-md` (buttons/inputs).
 
-- Fixed height, flex row layout
-- Contains: Title, Project Switcher, Search, Metrics, Action Buttons, Clock
+### Typography
 
-### Modals
+Font: **Inter** (via Google Fonts). Base size: `13px`, line-height `1.5`.
 
-- Overlay: `rgba(0, 0, 0, 0.7)` with `backdrop-filter: blur(4px)`
-- Modal body: `background: #1e293b`, `border: 1px solid #334155`
-- Max-width varies by content (typically `800px` - `1200px`)
-- Close button: top-right corner
-
-### Task Drawer
-
-- Slides in from right side
-- Width: approximately `50%` of viewport
-- Tabbed interface (Overview, Timeline, Artifacts, Approvals, Cost, Reviews)
+Use `text-foreground` for primary text, `text-muted-foreground` for secondary/metadata text. Never use arbitrary hex values.
 
 ---
 
-## Responsive Breakpoints
+## Component Library — shadcn/ui
 
-| Breakpoint | Width | Behavior |
-|---|---|---|
-| Desktop | > 1024px | Full three-column layout |
-| Tablet | <= 1024px | Live Feed: 280px, Sidebar: 240px |
-| Mobile | <= 768px | Live Feed hidden, Sidebar becomes overlay, hamburger menu |
-| Small Mobile | <= 640px | Header stacks vertically, smaller fonts |
+Components live in `src/components/ui/`. Do **not** install other component libraries.
 
-### Mobile Patterns
+All shadcn components are styled via Tailwind utility classes that reference CSS variables. Changes to `:root` in `index.css` propagate automatically.
 
-- Sidebar: Fixed overlay, slides from left, triggered by hamburger
-- Live Feed: Hidden on mobile
-- Touch targets: Minimum 44x44px
-- Kanban columns: `min-width: 280px` (horizontal scroll)
+### Badge Variants
+
+```tsx
+<Badge variant="default" />    // primary bg + text
+<Badge variant="success" />    // green pill — use for ACTIVE, DONE, STABLE, APPROVED
+<Badge variant="warning" />    // amber pill — use for PAUSED, PENDING
+<Badge variant="error" />      // red pill — use for FAILED, BLOCKED, CRITICAL
+<Badge variant="muted" />      // muted surface — use for CANCELED, INFO states
+<Badge variant="outline" />    // border only
+<Badge variant="secondary" />  // secondary surface
+```
+
+### Button Sizes
+
+Default height is `h-9`. Use `size="sm"` (`h-7`) for compact toolbar buttons, `size="lg"` (`h-10`) for primary CTAs in empty states.
+
+### Card
+
+`Card` wraps content with `bg-card border-border` and `--card-shadow`. Do not manually add `shadow-*` — the shadow is handled by the CSS variable.
+
+### Page chrome and overlays
+
+- **View-level screens**: Use `PageHeader` from `src/components/PageHeader.tsx` for title, description, and primary actions so page rhythm and scanning are consistent.
+- **Modals and flyouts**: Use `Dialog` or `Sheet` from `src/components/ui/` for overlays so keyboard (Escape), focus trap, and accessibility stay consistent. Avoid custom fixed overlays with ad-hoc backdrop/close behavior.
 
 ---
 
-## Component Patterns
+## Status and Risk Colors
 
-### Buttons
+### Task Statuses
 
-```javascript
-import { colors } from '../styles/colors';
+Defined in `src/components/StatusChip.tsx`. Use the `<StatusChip status="DONE" />` component rather than manually applying colors.
 
-// Primary action
-style={{
-  padding: '8px 16px',
-  background: colors.accentBlue,
-  color: 'white',
-  border: 'none',
-  borderRadius: '6px',
-  cursor: 'pointer',
-  fontSize: '1rem',
-  fontWeight: 600,
-}}
+- INBOX / ASSIGNED / IN_PROGRESS / REVIEW → blue (`bg-blue-500/10 text-blue-400`)
+- NEEDS_APPROVAL → red
+- BLOCKED → orange
+- DONE → **primary** (green)
+- CANCELED → gray
 
-// Danger action
-style={{
-  padding: '8px 16px',
-  background: colors.accentRedDark,
-  color: 'white',
-  border: 'none',
-  borderRadius: '6px',
-  cursor: 'pointer',
-}}
+### Risk Levels
 
-// Ghost/subtle button
-style={{
-  padding: '6px 10px',
-  background: 'transparent',
-  color: colors.textSecondary,
-  border: `1px solid ${colors.bgBorder}`,
-  borderRadius: '6px',
-  cursor: 'pointer',
-}}
+Defined in `src/components/RiskChip.tsx`. Use `<RiskChip level="GREEN" />`.
+
+- GREEN → **primary** (green)
+- YELLOW → amber
+- RED → red
+
+### Do NOT create custom color classes for these states.
+
+### Semantic palette (OpenClaw Studio parity)
+
+Use a single semantic palette across Live Chat, approvals, and Registry:
+
+- **Status**: green (success/active), amber (warning/paused), red (error/blocked) — use Badge variants `success`, `warning`, `error` or equivalent CSS vars.
+- **Action**: primary (emerald) for main CTAs and active states.
+- **Danger**: destructive (red) for delete, quarantine, deny.
+
+Document any new status or action colors here so they stay consistent.
+
+---
+
+## CSS Utility Classes
+
+`index.css` provides purpose-built utility classes for the Loop Risk Monitor visual language:
+
 ```
+.status-pill               base pill container
+.status-pill-success       green pill (STABLE, ALL CLEAR)
+.status-pill-warning       amber pill
+.status-pill-error         red pill
+.status-pill-neutral       gray pill
 
-### Cards
+.panel-header              section header bar (icon + title + border)
+.panel-header-icon         circular icon in panel headers
 
-```javascript
-import { colors } from '../styles/colors';
+.list-row                  list item (icon + title + meta + chevron)
+.list-row-icon             icon container in list rows
+.list-row-icon-success / -warning / -error / -neutral
 
-style={{
-  background: colors.bgCard,
-  border: `1px solid ${colors.bgBorder}`,
-  borderRadius: '8px',
-  padding: '14px',
-}}
-```
+.panel-footer              footer bar (muted text + border)
 
-### Badges
+.view-header               page-level header (title + actions)
+.view-title / .view-subtitle
 
-```javascript
-import { colors } from '../styles/colors';
+.empty-state               centered empty state container
+.empty-state-icon / .empty-state-title / .empty-state-desc
 
-style={{
-  padding: '2px 8px',
-  borderRadius: '4px',
-  fontSize: '0.875rem',
-  fontWeight: 600,
-  textTransform: 'uppercase',
-  letterSpacing: '0.05em',
-}}
-```
+.skeleton-shimmer          loading skeleton animation
+.status-dot-pulse          live status dot pulse animation
 
-### Inputs
+.badge-glow-green          subtle green glow ring on important success badges
+.badge-glow-red            subtle red glow ring on critical badges
 
-```javascript
-import { colors } from '../styles/colors';
-
-style={{
-  width: '100%',
-  padding: '8px 12px',
-  background: colors.bgPage,
-  border: `1px solid ${colors.bgMuted}`,
-  borderRadius: '6px',
-  color: colors.textPrimary,
-  fontSize: '1rem',
-}}
+.nav-active-glow           drop shadow on active nav icons
+.kanban-col-header         kanban column header uppercase style
+.stat-value                tabular-nums for metric numbers
 ```
 
 ---
 
-## Animation Patterns
+## App Shell Layout
 
-### Page Transitions (framer-motion)
-
-```javascript
-<motion.div
-  initial={{ opacity: 0, y: 10 }}
-  animate={{ opacity: 1, y: 0 }}
-  exit={{ opacity: 0, y: -10 }}
-  transition={{ duration: 0.2 }}
->
+```
+┌── AppTopBar (h-11, bg-sidebar) ──────────────────────────────┐
+│   [ProjectSwitcher] [SearchBar]    [Mission]    [Actions]    │
+├── CommandNav (h-12) ──────────────────────────────────────────┤
+│   MC   Home  Ops  Agents  Chat  Content  Comms  KB  Code  QC │
+├── Sidebar (SIDEBAR_WIDTH=260 or SIDEBAR_COLLAPSED=48) ────────┤
+│   Agents list + quick actions                                 │
+├── main (flex-1 overflow-auto) ────────────────────────────────┤
+│   ┌ PageHeader (px-5 py-3.5 border-b) ─────────────────────┐ │
+│   │  [Icon]  Title  [StatusPill]        [Actions]          │ │
+│   └──────────────────────────────────────────────────────── ┘ │
+│   [view content]                                              │
+└───────────────────────────────────────────────────────────────┘
 ```
 
-### List Items
+### ModalLayer
 
-```javascript
-<motion.div
-  layout
-  initial={{ opacity: 0 }}
-  animate={{ opacity: 1 }}
-  exit={{ opacity: 0 }}
->
-```
+All modals, drawers, and flyouts are mounted in `src/ModalLayer.tsx`. State is managed by `src/hooks/useModalState.ts`.
 
-### Hover States
-
-- Background color shift: `#1e293b` -> `#25334d`
-- Use `onMouseEnter`/`onMouseLeave` state for hover effects (since inline styles)
-- Transition duration: 0.15s - 0.2s
+- Modals use `<Dialog>` + `DialogContent className="bg-card border-border rounded-xl"`
+- Drawers use `<Sheet>` + `SheetContent className="bg-card border-border"`
+- Overlays use `bg-black/70 backdrop-blur-[2px]`
 
 ---
 
-## Focus Styles
+## Conventions
 
-All interactive elements must have visible focus indicators to meet WCAG 2.1 Level A (Success Criterion 2.4.7: Focus Visible).
+### Do
+- Use Tailwind utility classes and CSS variables.
+- Use `cn()` from `@/lib/utils` for conditional class composition.
+- Use `<StatusChip>` and `<RiskChip>` for task/risk status display.
+- Use `<Badge variant="success|warning|error|muted">` for pill labels.
+- Use `<PageHeader>` with `icon`, `status`, and `actions` props for every view.
+- Use `text-muted-foreground` for secondary/metadata text.
+- Use `border-border` for all dividers.
 
-**Standard Focus Pattern:**
+### Do Not
+- Hardcode hex colors (no `#10b981`, `#0b1120`, etc.).
+- Use `bg-emerald-*` — use `bg-primary/10`, `text-primary`, `bg-primary` instead.
+- Use inline `style={{ color: '...' }}` — use Tailwind classes.
+- Import MUI, Chakra, styled-components, or emotion.
+- Add new shadcn components without running `npx shadcn@latest add`.
+- Use `shadow-sm`, `shadow-md` — let `--card-shadow` handle card elevation.
 
-```javascript
-import { colors } from '../styles/colors';
+### Hardcoded Colors Still Permitted
+- Task-state semantic blues: `bg-blue-500/10 text-blue-400` for ASSIGNED/IN_PROGRESS/REVIEW/INBOX status chips — these are intentional semantic differentiation.
+- Amber: `bg-amber-500/10 text-amber-400` for WARNING, PAUSED, COMMENT_STORM loop type.
+- Red: `bg-red-500/10 text-red-400` for FAILED, BLOCKED, CRITICAL.
+- Orange: `bg-orange-500/10 text-orange-400` for BLOCKED loop type.
 
-// Global utility class (add to index.css)
-.focus-outline:focus-visible {
-  outline: 2px solid #3b82f6;
-  outline-offset: 2px;
-}
+---
 
-// React pattern using state
-const [focused, setFocused] = useState(false);
+## Theming
 
-<button
-  style={{
-    ...baseStyles,
-    outline: focused ? `2px solid ${colors.accentBlue}` : 'none',
-    outlineOffset: focused ? '2px' : '0',
-  }}
-  onFocus={() => setFocused(true)}
-  onBlur={() => setFocused(false)}
->
-  Click me
-</button>
+Default theme is **dark**. Light theme available via `data-theme="light"` on `<html>`. Toggle managed in `AppTopBar.tsx`. All components respond automatically via CSS variables.
 
-// Prefer :focus-visible where available to avoid visual noise on mouse clicks
-```
+---
 
-**Implementation Checklist:**
-- ✅ Apply focus styles to all `<button>` elements
-- ✅ Apply focus styles to all `<a>` links
-- ✅ Apply focus styles to all form inputs (`<input>`, `<textarea>`, `<select>`)
-- ✅ Apply focus styles to custom interactive elements (cards, list items with onClick)
-- ✅ Use `:focus-visible` pseudo-class where supported to show focus only for keyboard navigation
-- ✅ Ensure focus indicator has 3:1 contrast ratio against background (WCAG 2.1 SC 1.4.11 Non-text Contrast)
+## Accessibility
 
-## Accessibility Notes
-
-### Touch Targets
-- Minimum 44x44px on mobile for all interactive elements
-- Ensure adequate spacing between adjacent clickable elements
-
-### Color Contrast
-- All text/background combinations meet WCAG AA (4.5:1 for normal text, 3:1 for large text)
-- Body text (16px) on `bgCard` (#1e293b) with `textPrimary` (#e2e8f0) = 12.6:1 ✅
-- Small text (14px) on `bgCard` with `textSecondary` (#94a3b8) = 7.1:1 ✅
-
-### Screen Reader Support
-
-**Required ARIA Patterns:**
-
-1. **Modals and Drawers:**
-   - Use `role="dialog"` or `role="alertdialog"` on modal containers
-   - Add `aria-modal="true"` to indicate modal behavior
-   - Set `aria-labelledby` to reference the modal title
-   - Set `aria-describedby` to reference the modal description (if present)
-   - Trap focus within modal while open
-   - Return focus to trigger element on close
-
-2. **Live Regions (Activity Stream, Status Updates):**
-   - Use `aria-live="polite"` for non-urgent updates (activity stream)
-   - Use `aria-live="assertive"` for urgent alerts (error notifications)
-   - Include `aria-atomic="true"` if the entire region should be announced
-   - Example: `<div aria-live="polite" aria-atomic="false">New task created</div>`
-
-3. **Component-Specific Labels:**
-   - **NavBar:** Add `aria-label="Main navigation"` to `<nav>` element
-   - **ActivityStream:** Add `aria-label="Activity feed"` to container, `aria-live="polite"` for updates
-   - **StatusUpdateCard:** Add `aria-label="Task status: ${status}"` to status badges
-   - **Buttons (icon-only):** Always include `aria-label` (e.g., `aria-label="Close modal"`)
-   - **Form inputs:** Always pair with `<label>` or use `aria-label` if label is visual only
-
-4. **Semantic HTML:**
-   - Use `<button>` for clickable controls (not `<div onClick>`)
-   - Use `<a>` for navigation (not `<span onClick>`)
-   - Only use `role="button"` on non-button elements if necessary, and add keyboard handlers (`onKeyDown` for Enter/Space)
-   - Use `<nav>`, `<main>`, `<aside>`, `<header>`, `<footer>` for landmark regions
-
-**Screen Reader Testing Checklist:**
-- ✅ All interactive elements are keyboard-accessible (Tab, Enter, Space, Arrow keys)
-- ✅ Focus order follows visual order
-- ✅ All images have `alt` text (or `alt=""` for decorative images)
-- ✅ All form inputs have associated labels
-- ✅ Modal dialogs trap focus and announce title on open
-- ✅ Live regions announce updates without stealing focus
-- ✅ Status messages are announced (e.g., "Task moved to In Progress")
+- All interactive elements have `focus-visible:ring-2 focus-visible:ring-ring`.
+- Touch targets minimum `44×44px` via `@media (pointer: coarse)` in `index.css`.
+- Use `aria-label` on icon-only buttons.
+- Reduced-motion users: all animations disabled via `prefers-reduced-motion` in `index.css`.
+- Semantic HTML: `<header>`, `<main>`, `<aside>`, `<nav>`, `role="tablist"` on tab bars.

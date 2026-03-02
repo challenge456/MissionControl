@@ -45,16 +45,16 @@ function DetailRow({
   );
 }
 
+const FLYOUT_PANEL_CLASS =
+  "fixed top-0 right-0 bottom-0 z-[60] flex flex-col bg-sidebar border-l border-border shadow-xl max-w-[100vw] animate-in slide-in-from-right duration-200";
+
 export function AgentDetailFlyout({
   agentId,
   onClose,
-  leftOffset = 320,
   onEdit,
 }: {
   agentId: Id<"agents">;
   onClose: () => void;
-  /** Distance from the left edge of the viewport in px (default 320 for AgentsFlyout width) */
-  leftOffset?: number;
   /** Called when the user clicks Edit -- host can navigate to Org view */
   onEdit?: (agentId: Id<"agents">) => void;
 }) {
@@ -80,8 +80,8 @@ export function AgentDetailFlyout({
     return (
       <aside
         ref={panelRef}
-        className="fixed top-0 bottom-0 z-[60] flex flex-col bg-sidebar border-r border-border shadow-xl animate-in slide-in-from-left duration-200"
-        style={{ left: leftOffset, width: FLYOUT_WIDTH }}
+        className={FLYOUT_PANEL_CLASS}
+        style={{ width: FLYOUT_WIDTH }}
         role="dialog"
         aria-modal="true"
         aria-label="Agent detail"
@@ -118,13 +118,13 @@ export function AgentDetailFlyout({
   const remaining = Math.max(0, daily - spent);
   const ratio = daily > 0 ? spent / daily : 0;
   const ratioClass =
-    ratio > 0.9 ? "text-red-500" : ratio > 0.7 ? "text-amber-500" : "text-emerald-500";
+    ratio > 0.9 ? "text-red-500" : ratio > 0.7 ? "text-amber-500" : "text-primary";
 
   return (
     <aside
       ref={panelRef}
-      className="fixed top-0 bottom-0 z-[60] flex flex-col bg-sidebar border-r border-border shadow-xl animate-in slide-in-from-left duration-200"
-      style={{ left: leftOffset, width: FLYOUT_WIDTH }}
+      className={FLYOUT_PANEL_CLASS}
+      style={{ width: FLYOUT_WIDTH }}
       role="dialog"
       aria-modal="true"
       aria-label={`${agent.name} details`}
@@ -135,7 +135,7 @@ export function AgentDetailFlyout({
           <div
             className={cn(
               "w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold shrink-0",
-              isActive ? "bg-emerald-500/20 text-emerald-500" : "bg-slate-400/20 text-muted-foreground"
+              isActive ? "bg-primary/15 text-primary" : "bg-slate-400/20 text-muted-foreground"
             )}
           >
             {agent.emoji || agent.name.charAt(0).toUpperCase()}
@@ -149,7 +149,7 @@ export function AgentDetailFlyout({
               <span
                 className={cn(
                   "px-2 py-0.5 rounded text-xs font-semibold",
-                  isActive ? "bg-emerald-500/20 text-emerald-500" : "bg-amber-500/20 text-amber-500"
+                  isActive ? "bg-primary/15 text-primary" : "bg-amber-500/20 text-amber-500"
                 )}
               >
                 {agent.status}

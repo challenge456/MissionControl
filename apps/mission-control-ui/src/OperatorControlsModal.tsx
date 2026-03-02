@@ -59,7 +59,7 @@ export function OperatorControlsModal({
   return (
     <Modal onClose={onClose}>
       <h2 style={{ margin: "0 0 12px", fontSize: "1.2rem", fontWeight: 700 }}>Operator Controls</h2>
-      <p style={{ margin: "0 0 14px", color: "#94a3b8", fontSize: "0.85rem" }}>
+      <p style={{ margin: "0 0 14px", color: "var(--muted-foreground)", fontSize: "0.85rem" }}>
         Control execution posture for this project. Use quarantined mode for incident containment.
       </p>
 
@@ -72,8 +72,8 @@ export function OperatorControlsModal({
               type="button"
               onClick={() => setModeState(entry.id)}
               style={{
-                border: active ? `1px solid ${entry.color}` : "1px solid #334155",
-                background: active ? "#0f172a" : "#1e293b",
+                border: active ? `1px solid ${entry.color}` : "1px solid var(--border)",
+                background: active ? "var(--background)" : "var(--card)",
                 borderRadius: 8,
                 padding: "10px 12px",
                 textAlign: "left",
@@ -81,10 +81,10 @@ export function OperatorControlsModal({
               }}
             >
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontWeight: 600, color: "#e2e8f0" }}>{entry.label}</span>
+                <span style={{ fontWeight: 600, color: "var(--foreground)" }}>{entry.label}</span>
                 <span style={{ color: entry.color, fontSize: "0.75rem", fontWeight: 700 }}>{entry.id}</span>
               </div>
-              <div style={{ color: "#94a3b8", fontSize: "0.8rem", marginTop: 4 }}>{entry.detail}</div>
+              <div style={{ color: "var(--muted-foreground)", fontSize: "0.8rem", marginTop: 4 }}>{entry.detail}</div>
             </button>
           );
         })}
@@ -98,10 +98,10 @@ export function OperatorControlsModal({
         style={{
           width: "100%",
           padding: "8px 10px",
-          background: "#0f172a",
-          border: "1px solid #334155",
+          background: "var(--background)",
+          border: "1px solid var(--border)",
           borderRadius: 6,
-          color: "#e2e8f0",
+          color: "var(--foreground)",
           fontSize: "0.84rem",
           resize: "vertical",
         }}
@@ -146,8 +146,8 @@ export function OperatorControlsModal({
           disabled={saving}
           style={{
             padding: "8px 12px",
-            background: "#334155",
-            border: "1px solid #475569",
+            background: "var(--border)",
+            border: "1px solid var(--border)",
             borderRadius: 6,
             color: "#cbd5e1",
             fontSize: "0.82rem",
@@ -158,32 +158,32 @@ export function OperatorControlsModal({
         </button>
       </div>
 
-      <div style={{ marginTop: 16, borderTop: "1px solid #334155", paddingTop: 10 }}>
-        <div style={{ color: "#94a3b8", fontSize: "0.75rem", marginBottom: 6 }}>Recent mode changes</div>
+      <div style={{ marginTop: 16, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+        <div style={{ color: "var(--muted-foreground)", fontSize: "0.75rem", marginBottom: 6 }}>Recent mode changes</div>
         {!history || history.length === 0 ? (
-          <div style={{ color: "#64748b", fontSize: "0.8rem" }}>No control changes yet.</div>
+          <div style={{ color: "var(--muted-foreground)", fontSize: "0.8rem" }}>No control changes yet.</div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 180, overflow: "auto" }}>
             {history.map((entry) => (
               <div
                 key={entry._id}
                 style={{
-                  background: "#0f172a",
-                  border: "1px solid #334155",
+                  background: "var(--background)",
+                  border: "1px solid var(--border)",
                   borderRadius: 6,
                   padding: "8px 10px",
                 }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                  <span style={{ color: "#e2e8f0", fontSize: "0.82rem", fontWeight: 600 }}>{entry.mode}</span>
-                  <span style={{ color: "#64748b", fontSize: "0.75rem" }}>
+                  <span style={{ color: "var(--foreground)", fontSize: "0.82rem", fontWeight: 600 }}>{entry.mode}</span>
+                  <span style={{ color: "var(--muted-foreground)", fontSize: "0.75rem" }}>
                     {new Date(entry.updatedAt).toLocaleString()}
                   </span>
                 </div>
                 {entry.reason && (
-                  <div style={{ color: "#94a3b8", fontSize: "0.78rem", marginTop: 2 }}>{entry.reason}</div>
+                  <div style={{ color: "var(--muted-foreground)", fontSize: "0.78rem", marginTop: 2 }}>{entry.reason}</div>
                 )}
-                <div style={{ color: "#64748b", fontSize: "0.72rem", marginTop: 2 }}>by {entry.updatedBy}</div>
+                <div style={{ color: "var(--muted-foreground)", fontSize: "0.72rem", marginTop: 2 }}>by {entry.updatedBy}</div>
               </div>
             ))}
           </div>
@@ -217,8 +217,8 @@ function Modal({ children, onClose }: { children: React.ReactNode; onClose: () =
           width: "min(700px, 92vw)",
           maxHeight: "88vh",
           overflow: "auto",
-          background: "#1e293b",
-          border: "1px solid #334155",
+          background: "var(--card)",
+          border: "1px solid var(--border)",
           borderRadius: 12,
           zIndex: 9999,
           padding: 18,
@@ -233,7 +233,7 @@ function Modal({ children, onClose }: { children: React.ReactNode; onClose: () =
             right: 10,
             background: "none",
             border: "none",
-            color: "#94a3b8",
+            color: "var(--muted-foreground)",
             fontSize: "1.5rem",
             cursor: "pointer",
           }}

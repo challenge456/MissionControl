@@ -1,8 +1,8 @@
-@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 
 @theme inline {
-  --font-sans: "Manrope", "Segoe UI", "Helvetica Neue", "Noto Sans", sans-serif;
+  --font-sans: "Inter", "Segoe UI", "Helvetica Neue", "Noto Sans", sans-serif;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -45,6 +45,15 @@
   --color-risk-yellow: #d97706;
   --color-risk-red: #dc2626;
 
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-muted: var(--success-muted);
+  --color-success-muted-foreground: var(--success-muted-foreground);
+
+  --color-neon-green: var(--neon-green);
+  --color-neon-cyan: var(--neon-cyan);
+  --color-neon-magenta: var(--neon-magenta);
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -52,87 +61,135 @@
 }
 
 :root {
-  --radius: 0.625rem;
+  --radius: 0.5rem;
 
-  --background: #0c0e14;
-  --foreground: #f1f5f9;
-  --card: #13161f;
-  --card-foreground: #f1f5f9;
-  --popover: #13161f;
-  --popover-foreground: #f1f5f9;
+  /* ── Base surfaces ── */
+  --background: #0b1120;
+  --foreground: #e2e8f0;
+  --card: #111827;
+  --card-foreground: #e2e8f0;
+  --popover: #111827;
+  --popover-foreground: #e2e8f0;
 
-  --primary: #3b82f6;
-  --primary-foreground: #eff6ff;
+  /* ── Primary: emerald-green accent (Loop Risk Monitor reference) ── */
+  --primary: #10b981;
+  --primary-foreground: #ffffff;
 
-  --secondary: #1a1f2e;
-  --secondary-foreground: #dbe3f0;
+  /* ── Secondary surface ── */
+  --secondary: #1a2235;
+  --secondary-foreground: #d1d9e6;
 
-  --muted: #181d28;
-  --muted-foreground: #8b95a8;
+  /* ── Muted ── */
+  --muted: #161f30;
+  --muted-foreground: #7a8799;
 
-  --accent: #1c2233;
-  --accent-foreground: #f1f5f9;
+  /* ── Accent hover surface ── */
+  --accent: #1c2a3a;
+  --accent-foreground: #e2e8f0;
 
+  /* ── Destructive ── */
   --destructive: #ef4444;
   --destructive-foreground: #fef2f2;
 
-  --border: #232a38;
-  --input: #232a38;
-  --ring: #3b82f6;
+  /* ── Borders and inputs ── */
+  --border: #1e2d40;
+  --input: #1e2d40;
+  --ring: #10b981;
 
-  --sidebar: #0e1018;
-  --sidebar-foreground: #e2e8f0;
-  --sidebar-accent: #181d28;
-  --sidebar-accent-foreground: #f8fafc;
-  --sidebar-border: #232a38;
-  --sidebar-ring: #3b82f6;
-  --sidebar-primary: #3b82f6;
-  --sidebar-primary-foreground: #eff6ff;
+  /* ── Sidebar ── */
+  --sidebar: #090e1b;
+  --sidebar-foreground: #d1d9e6;
+  --sidebar-accent: #161f30;
+  --sidebar-accent-foreground: #f1f5f9;
+  --sidebar-border: #1a2438;
+  --sidebar-ring: #10b981;
+  --sidebar-primary: #10b981;
+  --sidebar-primary-foreground: #ffffff;
 
-  /* Card shadow for dark mode */
-  --card-shadow: 0 1px 3px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.03);
-  --card-shadow-hover: 0 4px 16px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05);
+  /* ── Success (stable / all-clear) ── */
+  --success: #10b981;
+  --success-foreground: #ffffff;
+  --success-muted: #064e3b;
+  --success-muted-foreground: #34d399;
+
+  /* ── Card shadow for dark mode ── */
+  --card-shadow: 0 1px 3px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04);
+  --card-shadow-hover: 0 4px 20px rgba(0,0,0,0.6), 0 0 0 1px rgba(16,185,129,0.12);
+
+  /* ── Neon design system tokens ── */
+  --neon-green: #a3e635;
+  --neon-cyan: #22d3ee;
+  --neon-magenta: #e879f9;
+  --neon-green-dim: rgba(163, 230, 53, 0.15);
+  --neon-cyan-dim: rgba(34, 211, 238, 0.12);
+  --glass-bg: rgba(17, 24, 39, 0.72);
+  --glass-border: rgba(34, 211, 238, 0.18);
+  --glass-border-green: rgba(163, 230, 53, 0.2);
+  --glow-green: 0 0 12px rgba(163, 230, 53, 0.35), 0 0 24px rgba(163, 230, 53, 0.12);
+  --glow-cyan: 0 0 12px rgba(34, 211, 238, 0.3), 0 0 24px rgba(34, 211, 238, 0.1);
+  --glow-focus: 0 0 0 2px var(--background), 0 0 0 4px var(--neon-cyan);
+  --blur-panel: 12px;
+  --vignette: radial-gradient(ellipse 120% 80% at 50% 0%, transparent 40%, rgba(0,0,0,0.4) 100%);
+  --bg-gradient-base: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(34, 211, 238, 0.08), transparent 50%),
+    radial-gradient(ellipse 60% 40% at 100% 50%, rgba(163, 230, 53, 0.05), transparent 45%),
+    radial-gradient(ellipse 60% 40% at 0% 50%, rgba(163, 230, 53, 0.05), transparent 45%);
 }
 
 [data-theme="light"] {
-  --background: #f4f7fb;
+  --background: #f0f4f8;
   --foreground: #0f172a;
   --card: #ffffff;
   --card-foreground: #0f172a;
   --popover: #ffffff;
   --popover-foreground: #0f172a;
 
-  --primary: #2563eb;
-  --primary-foreground: #eff6ff;
+  --primary: #059669;
+  --primary-foreground: #ffffff;
 
-  --secondary: #eef2f8;
+  --secondary: #e8f5f0;
   --secondary-foreground: #0f172a;
 
   --muted: #edf1f8;
-  --muted-foreground: #5a6478;
+  --muted-foreground: #52637a;
 
-  --accent: #eef3fa;
+  --accent: #e6f7f0;
   --accent-foreground: #0f172a;
 
   --destructive: #dc2626;
   --destructive-foreground: #fef2f2;
 
-  --border: #dce3ee;
-  --input: #dce3ee;
-  --ring: #2563eb;
+  --border: #d4dde9;
+  --input: #d4dde9;
+  --ring: #059669;
 
-  --sidebar: #f8fafd;
+  --sidebar: #f7fafc;
   --sidebar-foreground: #0f172a;
-  --sidebar-accent: #edf2f9;
+  --sidebar-accent: #e8f5f0;
   --sidebar-accent-foreground: #0f172a;
-  --sidebar-border: #dce3ee;
-  --sidebar-ring: #2563eb;
-  --sidebar-primary: #2563eb;
-  --sidebar-primary-foreground: #eff6ff;
+  --sidebar-border: #d4dde9;
+  --sidebar-ring: #059669;
+  --sidebar-primary: #059669;
+  --sidebar-primary-foreground: #ffffff;
+
+  --success: #059669;
+  --success-foreground: #ffffff;
+  --success-muted: #d1fae5;
+  --success-muted-foreground: #065f46;
 
   /* Card shadow for light mode */
   --card-shadow: 0 1px 3px rgba(15,23,42,0.07), 0 0 0 1px rgba(15,23,42,0.04);
-  --card-shadow-hover: 0 4px 16px rgba(15,23,42,0.1), 0 0 0 1px rgba(15,23,42,0.06);
+  --card-shadow-hover: 0 4px 16px rgba(15,23,42,0.1), 0 0 0 1px rgba(5,150,105,0.15);
+
+  /* Neon tokens (muted for light) */
+  --neon-green: #65a30d;
+  --neon-cyan: #0891b2;
+  --neon-magenta: #c026d3;
+  --glass-bg: rgba(255, 255, 255, 0.85);
+  --glass-border: rgba(8, 145, 178, 0.25);
+  --glass-border-green: rgba(101, 163, 13, 0.3);
+  --glow-green: 0 0 12px rgba(5, 150, 105, 0.2);
+  --glow-cyan: 0 0 12px rgba(8, 145, 178, 0.2);
+  --glow-focus: 0 0 0 2px var(--background), 0 0 0 4px var(--neon-cyan);
 }
 
 * {
@@ -149,11 +206,29 @@ body {
   font-family: var(--font-sans);
   background: var(--background);
   color: var(--foreground);
-  font-size: 14px;
-  line-height: 1.45;
+  font-size: 13px;
+  line-height: 1.5;
   letter-spacing: 0.01em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Neon cinematic background (app shell / main content area) ── */
+.neon-app-bg {
+  background: var(--bg-gradient-base) var(--background);
+  position: relative;
+}
+.neon-app-bg::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: var(--vignette);
+  z-index: 0;
+}
+.neon-app-bg > * {
+  position: relative;
+  z-index: 1;
 }
 
 #root {
@@ -294,7 +369,119 @@ textarea:focus-visible {
   box-shadow: 0 0 0 2px color-mix(in srgb, #ef4444 25%, transparent);
 }
 .badge-glow-green {
-  box-shadow: 0 0 0 2px color-mix(in srgb, #22c55e 25%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 30%, transparent);
+}
+
+/* ── Status pill: ALL CLEAR / STABLE pattern from Loop Risk Monitor ── */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.4;
+}
+.status-pill-success {
+  background: color-mix(in srgb, var(--success) 18%, transparent);
+  color: var(--success);
+  border: 1px solid color-mix(in srgb, var(--success) 35%, transparent);
+}
+.status-pill-warning {
+  background: color-mix(in srgb, #d97706 18%, transparent);
+  color: #f59e0b;
+  border: 1px solid color-mix(in srgb, #d97706 35%, transparent);
+}
+.status-pill-error {
+  background: color-mix(in srgb, #ef4444 18%, transparent);
+  color: #f87171;
+  border: 1px solid color-mix(in srgb, #ef4444 35%, transparent);
+}
+.status-pill-neutral {
+  background: color-mix(in srgb, var(--muted-foreground) 15%, transparent);
+  color: var(--muted-foreground);
+  border: 1px solid color-mix(in srgb, var(--muted-foreground) 25%, transparent);
+}
+
+/* ── Panel header pattern (Loop Risk Monitor style) ── */
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--card) 95%, var(--primary) 5%);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--foreground);
+}
+.panel-header-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--primary) 20%, transparent);
+  color: var(--primary);
+}
+
+/* ── List row pattern (icon + title + meta + chevron) ── */
+.list-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border);
+  transition: background-color 0.12s ease;
+  cursor: default;
+}
+.list-row:last-child {
+  border-bottom: none;
+}
+.list-row:hover {
+  background: color-mix(in srgb, var(--muted) 70%, transparent);
+}
+.list-row-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+}
+.list-row-icon-success {
+  background: color-mix(in srgb, var(--success) 15%, transparent);
+  color: var(--success);
+}
+.list-row-icon-warning {
+  background: color-mix(in srgb, #d97706 15%, transparent);
+  color: #f59e0b;
+}
+.list-row-icon-error {
+  background: color-mix(in srgb, #ef4444 15%, transparent);
+  color: #f87171;
+}
+.list-row-icon-neutral {
+  background: color-mix(in srgb, var(--muted-foreground) 12%, transparent);
+  color: var(--muted-foreground);
+}
+
+/* ── Panel footer ── */
+.panel-footer {
+  padding: 6px 14px;
+  font-size: 0.68rem;
+  color: var(--muted-foreground);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  letter-spacing: 0.01em;
 }
 
 /* Animated gradient shimmer for active states */
@@ -306,5 +493,180 @@ textarea:focus-visible {
 
 /* Nav active indicator glow */
 .nav-active-glow {
-  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--primary) 60%, transparent));
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--primary) 70%, transparent));
+}
+
+/* ── Consistent section/page header ── */
+.view-header {
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+}
+.view-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--foreground);
+  letter-spacing: 0.01em;
+}
+.view-subtitle {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  margin-top: 2px;
+}
+
+/* ── Empty state ── */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--muted-foreground);
+}
+.empty-state-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 4px;
+  color: var(--muted-foreground);
+}
+.empty-state-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+.empty-state-desc {
+  font-size: 0.76rem;
+  color: var(--muted-foreground);
+  max-width: 280px;
+}
+
+/* ── Neon design system utilities ── */
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--blur-panel));
+  -webkit-backdrop-filter: blur(var(--blur-panel));
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+.glass-panel:hover {
+  border-color: var(--glass-border-green);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35), var(--glow-green);
+}
+
+.neon-border {
+  border: 1px solid var(--glass-border);
+}
+.neon-border-green {
+  border-color: var(--glass-border-green);
+}
+
+.neon-glow {
+  box-shadow: var(--glow-green);
+}
+.neon-glow-cyan {
+  box-shadow: var(--glow-cyan);
+}
+
+.neon-focus:focus-visible {
+  outline: none;
+  box-shadow: var(--glow-focus);
+  border-color: var(--neon-cyan);
+}
+
+.neon-link {
+  color: var(--neon-cyan);
+  text-decoration: none;
+  transition: color 0.2s ease, text-shadow 0.2s ease;
+}
+.neon-link:hover {
+  color: var(--neon-green);
+  text-shadow: 0 0 8px var(--neon-green-dim);
+}
+.neon-link:focus-visible {
+  outline: none;
+  box-shadow: var(--glow-focus);
+  border-radius: 4px;
+}
+
+.neon-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--muted-foreground);
+}
+.neon-empty-state-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--neon-cyan);
+}
+.neon-empty-state-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+.neon-empty-state-desc {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  max-width: 280px;
+}
+
+@keyframes neon-shimmer {
+  0% { opacity: 0.4; }
+  50% { opacity: 0.9; }
+  100% { opacity: 0.4; }
+}
+
+@keyframes network-dash {
+  to { stroke-dashoffset: -14; }
+}
+.network-connection-path {
+  stroke-dasharray: 8 6;
+  animation: network-dash 1.5s linear infinite;
+}
+.neon-shimmer {
+  animation: neon-shimmer 2s ease-in-out infinite;
+}
+.neon-shimmer-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--neon-cyan-dim),
+    var(--neon-green-dim),
+    var(--neon-cyan-dim),
+    transparent
+  );
+  background-size: 200% 100%;
+  animation: neon-shimmer 2.5s ease-in-out infinite;
+}
+
+/* Instrument-style metric numbers */
+.neon-stat-value {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+  color: var(--foreground);
 }
