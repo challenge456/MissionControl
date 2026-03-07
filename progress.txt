@@ -19,6 +19,12 @@
 6. **Empty states + CTA** — Agent Registry: when no agents, primary CTAs "Create your first agent" and "Discover agents". Schedules: when no jobs, primary CTA "Add schedule" in empty card. Chat view already has "No tasks yet" + copy.
 7. **Keyboard shortcuts** — Actions list documents Cost Analytics (Insights menu) and command palette (Cost, Create agent, Gateway).
 
+#### Phase 2 + Phase 3 wiring (March 2, 2026 continued)
+8. **Top runs → Live Chat** — Clicking a run row with sessionKey (no taskId) navigates to Live Agent Chat; tooltip "Click to open Live Agent Chat".
+9. **Tier 2 context classification** — Orchestration server: POST /classify (auth required) using ContextRouter.routeAsync with optional OpenAI LLM client (OPENAI_API_KEY). When Tier 1 confidence is below 0.5, Tier 2 LLM classifies. Added @mission-control/context-router and openai to orchestration-server deps.
+10. **Orchestration Docker** — Dockerfile in apps/orchestration-server with multi-package build and HEALTHCHECK GET /health.
+11. **E2E** — tests/e2e/dashboard-smoke.e2e.spec.ts: home dashboard loads, navigate Ops → Tasks and back to Home (works with Convex dev via VITE_CONVEX_URL in playwright webServer).
+
 #### Previous session (recent)
 - Live Agent Chat: fictitious demo data when orchestration unreachable (production); deploy to Vercel.
 - TopNav: migrated to Tailwind + design tokens; removed accidental launchctl file from repo.

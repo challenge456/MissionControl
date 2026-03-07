@@ -45,6 +45,8 @@ cp .env.example .env.local
 - **Port:** 4100 (ORCHESTRATION_PORT)
 - **Start:** `pnpm run dev:orchestration`
 - **Health:** `curl http://localhost:4100/health`
+- **Docker:** From repo root, `docker build -f apps/orchestration-server/Dockerfile .` then run with `CONVEX_URL` and optional `GATEWAY_TOKEN`, `OPENAI_API_KEY`. Image exposes 4100 and includes HEALTHCHECK on `/health`.
+- **Tier 2 classify:** `POST /classify` (auth required) — body `{ "input": "user request text" }`. Uses ContextRouter with optional OpenAI fallback when Tier 1 confidence is low. Set `OPENAI_API_KEY` for LLM classification.
 
 **How to run (first time or after dependency changes):**
 1. Set `CONVEX_URL` in `.env` at repo root or in `apps/orchestration-server` (required).

@@ -33,6 +33,8 @@ import {
   Layers,
   GripVertical,
   Radio,
+  Calendar,
+  Inbox,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -91,6 +93,10 @@ const DASHBOARD_LAYOUT_KEY = "mc.dashboard_layout";
 const DEFAULT_SECTION_ORDER = [
   "statusBar",
   "quickActions",
+  "actionQueue",
+  "healthStrip",
+  "watchNext",
+  "upcoming",
   "aiUsage",
   "metricRow1",
   "metricRow2",
@@ -107,6 +113,10 @@ const DEFAULT_SECTION_ORDER = [
 const SECTION_LABELS: Record<string, string> = {
   statusBar: "System status",
   quickActions: "Quick navigation",
+  actionQueue: "Operator action queue",
+  healthStrip: "Platform health",
+  watchNext: "Watch next",
+  upcoming: "Upcoming tasks & jobs",
   aiUsage: "AI usage (24h)",
   metricRow1: "Metrics (quota & agents)",
   metricRow2: "Metrics (spend & tasks)",
@@ -595,11 +605,13 @@ function TopRunsByTokensSection({
                       if (run.taskId) {
                         onTaskSelect?.(run.taskId);
                         onNavigate?.("tasks");
+                      } else if (run.sessionKey && onNavigate) {
+                        onNavigate("live-chat");
                       }
                     }}
                     className={cn(
                       "w-full flex items-center justify-between px-3 py-2 rounded-md text-left group",
-                      run.taskId
+                      (run.taskId || run.sessionKey) && onNavigate
                         ? "hover:bg-muted/50 transition-colors cursor-pointer"
                         : "cursor-default"
                     )}
@@ -613,7 +625,7 @@ function TopRunsByTokensSection({
                     <span className="text-xs font-medium text-[var(--neon-green)] shrink-0">
                       ${(run.costUsd ?? 0).toFixed(2)}
                     </span>
-                    {run.taskId && (
+                    {((run.taskId || run.sessionKey) && onNavigate) && (
                       <ChevronRight className="h-3 w-3 text-muted-foreground/40 shrink-0 ml-1" aria-hidden />
                     )}
                   </button>
@@ -621,6 +633,7 @@ function TopRunsByTokensSection({
                 <TooltipContent side="top" className="max-w-[320px]">
                   <div className="text-[0.65rem] break-all font-mono">{fullSessionId}</div>
                   {run.taskId && <div className="text-[0.6rem] text-muted-foreground mt-0.5">Click to open task</div>}
+                  {!run.taskId && run.sessionKey && <div className="text-[0.6rem] text-muted-foreground mt-0.5">Click to open Live Agent Chat</div>}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -793,6 +806,7 @@ export function DashboardOverview({
   const tasks = useQuery(api.tasks.listAll, projectId ? { projectId } : {});
   const scheduledJobs = useQuery(api.scheduledJobs.list, projectId ? { projectId } : {});
   const approvals = useQuery(api.approvals.listPending, projectId ? { projectId, limit: 100 } : { limit: 100 });
+  const openAlerts = useQuery(api.alerts.listOpen, { limit: 10 });
   const activities = useQuery(api.activities.listRecent, projectId ? { projectId, limit: 12 } : { limit: 12 });
   const usageByModel = useQuery(api.runs.getUsageByModel, projectId ? { projectId, windowHours: 24 } : { windowHours: 24 });
   const [chartWindowHours, setChartWindowHours] = useState<24 | 168 | 720>(24);
@@ -876,6 +890,782 @@ export function DashboardOverview({
     { id: "r2", from: { x: 50, y: 50 }, to: { x: 82, y: 50 } },
     { id: "r3", from: { x: 50, y: 50 }, to: { x: 82, y: 78 } },
   ];
+
+  const alertsList = openAlerts ?? [];
+
+  const renderDashboardSection = (id: string): React.ReactNode => {
+    switch (id) {
+      case "statusBar":
+        return <SystemStatusBar agents={agents} tasks={tasks} approvals={approvals} />;
+      case "quickActions":
+        return (
+          <QuickActionsBar
+            onNavigate={onNavigate}
+            onOpenApprovals={onOpenApprovals}
+            onOpenAlertRules={onOpenAlertRules}
+            onToggleLayout={() => setCustomizeLayout((v) => !v)}
+            isLayoutCustomizing={customizeLayout}
+          />
+        );
+      case "actionQueue": {
+        const needsApprovalTasks = tasks.filter((t) => t.status === "NEEDS_APPROVAL");
+        const count = approvals.length + needsApprovalTasks.length + alertsList.length;
+        return (
+          <Card className="p-4 mb-4">
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <Inbox className="h-4 w-4 text-muted-foreground" />
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Operator action queue
+              </span>
+              {count > 0 && (
+                <span className="text-[0.65rem] font-medium px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-500 border border-amber-500/20">
+                  {count} action{count !== 1 ? "s" : ""}
+                </span>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              {approvals.length > 0 && (
+                <button
+                  type="button"
+                  onClick={onOpenApprovals}
+                  className="w-full flex items-center justify-between px-3 py-2 rounded-md hover:bg-muted/50 text-left text-xs"
+                >
+                  <span className="text-foreground/90">{approvals.length} pending approval(s)</span>
+                  <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                </button>
+              )}
+              {needsApprovalTasks.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => onNavigate?.("tasks")}
+                  className="w-full flex items-center justify-between px-3 py-2 rounded-md hover:bg-muted/50 text-left text-xs"
+                >
+                  <span className="text-foreground/90">{needsApprovalTasks.length} task(s) need approval</span>
+                  <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                </button>
+              )}
+              {alertsList.length > 0 && (
+                <button
+                  type="button"
+                  onClick={onOpenAlertRules}
+                  className="w-full flex items-center justify-between px-3 py-2 rounded-md hover:bg-muted/50 text-left text-xs"
+                >
+                  <span className="text-foreground/90">{alertsList.length} open alert(s)</span>
+                  <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                </button>
+              )}
+              {count === 0 && (
+                <p className="text-xs text-muted-foreground/70 py-2">No actions required</p>
+              )}
+            </div>
+          </Card>
+        );
+      }
+      case "healthStrip": {
+        const failedCount = tasks.filter((t) => t.status === "FAILED").length;
+        const issues = [
+          quarantinedAgents > 0 && `${quarantinedAgents} quarantined`,
+          failedCount > 0 && `${failedCount} failed`,
+          blockedTasks > 0 && `${blockedTasks} blocked`,
+          approvals.length > 0 && `${approvals.length} pending approvals`,
+        ].filter(Boolean) as string[];
+        const isHealthy = issues.length === 0;
+        return (
+          <Card className="p-4 mb-4">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <StatusDot variant={isHealthy ? "active" : "error"} pulse size="sm" />
+                <span className="text-xs font-semibold text-foreground">
+                  {isHealthy ? "Platform healthy" : "Attention required"}
+                </span>
+              </div>
+              {issues.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {issues.map((label, i) => (
+                    <span
+                      key={i}
+                      className="text-[0.6rem] px-2 py-0.5 rounded-full border bg-amber-500/10 border-amber-500/20 text-amber-500"
+                    >
+                      {label}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {onNavigate && (
+                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => onNavigate("system")}>
+                  System
+                </Button>
+              )}
+            </div>
+          </Card>
+        );
+      }
+      case "watchNext":
+        return (
+          <Card className="p-4 mb-4">
+            <div className="text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+              Watch next
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <Button variant="outline" size="sm" className="h-9 justify-start gap-2 text-xs" onClick={() => onNavigate?.("tasks")}>
+                <ListChecks className="h-3.5 w-3.5" />
+                Tasks
+              </Button>
+              <Button variant="outline" size="sm" className="h-9 justify-start gap-2 text-xs" onClick={() => onNavigate?.("calendar")}>
+                <Calendar className="h-3.5 w-3.5" />
+                Calendar
+              </Button>
+              <Button variant="outline" size="sm" className="h-9 justify-start gap-2 text-xs" onClick={onNavigateToGateway}>
+                <Radio className="h-3.5 w-3.5" />
+                Gateway
+              </Button>
+              <Button variant="outline" size="sm" className="h-9 justify-start gap-2 text-xs" onClick={() => onNavigate?.("qc-dashboard")}>
+                <FlaskConical className="h-3.5 w-3.5" />
+                QC Dashboard
+              </Button>
+            </div>
+          </Card>
+        );
+      case "upcoming":
+        if (!onNavigate) return null;
+        {
+          const now = Date.now();
+          const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+          const upcomingTasks = tasks
+            .filter((t) => t.scheduledFor != null && t.scheduledFor >= now && t.scheduledFor <= now + sevenDaysMs)
+            .sort((a, b) => (a.scheduledFor ?? 0) - (b.scheduledFor ?? 0))
+            .slice(0, 5);
+          const jobsList = scheduledJobs ?? [];
+          const nextJobRuns = [...jobsList]
+            .filter((j) => j.nextRun != null && j.nextRun >= now)
+            .sort((a, b) => (a.nextRun ?? 0) - (b.nextRun ?? 0))
+            .slice(0, 5);
+          const hasAny = upcomingTasks.length > 0 || nextJobRuns.length > 0;
+          return (
+            <Card className="mb-4 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground">
+                  What&apos;s running without you
+                </span>
+                <div className="flex gap-2">
+                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => onNavigate("calendar")}>
+                    Calendar
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => onNavigate("ops-schedule")}>
+                    Schedule
+                  </Button>
+                </div>
+              </div>
+              {hasAny ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-[0.6rem] text-muted-foreground/70 mb-2">Next tasks</p>
+                    {upcomingTasks.length === 0 ? (
+                      <p className="text-xs text-muted-foreground/70">None in next 7 days</p>
+                    ) : (
+                      <ul className="space-y-1">
+                        {upcomingTasks.slice(0, 5).map((t) => (
+                          <li key={t._id}>
+                            <button
+                              type="button"
+                              className="w-full text-left text-xs truncate text-foreground/90 hover:text-foreground"
+                              onClick={() => {
+                                onTaskSelect?.(t._id);
+                                onNavigate("tasks");
+                              }}
+                            >
+                              {t.title}
+                            </button>
+                            <span className="text-[0.6rem] text-muted-foreground">
+                              {t.scheduledFor
+                                ? new Date(t.scheduledFor).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+                                : ""}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-[0.6rem] text-muted-foreground/70 mb-2">Next job runs</p>
+                    {nextJobRuns.length === 0 ? (
+                      <p className="text-xs text-muted-foreground/70">None scheduled</p>
+                    ) : (
+                      <ul className="space-y-1">
+                        {nextJobRuns.slice(0, 5).map((j) => (
+                          <li key={j._id} className="flex justify-between gap-2 text-xs">
+                            <span className="truncate text-foreground/90">{j.name}</span>
+                            <span className="text-muted-foreground shrink-0">
+                              {j.nextRun ? new Date(j.nextRun).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground/70 py-1">
+                  No upcoming tasks or job runs.{" "}
+                  <button type="button" className="underline hover:text-foreground" onClick={() => onNavigate("ops-schedule")}>View Schedule</button> or{" "}
+                  <button type="button" className="underline hover:text-foreground" onClick={() => onNavigate("calendar")}>Calendar</button>.
+                </p>
+              )}
+            </Card>
+          );
+        }
+      case "aiUsage":
+        return (
+          <Card className="p-4 mb-4" key="aiUsage">
+            <div className="text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+              AI Usage (24h)
+            </div>
+            {usageByModel && usageByModel.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {usageByModel.map(({ model, inputTokens, outputTokens, costUsd }) => {
+                  const inK = (inputTokens ?? 0) / 1000;
+                  const outK = (outputTokens ?? 0) / 1000;
+                  const cost = costUsd ?? 0;
+                  return (
+                    <div
+                      key={model}
+                      className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs"
+                    >
+                      <div className="font-medium text-foreground truncate" title={model}>
+                        {model}
+                      </div>
+                      <div className="text-muted-foreground mt-1">
+                        In: {inK.toFixed(1)}k · Out: {outK.toFixed(1)}k · ~${cost.toFixed(2)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground/70 py-2">No usage in last 24h</p>
+            )}
+          </Card>
+        );
+      case "metricRow1":
+        return (
+          <div key="metricRow1" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
+            <QuotaFuelGauge className="min-h-[120px]" />
+            <MetricCard
+              icon={Bot}
+              label="Active Agents"
+              value={activeAgents}
+              subtitle={`${agents.length} total · ${pausedAgents} paused${quarantinedAgents > 0 ? ` · ${quarantinedAgents} quarantined` : ""}`}
+              accent="text-primary"
+              onClick={() => onNavigate?.("agents")}
+              badge={quarantinedAgents > 0 ? `${quarantinedAgents} issue${quarantinedAgents > 1 ? "s" : ""}` : undefined}
+              badgeVariant="urgent"
+              trend={{ direction: "up", label: `${activeAgents} of ${agents.length} running` }}
+            />
+            <MetricCard
+              icon={Zap}
+              label="In Progress"
+              value={inProgressTasks}
+              subtitle={`${tasks.length} total tasks`}
+              accent="text-amber-500"
+              onClick={() => onNavigate?.("tasks")}
+              trend={{ direction: inProgressTasks > 0 ? "up" : "flat", label: `${tasks.length} across all states` }}
+            />
+            <MetricCard
+              icon={Eye}
+              label="In Review"
+              value={reviewTasks}
+              subtitle={`${doneTasks} completed`}
+              accent="text-primary"
+              onClick={() => onNavigate?.("tasks")}
+              badge={reviewTasks > 0 ? "needs review" : undefined}
+              badgeVariant="info"
+            />
+            <MetricCard
+              icon={ShieldAlert}
+              label="Pending Approvals"
+              value={approvals.length}
+              subtitle={approvals.length > 0 ? "Action required" : "All clear"}
+              accent={approvals.length > 0 ? "text-destructive" : "text-primary"}
+              onClick={onOpenApprovals}
+              badge={approvals.length > 0 ? "urgent" : undefined}
+              badgeVariant="urgent"
+            />
+          </div>
+        );
+      case "metricRow2":
+        return (
+          <div key="metricRow2" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <MetricCard
+                      icon={DollarSign}
+                      label="Total Spend"
+                      value={`$${totalCost.toFixed(2)}`}
+                      subtitle="Across all tasks"
+                      accent="text-primary"
+                    />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-[260px]">
+                  Cost from agent runs. Savings vs. paying list price without run-level optimizations.
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <MetricCard
+              icon={CheckCircle2}
+              label="Completed"
+              value={doneTasks}
+              subtitle={`${completionRate}% completion rate`}
+              accent="text-primary"
+              onClick={() => onNavigate?.("tasks")}
+              trend={{ direction: "up", label: `${completionRate}% done` }}
+            />
+            <MetricCard
+              icon={AlertTriangle}
+              label="Blocked"
+              value={blockedTasks}
+              subtitle={blockedTasks > 0 ? "Needs attention" : "No blockers"}
+              accent={blockedTasks > 0 ? "text-destructive" : "text-primary"}
+              onClick={() => onNavigate?.("tasks")}
+              badge={blockedTasks > 0 ? "blocked" : undefined}
+              badgeVariant="urgent"
+            />
+            <MetricCard
+              icon={ListChecks}
+              label="Needs Approval"
+              value={needsApprovalTasks}
+              subtitle={needsApprovalTasks > 0 ? "Awaiting review" : "Clear"}
+              accent={needsApprovalTasks > 0 ? "text-amber-500" : "text-primary"}
+              onClick={() => onNavigate?.("tasks")}
+            />
+          </div>
+        );
+      case "agentSquad":
+        return agents.length > 0 ? (
+          <Card key="agentSquad" className="p-5 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Agent Squad
+                </span>
+                <span className="text-[0.6rem] text-muted-foreground/50 ml-1">
+                  {activeAgents} active / {agents.length} total
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1 text-[0.65rem] text-muted-foreground hover:text-foreground"
+                onClick={() => onNavigate?.("agents")}
+              >
+                View all
+                <ChevronRight className="h-3 w-3" />
+              </Button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+              {agents.map((agent) => {
+                const currentTask = agent.currentTaskId
+                  ? tasks.find((t) => t._id === agent.currentTaskId) ?? null
+                  : null;
+                return (
+                  <AgentSquadCard
+                    key={agent._id}
+                    agent={agent}
+                    currentTask={currentTask}
+                    onClick={() => onSelectAgent?.(agent._id)}
+                  />
+                );
+              })}
+            </div>
+          </Card>
+        ) : null;
+      case "buildQueue":
+        return buildTasks.length > 0 ? (
+          <Card key="buildQueue" className="p-5 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Hammer className="h-4 w-4 text-muted-foreground" />
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Build Queue
+                </span>
+                <span className="text-[0.6rem] text-muted-foreground/50 ml-1">
+                  {buildTasks.length} active
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1 text-[0.65rem] text-muted-foreground hover:text-foreground"
+                onClick={() => onNavigate?.("tasks")}
+              >
+                View board
+                <ChevronRight className="h-3 w-3" />
+              </Button>
+            </div>
+            <div className="space-y-1.5">
+              {buildTasks.slice(0, 8).map((task) => {
+                const assignee = task.assigneeIds[0]
+                  ? agents.find((a) => a._id === task.assigneeIds[0])
+                  : null;
+                return (
+                  <button
+                    key={task._id}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-muted/50 transition-colors text-left group"
+                    onClick={() => onNavigate?.("tasks")}
+                  >
+                    <Loader2 className="h-3 w-3 text-amber-500 animate-spin shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-foreground/90 truncate group-hover:text-foreground transition-colors">
+                        {task.title}
+                      </p>
+                      <p className="text-[0.6rem] text-muted-foreground/50">
+                        {assignee ? `${assignee.emoji ?? "🤖"} ${assignee.name}` : "Unassigned"}
+                        {task.startedAt && <> &middot; {formatElapsed(task.startedAt)}</>}
+                      </p>
+                    </div>
+                    <span className="text-[0.6rem] uppercase tracking-wider text-amber-500/70 shrink-0">
+                      {task.type}
+                    </span>
+                    <ChevronRight className="h-3 w-3 text-muted-foreground/20 group-hover:text-muted-foreground/50 shrink-0 transition-colors" />
+                  </button>
+                );
+              })}
+            </div>
+          </Card>
+        ) : null;
+      case "blockers":
+        return blockedTasksList.length > 0 ? (
+          <Card key="blockers" className="p-5 mb-6 border-red-500/20 bg-red-500/3">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-red-400" />
+                <span className="text-xs font-semibold uppercase tracking-wider text-red-400">
+                  Blockers
+                </span>
+                <span className="text-[0.6rem] px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/20 font-medium uppercase tracking-wider">
+                  {blockedTasksList.length} task{blockedTasksList.length > 1 ? "s" : ""} blocked
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1 text-[0.65rem] text-red-400/70 hover:text-red-400"
+                onClick={() => onNavigate?.("tasks")}
+              >
+                Resolve
+                <ChevronRight className="h-3 w-3" />
+              </Button>
+            </div>
+            <div className="space-y-1.5">
+              {blockedTasksList.map((task) => (
+                <button
+                  key={task._id}
+                  className="w-full flex items-center gap-3 px-3 py-2 rounded-md hover:bg-red-500/5 transition-colors text-left group"
+                  onClick={() => onNavigate?.("tasks")}
+                >
+                  <div className="h-1.5 w-1.5 rounded-full bg-red-400 shrink-0" />
+                  <span className="text-xs text-foreground/80 truncate flex-1 group-hover:text-foreground transition-colors">
+                    {task.title}
+                  </span>
+                  <span className="text-[0.6rem] text-muted-foreground/40 shrink-0">{task.type}</span>
+                </button>
+              ))}
+            </div>
+          </Card>
+        ) : null;
+      case "taskPipelineActivity":
+        return (
+          <div key="taskPipelineActivity" className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <NeonChartContainer className="p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Task Pipeline
+                  </span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1 text-[0.65rem] text-muted-foreground hover:text-foreground"
+                  onClick={() => onNavigate?.("tasks")}
+                >
+                  Open board
+                  <ChevronRight className="h-3 w-3" />
+                </Button>
+              </div>
+              <div className="h-[240px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={Object.entries(statusCounts).map(([status, count]) => ({
+                      name: status.replace(/_/g, " "),
+                      count,
+                      fill: status === "DONE" ? "var(--neon-green)" : status === "IN_PROGRESS" ? "var(--neon-cyan)" : "var(--muted-foreground)",
+                    }))}
+                    layout="vertical"
+                    margin={{ top: 0, right: 8, left: 0, bottom: 0 }}
+                  >
+                    <XAxis type="number" hide />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      width={72}
+                      tick={{ fill: "var(--muted-foreground)", fontSize: 10 }}
+                      tickLine={{ stroke: "var(--glass-border)" }}
+                      axisLine={{ stroke: "var(--glass-border)" }}
+                    />
+                    <RechartsTooltip
+                      contentStyle={{
+                        background: "var(--glass-bg)",
+                        border: "1px solid var(--glass-border)",
+                        borderRadius: "8px",
+                      }}
+                      labelStyle={{ color: "var(--foreground)" }}
+                      formatter={(value: number) => [value, "Tasks"]}
+                    />
+                    <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={20}>
+                      {Object.entries(statusCounts).map(([status]) => (
+                        <Cell
+                          key={status}
+                          fill={
+                            status === "DONE"
+                              ? "var(--neon-green)"
+                              : status === "IN_PROGRESS" || status === "REVIEW"
+                                ? "var(--neon-cyan)"
+                                : status === "BLOCKED" || status === "NEEDS_APPROVAL"
+                                  ? "var(--neon-magenta)"
+                                  : NeonChartTheme.gradientColors[0]
+                          }
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </NeonChartContainer>
+            <Card className="p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Activity className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Recent Activity
+                  </span>
+                </div>
+                <span className="text-[0.6rem] text-muted-foreground/40">Live</span>
+              </div>
+              <div className="space-y-0.5 max-h-[280px] overflow-y-auto">
+                {activities.slice(0, 12).map((activity) => (
+                  <div
+                    key={activity._id}
+                    className="flex items-start gap-3 px-3 py-2 rounded-md hover:bg-muted/50 transition-colors cursor-default"
+                  >
+                    <div className="mt-1 shrink-0">
+                      <Clock className="h-3 w-3 text-muted-foreground/40" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-foreground/80 leading-relaxed truncate">
+                        {activity.description}
+                      </p>
+                      <p className="text-[0.6rem] text-muted-foreground/50 mt-0.5">
+                        <span className="uppercase tracking-wider">{activity.actorType}</span>
+                        {" · "}
+                        {new Date(activity._creationTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+                {activities.length === 0 && (
+                  <div className="py-10 text-center">
+                    <Activity className="h-6 w-6 text-muted-foreground/20 mx-auto mb-2" />
+                    <p className="text-xs text-muted-foreground/50">No recent activity</p>
+                    <p className="text-[0.65rem] text-muted-foreground/30 mt-1">
+                      Activity will appear here once agents start working
+                    </p>
+                  </div>
+                )}
+              </div>
+            </Card>
+          </div>
+        );
+      case "usageTrends":
+        return usageTimeSeries && usageTimeSeries.length > 0 ? (
+          <div key="usageTrends" className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+            <NeonChartContainer className="p-5">
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Token usage
+                </span>
+                <div className="flex gap-1">
+                  <Button variant={chartWindowHours === 24 ? "secondary" : "ghost"} size="sm" className="h-7 text-[0.65rem]" onClick={() => setChartWindowHours(24)}>24h</Button>
+                  <Button variant={chartWindowHours === 168 ? "secondary" : "ghost"} size="sm" className="h-7 text-[0.65rem]" onClick={() => setChartWindowHours(168)}>7d</Button>
+                  <Button variant={chartWindowHours === 720 ? "secondary" : "ghost"} size="sm" className="h-7 text-[0.65rem]" onClick={() => setChartWindowHours(720)}>30d</Button>
+                </div>
+              </div>
+              <div className="h-[200px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={usageTimeSeries.map((d) => ({ ...d, totalTokens: d.inputTokens + d.outputTokens }))}
+                    margin={{ top: 4, right: 8, left: 0, bottom: 0 }}
+                  >
+                    <XAxis
+                      dataKey="period"
+                      tick={{ fill: NeonChartTheme.styles.fill, fontSize: 10 }}
+                      tickFormatter={(v) =>
+                        chartWindowHours === 24 ? v.slice(11, 13) : chartWindowHours === 168 ? v.slice(5, 10) : v.slice(0, 10)
+                      }
+                    />
+                    <YAxis
+                      tick={{ fill: NeonChartTheme.styles.fill, fontSize: 10 }}
+                      tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))}
+                    />
+                    <RechartsTooltip
+                      contentStyle={{
+                        background: "var(--glass-bg)",
+                        border: "1px solid var(--glass-border)",
+                        borderRadius: "8px",
+                      }}
+                      formatter={(value: number) => [value >= 1000 ? `${(value / 1000).toFixed(1)}k` : value, "Tokens"]}
+                      labelFormatter={(l) => (typeof l === "string" ? l : "")}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="totalTokens"
+                      stroke="var(--neon-cyan)"
+                      fill="var(--neon-cyan)"
+                      fillOpacity={0.2}
+                      strokeWidth={1.5}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </NeonChartContainer>
+            <NeonChartContainer className="p-5">
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Cost trend
+                </span>
+              </div>
+              <div className="h-[200px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={usageTimeSeries} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                    <XAxis
+                      dataKey="period"
+                      tick={{ fill: NeonChartTheme.styles.fill, fontSize: 10 }}
+                      tickFormatter={(v) =>
+                        chartWindowHours === 24 ? v.slice(11, 13) : chartWindowHours === 168 ? v.slice(5, 10) : v.slice(0, 10)
+                      }
+                    />
+                    <YAxis
+                      tick={{ fill: NeonChartTheme.styles.fill, fontSize: 10 }}
+                      tickFormatter={(v) => `$${Number(v).toFixed(2)}`}
+                    />
+                    <RechartsTooltip
+                      contentStyle={{
+                        background: "var(--glass-bg)",
+                        border: "1px solid var(--glass-border)",
+                        borderRadius: "8px",
+                      }}
+                      formatter={(value: number) => [`$${Number(value).toFixed(2)}`, "Cost"]}
+                      labelFormatter={(l) => (typeof l === "string" ? l : "")}
+                    />
+                    <Line type="monotone" dataKey="costUsd" stroke="var(--neon-green)" strokeWidth={2} dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </NeonChartContainer>
+          </div>
+        ) : null;
+      case "topTasksByCost":
+        return tasks.filter((t) => t.actualCost > 0).length > 0 ? (
+          <Card key="topTasksByCost" className="p-4 mb-4">
+            <div className="text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+              Top tasks by cost
+            </div>
+            <div className="space-y-1">
+              {[...tasks]
+                .filter((t) => t.actualCost > 0)
+                .sort((a, b) => b.actualCost - a.actualCost)
+                .slice(0, 5)
+                .map((task) => (
+                  <button
+                    key={task._id}
+                    type="button"
+                    onClick={() => {
+                      onTaskSelect?.(task._id);
+                      onNavigate?.("tasks");
+                    }}
+                    className="w-full flex items-center justify-between px-3 py-2 rounded-md hover:bg-muted/50 transition-colors text-left group"
+                  >
+                    <span className="text-xs text-foreground/90 truncate flex-1 mr-2 group-hover:text-foreground">
+                      {task.title}
+                    </span>
+                    <span className="text-xs font-medium text-[var(--neon-green)] shrink-0">
+                      ${task.actualCost.toFixed(2)}
+                    </span>
+                    <ChevronRight className="h-3 w-3 text-muted-foreground/40 shrink-0" />
+                  </button>
+                ))}
+            </div>
+          </Card>
+        ) : null;
+      case "topRunsByTokens":
+        return (
+          <SectionErrorBoundary key="topRunsByTokens">
+            <TopRunsByTokensSection
+              projectId={projectId}
+              onTaskSelect={onTaskSelect}
+              onNavigate={onNavigate}
+            />
+          </SectionErrorBoundary>
+        );
+      case "velocityFooter":
+        return (
+          <div key="velocityFooter" className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { icon: TrendingUp, label: "Throughput", value: `${doneTasks} tasks`, sub: "completed total" },
+              {
+                icon: Cpu,
+                label: "Squad Utilization",
+                value: agents.length > 0 ? `${Math.round((activeAgents / agents.length) * 100)}%` : "0%",
+                sub: `${activeAgents ?? 0}/${agents.length} agents active`,
+              },
+              {
+                icon: DollarSign,
+                label: "Avg Cost / Task",
+                value: doneTasks > 0 ? `$${(Number(totalCost) / doneTasks).toFixed(3)}` : "$0.000",
+                sub: "per completed task",
+              },
+              {
+                icon: Shield,
+                label: "Policy Status",
+                value: approvals.length === 0 ? "Clear" : `${approvals.length} pending`,
+                sub: approvals.length > 0 ? "review required" : "no approvals needed",
+              },
+            ].map((item) => (
+              <div key={item.label} className="flex items-center gap-3 px-4 py-3 rounded-lg bg-muted/30 border border-border/50">
+                <item.icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" strokeWidth={1.5} />
+                <div>
+                  <div className="text-xs font-semibold text-foreground">{item.value}</div>
+                  <div className="text-[0.6rem] text-muted-foreground/60 uppercase tracking-wider">{item.label}</div>
+                  <div className="text-[0.6rem] text-muted-foreground/40">{item.sub}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
+
+  const orderedSectionNodes = orderedIds.map((id) => (
+    <React.Fragment key={id}>
+      {renderDashboardSection(id)}
+    </React.Fragment>
+  ));
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -1083,117 +1873,9 @@ export function DashboardOverview({
           </div>
         </div>
 
-        {/* System Status Bar */}
-        <SystemStatusBar agents={agents} tasks={tasks} approvals={approvals} />
+        {orderedSectionNodes}
 
-        {/* Quick Navigation */}
-        <QuickActionsBar
-          onNavigate={onNavigate}
-          onOpenApprovals={onOpenApprovals}
-          onOpenAlertRules={onOpenAlertRules}
-          onToggleLayout={() => setCustomizeLayout((v) => !v)}
-          isLayoutCustomizing={customizeLayout}
-        />
-
-        {/* Upcoming: next 5 scheduled tasks + next 5 job runs; links to Schedule & Calendar */}
-        {onNavigate && (() => {
-          const now = Date.now();
-          const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
-          const upcomingTasks = tasks
-            .filter((t) => t.scheduledFor != null && t.scheduledFor >= now && t.scheduledFor <= now + sevenDaysMs)
-            .sort((a, b) => (a.scheduledFor ?? 0) - (b.scheduledFor ?? 0))
-            .slice(0, 5);
-          const jobsList = scheduledJobs ?? [];
-          const nextJobRuns = [...jobsList]
-            .filter((j) => j.nextRun != null && j.nextRun >= now)
-            .sort((a, b) => (a.nextRun ?? 0) - (b.nextRun ?? 0))
-            .slice(0, 5);
-          const hasAny = upcomingTasks.length > 0 || nextJobRuns.length > 0;
-          return (
-            <Card className="mb-4 p-4">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground">
-                  What&apos;s running without you
-                </span>
-                <div className="flex gap-2">
-                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => onNavigate("calendar")}>
-                    Calendar
-                  </Button>
-                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => onNavigate("ops-schedule")}>
-                    Schedule
-                  </Button>
-                </div>
-              </div>
-              {hasAny ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-[0.6rem] text-muted-foreground/70 mb-2">Next tasks</p>
-                    {upcomingTasks.length === 0 ? (
-                      <p className="text-xs text-muted-foreground/70">None in next 7 days</p>
-                    ) : (
-                      <ul className="space-y-1">
-                        {upcomingTasks.map((t) => (
-                          <li key={t._id}>
-                            <button
-                              type="button"
-                              className="w-full text-left text-xs truncate text-foreground/90 hover:text-foreground"
-                              onClick={() => {
-                                onTaskSelect?.(t._id);
-                                onNavigate("tasks");
-                              }}
-                            >
-                              {t.title}
-                            </button>
-                            <span className="text-[0.6rem] text-muted-foreground">
-                              {t.scheduledFor
-                                ? new Date(t.scheduledFor).toLocaleString(undefined, {
-                                    month: "short",
-                                    day: "numeric",
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  })
-                                : ""}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-[0.6rem] text-muted-foreground/70 mb-2">Next job runs</p>
-                    {nextJobRuns.length === 0 ? (
-                      <p className="text-xs text-muted-foreground/70">None scheduled</p>
-                    ) : (
-                      <ul className="space-y-1">
-                        {nextJobRuns.map((j) => (
-                          <li key={j._id} className="flex justify-between gap-2 text-xs">
-                            <span className="truncate text-foreground/90">{j.name}</span>
-                            <span className="text-muted-foreground shrink-0">
-                              {j.nextRun
-                                ? new Date(j.nextRun).toLocaleString(undefined, {
-                                    month: "short",
-                                    day: "numeric",
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  })
-                                : "—"}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground/70 py-1">
-                  No upcoming tasks or job runs. <button type="button" className="underline hover:text-foreground" onClick={() => onNavigate("ops-schedule")}>View Schedule</button> or <button type="button" className="underline hover:text-foreground" onClick={() => onNavigate("calendar")}>Calendar</button>.
-                </p>
-              )}
-            </Card>
-          );
-        })()}
-
-        {/* AI Usage (24h) — tokens + cost per model; empty state when no usage */}
+        {/* Customize layout dialog renders below; section order is driven by orderedSectionNodes above. */}
         <Card className="p-4 mb-4">
           <div className="text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
             AI Usage (24h)
@@ -1760,7 +2442,7 @@ export function DashboardOverview({
             {
               icon: Cpu,
               label: "Squad Utilization",
-              value: agents.length > 0 ? `${Math.round((activeAgents / agents.length) * 100)}%` : "0%",
+              value: agents.length > 0 ? `${Math.round(((activeAgents ?? 0) / agents.length) * 100)}%` : "0%",
               sub: `${activeAgents ?? 0}/${agents.length} agents active`,
             },
             {

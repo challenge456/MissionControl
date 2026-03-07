@@ -364,6 +364,50 @@ app.get("/gateway/status", async (c) => {
   }
 });
 
+// Tier 2 context classification (LLM fallback when Tier 1 confidence is low)
+app.post("/classify", requireAuth(), async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const input = typeof body.input === "string" ? body.input.trim() : "";
+    if (!input) return c.json({ error: "Missing or invalid 'input' field" }, 400);
+
+    const { ContextRouter } = await import("@mission-control/context-router");
+    const openaiKey = process.env.OPENAI_API_KEY?.trim();
+    let llmClient: { complete: (p: string) => Promise<string> } | undefined;
+    if (openaiKey) {
+      const OpenAI = (await import("openai")).default;
+      const openai = new OpenAI({ apiKey: openaiKey });
+      llmClient = {
+        complete: async (prompt: string) => {
+          const res = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [{ role: "user", content: prompt }],
+            max_tokens: 1024,
+          });
+          return res.choices[0]?.message?.content ?? "";
+        },
+      };
+    }
+
+    const router = new ContextRouter(
+      { llmFallbackThreshold: 0.5 },
+      llmClient ?? undefined
+    );
+    const context = {
+      input,
+      source: (body.source as "HUMAN" | "AGENT" | "SYSTEM") ?? "API",
+      pendingTaskCount: typeof body.pendingTaskCount === "number" ? body.pendingTaskCount : undefined,
+      maxConcurrentTasks: typeof body.maxConcurrentTasks === "number" ? body.maxConcurrentTasks : undefined,
+      budgetRemaining: typeof body.budgetRemaining === "number" ? body.budgetRemaining : undefined,
+    };
+    const result = await router.routeAsync(context);
+    return c.json(result);
+  } catch (err: any) {
+    console.error("[orchestration] /classify error:", err);
+    return c.json({ error: err?.message ?? "Classification failed" }, 500);
+  }
+});
+
 // ============================================================================
 // GATEWAY WEBSOCKET PROXY (OpenClaw Studio parity)
 // ============================================================================
