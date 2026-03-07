@@ -446,8 +446,24 @@ export function AgentRegistryView({
       </div>
 
       {filteredAgents.length === 0 && (
-        <div className="px-6 pb-6 text-center py-12 text-muted-foreground text-sm">
-          {agents.length === 0 ? "No agents registered. Use Discover agents to add agents." : "No agents match the current filters."}
+        <div className="px-6 pb-6 text-center py-12">
+          <p className="text-muted-foreground text-sm mb-4">
+            {agents.length === 0 ? "No agents registered yet." : "No agents match the current filters."}
+          </p>
+          {agents.length === 0 && (
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+              {onOpenCreateAgent && (
+                <Button onClick={onOpenCreateAgent}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create your first agent
+                </Button>
+              )}
+              <Button variant="outline" onClick={() => setDiscoverOpen(true)}>
+                <Activity className="h-4 w-4 mr-2" />
+                Discover agents
+              </Button>
+            </div>
+          )}
         </div>
       )}
 

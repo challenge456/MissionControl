@@ -360,8 +360,8 @@ function QuickActionsBar({
       ? [
           {
             icon: Layers,
-            label: "Alerts",
-            description: "Cost thresholds",
+            label: "Alert Rules",
+            description: "Cost thresholds & alerts",
             onClick: () => onOpenAlertRules?.(),
             accent: "text-rose-500",
           } as const,
@@ -394,6 +394,20 @@ function QuickActionsBar({
       description: "Audit trail",
       onClick: () => onNavigate?.("audit"),
       accent: "text-zinc-400",
+    },
+    {
+      icon: Clock,
+      label: "Calendar",
+      description: "Scheduled tasks",
+      onClick: () => onNavigate?.("calendar"),
+      accent: "text-sky-500",
+    },
+    {
+      icon: ListChecks,
+      label: "Schedules",
+      description: "Cron jobs",
+      onClick: () => onNavigate?.("schedules"),
+      accent: "text-amber-500",
     },
     {
       icon: Layers,
@@ -569,40 +583,47 @@ function TopRunsByTokensSection({
             ? run.sessionKey.length > 24
               ? `${run.sessionKey.slice(0, 21)}…`
               : run.sessionKey
-            : run._id;
+            : String(run._id);
+          const fullSessionId = run.sessionKey ?? String(run._id);
           return (
-            <button
-              key={run._id}
-              type="button"
-              onClick={() => {
-                if (run.taskId) {
-                  onTaskSelect?.(run.taskId);
-                  onNavigate?.("tasks");
-                }
-              }}
-              className={cn(
-                "w-full flex items-center justify-between px-3 py-2 rounded-md text-left group",
-                run.taskId
-                  ? "hover:bg-muted/50 transition-colors cursor-pointer"
-                  : "cursor-default"
-              )}
-            >
-              <span
-                className="text-xs text-foreground/90 truncate flex-1 mr-2 group-hover:text-foreground"
-                title={run.sessionKey ?? run._id}
-              >
-                {sessionLabel}
-              </span>
-              <span className="text-[0.65rem] text-muted-foreground shrink-0 mr-2">
-                {(totalTokens / 1000).toFixed(1)}k
-              </span>
-              <span className="text-xs font-medium text-[var(--neon-green)] shrink-0">
-                ${(run.costUsd ?? 0).toFixed(2)}
-              </span>
-              {run.taskId && (
-                <ChevronRight className="h-3 w-3 text-muted-foreground/40 shrink-0 ml-1" />
-              )}
-            </button>
+            <TooltipProvider key={run._id}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (run.taskId) {
+                        onTaskSelect?.(run.taskId);
+                        onNavigate?.("tasks");
+                      }
+                    }}
+                    className={cn(
+                      "w-full flex items-center justify-between px-3 py-2 rounded-md text-left group",
+                      run.taskId
+                        ? "hover:bg-muted/50 transition-colors cursor-pointer"
+                        : "cursor-default"
+                    )}
+                  >
+                    <span className="text-xs text-foreground/90 truncate flex-1 mr-2 group-hover:text-foreground">
+                      {sessionLabel}
+                    </span>
+                    <span className="text-[0.65rem] text-muted-foreground shrink-0 mr-2">
+                      {(totalTokens / 1000).toFixed(1)}k
+                    </span>
+                    <span className="text-xs font-medium text-[var(--neon-green)] shrink-0">
+                      ${(run.costUsd ?? 0).toFixed(2)}
+                    </span>
+                    {run.taskId && (
+                      <ChevronRight className="h-3 w-3 text-muted-foreground/40 shrink-0 ml-1" aria-hidden />
+                    )}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-[320px]">
+                  <div className="text-[0.65rem] break-all font-mono">{fullSessionId}</div>
+                  {run.taskId && <div className="text-[0.6rem] text-muted-foreground mt-0.5">Click to open task</div>}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           );
         })}
       </div>
@@ -770,6 +791,7 @@ export function DashboardOverview({
 
   const agents = useQuery(api.agents.listAll, projectId ? { projectId } : {});
   const tasks = useQuery(api.tasks.listAll, projectId ? { projectId } : {});
+  const scheduledJobs = useQuery(api.scheduledJobs.list, projectId ? { projectId } : {});
   const approvals = useQuery(api.approvals.listPending, projectId ? { projectId, limit: 100 } : { limit: 100 });
   const activities = useQuery(api.activities.listRecent, projectId ? { projectId, limit: 12 } : { limit: 12 });
   const usageByModel = useQuery(api.runs.getUsageByModel, projectId ? { projectId, windowHours: 24 } : { windowHours: 24 });
@@ -826,7 +848,7 @@ export function DashboardOverview({
   const doneTasks = tasks.filter((t) => t.status === "DONE").length;
   const blockedTasks = tasks.filter((t) => t.status === "BLOCKED").length;
   const needsApprovalTasks = tasks.filter((t) => t.status === "NEEDS_APPROVAL").length;
-  const totalCost = tasks.reduce((sum, t) => sum + t.actualCost, 0);
+  const totalCost = tasks.reduce((sum, t) => sum + (Number(t.actualCost) ?? 0), 0);
   const completionRate = ((doneTasks / Math.max(tasks.length, 1)) * 100).toFixed(0);
 
   const statusCounts = {
@@ -1073,6 +1095,104 @@ export function DashboardOverview({
           isLayoutCustomizing={customizeLayout}
         />
 
+        {/* Upcoming: next 5 scheduled tasks + next 5 job runs; links to Schedule & Calendar */}
+        {onNavigate && (() => {
+          const now = Date.now();
+          const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+          const upcomingTasks = tasks
+            .filter((t) => t.scheduledFor != null && t.scheduledFor >= now && t.scheduledFor <= now + sevenDaysMs)
+            .sort((a, b) => (a.scheduledFor ?? 0) - (b.scheduledFor ?? 0))
+            .slice(0, 5);
+          const jobsList = scheduledJobs ?? [];
+          const nextJobRuns = [...jobsList]
+            .filter((j) => j.nextRun != null && j.nextRun >= now)
+            .sort((a, b) => (a.nextRun ?? 0) - (b.nextRun ?? 0))
+            .slice(0, 5);
+          const hasAny = upcomingTasks.length > 0 || nextJobRuns.length > 0;
+          return (
+            <Card className="mb-4 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground">
+                  What&apos;s running without you
+                </span>
+                <div className="flex gap-2">
+                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => onNavigate("calendar")}>
+                    Calendar
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => onNavigate("ops-schedule")}>
+                    Schedule
+                  </Button>
+                </div>
+              </div>
+              {hasAny ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-[0.6rem] text-muted-foreground/70 mb-2">Next tasks</p>
+                    {upcomingTasks.length === 0 ? (
+                      <p className="text-xs text-muted-foreground/70">None in next 7 days</p>
+                    ) : (
+                      <ul className="space-y-1">
+                        {upcomingTasks.map((t) => (
+                          <li key={t._id}>
+                            <button
+                              type="button"
+                              className="w-full text-left text-xs truncate text-foreground/90 hover:text-foreground"
+                              onClick={() => {
+                                onTaskSelect?.(t._id);
+                                onNavigate("tasks");
+                              }}
+                            >
+                              {t.title}
+                            </button>
+                            <span className="text-[0.6rem] text-muted-foreground">
+                              {t.scheduledFor
+                                ? new Date(t.scheduledFor).toLocaleString(undefined, {
+                                    month: "short",
+                                    day: "numeric",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })
+                                : ""}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-[0.6rem] text-muted-foreground/70 mb-2">Next job runs</p>
+                    {nextJobRuns.length === 0 ? (
+                      <p className="text-xs text-muted-foreground/70">None scheduled</p>
+                    ) : (
+                      <ul className="space-y-1">
+                        {nextJobRuns.map((j) => (
+                          <li key={j._id} className="flex justify-between gap-2 text-xs">
+                            <span className="truncate text-foreground/90">{j.name}</span>
+                            <span className="text-muted-foreground shrink-0">
+                              {j.nextRun
+                                ? new Date(j.nextRun).toLocaleString(undefined, {
+                                    month: "short",
+                                    day: "numeric",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })
+                                : "—"}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground/70 py-1">
+                  No upcoming tasks or job runs. <button type="button" className="underline hover:text-foreground" onClick={() => onNavigate("ops-schedule")}>View Schedule</button> or <button type="button" className="underline hover:text-foreground" onClick={() => onNavigate("calendar")}>Calendar</button>.
+                </p>
+              )}
+            </Card>
+          );
+        })()}
+
         {/* AI Usage (24h) — tokens + cost per model; empty state when no usage */}
         <Card className="p-4 mb-4">
           <div className="text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
@@ -1080,19 +1200,24 @@ export function DashboardOverview({
           </div>
           {usageByModel && usageByModel.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {usageByModel.map(({ model, inputTokens, outputTokens, costUsd }) => (
-                <div
-                  key={model}
-                  className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs"
-                >
-                  <div className="font-medium text-foreground truncate" title={model}>
-                    {model}
+              {usageByModel.map(({ model, inputTokens, outputTokens, costUsd }) => {
+                const inK = (inputTokens ?? 0) / 1000;
+                const outK = (outputTokens ?? 0) / 1000;
+                const cost = costUsd ?? 0;
+                return (
+                  <div
+                    key={model}
+                    className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs"
+                  >
+                    <div className="font-medium text-foreground truncate" title={model}>
+                      {model}
+                    </div>
+                    <div className="text-muted-foreground mt-1">
+                      In: {inK.toFixed(1)}k · Out: {outK.toFixed(1)}k · ~${cost.toFixed(2)}
+                    </div>
                   </div>
-                  <div className="text-muted-foreground mt-1">
-                    In: {(inputTokens / 1000).toFixed(1)}k · Out: {(outputTokens / 1000).toFixed(1)}k · ~${costUsd.toFixed(2)}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <p className="text-xs text-muted-foreground/70 py-2">No usage in last 24h</p>
@@ -1636,12 +1761,12 @@ export function DashboardOverview({
               icon: Cpu,
               label: "Squad Utilization",
               value: agents.length > 0 ? `${Math.round((activeAgents / agents.length) * 100)}%` : "0%",
-              sub: `${activeAgents}/${agents.length} agents active`,
+              sub: `${activeAgents ?? 0}/${agents.length} agents active`,
             },
             {
               icon: DollarSign,
               label: "Avg Cost / Task",
-              value: doneTasks > 0 ? `$${(totalCost / doneTasks).toFixed(3)}` : "$0.000",
+              value: doneTasks > 0 ? `$${(Number(totalCost) / doneTasks).toFixed(3)}` : "$0.000",
               sub: "per completed task",
             },
             {

@@ -122,6 +122,7 @@ const shortcutGroups = [
       { keys: ["⇧", "⌘", "A"], description: "View approvals" },
       { keys: ["⌘", "E"], description: "View agents" },
       { keys: ["⌘", "M"], description: "Edit mission statement" },
+      { keys: ["Insights"], description: "Top bar → Cost Analytics, Health, Monitoring" },
     ],
   },
   {

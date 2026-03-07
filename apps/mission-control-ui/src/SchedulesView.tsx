@@ -234,8 +234,12 @@ export function SchedulesView({ projectId }: { projectId: Id<"projects"> | null 
 
       <div className="space-y-3">
         {jobs.length === 0 && (
-          <Card className="p-6 text-center text-muted-foreground text-sm">
-            No schedules. Add one to run mission prompts or other jobs on a cron.
+          <Card className="p-8 text-center">
+            <p className="text-muted-foreground text-sm mb-4">No schedules yet. Add one to run mission prompts or other jobs on a cron.</p>
+            <Button onClick={() => setCreateOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add schedule
+            </Button>
           </Card>
         )}
         {jobs.map((job) => (

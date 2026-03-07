@@ -6,11 +6,24 @@
 
 ## Current Phase: Phase 2 (Agent Runtime) COMPLETE → Phase 3 Ready
 
-## Last Session: February 22, 2026
+## Last Session: March 2, 2026
 
 ### What was done this session:
 
-#### Task Master + PRD Import Pipeline
+#### Dashboard Phase 1 + UI polish (2026-02-28 plan + UI-GAPS)
+1. **Savings baseline** — Verified Est. monthly savings tooltip already present (?) with "Savings vs. paying full window price without cache/optimizations."
+2. **AI usage** — Verified dashboard shows concrete In/Out tokens and ~$cost per model (api.runs.getUsageByModel); empty state "No usage in last 24h."
+3. **Defensive metrics** — totalCost uses (t.actualCost ?? 0); velocity footer Squad Utilization and Avg Cost use Number()/fallbacks so no undefined% or NaN.
+4. **Alert Rules** — Quick actions "Alerts" renamed to "Alert Rules" (cost thresholds & alerts); linked from dashboard.
+5. **Top runs by tokens** — Tooltip on each row with full session ID; "Click to open task" when run has taskId.
+6. **Empty states + CTA** — Agent Registry: when no agents, primary CTAs "Create your first agent" and "Discover agents". Schedules: when no jobs, primary CTA "Add schedule" in empty card. Chat view already has "No tasks yet" + copy.
+7. **Keyboard shortcuts** — Actions list documents Cost Analytics (Insights menu) and command palette (Cost, Create agent, Gateway).
+
+#### Previous session (recent)
+- Live Agent Chat: fictitious demo data when orchestration unreachable (production); deploy to Vercel.
+- TopNav: migrated to Tailwind + design tokens; removed accidental launchctl file from repo.
+
+#### Task Master + PRD Import Pipeline (February 22, 2026)
 1. **Task Master (dev workflow)** — Installed @taskmasterai/cli, ran `taskmaster init` (creates .taskmaster-ai/). Added `taskmaster:plan` and `taskmaster` scripts to root package.json. PRD parse requires `taskmaster login` for AI; run `pnpm run taskmaster:plan` after auth to generate dev tasks from docs/PRD_V2.md.
 2. **Canonical docs (SDD)** — Updated docs/PRD_V2.md (10.2 PRD Import Pipeline), docs/APP_FLOW.md (3.8 PRD Import Flow, Import PRD in modal inventory), docs/BACKEND_STRUCTURE.md (prdDocuments table, tasks source PRD_IMPORT, convex/prd.ts API).
 3. **Schema** — Added `PRD_IMPORT` to task source union and new table `prdDocuments` (projectId, title, content, taskCount, parsedAt, createdBy) in convex/schema.ts.
