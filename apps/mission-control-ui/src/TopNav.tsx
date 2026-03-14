@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 
+/** Primary app shell uses CommandNav + TabBar in App.tsx; TopNav is available for alternative layouts. */
 export type MainView =
   | "home"
   | "atc"

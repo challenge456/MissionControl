@@ -1,0 +1,13 @@
+# Run config for localhost: baseline + echo only (no HTTP). Use to verify harness without network.
+# Run from evals dir: python candidate_runner.py --config examples/run_config_localhost.yaml --out runs
+
+suite_paths:
+  - ..
+
+backend_default: cli
+
+candidates:
+  - path: baseline_candidate.json
+  - path: echo_manifest.json
+
+timeout_ms: 60000

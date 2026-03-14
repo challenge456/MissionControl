@@ -1,0 +1,24 @@
+{
+  "id": "openclaw-worker",
+  "label": "OpenClaw worker (PTY)",
+  "version": "1.0",
+  "provider": "local",
+  "base_model": "openclaw-agent",
+  "capabilities": {
+    "produces_triage_report": true,
+    "produces_escalation_packet": true,
+    "max_clarifying_questions": 3,
+    "allowed_evidence_patterns": ["TICKET-\\d+", "INC-\\d+", "https://logs\\.internal/", "https://metrics\\.internal/"]
+  },
+  "execution": {
+    "backend": "openclaw",
+    "openclaw": {
+      "entrypoint": "openclaw",
+      "agent_path": "",
+      "workdir_template": "runs/workdir/${CANDIDATE_ID}/${CASE_ID}",
+      "pty": true,
+      "timeout_ms": 120000,
+      "session_controls": {}
+    }
+  }
+}

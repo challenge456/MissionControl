@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mission-control/roles/support_triage_agent/packets.schema.json",
+  "title": "EscalationPacket",
+  "description": "Support Triage Agent escalation packet (markdown structure); validated by required headings",
+  "type": "object",
+  "required": ["raw_markdown"],
+  "properties": {
+    "raw_markdown": { "type": "string", "description": "Full escalation packet markdown" },
+    "summary": { "type": "string" },
+    "impact": { "type": "string" },
+    "evidence": { "type": "string" },
+    "reproduction": { "type": "string" },
+    "hypotheses": { "type": "string" },
+    "recommended_next_actions": { "type": "string" },
+    "escalation_approvals": { "type": "string" }
+  }
+}

@@ -34,7 +34,7 @@ export function ProjectsView({ projectId }: ProjectsViewProps) {
       <div className="mb-6">
         <h1 className="text-2xl font-semibold text-foreground mt-0 mb-1">Projects</h1>
         <p className="text-base text-muted-foreground mt-0">
-          Manage repositories and agent swarms
+          Track every project you&apos;re working on. See progress and focus on what moves the ball forward.
         </p>
       </div>
 

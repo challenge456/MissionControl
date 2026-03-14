@@ -52,8 +52,8 @@ export function CalendarView({ projectId }: CalendarViewProps) {
         title="Calendar"
         description={
           scheduledTasks.length > 0
-            ? `${scheduledTasks.length} scheduled · ${recurringTasks.length} recurring`
-            : "Schedule tasks with due dates or recurrence for agent routines."
+            ? `${scheduledTasks.length} scheduled · ${recurringTasks.length} recurring — confirm your agents are being proactive`
+            : "Cron jobs and scheduled tasks for your agents. Schedule routines to confirm your open claw is being proactive."
         }
         actions={
           <div className="flex items-center gap-2">

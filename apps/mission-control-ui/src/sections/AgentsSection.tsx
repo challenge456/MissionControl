@@ -7,7 +7,6 @@ import { IdentityDirectoryView } from "../IdentityDirectoryView";
 import { PoliciesView } from "../PoliciesView";
 import { DeploymentsView } from "../DeploymentsView";
 import { GatewaySettingsView } from "../GatewaySettingsView";
-import { MemoryView } from "../MemoryView";
 import { SchedulesView } from "../SchedulesView";
 
 interface AgentsSectionProps {
@@ -44,7 +43,6 @@ export function AgentsSection({
   if (currentView === "policies") return <PoliciesView projectId={projectId} />;
   if (currentView === "deployments") return <DeploymentsView projectId={projectId} />;
   if (currentView === "gateway") return <GatewaySettingsView />;
-  if (currentView === "memory") return <MemoryView projectId={projectId} />;
   if (currentView === "schedules") return <SchedulesView projectId={projectId} />;
   return null;
 }

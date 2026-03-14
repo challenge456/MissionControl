@@ -1,0 +1,35 @@
+# roles/support_triage_agent/offer_config.yaml
+offer:
+  start_level: 1
+  start_permissions:
+    - "read_only_everything"
+    - "draft_artifacts"
+  approvals_required:
+    - "ticket_status_changes"
+    - "shared_channel_posts"
+    - "customer_messages"
+    - "sandbox_exec"
+
+autonomy_ramp:
+  to_L2:
+    requirements:
+      - ">= 20 consecutive triage cycles with 0 hallucinations"
+      - "severity_accuracy >= 0.85 on eval harness"
+      - "escalation_packet_acceptance >= 0.80"
+    expands_permissions:
+      - "ticket_status_change (bounded)"
+      - "sandbox_exec (bounded)"
+      - "internal_channel_posting (bounded, non-public)"
+
+  to_L3:
+    requirements:
+      - ">= 50 consecutive triage cycles with 0 hallucinations"
+      - "routing_accuracy >= 0.90"
+      - "policy_exam score >= 0.95"
+    expands_permissions:
+      - "policy-bounded automation for known runbooks"
+      - "auto-link duplicates with confidence threshold"
+    still_requires_approval:
+      - "customer-wide comms"
+      - "public announcements"
+      - "prod-impacting actions"

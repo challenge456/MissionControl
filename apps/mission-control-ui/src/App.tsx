@@ -23,6 +23,7 @@ import { CommsSection } from "./sections/CommsSection";
 import { KnowledgeSection } from "./sections/KnowledgeSection";
 import { CodeSection } from "./sections/CodeSection";
 import { QualitySection } from "./sections/QualitySection";
+import { PlatformSection } from "./sections/PlatformSection";
 
 // Modal layer + state
 import { ModalLayer } from "./ModalLayer";
@@ -85,6 +86,34 @@ function ProjectSwitcher() {
 }
 
 // ============================================================================
+// VIEW PERSISTENCE (reopen where operator left off)
+// ============================================================================
+
+const STORAGE_KEY_VIEW = "mc.last_view";
+
+const VALID_MAIN_VIEWS: MainView[] = [
+  "home", "atc", "tasks", "agents", "directory", "policies", "deployments", "audit", "telemetry",
+  "dag", "chat", "council", "calendar", "projects", "memory", "captures", "docs", "people", "org",
+  "office", "live-office", "search", "identity", "telegraph", "meetings", "voice", "content-pipeline",
+  "crm", "command", "code", "recorder", "test-generation", "api-import", "execution", "flaky-steps",
+  "hybrid-workflows", "schedule", "codegen", "gherkin", "metrics", "qc-dashboard", "qc-runs",
+  "qc-environments", "qc-findings", "qc-metrics", "qc-rulesets", "gateway", "live-chat", "schedules",
+  "hiring", "team", "system", "radar", "factory", "pipeline", "feedback", "ops-schedule", "goals",
+];
+
+function readPersistedView(): MainView | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY_VIEW);
+    if (!raw) return null;
+    const view = raw as MainView;
+    return VALID_MAIN_VIEWS.includes(view) ? view : null;
+  } catch {
+    return null;
+  }
+}
+
+// ============================================================================
 // SECTION <-> VIEW MAPPING
 // ============================================================================
 
@@ -98,14 +127,17 @@ const SECTION_DEFAULT_VIEW: Record<CommandSection, MainView> = {
   knowledge: "docs",
   code: "code",
   quality: "qc-dashboard",
+  platform: "system",
 };
 
 const SECTION_TABS: Record<CommandSection, TabItem[] | null> = {
   home: null,
   ops: [
     { id: "tasks", label: "Tasks" },
+    { id: "goals", label: "Goals" },
     { id: "dag", label: "DAG" },
     { id: "calendar", label: "Calendar" },
+    { id: "ops-schedule", label: "Schedule" },
     { id: "audit", label: "Audit" },
     { id: "telemetry", label: "Telemetry" },
   ],
@@ -136,8 +168,11 @@ const SECTION_TABS: Record<CommandSection, TabItem[] | null> = {
     { id: "voice", label: "Voice" },
     { id: "crm", label: "CRM" },
     { id: "people", label: "People" },
+    { id: "team", label: "Team" },
     { id: "org", label: "Org Chart" },
     { id: "office", label: "Office" },
+    { id: "live-office", label: "Live Office" },
+    { id: "hiring", label: "Hiring" },
   ],
   knowledge: [
     { id: "docs", label: "Knowledge" },
@@ -165,17 +200,25 @@ const SECTION_TABS: Record<CommandSection, TabItem[] | null> = {
     { id: "qc-metrics", label: "Metrics" },
     { id: "qc-rulesets", label: "Rulesets" },
   ],
+  platform: [
+    { id: "system", label: "System" },
+    { id: "radar", label: "Radar" },
+    { id: "factory", label: "Factory" },
+    { id: "pipeline", label: "Pipeline" },
+    { id: "feedback", label: "Feedback" },
+  ],
 };
 
 function viewToSection(view: MainView): CommandSection {
   if (view === "home") return "home";
-  if (["tasks", "dag", "calendar", "audit", "telemetry"].includes(view)) return "ops";
+  if (["tasks", "goals", "dag", "calendar", "ops-schedule", "audit", "telemetry"].includes(view)) return "ops";
   if (["atc", "agents", "directory", "identity", "policies", "deployments", "gateway", "schedules"].includes(view)) return "agents";
   if (["chat", "live-chat", "council", "command"].includes(view)) return "chat";
   if (["captures", "projects", "content-pipeline"].includes(view)) return "content";
   if (["qc-dashboard", "qc-runs", "qc-environments", "qc-findings", "qc-metrics", "qc-rulesets"].includes(view)) return "quality";
-  if (["telegraph", "meetings", "voice", "people", "org", "office", "crm"].includes(view)) return "comms";
+  if (["telegraph", "meetings", "voice", "people", "org", "office", "live-office", "crm", "hiring", "team"].includes(view)) return "comms";
   if (["docs", "search", "memory"].includes(view)) return "knowledge";
+  if (["system", "radar", "factory", "pipeline", "feedback"].includes(view)) return "platform";
   if ([
     "code", "recorder", "test-generation", "api-import", "execution",
     "flaky-steps", "hybrid-workflows", "schedule", "codegen", "gherkin", "metrics",
@@ -222,8 +265,8 @@ function PageTransition({ children, viewKey }: { children: React.ReactNode; view
 // ============================================================================
 
 export default function App() {
-  // ── Navigation & selection ──────────────────────────────────────────────
-  const [currentView, setCurrentView] = useState<MainView>("home");
+  // ── Navigation & selection (persist last view so UI reopens where operator left off) ─
+  const [currentView, setCurrentView] = useState<MainView>(() => readPersistedView() ?? "home");
   const [projectId, setProjectId] = useState<Id<"projects"> | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<Id<"tasks"> | null>(null);
   const [selectedQcRunId, setSelectedQcRunId] = useState<Id<"qcRuns"> | null>(null);
@@ -274,6 +317,16 @@ export default function App() {
   }, [liveFeedExpanded]);
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem(STORAGE_KEY_VIEW, currentView);
+      } catch {
+        // ignore
+      }
+    }
+  }, [currentView]);
+
+  useEffect(() => {
     if (currentView !== "tasks") setSidebarSelectedAgentId(null);
   }, [currentView]);
 
@@ -297,6 +350,7 @@ export default function App() {
     onSearch: () => open("commandPalette"),
     onApprovals: () => open("approvals"),
     onAgents: () => { setSidebarSelectedAgentId(null); open("agentsFlyout"); },
+    onCostAnalytics: () => open("costAnalytics"),
     onGoToBoard: () => setCurrentView("tasks"),
     onShowHelp: () => open("keyboardHelp"),
     onMission: () => open("missionModal"),
@@ -367,6 +421,7 @@ export default function App() {
               handleSectionChange("agents");
               handleTabChange("gateway");
             }}
+            onOpenCreateTask={() => open("createTask")}
             onSelectAgent={(id) => {
               setSidebarSelectedAgentId(id);
               open("agentsFlyout");
@@ -396,6 +451,7 @@ export default function App() {
             onResumeSquad={handleResumeSquad}
             onOpenImportPrd={() => open("importPrd")}
             onNavigate={setCurrentView}
+            onNewTask={() => open("createTask")}
           />
         );
       case "agents":
@@ -427,7 +483,13 @@ export default function App() {
       case "content":
         return <ContentSection currentView={currentView} projectId={projectId} />;
       case "comms":
-        return <CommsSection currentView={currentView} projectId={projectId} />;
+        return (
+          <CommsSection
+            currentView={currentView}
+            projectId={projectId}
+            onNavigate={setCurrentView}
+          />
+        );
       case "knowledge":
         return (
           <KnowledgeSection
@@ -459,6 +521,20 @@ export default function App() {
             setSelectedQcRunId={setSelectedQcRunId}
             onNavigate={setCurrentView}
             onOpenStartQcRun={() => open("startQcRun")}
+          />
+        );
+      case "platform":
+        return (
+          <PlatformSection
+            currentView={currentView}
+            projectId={projectId}
+            onNavigate={setCurrentView}
+            onOpenHealthDashboard={() => open("healthDashboard")}
+            onOpenMonitoringDashboard={() => open("monitoringDashboard")}
+            onTaskSelect={(taskId) => {
+              setSelectedTaskId(taskId);
+              setCurrentView("tasks");
+            }}
           />
         );
       default:

@@ -36,14 +36,26 @@ export function QualitySection({
       />
     );
   }
-  if (currentView === "qc-runs" && selectedQcRunId) {
+  if (currentView === "qc-runs") {
+    if (selectedQcRunId) {
+      return (
+        <QcRunDetailView
+          runId={selectedQcRunId}
+          onBack={() => {
+            setSelectedQcRunId(null);
+            onNavigate("qc-dashboard");
+          }}
+        />
+      );
+    }
+    // Runs tab without a selected run: show dashboard so user can pick a run
     return (
-      <QcRunDetailView
-        runId={selectedQcRunId}
-        onBack={() => {
-          setSelectedQcRunId(null);
-          onNavigate("qc-dashboard");
+      <QcDashboardView
+        projectId={projectId}
+        onRunSelect={(runId) => {
+          setSelectedQcRunId(runId);
         }}
+        onOpenStartQcRun={onOpenStartQcRun}
       />
     );
   }

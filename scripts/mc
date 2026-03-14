@@ -44,6 +44,7 @@ COMMANDS:
     tasks [status]      List tasks (default: INBOX)
     claim               Claim next available task
     logs [run-id]       Show logs for a run
+    assess              Competency Assessment (run | grade | compare | report)
     version             Show version
     help                Show this help
 
@@ -255,6 +256,15 @@ case "${1:-help}" in
     logs)
         shift
         cmd_logs "$@"
+        ;;
+    assess)
+        shift
+        if [[ -x "$MC_DIR/scripts/assess/mc-assess.sh" ]]; then
+            "$MC_DIR/scripts/assess/mc-assess.sh" "$@"
+        else
+            log_error "scripts/assess/mc-assess.sh not found"
+            exit 1
+        fi
         ;;
     version|--version|-v)
         cmd_version

@@ -16,6 +16,7 @@ export function TaskEditMode({ task, onSave, onCancel }: TaskEditModeProps) {
   const [status, setStatus] = useState(task.status);
   const [type, setType] = useState(task.type);
   const [estimatedCost, setEstimatedCost] = useState(task.estimatedCost || 0);
+  const [dueAt, setDueAt] = useState(task.dueAt ? new Date(task.dueAt).toISOString().slice(0, 10) : "");
   const [assigneeIds, setAssigneeIds] = useState<Id<"agents">[]>(task.assigneeIds || []);
   const [saving, setSaving] = useState(false);
   
@@ -33,6 +34,7 @@ export function TaskEditMode({ task, onSave, onCancel }: TaskEditModeProps) {
         status: status as any,
         type: type as any,
         estimatedCost,
+        dueAt: dueAt ? new Date(dueAt).getTime() : null,
         assigneeIds,
       });
       onSave();
@@ -209,6 +211,19 @@ export function TaskEditMode({ task, onSave, onCancel }: TaskEditModeProps) {
           </div>
         </div>
         
+        {/* Due date */}
+        <div>
+          <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500, color: "#e2e8f0" }}>
+            Due Date
+          </label>
+          <input
+            type="date"
+            value={dueAt}
+            onChange={(e) => setDueAt(e.target.value)}
+            style={inputStyle}
+          />
+        </div>
+
         {/* Assignees */}
         <div>
           <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500, color: "#e2e8f0" }}>

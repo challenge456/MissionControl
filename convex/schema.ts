@@ -526,6 +526,10 @@ export default defineSchema({
       riskThresholds: v.optional(v.any()),
     })),
     
+    // Human-readable task identifier config
+    taskPrefix: v.optional(v.string()),   // e.g., "MC", "OPS" — derived from slug if not set
+    nextTaskNumber: v.optional(v.number()), // Auto-incrementing counter for task identifiers
+    
     // Metadata
     metadata: v.optional(v.any()),
   })
@@ -593,6 +597,12 @@ export default defineSchema({
     
     // Idempotency
     idempotencyKey: v.optional(v.string()),
+    
+    // Human-readable identifier (e.g., "MC-042")
+    identifier: v.optional(v.string()),
+    
+    // Goal alignment — traces this task back to a mission-level objective
+    goalId: v.optional(v.id("goals")),
     
     // Core
     title: v.string(),
@@ -707,6 +717,8 @@ export default defineSchema({
     .index("by_type", ["type"])
     .index("by_priority", ["priority"])
     .index("by_idempotency", ["idempotencyKey"])
+    .index("by_identifier", ["identifier"])
+    .index("by_goal", ["goalId"])
     .index("by_source", ["source"])
     .index("by_project", ["projectId"])
     .index("by_project_status", ["projectId", "status"]),
@@ -1495,6 +1507,123 @@ export default defineSchema({
     .index("by_parent", ["parentTaskId"])
     .index("by_task", ["taskId"])
     .index("by_depends_on", ["dependsOnTaskId"]),
+
+  // -------------------------------------------------------------------------
+  // TASK RELATIONS (blocks, blocked_by, related, duplicate)
+  // Richer than taskDependencies — captures semantic relationship types.
+  // -------------------------------------------------------------------------
+  taskRelations: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.optional(v.id("projects")),
+    sourceTaskId: v.id("tasks"),
+    targetTaskId: v.id("tasks"),
+    relationType: v.union(
+      v.literal("BLOCKS"),
+      v.literal("BLOCKED_BY"),
+      v.literal("RELATED"),
+      v.literal("DUPLICATE")
+    ),
+    createdBy: v.optional(v.string()),
+    createdAt: v.number(),
+    metadata: v.optional(v.any()),
+  })
+    .index("by_source", ["sourceTaskId"])
+    .index("by_target", ["targetTaskId"])
+    .index("by_source_type", ["sourceTaskId", "relationType"])
+    .index("by_project", ["projectId"]),
+
+  // -------------------------------------------------------------------------
+  // GOALS (Hierarchical Goal Alignment — company > team > agent > task)
+  // Every task should trace back to a goal. Goals form a tree.
+  // -------------------------------------------------------------------------
+  goals: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.id("projects"),
+    
+    // Identity
+    title: v.string(),
+    description: v.optional(v.string()),
+    
+    // Hierarchy
+    level: v.union(
+      v.literal("COMPANY"),
+      v.literal("TEAM"),
+      v.literal("AGENT"),
+      v.literal("TASK")
+    ),
+    parentGoalId: v.optional(v.id("goals")),
+    
+    // Ownership
+    ownerAgentId: v.optional(v.id("agents")),
+    ownerUserId: v.optional(v.string()),
+    
+    // Status
+    status: v.union(
+      v.literal("PLANNED"),
+      v.literal("ACTIVE"),
+      v.literal("ACHIEVED"),
+      v.literal("CANCELLED")
+    ),
+    
+    // Progress
+    progressPct: v.optional(v.number()),
+    
+    // Timing
+    targetDate: v.optional(v.number()),
+    achievedAt: v.optional(v.number()),
+    
+    // Metadata
+    metadata: v.optional(v.any()),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_level", ["projectId", "level"])
+    .index("by_parent", ["parentGoalId"])
+    .index("by_status", ["status"])
+    .index("by_owner_agent", ["ownerAgentId"]),
+
+  // -------------------------------------------------------------------------
+  // COST EVENTS (Granular per-LLM-call cost tracking)
+  // Each event is one API call. Rollups are computed at read time.
+  // -------------------------------------------------------------------------
+  costEvents: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.optional(v.id("projects")),
+    
+    // Attribution
+    agentId: v.id("agents"),
+    taskId: v.optional(v.id("tasks")),
+    goalId: v.optional(v.id("goals")),
+    runId: v.optional(v.id("runs")),
+    
+    // Provider details
+    provider: v.string(),   // "anthropic", "openai", "google", etc.
+    model: v.string(),      // "claude-sonnet-4-20250514", "gpt-4o", etc.
+    
+    // Token usage
+    inputTokens: v.number(),
+    outputTokens: v.number(),
+    cacheReadTokens: v.optional(v.number()),
+    cacheWriteTokens: v.optional(v.number()),
+    
+    // Cost
+    costCents: v.number(),  // Integer cents for precision
+    
+    // Timing
+    occurredAt: v.number(),
+    
+    // Optional billing code for cost attribution
+    billingCode: v.optional(v.string()),
+    
+    // Metadata
+    metadata: v.optional(v.any()),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_agent", ["agentId"])
+    .index("by_task", ["taskId"])
+    .index("by_goal", ["goalId"])
+    .index("by_run", ["runId"])
+    .index("by_project_occurred", ["projectId", "occurredAt"])
+    .index("by_agent_occurred", ["agentId", "occurredAt"]),
 
   // -------------------------------------------------------------------------
   // AGENT PERFORMANCE (Learning System — Aggregated Metrics)
@@ -2726,4 +2855,114 @@ export default defineSchema({
   })
     .index("by_project", ["projectId"])
     .index("by_enabled", ["enabled"]),
+
+  // -------------------------------------------------------------------------
+  // AGENT HIRING PIPELINE (Comms > Hiring)
+  // -------------------------------------------------------------------------
+  agentRoleSpecs: defineTable({
+    projectId: v.id("projects"),
+    name: v.string(),
+    slug: v.string(),
+    purpose: v.string(),
+    outcomes: v.array(v.string()),
+    scope: v.object({
+      includes: v.array(v.string()),
+      excludes: v.array(v.string()),
+    }),
+    tooling: v.object({
+      allowed_tools: v.array(v.string()),
+      forbidden_tools: v.array(v.string()),
+    }),
+    policyEnvelope: v.object({
+      autonomy_level: v.optional(v.number()),
+      redlines: v.array(v.string()),
+      escalation: v.optional(v.any()),
+    }),
+    successMetrics: v.optional(v.any()),
+    communicationStyle: v.optional(v.any()),
+    day1Autonomy: v.optional(v.any()),
+    offerConfig: v.optional(v.any()),
+    scorecard: v.optional(v.any()),
+    specYaml: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_slug", ["slug"])
+    .index("by_project_slug", ["projectId", "slug"]),
+
+  hiringCandidates: defineTable({
+    projectId: v.id("projects"),
+    roleSpecId: v.id("agentRoleSpecs"),
+    label: v.string(),
+    source: v.union(
+      v.literal("model_provider"),
+      v.literal("template"),
+      v.literal("internal")
+    ),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("screening"),
+      v.literal("assessed"),
+      v.literal("panel"),
+      v.literal("offer"),
+      v.literal("no_hire")
+    ),
+    createdAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_roleSpec", ["roleSpecId"])
+    .index("by_project_roleSpec", ["projectId", "roleSpecId"]),
+
+  screenReports: defineTable({
+    candidateId: v.id("hiringCandidates"),
+    roleSpecId: v.id("agentRoleSpecs"),
+    pass: v.boolean(),
+    scores: v.any(),
+    disqualifiers: v.array(v.string()),
+    rawResponse: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_candidate", ["candidateId"])
+    .index("by_roleSpec", ["roleSpecId"]),
+
+  assessmentPackets: defineTable({
+    candidateId: v.id("hiringCandidates"),
+    roleSpecId: v.id("agentRoleSpecs"),
+    assessments: v.array(v.any()),
+    overallScores: v.optional(v.any()),
+    createdAt: v.number(),
+  })
+    .index("by_candidate", ["candidateId"])
+    .index("by_roleSpec", ["roleSpecId"]),
+
+  panelPackets: defineTable({
+    candidateId: v.id("hiringCandidates"),
+    roleSpecId: v.id("agentRoleSpecs"),
+    panelNotes: v.any(),
+    hireDecisionDraft: v.union(
+      v.literal("strong_hire"),
+      v.literal("hire"),
+      v.literal("no_hire")
+    ),
+    createdAt: v.number(),
+  })
+    .index("by_candidate", ["candidateId"])
+    .index("by_roleSpec", ["roleSpecId"]),
+
+  decisionRecords: defineTable({
+    candidateId: v.id("hiringCandidates"),
+    roleSpecId: v.id("agentRoleSpecs"),
+    decision: v.union(
+      v.literal("strong_hire"),
+      v.literal("hire"),
+      v.literal("no_hire")
+    ),
+    autonomyLevel: v.union(v.literal(1), v.literal(2), v.literal(3)),
+    offerConfigSnapshot: v.optional(v.any()),
+    decidedBy: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_candidate", ["candidateId"])
+    .index("by_roleSpec", ["roleSpecId"]),
 });

@@ -222,7 +222,7 @@ function ArcGauge({ value, className }: { value: number; className?: string }) {
         strokeLinecap="round"
         strokeDasharray={`${dash} ${circumference}`}
         strokeDashoffset={0}
-        transition="stroke-dasharray 0.3s ease"
+        style={{ transition: "stroke-dasharray 0.3s ease" }}
       />
     </svg>
   );

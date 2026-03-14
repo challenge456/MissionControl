@@ -129,6 +129,7 @@ type Task = {
   blockedReason?: string;
   source?: string;
   sourceRef?: string;
+  identifier?: string;
 };
 
 const SOURCE_CONFIG: Record<string, { icon: string; label: string; isSpecial?: boolean }> = {
@@ -472,7 +473,10 @@ function Card({
         onKeyDown={(e) => e.key === "Enter" && onSelect()}
         className="outline-none"
       >
-        {/* Title */}
+        {/* Identifier + Title */}
+        {task.identifier && (
+          <div className="text-[10px] font-mono text-muted-foreground mb-1">{task.identifier}</div>
+        )}
         <div className="font-medium text-sm text-card-foreground leading-snug line-clamp-2 mb-2">
           {task.title}
         </div>

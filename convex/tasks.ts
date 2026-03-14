@@ -15,6 +15,7 @@ import { sanitizeTaskTitle, sanitizeTaskDescription } from "./lib/sanitize";
 import { resolveAgentRef } from "./lib/agentResolver";
 import { appendChangeRecord } from "./lib/armAudit";
 import { preferInstanceRefs } from "./lib/armCompat";
+import { validateForReview } from "./lib/outputValidation";
 
 // ============================================================================
 // TYPES
@@ -26,6 +27,16 @@ export type TaskStatus =
 
 export type TaskSource = "DASHBOARD" | "TELEGRAM" | "GITHUB" | "AGENT" | "API" | "TRELLO" | "SEED" | "MISSION_PROMPT";
 export type TaskCreator = "HUMAN" | "AGENT" | "SYSTEM";
+
+// ============================================================================
+// IDENTIFIER HELPERS
+// ============================================================================
+
+function deriveTaskPrefix(slug: string): string {
+  const parts = slug.toUpperCase().split(/[-_]/);
+  if (parts.length === 1) return parts[0].slice(0, 3);
+  return parts.map((p) => p[0]).join("").slice(0, 4);
+}
 
 export type TaskType = 
   | "CONTENT" | "SOCIAL" | "EMAIL_MARKETING" | "CUSTOMER_RESEARCH"
@@ -146,6 +157,27 @@ export const get = query({
   args: { taskId: v.id("tasks") },
   handler: async (ctx, args) => {
     return await ctx.db.get(args.taskId);
+  },
+});
+
+export const getByIdentifier = query({
+  args: { identifier: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("tasks")
+      .withIndex("by_identifier", (q) => q.eq("identifier", args.identifier))
+      .first();
+  },
+});
+
+/** Pre-REVIEW output validation: call to check deliverable + checklist before transitioning to REVIEW. */
+export const validateOutputForReview = query({
+  args: { taskId: v.id("tasks") },
+  handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.taskId);
+    if (!task) return { valid: false, errors: ["Task not found"] };
+    const errors = validateForReview(task.deliverable ?? null, task.reviewChecklist ?? null);
+    return { valid: errors.length === 0, errors };
   },
 });
 
@@ -931,6 +963,7 @@ export const create = mutation({
     assigneeIds: v.optional(v.array(v.id("agents"))),
     labels: v.optional(v.array(v.string())),
     estimatedCost: v.optional(v.number()),
+    goalId: v.optional(v.id("goals")),
     idempotencyKey: v.optional(v.string()),
     // Provenance — where the task came from
     source: v.optional(v.string()),       // "DASHBOARD" | "TELEGRAM" | "GITHUB" | "AGENT" | "API"
@@ -938,6 +971,7 @@ export const create = mutation({
     createdBy: v.optional(v.string()),    // "HUMAN" | "AGENT" | "SYSTEM"
     createdByRef: v.optional(v.string()), // agent id, user email, etc.
     metadata: v.optional(v.any()),
+    dueAt: v.optional(v.number()),        // deadline timestamp (ms)
   },
   handler: async (ctx, args) => {
     // ── Idempotency check ──
@@ -988,11 +1022,25 @@ export const create = mutation({
         ? await resolveAssigneeInstanceIds(ctx, assigneeIds)
         : undefined;
 
+    // ── Generate human-readable identifier (e.g., "MC-042") ──
+    let identifier: string | undefined;
+    if (project && args.projectId) {
+      const prefix = project.taskPrefix || deriveTaskPrefix(project.slug);
+      const nextNum = (project.nextTaskNumber ?? 0) + 1;
+      identifier = `${prefix}-${String(nextNum).padStart(3, "0")}`;
+      await ctx.db.patch(args.projectId, {
+        nextTaskNumber: nextNum,
+        ...(project.taskPrefix ? {} : { taskPrefix: prefix }),
+      });
+    }
+
     // ── INVARIANT: All tasks start as INBOX ──
     // Status is NEVER caller-controlled. Hardcoded server-side.
     const taskId = await ctx.db.insert("tasks", {
       tenantId: project?.tenantId,
       projectId: args.projectId,
+      identifier,
+      goalId: args.goalId,
       title,
       description,
       type: args.type as TaskType,
@@ -1011,6 +1059,7 @@ export const create = mutation({
       createdBy: (args.createdBy as any) ?? undefined,
       createdByRef: args.createdByRef,
       metadata: args.metadata,
+      dueAt: args.dueAt,
     });
     
     const task = await ctx.db.get(taskId);
@@ -1191,6 +1240,16 @@ export const transition = mutation({
     
     if (rule.requiresChecklist && !args.reviewChecklist) {
       errors.push({ field: "reviewChecklist", message: "Review checklist required for REVIEW" });
+    }
+    
+    // Output validation when transitioning to REVIEW (format, length, checklist)
+    if (toStatus === "REVIEW") {
+      const deliverable = args.deliverable ?? task.deliverable ?? null;
+      const reviewChecklist = args.reviewChecklist ?? task.reviewChecklist ?? null;
+      const outputErrors = validateForReview(deliverable, reviewChecklist);
+      for (const msg of outputErrors) {
+        errors.push({ field: "deliverable", message: msg });
+      }
     }
     
     // Check assignees for IN_PROGRESS
@@ -1430,6 +1489,7 @@ export const update = mutation({
     type: v.optional(taskTypeValidator),
     estimatedCost: v.optional(v.number()),
     assigneeIds: v.optional(v.array(v.id("agents"))),
+    dueAt: v.optional(v.union(v.number(), v.null())),
     actorUserId: v.optional(v.string()),
     idempotencyKey: v.optional(v.string()),
   },
@@ -1472,6 +1532,7 @@ export const update = mutation({
       patch.assigneeIds = args.assigneeIds;
       patch.assigneeInstanceIds = await resolveAssigneeInstanceIds(ctx, args.assigneeIds);
     }
+    if (args.dueAt !== undefined) patch.dueAt = args.dueAt ?? undefined;
 
     if (Object.keys(patch).length > 0) {
       await ctx.db.patch(args.taskId, patch);

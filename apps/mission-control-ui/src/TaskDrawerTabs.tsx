@@ -13,6 +13,15 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Sheet,
   SheetContent,
   SheetHeader,
@@ -48,6 +57,7 @@ export function TaskDrawerTabs({
   );
   const postMessage = useMutation(api.messages.post);
   const transitionTask = useMutation(api.tasks.transition);
+  const updateTask = useMutation(api.tasks.update);
   const toggleWatch = useMutation(api.watchSubscriptions.toggle);
 
   if (!taskId) return null;
@@ -114,6 +124,9 @@ export function TaskDrawerTabs({
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
                     <SheetHeader className="space-y-0">
+                      {task.identifier && (
+                        <span className="text-[11px] font-mono text-muted-foreground mb-0.5 block">{task.identifier}</span>
+                      )}
                       <SheetTitle className="text-base font-semibold leading-snug">
                         {task.title}
                       </SheetTitle>
@@ -193,10 +206,15 @@ export function TaskDrawerTabs({
                   <div className="flex-1 overflow-auto p-5">
                     {activeTab === "overview" && (
                       <OverviewTab
+                        taskId={taskId}
                         task={task}
+                        agents={agents as Doc<"agents">[]}
                         agentMap={agentMap}
                         onTransition={handleTransition}
                         loading={loading}
+                        postMessage={postMessage}
+                        updateTask={updateTask}
+                        setLoading={setLoading}
                       />
                     )}
                     {activeTab === "timeline" && (
@@ -261,15 +279,32 @@ export function TaskDrawerTabs({
 // ============================================================================
 
 function OverviewTab({
+  taskId,
   task,
+  agents,
   agentMap,
   onTransition,
   loading,
+  postMessage,
+  updateTask,
+  setLoading,
 }: {
+  taskId: Id<"tasks">;
   task: Doc<"tasks">;
+  agents: Doc<"agents">[];
   agentMap: Map<Id<"agents">, Doc<"agents">>;
   onTransition: (status: TaskStatus) => void;
   loading: boolean;
+  postMessage: (args: {
+    taskId: Id<"tasks">;
+    authorType: "HUMAN";
+    authorUserId: string;
+    type: "COMMENT";
+    content: string;
+    idempotencyKey: string;
+  }) => Promise<unknown>;
+  updateTask: (args: { taskId: Id<"tasks">; assigneeIds: Id<"agents">[] }) => Promise<unknown>;
+  setLoading: (value: boolean) => void;
 }) {
   return (
     <div className="space-y-6">
@@ -279,17 +314,55 @@ function OverviewTab({
         </Section>
       )}
 
-      {task.assigneeIds.length > 0 && (
-        <Section title="Assignees">
-          <div className="flex gap-2 flex-wrap">
-            {task.assigneeIds.map((id: Id<"agents">) => {
+      <Section title="Assignees">
+        <div className="flex gap-2 flex-wrap items-center">
+          {task.assigneeIds.length > 0 ? (
+            task.assigneeIds.map((id: Id<"agents">) => {
               const agent = agentMap.get(id);
               return agent ? (
-                <span key={id} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted border border-border rounded-md text-xs text-foreground">
-                  {agent.emoji || "🤖"} {agent.name}
-                </span>
+                <AgentChip key={id} agent={agent} />
               ) : null;
-            })}
+            })
+          ) : (
+            <span className="text-sm text-muted-foreground">Unassigned</span>
+          )}
+          <ReassignDropdown
+            taskId={taskId}
+            currentAssigneeIds={task.assigneeIds}
+            agents={agents}
+            updateTask={updateTask}
+            setLoading={setLoading}
+          />
+        </div>
+      </Section>
+
+      {task.dueAt != null && (
+        <Section title="Due Date">
+          <div className="inline-flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
+            <span className="text-foreground">
+              {new Date(task.dueAt).toLocaleDateString(undefined, {
+                weekday: "short",
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })}
+            </span>
+            <span
+              className={cn(
+                "text-xs",
+                task.dueAt < Date.now()
+                  ? "text-destructive"
+                  : task.dueAt < Date.now() + 86400000 * 2
+                    ? "text-amber-500"
+                    : "text-muted-foreground"
+              )}
+            >
+              {task.dueAt < Date.now()
+                ? "Overdue"
+                : task.dueAt < Date.now() + 86400000 * 2
+                  ? "Due soon"
+                  : "Scheduled"}
+            </span>
           </div>
         </Section>
       )}
@@ -347,6 +420,15 @@ function OverviewTab({
         </Section>
       )}
 
+      <Section title="Redirect">
+        <RedirectForm
+          taskId={taskId}
+          postMessage={postMessage}
+          loading={loading}
+          setLoading={setLoading}
+        />
+      </Section>
+
       <Section title="Quick Actions">
         <div className="flex gap-2 flex-wrap">
           {task.status === "INBOX" && (
@@ -367,6 +449,152 @@ function OverviewTab({
         </div>
       </Section>
     </div>
+  );
+}
+
+function ReassignDropdown({
+  taskId,
+  currentAssigneeIds,
+  agents,
+  updateTask,
+  setLoading,
+}: {
+  taskId: Id<"tasks">;
+  currentAssigneeIds: Id<"agents">[];
+  agents: Doc<"agents">[];
+  updateTask: (args: { taskId: Id<"tasks">; assigneeIds: Id<"agents">[] }) => Promise<unknown>;
+  setLoading: (value: boolean) => void;
+}) {
+  const [selectedIds, setSelectedIds] = useState<Id<"agents">[]>(currentAssigneeIds);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    setSelectedIds(currentAssigneeIds);
+  }, [currentAssigneeIds]);
+
+  const toggleAgent = (id: Id<"agents">) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((candidate) => candidate !== id) : [...prev, id]
+    );
+  };
+
+  const handleReassign = async () => {
+    setLoading(true);
+    try {
+      await updateTask({ taskId, assigneeIds: selectedIds });
+      setOpen(false);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm">
+          Reassign...
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-56 max-h-[280px] overflow-y-auto">
+        <DropdownMenuLabel>Assign to</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {agents.map((agent) => (
+          <DropdownMenuCheckboxItem
+            key={agent._id}
+            checked={selectedIds.includes(agent._id)}
+            onCheckedChange={() => toggleAgent(agent._id)}
+            onSelect={(event) => event.preventDefault()}
+          >
+            <span>{agent.emoji || "🤖"} {agent.name}</span>
+          </DropdownMenuCheckboxItem>
+        ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onSelect={(event) => {
+            event.preventDefault();
+            setSelectedIds([]);
+          }}
+        >
+          Clear assignees
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={(event) => {
+            event.preventDefault();
+            void handleReassign();
+          }}
+        >
+          Apply
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function RedirectForm({
+  taskId,
+  postMessage,
+  loading,
+  setLoading,
+}: {
+  taskId: Id<"tasks">;
+  postMessage: (args: {
+    taskId: Id<"tasks">;
+    authorType: "HUMAN";
+    authorUserId: string;
+    type: "COMMENT";
+    content: string;
+    idempotencyKey: string;
+  }) => Promise<unknown>;
+  loading: boolean;
+  setLoading: (value: boolean) => void;
+}) {
+  const [redirectText, setRedirectText] = useState("");
+
+  const handleRedirect = async () => {
+    if (!redirectText.trim()) return;
+    setLoading(true);
+    try {
+      await postMessage({
+        taskId,
+        authorType: "HUMAN",
+        authorUserId: "operator",
+        type: "COMMENT",
+        content: `Redirect: ${redirectText.trim()}`,
+        idempotencyKey: `redirect:${taskId}:${Date.now()}`,
+      });
+      setRedirectText("");
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex gap-2">
+      <input
+        type="text"
+        value={redirectText}
+        onChange={(event) => setRedirectText(event.target.value)}
+        placeholder="Instruction for the agent..."
+        className="flex-1 min-w-0 px-3 py-2 rounded-md border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+      />
+      <Button size="sm" onClick={handleRedirect} disabled={loading || !redirectText.trim()}>
+        Send redirect
+      </Button>
+    </div>
+  );
+}
+
+function AgentChip({ agent }: { agent: Doc<"agents"> }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-muted rounded-full text-xs text-foreground">
+      <span>{agent.emoji || "🤖"}</span>
+      <span>{agent.name}</span>
+      <span className="text-muted-foreground">{agent.role}</span>
+    </span>
   );
 }
 

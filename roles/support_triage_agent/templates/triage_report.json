@@ -1,0 +1,30 @@
+{
+  "title": "",
+  "severity_recommendation": "S3",
+  "suspected_component": "",
+  "impact": {
+    "users_affected": "unknown",
+    "regions": [],
+    "workaround": ""
+  },
+  "repro": {
+    "status": "unknown",
+    "steps": [],
+    "env": {
+      "browser": "",
+      "device": "",
+      "region": "",
+      "build": ""
+    }
+  },
+  "evidence": {
+    "links": [],
+    "timestamps": [],
+    "notes": []
+  },
+  "facts": [],
+  "hypotheses": [],
+  "next_actions": [],
+  "questions_for_reporter": [],
+  "policy_notes": []
+}

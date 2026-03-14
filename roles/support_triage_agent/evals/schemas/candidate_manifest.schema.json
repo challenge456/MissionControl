@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mission-control/roles/support_triage_agent/candidate_manifest.schema.json",
+  "title": "CandidateManifest",
+  "description": "Candidate manifest for Competency Assessment (CAS). Versioned; supports provider, model, prompt, tooling, redlines, adapter.",
+  "type": "object",
+  "required": ["id", "label", "version"],
+  "properties": {
+    "id": { "type": "string", "description": "Unique candidate identifier" },
+    "label": { "type": "string", "description": "Human-readable label (e.g. model + prompt name)" },
+    "version": { "type": "string", "description": "Manifest/spec version (immutable per run)" },
+    "version_hash": { "type": "string", "description": "Optional content hash for reproducibility" },
+    "provider": {
+      "type": "string",
+      "enum": ["openai", "anthropic", "google", "local", "other"],
+      "description": "Model provider"
+    },
+    "base_model": { "type": "string", "description": "Model ID (e.g. claude-sonnet-4, gpt-4o)" },
+    "system_prompt": { "type": "string", "description": "Inline system prompt" },
+    "system_prompt_path": { "type": "string", "description": "Path to system prompt file (alternative to inline)" },
+    "tooling": {
+      "type": "object",
+      "properties": {
+        "allowed": { "type": "array", "items": { "type": "string" } },
+        "forbidden": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "autonomy_level": { "type": "integer", "minimum": 1, "maximum": 3, "description": "1=human-approved, 2=sandbox-autonomous, 3=policy-bounded" },
+    "redlines": { "type": "array", "items": { "type": "string" } },
+    "escalation_behavior": { "type": "string", "description": "e.g. ask_supervisor, stop_and_report" },
+    "capabilities": {
+      "type": "object",
+      "properties": {
+        "produces_triage_report": { "type": "boolean", "default": true },
+        "produces_escalation_packet": { "type": "boolean", "default": true },
+        "max_clarifying_questions": { "type": "integer", "default": 3 },
+        "allowed_evidence_patterns": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Regex patterns for allowed links/ticket IDs"
+        }
+      }
+    },
+    "adapter": {
+      "type": "object",
+      "description": "How to invoke (runner backend)",
+      "properties": {
+        "type": { "type": "string", "enum": ["stub", "openai", "anthropic", "google", "local", "openclaw"], "default": "stub" },
+        "endpoint": { "type": "string" },
+        "model": { "type": "string" },
+        "api_key_env": { "type": "string", "description": "Env var name for API key" },
+        "extra": { "type": "object" }
+      }
+    },
+    "runner": {
+      "type": "object",
+      "description": "Deprecated: use adapter. Kept for backward compatibility.",
+      "properties": {
+        "type": { "type": "string" },
+        "endpoint": { "type": "string" },
+        "model": { "type": "string" },
+        "extra": { "type": "object" }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "description": "Optional execution backend and backend-specific config. Precedence: per-run override > manifest execution.backend > run backend_default > fallback cli.",
+      "properties": {
+        "backend": {
+          "type": "string",
+          "enum": ["cli", "http", "openclaw"],
+          "description": "Execution backend: cli (subprocess), http (POST API), openclaw (PTY worker)"
+        },
+        "cli": {
+          "type": "object",
+          "description": "Used when backend is cli",
+          "properties": {
+            "cmd": { "type": "string", "description": "Executable (path or name)" },
+            "args": { "type": "array", "items": { "type": "string" }, "description": "Arguments; may contain ${CASE_PATH}, ${OUT_PATH}, ${CANDIDATE_ID}, ${CASE_ID}" },
+            "cwd": { "type": "string", "description": "Working directory (optional)" },
+            "env": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Env vars; same substitutions" },
+            "timeout_ms": { "type": "integer", "minimum": 1, "description": "Process timeout milliseconds" }
+          }
+        },
+        "http": {
+          "type": "object",
+          "description": "Used when backend is http",
+          "properties": {
+            "url": { "type": "string", "description": "POST URL" },
+            "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+            "timeout_ms": { "type": "integer", "minimum": 1 },
+            "retries": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "openclaw": {
+          "type": "object",
+          "description": "Used when backend is openclaw",
+          "properties": {
+            "entrypoint": { "type": "string", "description": "OpenClaw CLI or script path" },
+            "agent_path": { "type": "string", "description": "Agent config path" },
+            "workdir_template": { "type": "string", "description": "e.g. runs/workdir/${CANDIDATE_ID}/${CASE_ID}" },
+            "pty": { "type": "boolean", "default": true, "description": "Run with PTY" },
+            "timeout_ms": { "type": "integer", "minimum": 1 },
+            "session_controls": { "type": "object" }
+          }
+        }
+      }
+    }
+  }
+}

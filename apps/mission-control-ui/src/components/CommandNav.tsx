@@ -10,6 +10,7 @@ import {
   BookOpen,
   Code2,
   ShieldCheck,
+  LayoutGrid,
   type LucideIcon,
 } from "lucide-react";
 import type { CommandSection } from "../TopNav";
@@ -31,6 +32,7 @@ const navItems: CommandNavItem[] = [
   { id: "knowledge", label: "Knowledge", shortLabel: "KB", icon: BookOpen },
   { id: "code", label: "Code", shortLabel: "Code", icon: Code2 },
   { id: "quality", label: "Quality", shortLabel: "QC", icon: ShieldCheck },
+  { id: "platform", label: "Platform", shortLabel: "Platform", icon: LayoutGrid },
 ];
 
 interface CommandNavProps {

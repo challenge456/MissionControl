@@ -1,0 +1,25 @@
+# Run configuration for Competency Assessment (CAS).
+# Load with: candidate_runner --config examples/run_config.yaml --out runs/
+#
+# Backend precedence: candidate.backend_override (per run) > manifest execution.backend > backend_default > "cli"
+
+suite_paths:
+  - ..  # suite root when config lives in examples/ (eval_cases.jsonl, rubric.yaml in parent)
+
+backend_default: cli
+
+candidates:
+  - path: baseline_candidate.json
+  - path: opus46_candidate.json
+    backend_override: http
+  - path: codex53_candidate.json
+    backend_override: http
+  - path: kimi25_local_candidate.json
+    backend_override: cli
+  - path: openclaw_candidate.json
+    backend_override: openclaw
+
+# Optional run limits
+concurrency: 2
+timeout_ms: 120000
+max_total_cost_usd: 5.0

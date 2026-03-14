@@ -21,7 +21,7 @@ Mission Control is a single-page React app with no traditional URL routing. All 
    - If projects exist and no project previously selected: auto-select first project
    - If projects exist and project previously selected: restore previous selection
    - **Empty-state edge case:** If no projects exist, do NOT attempt auto-selection. Instead, present empty-state UI with "Create your first project" prompt and disable project-dependent behaviors (Kanban, agents, tasks). The initial load logic checks `projects.length === 0` before auto-selecting and redirects to project creation flow.
-5. Main layout renders: Header + Sidebar + Kanban + Live Feed (or empty-state UI if no projects)
+5. Main layout renders: Header + Sidebar + Kanban + Live Activity (or empty-state UI if no projects)
 
 ---
 
@@ -34,7 +34,7 @@ Mission Control is a single-page React app with no traditional URL routing. All 
 | [Agents] [Costs] [Analytics] [Health] [Monitor] [Overview]         |
 | [Activity] [Shortcuts] [Docs] [Clock] [+ New Task]                 |
 +----------+----------------------------------+-----------------------+
-| SIDEBAR  | MAIN CONTENT                     | LIVE FEED            |
+| SIDEBAR  | MAIN CONTENT                     | LIVE ACTIVITY        |
 | (260px)  | (Kanban Board)                   | (320px)              |
 |          |                                  |                      |
 | Agent 1  | [Filters: Agent | Priority | Type]                     |
@@ -67,10 +67,12 @@ Mission Control is a single-page React app with no traditional URL routing. All 
 
 **Flow:**
 1. Create Task modal opens
-2. Fill in: Title (required), Description, Type, Priority, Assignees
+2. Fill in: Title (required), Description, Type, Priority, **Due date** (optional), Assignees
 3. Click "Create Task"
 4. Task appears in INBOX column on Kanban
 5. Modal closes
+
+Due dates appear on Kanban cards and in the Task Drawer; overdue and due-soon are highlighted. Quick Edit and the task drawer support editing the due date.
 
 ### 3.2 View Task Details
 
@@ -78,17 +80,18 @@ Mission Control is a single-page React app with no traditional URL routing. All 
 
 **Flow:**
 1. Task Drawer slides in from the right (~50% viewport width)
-2. Six tabs available:
+2. **Assignees** section includes **Reassign…**: open dropdown, multi-select agents, then "Apply" or "Clear assignees". **Redirect** section: enter an instruction and click "Send redirect" to post a comment prefixed with "Redirect: " for the agent.
+3. Six tabs available:
    - **Overview:** Description, assignees, work plan, deliverable, blocked reason, quick actions
    - **Timeline:** Unified view of transitions, messages, runs, tool calls, approvals
    - **Artifacts:** Deliverable artifacts and artifact messages
    - **Approvals:** All approval requests for this task
    - **Cost:** Budget vs. actual spend, run cost breakdown, run history
    - **Reviews:** Peer review panel (praise, refute, changeset, approve)
-3. Comment box at bottom for adding messages
-4. Edit mode toggle in header
-5. Status transition buttons (context-dependent)
-6. Click outside drawer or X to close
+4. Comment box at bottom for adding messages
+5. Edit mode toggle in header
+6. Status transition buttons (context-dependent)
+7. Click outside drawer or X to close
 
 ### 3.3 Move Task (Drag-and-Drop)
 
@@ -162,6 +165,16 @@ Mission Control is a single-page React app with no traditional URL routing. All 
 5. User can edit/remove/reorder before confirming.
 6. "Create All" inserts tasks into INBOX.
 7. Coordinator picks them up on next tick for decomposition.
+
+### 3.9 Comms > Hiring (Agent Hiring Pipeline)
+
+1. Navigate to Comms section and open the "Hiring" tab (or Sidebar > Comms > Hiring).
+2. Select a project; the Hiring view shows a list of agent role specs (Stage 0).
+3. Create a new role: "New role" opens a form (name, slug, purpose, outcomes, scope, tooling, policy envelope, redlines). Save creates an `agentRoleSpecs` record.
+4. Select a role to see its candidates. "Add candidate" (Stage 1) creates a candidate with label and source (model_provider / template / internal).
+5. Select a candidate to view or record pipeline stages: Screen (Stage 2), Assessments (Stage 3), Panel (Stage 4), Decision (Stage 5). Each stage has a form to record pass/fail, scores, panel notes, or final hire decision and autonomy level.
+6. Decision record stores strong_hire / hire / no_hire and L1–L3 autonomy. After a hire, the onboarding checklist can be shown (display-only in v1).
+7. Seed the Support Triage Agent role: run `pnpm run convex:seed:hiring` (requires at least one project).
 
 ---
 

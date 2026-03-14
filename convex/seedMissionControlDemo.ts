@@ -2272,6 +2272,52 @@ export const run = mutation({
       }
     }
 
+    // Ensure a few tasks have scheduledFor in the next 7 days (dashboard "upcoming" / Radar)
+    const tasksForUpcoming = await ctx.db
+      .query("tasks")
+      .withIndex("by_project", (q: any) => q.eq("projectId", project._id))
+      .take(8);
+    const dayMs = 24 * 60 * 60 * 1000;
+    for (let i = 0; i < Math.min(3, tasksForUpcoming.length); i++) {
+      const t = tasksForUpcoming[i];
+      await ctx.db.patch(t._id, {
+        scheduledFor: now + (i + 1) * dayMs,
+        dueAt: now + (i + 2) * dayMs,
+      });
+    }
+
+    // Scheduled jobs for Factory / Radar / dashboard "upcoming" (nextRun in future)
+    const scheduledJobSpecs = [
+      { jobId: "seed-demo-daily-brief", name: "Daily CEO brief", jobType: "mission_prompt" as const, offsetHours: 2 },
+      { jobId: "seed-demo-standup", name: "Daily standup report", jobType: "workflow" as const, offsetHours: 5 },
+      { jobId: "seed-demo-qc-run", name: "Nightly QC run", jobType: "qc_run" as const, offsetHours: 24 },
+      { jobId: "seed-demo-test-suite", name: "Smoke test suite", jobType: "test_suite" as const, offsetHours: 6 },
+      { jobId: "seed-demo-hybrid", name: "Content + code hybrid", jobType: "hybrid" as const, offsetHours: 12 },
+    ];
+    for (const spec of scheduledJobSpecs) {
+      const existing = await ctx.db
+        .query("scheduledJobs")
+        .withIndex("by_job", (q: any) => q.eq("jobId", spec.jobId))
+        .first();
+      if (!existing) {
+        const nextRun = now + spec.offsetHours * 60 * 60 * 1000;
+        await ctx.db.insert("scheduledJobs", {
+          tenantId: tenant._id,
+          projectId: project._id,
+          jobId: spec.jobId,
+          name: spec.name,
+          jobType: spec.jobType,
+          cronExpression: "0 9 * * *",
+          nextRun,
+          targetId: "mission-control",
+          autoRerunFlaky: false,
+          enabled: true,
+          createdBy: "seedMissionControlDemo",
+          metadata: withSeedMeta(`scheduled-job:${spec.jobId}`),
+        });
+      }
+    }
+
     const seedMeta = {
       ...(projectMeta ?? {}),
       missionControlDemoSeedVersion: SEED_VERSION,

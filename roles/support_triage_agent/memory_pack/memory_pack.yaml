@@ -1,0 +1,48 @@
+# roles/support_triage_agent/memory_pack/memory_pack.yaml
+memory_pack:
+  org_norms:
+    - "Prefer short updates: 5 bullets max"
+    - "Always include evidence links/timestamps when available"
+    - "Do not tag large groups; route to owner first"
+    - "Avoid speculation in shared channels"
+
+  severity_rubric:
+    S1: "Widespread outage / severe security / data loss"
+    S2: "Major feature broken for many / high-impact regression"
+    S3: "Partial degradation / workaround exists / limited scope"
+    S4: "Minor issue / cosmetic / low impact"
+
+  component_map:
+    auth:
+      owners: ["Auth Team"]
+      keywords: ["invalid_session", "token_refresh", "cookie", "samesite", "oauth"]
+    ui:
+      owners: ["Frontend Team"]
+      keywords: ["render", "button", "layout", "console error"]
+    data:
+      owners: ["Platform Data Team"]
+      keywords: ["missing records", "incorrect totals", "data delay"]
+
+  escalation_rules:
+    - when: "any security suspicion"
+      action: "stop_and_escalate_immediately"
+    - when: "prod impact signals + spike in errors"
+      action: "recommend incident + page on-call (approval-gated)"
+    - when: "non-repro after 2 attempts"
+      action: "request env details + mark as non-repro pending"
+
+  forbidden_actions:
+    - "financial transactions in SellerFi prod without approval"
+    - "mass outbound communications"
+    - "production DB modifications"
+    - "public announcements"
+
+  gold_examples:
+    escalation_packet_outline:
+      - "What happened (facts)"
+      - "Impact"
+      - "Evidence"
+      - "Suspected regression window"
+      - "Hypotheses (clearly labeled)"
+      - "Next checks"
+      - "Owner suggestion + why"

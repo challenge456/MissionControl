@@ -1,0 +1,22 @@
+{
+  "id": "opus46-http",
+  "label": "Opus 4.6 via HTTP",
+  "version": "1.0",
+  "provider": "anthropic",
+  "base_model": "claude-sonnet-4",
+  "capabilities": {
+    "produces_triage_report": true,
+    "produces_escalation_packet": true,
+    "max_clarifying_questions": 3,
+    "allowed_evidence_patterns": ["TICKET-\\d+", "INC-\\d+", "https://logs\\.internal/", "https://metrics\\.internal/"]
+  },
+  "execution": {
+    "backend": "http",
+    "http": {
+      "url": "https://your-eval-endpoint.example.com/run",
+      "headers": {},
+      "timeout_ms": 120000,
+      "retries": 2
+    }
+  }
+}

@@ -12,14 +12,19 @@ git clone https://github.com/jaydubya818/MissionControl.git
 cd MissionControl
 pnpm install
 
-# 2. Configure environment
+# 2. Configure environment (required for the UI to load data)
 cp .env.example .env.local
-# Set CONVEX_URL and VITE_CONVEX_URL (run `npx convex dev` once to get the URL)
+# Edit .env.local: set CONVEX_URL and VITE_CONVEX_URL.
+# Run `npx convex dev` once and paste the deployment URL into both variables.
 
-# 3. Start development
-pnpm run dev                    # Convex + UI (http://localhost:5173)
+# 3. Start development (from repo root)
+pnpm run dev                    # Starts Convex + UI together → http://localhost:5173
+# If port 5173 is in use, Vite will print the actual URL (e.g. http://localhost:5174).
+pnpm run dev:ui                 # UI only (needs VITE_CONVEX_URL in .env.local)
 pnpm run dev:orchestration      # Orchestration server (http://localhost:4100), optional
 ```
+
+If **http://localhost:5173** doesn’t load: (1) Run `pnpm run dev` from the repo root so both Convex and the UI start. (2) If you see “Convex is not configured”, add `VITE_CONVEX_URL` to `.env.local` (same value as `CONVEX_URL`) and restart the dev server.
 
 ## Architecture
 

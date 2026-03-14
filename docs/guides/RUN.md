@@ -33,17 +33,27 @@ Exact commands to run Mission Control locally.
 
    - Stop the Convex dev process (Ctrl+C) after it’s configured, or leave it running and use a second terminal for the next steps.
 
-3. **Seed sample data** (10 agents + 5 tasks)
+3. **Seed sample data**
+
+   For the full Mission Control UI (dashboard command center, Platform views, tasks, agents, QC, alerts, scheduled jobs), use the **demo seed**:
+
+   ```bash
+   pnpm run convex:seed:demo
+   ```
+
+   Or with force to re-run and refresh data (e.g. after schema changes):
+
+   ```bash
+   pnpm run convex:seed:demo:force
+   ```
+
+   For a minimal dataset (10 agents + 5 tasks) only:
 
    ```bash
    pnpm run convex:seed
    ```
 
-   Or:
-
-   ```bash
-   npx convex run seed:seedV0
-   ```
+   (`npx convex run seed:seedV0` is the same as `convex:seed`.)
 
 ## Start dev (UI + Convex)
 
@@ -67,7 +77,11 @@ This runs:
 
 **URL:** http://localhost:5173
 
-1. **Kanban**  
+After **`pnpm run convex:seed:demo`** you get the full enhanced UI:
+
+1. **Home / Dashboard** – Command center with operator action queue, platform health strip, watch-next links (Tasks, Calendar, Gateway, QC), and reorderable sections (AI usage, metrics, squad, build queue, blockers, pipeline activity, usage trends, top tasks/runs, velocity).
+2. **Platform** – **System** (live ops: scheduled jobs, open alerts, agents, in-progress tasks), **Radar** (due-in-7-days), **Factory** (schedules), **Pipeline**, **Feedback** (QC findings, pending approvals, alerts, recent activity).
+3. **Kanban**  
    - Seven columns: **Inbox** | **Assigned** | **In Progress** | **Review** | **Needs Approval** | **Blocked** | **Done**.  
    - After `pnpm run convex:seed`, sample tasks appear as follows:  
      - **Inbox (1):** “Draft blog post on TypeScript”  
@@ -77,7 +91,7 @@ This runs:
      - **Blocked (1):** “Blocked: API rate limit”  
    - Each card shows title, type, and spend/budget.
 
-2. **Task detail drawer**  
+4. **Task detail drawer**  
    - Click any task card.  
    - A drawer opens on the right with two tabs:  
      - **Overview:** title, description, status, type, budget/spend, blocked reason (if any).  
@@ -123,13 +137,19 @@ Then open the URL Vite prints (e.g. http://localhost:5173 or http://localhost:51
 
 ## Seed again (reset data)
 
-To re-run the seed (e.g. after clearing data):
+To re-run the **demo** seed (e.g. after clearing data):
 
 ```bash
-pnpm run convex:seed
+pnpm run convex:seed:demo
 ```
 
-Note: The seed mutation skips if agents already exist. To fully reset, clear tables in the Convex dashboard and run the seed again.
+The demo seed skips if it has already run (same project version). To force a full re-seed:
+
+```bash
+pnpm run convex:seed:demo:force
+```
+
+To fully reset, clear tables in the Convex dashboard and run the seed again. For the minimal seed: `pnpm run convex:seed`.
 
 ## Docker
 

@@ -53,7 +53,7 @@ export function CommandPalette({
       { id: "new-task", label: "Create New Task", icon: <Plus className="h-4 w-4" />, shortcut: "Cmd+N", action: onCreateTask },
       { id: "open-approvals", label: "Open Approvals Center", icon: <Shield className="h-4 w-4" />, shortcut: "Cmd+Shift+A", action: onOpenApprovals },
       { id: "open-agents", label: "Open Agent Registry", icon: <Bot className="h-4 w-4" />, shortcut: "Cmd+2", action: onOpenAgents },
-      ...(onOpenCostAnalytics ? [{ id: "cost-analytics", label: "Cost Analytics", icon: <DollarSign className="h-4 w-4" />, shortcut: "", action: onOpenCostAnalytics }] : []),
+      ...(onOpenCostAnalytics ? [{ id: "cost-analytics", label: "Cost Analytics", icon: <DollarSign className="h-4 w-4" />, shortcut: "Cmd+Shift+I", action: onOpenCostAnalytics }] : []),
       ...(onOpenCreateAgent ? [{ id: "create-agent", label: "Create Agent", icon: <Bot className="h-4 w-4" />, shortcut: "", action: onOpenCreateAgent }] : []),
       ...(onNavigateToGateway ? [{ id: "connect-gateway", label: "Connect Gateway", icon: <Radio className="h-4 w-4" />, shortcut: "", action: onNavigateToGateway }] : []),
       ...(onOpenControls

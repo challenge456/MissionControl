@@ -6,12 +6,15 @@ import { KanbanFilters } from "../KanbanFilters";
 import { LiveFeed } from "../LiveFeed";
 import { MissionDAGView } from "../MissionDAGView";
 import { CalendarView } from "../CalendarView";
+import { ScheduleView } from "../ScheduleView";
 import { AuditView } from "../AuditView";
 import { TelemetryView } from "../TelemetryView";
+import { GoalsView } from "../GoalsView";
 import { PageHeader } from "../components/PageHeader";
+import { TaskboardStats } from "../components/TaskboardStats";
 import { Button } from "@/components/ui/button";
 import { LoopDetectionPanel } from "../LoopDetectionPanel";
-import { FileUp, PauseCircle, ShieldCheck, Users } from "lucide-react";
+import { FileUp, Plus, PauseCircle, ShieldCheck, Users } from "lucide-react";
 
 export interface OpsSectionProps {
   currentView: MainView;
@@ -34,6 +37,7 @@ export interface OpsSectionProps {
   onResumeSquad: () => void;
   onOpenImportPrd: () => void;
   onNavigate: (view: MainView) => void;
+  onNewTask?: () => void;
 }
 
 export function OpsSection({
@@ -57,6 +61,7 @@ export function OpsSection({
   onResumeSquad,
   onOpenImportPrd,
   onNavigate,
+  onNewTask,
 }: OpsSectionProps) {
   if (currentView === "tasks") {
     return (
@@ -75,10 +80,20 @@ export function OpsSection({
         />
         <main className="flex flex-1 flex-col overflow-auto">
           <PageHeader
-            title="Mission Queue"
-            description={`${taskCount} tasks across all states`}
+            title="Tasks"
+            description="Track what your agents are doing and what they've accomplished"
             actions={
               <div className="flex items-center gap-2">
+                {onNewTask && (
+                  <Button
+                    size="sm"
+                    className="h-8 gap-1.5 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90"
+                    onClick={onNewTask}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    New task
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   size="sm"
@@ -118,6 +133,7 @@ export function OpsSection({
               </div>
             }
           />
+          <TaskboardStats projectId={projectId} />
           <LoopDetectionPanel projectId={projectId} onTaskSelect={onTaskSelect} />
           <KanbanFilters
             projectId={projectId}
@@ -140,6 +156,18 @@ export function OpsSection({
     );
   }
 
+  if (currentView === "goals") {
+    return (
+      <GoalsView
+        projectId={projectId}
+        onTaskSelect={(taskId) => {
+          onTaskSelect(taskId);
+          onNavigate("tasks");
+        }}
+      />
+    );
+  }
+
   if (currentView === "dag") {
     return (
       <MissionDAGView
@@ -153,6 +181,15 @@ export function OpsSection({
   }
 
   if (currentView === "calendar") return <CalendarView projectId={projectId} />;
+  if (currentView === "ops-schedule") {
+    return (
+      <ScheduleView
+        projectId={projectId}
+        onNavigate={onNavigate}
+        onTaskSelect={onTaskSelect}
+      />
+    );
+  }
   if (currentView === "audit") return <AuditView projectId={projectId} />;
   if (currentView === "telemetry") return <TelemetryView projectId={projectId} />;
   return null;

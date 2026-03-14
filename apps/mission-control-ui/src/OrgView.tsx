@@ -328,6 +328,7 @@ export function OrgView({ projectId }: OrgViewProps) {
         />
         <CreateAgentModal
           open={showCreateModal}
+          projectId={projectId}
           parentAgentId={createParentId}
           onClose={handleCloseCreate}
           onCreate={handleCreateAgent}

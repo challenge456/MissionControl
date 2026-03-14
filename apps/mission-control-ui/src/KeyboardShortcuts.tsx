@@ -8,6 +8,7 @@ interface KeyboardShortcutsProps {
   onSearch: () => void;
   onApprovals: () => void;
   onAgents: () => void;
+  onCostAnalytics?: () => void;
   onGoToBoard?: () => void;
   onShowHelp?: () => void;
   onMission?: () => void;
@@ -18,6 +19,7 @@ export function useKeyboardShortcuts({
   onSearch,
   onApprovals,
   onAgents,
+  onCostAnalytics,
   onGoToBoard,
   onShowHelp,
   onMission,
@@ -55,6 +57,11 @@ export function useKeyboardShortcuts({
             if (!e.shiftKey) return;
             e.preventDefault();
             onApprovals();
+            return;
+          case "i":
+            if (!e.shiftKey) return;
+            e.preventDefault();
+            onCostAnalytics?.();
             return;
           case "e":
             e.preventDefault();
@@ -102,7 +109,7 @@ export function useKeyboardShortcuts({
       window.removeEventListener("keydown", handleKeyDown);
       if (gTimerRef.current) clearTimeout(gTimerRef.current);
     };
-  }, [onNewTask, onSearch, onApprovals, onAgents, onGoToBoard, onShowHelp, onMission]);
+  }, [onNewTask, onSearch, onApprovals, onAgents, onCostAnalytics, onGoToBoard, onShowHelp, onMission]);
 }
 
 const shortcutGroups = [
@@ -120,6 +127,7 @@ const shortcutGroups = [
       { keys: ["⌘", "N"], description: "Create new task" },
       { keys: ["⌘", "K"], description: "Open command palette" },
       { keys: ["⇧", "⌘", "A"], description: "View approvals" },
+      { keys: ["⇧", "⌘", "I"], description: "Open cost analytics" },
       { keys: ["⌘", "E"], description: "View agents" },
       { keys: ["⌘", "M"], description: "Edit mission statement" },
       { keys: ["Insights"], description: "Top bar → Cost Analytics, Health, Monitoring" },

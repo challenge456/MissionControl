@@ -4,6 +4,8 @@
 
 **Goal:** Improve the OpenClaw Command Center / Mission Control dashboard with clearer cost context, fixed undefined metrics, better discoverability for agents and sessions, trend visualizations, and optional alerts and layout customization.
 
+**Video-aligned enhancements (Open Claw “Mission Control” video):** Applied 2026-03 — Taskboard summary stats (This week, In progress, Total, Completion %), “+ New task” in Tasks header, Live Feed renamed to “Live Activity” with checkmarks for completed tasks, Calendar/Projects copy updated to emphasize proactive agents and project tracking. See APP_FLOW.md for taskboard and live-activity behavior.
+
 **Architecture:** Three phases. Phase 1 focuses on clarity and UX quick wins (tooltips, copy, undefined fixes, clickable agents). Phase 2 adds time-series data and charts (tokens/cost over time, session drill-down). Phase 3 adds configurable alerts and optional drag-and-drop layout. Mission Control uses Convex for data; any Command Center–style view may use gateway/orchestration APIs. All new UI uses existing shadcn/ui + Tailwind + Recharts where applicable.
 
 **Tech Stack:** React 18, TypeScript, Convex, Tailwind CSS v4, shadcn/ui, Recharts, Framer Motion. Optional: @dnd-kit for layout.
@@ -64,7 +66,7 @@
 
 ---
 
-### Task 1.3: Fix undefined CPU (or other) metrics
+### Task 1.3: Fix undefined CPU (or other) metrics — applied
 
 **Files:**
 - Modify: Component that renders System Vitals / CPU (e.g. `apps/mission-control-ui/src/*Vitals*` or the file that renders “user” / “sys” and the third bar)
@@ -80,7 +82,7 @@
 
 ---
 
-### Task 1.4: Active sub-agents: tooltip + click to detail
+### Task 1.4: Active sub-agents: tooltip + click to detail — applied
 
 **Files:**
 - Modify: Component that lists “Active Sub-agents” (e.g. `apps/mission-control-ui/src/AgentDashboard.tsx` or the Command Center view that lists `agent:main:subagent:...`)

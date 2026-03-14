@@ -8,8 +8,24 @@ interface MemoryViewProps {
   projectId: Id<"projects"> | null;
 }
 
-type MemoryTier = "session" | "project" | "global" | "agent";
+type MemoryTier = "session" | "project" | "global" | "agent" | "journal";
 type DocType = "WORKING_MD" | "DAILY_NOTE" | "SESSION_MEMORY";
+
+function wordCount(text: string): number {
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+/** Detect lines like "9:00 AM - Label" or "9:00 AM - Qwen 3.5 Medium S" for schedule display */
+function parseScheduleLines(content: string): Array<{ time: string; label: string }> {
+  const lines = content.split(/\n/);
+  const result: Array<{ time: string; label: string }> = [];
+  const re = /^(\d{1,2}:\d{2}\s*[AP]M)\s*[-–—]\s*(.+)$/i;
+  for (const line of lines) {
+    const m = line.trim().match(re);
+    if (m) result.push({ time: m[1], label: m[2].trim() });
+  }
+  return result;
+}
 
 // ============================================================================
 // MEMORY MODAL
@@ -343,6 +359,188 @@ function DeleteConfirm({
 }
 
 // ============================================================================
+// DAILY JOURNAL LAYOUT
+// ============================================================================
+
+type JournalDoc = {
+  _id: Id<"agentDocuments">;
+  agentId: Id<"agents">;
+  type: string;
+  content: string;
+  updatedAt: number;
+};
+
+function formatRelativeDate(ts: number): string {
+  const d = new Date(ts);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const docDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  if (docDay.getTime() === today.getTime()) return "Today";
+  if (docDay.getTime() === yesterday.getTime()) return "Yesterday";
+  const weekAgo = new Date(today);
+  weekAgo.setDate(weekAgo.getDate() - 7);
+  if (docDay > weekAgo) return "This Week";
+  return d.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+}
+
+function groupByDate(docs: JournalDoc[]): Map<string, JournalDoc[]> {
+  const map = new Map<string, JournalDoc[]>();
+  const sorted = [...docs].sort((a, b) => b.updatedAt - a.updatedAt);
+  for (const doc of sorted) {
+    const key = formatRelativeDate(doc.updatedAt);
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(doc);
+  }
+  return map;
+}
+
+interface DailyJournalLayoutProps {
+  dailyNoteDocs: JournalDoc[];
+  globalDocs: JournalDoc[];
+  journalSearch: string;
+  setJournalSearch: (v: string) => void;
+  selectedJournalDocId: Id<"agentDocuments"> | null;
+  setSelectedJournalDocId: (id: Id<"agentDocuments"> | null) => void;
+  getAgentLabel: (agentId: Id<"agents">) => string;
+}
+
+function DailyJournalLayout({
+  dailyNoteDocs,
+  globalDocs,
+  journalSearch,
+  setJournalSearch,
+  selectedJournalDocId,
+  setSelectedJournalDocId,
+  getAgentLabel,
+}: DailyJournalLayoutProps) {
+  const filteredNotes = journalSearch.trim()
+    ? dailyNoteDocs.filter(
+        (d) =>
+          d.content.toLowerCase().includes(journalSearch.toLowerCase())
+      )
+    : dailyNoteDocs;
+  const grouped = groupByDate(filteredNotes);
+  const ltmDoc = globalDocs[0];
+  const selectedDoc = selectedJournalDocId
+    ? dailyNoteDocs.find((d) => d._id === selectedJournalDocId)
+    : null;
+  const scheduleLines = selectedDoc ? parseScheduleLines(selectedDoc.content) : [];
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-6 mt-2">
+      {/* Left column */}
+      <div className="flex flex-col gap-4">
+        <input
+          type="search"
+          placeholder="Search journal..."
+          value={journalSearch}
+          onChange={(e) => setJournalSearch(e.target.value)}
+          className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm text-foreground placeholder:text-muted-foreground"
+        />
+        {ltmDoc && (
+          <div className="p-4 rounded-lg border border-border bg-card">
+            <h4 className="text-sm font-semibold text-foreground mb-1">Long-Term Memory</h4>
+            <p className="text-xs text-muted-foreground">
+              {wordCount(ltmDoc.content).toLocaleString()} words · Updated{" "}
+              {(() => {
+                const sec = (Date.now() - ltmDoc.updatedAt) / 1000;
+                if (sec < 60) return "just now";
+                if (sec < 3600) return `${Math.floor(sec / 60)}m ago`;
+                if (sec < 86400) return `${Math.floor(sec / 3600)}h ago`;
+                return `${Math.floor(sec / 86400)}d ago`;
+              })()}
+            </p>
+          </div>
+        )}
+        <div>
+          <h4 className="text-sm font-semibold text-foreground mb-2">DAILY JOURNAL</h4>
+          {filteredNotes.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No daily notes yet.</p>
+          ) : (
+            <div className="space-y-4">
+              {Array.from(grouped.entries()).map(([dateLabel, docs]) => (
+                <div key={dateLabel}>
+                  <p className="text-xs font-medium text-muted-foreground mb-2">
+                    {dateLabel} · {docs.length} {docs.length === 1 ? "entry" : "entries"}
+                  </p>
+                  <ul className="space-y-1">
+                    {docs.map((d) => (
+                      <li key={d._id}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedJournalDocId(d._id)}
+                          className={cn(
+                            "w-full text-left px-3 py-2 rounded-md text-sm border transition-colors",
+                            selectedJournalDocId === d._id
+                              ? "bg-primary/10 border-primary/30 text-foreground"
+                              : "border-transparent hover:bg-muted/50 text-foreground"
+                          )}
+                        >
+                          <span className="block font-medium truncate">
+                            {new Date(d.updatedAt).toLocaleDateString(undefined, {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric",
+                            })}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {wordCount(d.content)} words
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      {/* Right column: detail panel */}
+      <div className="min-w-0">
+        {selectedDoc ? (
+          <div className="p-4 rounded-lg border border-border bg-card h-full">
+            <h3 className="text-lg font-semibold text-foreground mb-1">
+              {new Date(selectedDoc.updatedAt).toLocaleDateString(undefined, {
+                year: "numeric",
+                month: "2-digit",
+                day: "2-digit",
+              })}{" "}
+              – {new Date(selectedDoc.updatedAt).toLocaleDateString(undefined, { weekday: "long" })}
+            </h3>
+            <p className="text-xs text-muted-foreground mb-4">
+              {wordCount(selectedDoc.content)} words · {getAgentLabel(selectedDoc.agentId)}
+            </p>
+            {scheduleLines.length > 0 && (
+              <div className="mb-4 p-3 rounded-md bg-muted/50 border border-border">
+                <h5 className="text-xs font-semibold text-muted-foreground mb-2">Schedule</h5>
+                <ul className="space-y-1">
+                  {scheduleLines.map((line, i) => (
+                    <li key={i} className="text-sm flex gap-2">
+                      <span className="font-mono text-foreground shrink-0">{line.time}</span>
+                      <span className="text-foreground">{line.label}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="prose prose-sm dark:prose-invert max-w-none text-foreground whitespace-pre-wrap font-sans">
+              {selectedDoc.content}
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center h-48 rounded-lg border border-dashed border-border bg-muted/20">
+            <p className="text-sm text-muted-foreground">Select an entry to view</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
 // MAIN VIEW
 // ============================================================================
 
@@ -376,6 +574,8 @@ export function MemoryView({ projectId }: MemoryViewProps) {
     label: string;
   } | null>(null);
   const [agentFilter, setAgentFilter] = useState<string>("all");
+  const [journalSearch, setJournalSearch] = useState("");
+  const [selectedJournalDocId, setSelectedJournalDocId] = useState<Id<"agentDocuments"> | null>(null);
 
   const agentDocs = useQuery(api.agentDocuments.list, {
     projectId: projectId ?? undefined,
@@ -404,6 +604,9 @@ export function MemoryView({ projectId }: MemoryViewProps) {
   const globalDocs = (agentDocs ?? []).filter(
     (d) => d.type === "WORKING_MD"
   );
+  const dailyNoteDocs = (agentDocs ?? []).filter(
+    (d) => d.type === "DAILY_NOTE"
+  );
 
   const filteredAgentDocs =
     agentFilter === "all"
@@ -430,6 +633,7 @@ export function MemoryView({ projectId }: MemoryViewProps) {
 
   const tiers: { key: MemoryTier; label: string; icon: string }[] = [
     { key: "session", label: "Session", icon: "clock" },
+    { key: "journal", label: "Daily Journal", icon: "calendar" },
     { key: "project", label: "Patterns", icon: "brain" },
     { key: "agent", label: "Agent Memories", icon: "robot" },
     { key: "global", label: "Knowledge Base", icon: "globe" },
@@ -485,6 +689,19 @@ export function MemoryView({ projectId }: MemoryViewProps) {
           </button>
         ))}
       </div>
+
+      {/* ============ DAILY JOURNAL ============ */}
+      {activeTier === "journal" && (
+        <DailyJournalLayout
+          dailyNoteDocs={dailyNoteDocs}
+          globalDocs={globalDocs}
+          journalSearch={journalSearch}
+          setJournalSearch={setJournalSearch}
+          selectedJournalDocId={selectedJournalDocId}
+          setSelectedJournalDocId={setSelectedJournalDocId}
+          getAgentLabel={getAgentLabel}
+        />
+      )}
 
       {/* ============ SESSION MEMORY ============ */}
       {activeTier === "session" && (

@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mission-control/roles/support_triage_agent/triage_report.schema.json",
+  "title": "TriageReport",
+  "description": "Support Triage Agent triage_report.json schema",
+  "type": "object",
+  "required": ["title", "severity_recommendation", "suspected_component", "impact", "repro", "evidence", "facts", "hypotheses", "next_actions", "questions_for_reporter", "policy_notes"],
+  "properties": {
+    "title": { "type": "string" },
+    "severity_recommendation": {
+      "type": "string",
+      "enum": ["S1", "S2", "S3", "S4"]
+    },
+    "suspected_component": { "type": "string" },
+    "impact": {
+      "type": "object",
+      "required": ["users_affected", "regions", "workaround"],
+      "properties": {
+        "users_affected": { "type": "string", "enum": ["unknown", "low", "medium", "high"] },
+        "regions": { "type": "array", "items": { "type": "string" } },
+        "workaround": { "type": "string" }
+      }
+    },
+    "repro": {
+      "type": "object",
+      "required": ["status", "steps", "env"],
+      "properties": {
+        "status": { "type": "string", "enum": ["unknown", "repro", "non_repro"] },
+        "steps": { "type": "array", "items": { "type": "string" } },
+        "env": {
+          "type": "object",
+          "properties": {
+            "browser": { "type": "string" },
+            "device": { "type": "string" },
+            "region": { "type": "string" },
+            "build": { "type": "string" }
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["links", "timestamps", "notes"],
+      "properties": {
+        "links": { "type": "array", "items": { "type": "string" } },
+        "timestamps": { "type": "array", "items": { "type": "string" } },
+        "notes": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "facts": { "type": "array", "items": { "type": "string" } },
+    "hypotheses": { "type": "array", "items": { "type": "string" } },
+    "next_actions": { "type": "array", "items": { "type": "string" } },
+    "questions_for_reporter": { "type": "array", "items": { "type": "string" } },
+    "policy_notes": { "type": "array", "items": { "type": "string" } }
+  }
+}

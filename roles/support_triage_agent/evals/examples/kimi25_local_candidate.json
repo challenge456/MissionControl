@@ -1,0 +1,23 @@
+{
+  "id": "kimi25-local",
+  "label": "Kimi K 2.5 local (CLI)",
+  "version": "1.0",
+  "provider": "local",
+  "base_model": "kimi-k-2.5",
+  "capabilities": {
+    "produces_triage_report": true,
+    "produces_escalation_packet": true,
+    "max_clarifying_questions": 3,
+    "allowed_evidence_patterns": ["TICKET-\\d+", "INC-\\d+", "https://logs\\.internal/", "https://metrics\\.internal/"]
+  },
+  "execution": {
+    "backend": "cli",
+    "cli": {
+      "cmd": "python3",
+      "args": ["${CASE_PATH}", "--out", "${OUT_PATH}"],
+      "cwd": "",
+      "env": { "CANDIDATE_ID": "${CANDIDATE_ID}", "CASE_ID": "${CASE_ID}" },
+      "timeout_ms": 60000
+    }
+  }
+}

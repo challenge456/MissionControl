@@ -35,6 +35,7 @@ import {
   Radio,
   Calendar,
   Inbox,
+  X,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -142,6 +143,7 @@ interface DashboardOverviewProps {
   onOpenAlertRules?: () => void;
   onTaskSelect?: (taskId: Id<"tasks">) => void;
   onNavigateToGateway?: () => void;
+  onOpenCreateTask?: () => void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -731,10 +733,18 @@ export function DashboardOverview({
   onOpenAlertRules,
   onTaskSelect,
   onNavigateToGateway,
+  onOpenCreateTask,
 }: DashboardOverviewProps) {
   const [deploying, setDeploying] = useState(false);
   const [customizeLayout, setCustomizeLayout] = useState(false);
   const [gatewayConfigured, setGatewayConfigured] = useState<boolean | null>(null);
+  const [quickStartDismissed, setQuickStartDismissed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("mc.quickstart.dismissed") === "1";
+    } catch {
+      return false;
+    }
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -881,6 +891,9 @@ export function DashboardOverview({
   );
 
   const blockedTasksList = tasks.filter((t) => t.status === "BLOCKED").slice(0, 4);
+  const showQuickStart =
+    !quickStartDismissed &&
+    (gatewayConfigured === false || agents.length === 0 || tasks.length === 0);
 
   const networkConnections = [
     { id: "l1", from: { x: 18, y: 22 }, to: { x: 50, y: 50 } },
@@ -1696,6 +1709,52 @@ export function DashboardOverview({
           </Card>
         )}
 
+        {showQuickStart && (
+          <Card className="mb-6 p-4 border-border/70 bg-card/80">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Quick start</h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Get Mission Control operational fast: connect the gateway, check your agents, and add the first task.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {onNavigateToGateway && gatewayConfigured === false && (
+                    <Button size="sm" variant="neon" onClick={onNavigateToGateway}>
+                      Connect Gateway
+                    </Button>
+                  )}
+                  {onNavigate && (
+                    <Button size="sm" variant="outline" onClick={() => onNavigate("agents")}>
+                      Open Agent Registry
+                    </Button>
+                  )}
+                  {onOpenCreateTask && (
+                    <Button size="sm" variant="outline" onClick={onOpenCreateTask}>
+                      Create Task
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8 shrink-0"
+                aria-label="Dismiss quick start"
+                onClick={() => {
+                  setQuickStartDismissed(true);
+                  try {
+                    localStorage.setItem("mc.quickstart.dismissed", "1");
+                  } catch {
+                    // ignore
+                  }
+                }}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </Card>
+        )}
+
         {/* Network hub: left (Suppliers) | center (Core) | right (Customers) */}
         <div className="relative grid grid-cols-1 lg:grid-cols-[1fr_minmax(300px,380px)_1fr] gap-4 lg:gap-6 mb-8 min-h-[320px]">
           <NetworkConnections connections={networkConnections} />
@@ -1876,598 +1935,6 @@ export function DashboardOverview({
         {orderedSectionNodes}
 
         {/* Customize layout dialog renders below; section order is driven by orderedSectionNodes above. */}
-        <Card className="p-4 mb-4">
-          <div className="text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-            AI Usage (24h)
-          </div>
-          {usageByModel && usageByModel.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {usageByModel.map(({ model, inputTokens, outputTokens, costUsd }) => {
-                const inK = (inputTokens ?? 0) / 1000;
-                const outK = (outputTokens ?? 0) / 1000;
-                const cost = costUsd ?? 0;
-                return (
-                  <div
-                    key={model}
-                    className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs"
-                  >
-                    <div className="font-medium text-foreground truncate" title={model}>
-                      {model}
-                    </div>
-                    <div className="text-muted-foreground mt-1">
-                      In: {inK.toFixed(1)}k · Out: {outK.toFixed(1)}k · ~${cost.toFixed(2)}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground/70 py-2">No usage in last 24h</p>
-          )}
-        </Card>
-
-        {/* Metric cards row + Quota fuel gauge */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
-          <QuotaFuelGauge className="min-h-[120px]" />
-          <MetricCard
-            icon={Bot}
-            label="Active Agents"
-            value={activeAgents}
-            subtitle={`${agents.length} total · ${pausedAgents} paused${quarantinedAgents > 0 ? ` · ${quarantinedAgents} quarantined` : ""}`}
-            accent="text-primary"
-            onClick={() => onNavigate?.("agents")}
-            badge={quarantinedAgents > 0 ? `${quarantinedAgents} issue${quarantinedAgents > 1 ? "s" : ""}` : undefined}
-            badgeVariant="urgent"
-            trend={{ direction: "up", label: `${activeAgents} of ${agents.length} running` }}
-          />
-          <MetricCard
-            icon={Zap}
-            label="In Progress"
-            value={inProgressTasks}
-            subtitle={`${tasks.length} total tasks`}
-            accent="text-amber-500"
-            onClick={() => onNavigate?.("tasks")}
-            trend={{ direction: inProgressTasks > 0 ? "up" : "flat", label: `${tasks.length} across all states` }}
-          />
-          <MetricCard
-            icon={Eye}
-            label="In Review"
-            value={reviewTasks}
-            subtitle={`${doneTasks} completed`}
-            accent="text-primary"
-            onClick={() => onNavigate?.("tasks")}
-            badge={reviewTasks > 0 ? "needs review" : undefined}
-            badgeVariant="info"
-          />
-          <MetricCard
-            icon={ShieldAlert}
-            label="Pending Approvals"
-            value={approvals.length}
-            subtitle={approvals.length > 0 ? "Action required" : "All clear"}
-            accent={approvals.length > 0 ? "text-destructive" : "text-primary"}
-            onClick={onOpenApprovals}
-            badge={approvals.length > 0 ? "urgent" : undefined}
-            badgeVariant="urgent"
-          />
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div>
-                  <MetricCard
-                    icon={DollarSign}
-                    label="Total Spend"
-                    value={`$${totalCost.toFixed(2)}`}
-                    subtitle="Across all tasks"
-                    accent="text-primary"
-                  />
-                </div>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="max-w-[260px]">
-                Cost from agent runs. Savings vs. paying list price without run-level optimizations.
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          <MetricCard
-            icon={CheckCircle2}
-            label="Completed"
-            value={doneTasks}
-            subtitle={`${completionRate}% completion rate`}
-            accent="text-primary"
-            onClick={() => onNavigate?.("tasks")}
-            trend={{ direction: "up", label: `${completionRate}% done` }}
-          />
-          <MetricCard
-            icon={AlertTriangle}
-            label="Blocked"
-            value={blockedTasks}
-            subtitle={blockedTasks > 0 ? "Needs attention" : "No blockers"}
-            accent={blockedTasks > 0 ? "text-destructive" : "text-primary"}
-            onClick={() => onNavigate?.("tasks")}
-            badge={blockedTasks > 0 ? "blocked" : undefined}
-            badgeVariant="urgent"
-          />
-          <MetricCard
-            icon={ListChecks}
-            label="Needs Approval"
-            value={needsApprovalTasks}
-            subtitle={needsApprovalTasks > 0 ? "Awaiting review" : "Clear"}
-            accent={needsApprovalTasks > 0 ? "text-amber-500" : "text-primary"}
-            onClick={() => onNavigate?.("tasks")}
-          />
-        </div>
-
-        {/* Agent Squad */}
-        {agents.length > 0 && (
-          <Card className="p-5 mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Users className="h-4 w-4 text-muted-foreground" />
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Agent Squad
-                </span>
-                <span className="text-[0.6rem] text-muted-foreground/50 ml-1">
-                  {activeAgents} active / {agents.length} total
-                </span>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 gap-1 text-[0.65rem] text-muted-foreground hover:text-foreground"
-                onClick={() => onNavigate?.("agents")}
-              >
-                View all
-                <ChevronRight className="h-3 w-3" />
-              </Button>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-              {agents.map((agent) => {
-                const currentTask = agent.currentTaskId
-                  ? tasks.find((t) => t._id === agent.currentTaskId) ?? null
-                  : null;
-                return (
-                  <AgentSquadCard
-                    key={agent._id}
-                    agent={agent}
-                    currentTask={currentTask}
-                    onClick={() => onSelectAgent?.(agent._id)}
-                  />
-                );
-              })}
-            </div>
-          </Card>
-        )}
-
-        {/* Build Queue */}
-        {buildTasks.length > 0 && (
-          <Card className="p-5 mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Hammer className="h-4 w-4 text-muted-foreground" />
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Build Queue
-                </span>
-                <span className="text-[0.6rem] text-muted-foreground/50 ml-1">
-                  {buildTasks.length} active
-                </span>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 gap-1 text-[0.65rem] text-muted-foreground hover:text-foreground"
-                onClick={() => onNavigate?.("tasks")}
-              >
-                View board
-                <ChevronRight className="h-3 w-3" />
-              </Button>
-            </div>
-            <div className="space-y-1.5">
-              {buildTasks.slice(0, 8).map((task) => {
-                const assignee = task.assigneeIds[0]
-                  ? agents.find((a) => a._id === task.assigneeIds[0])
-                  : null;
-                return (
-                  <button
-                    key={task._id}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-muted/50 transition-colors text-left group"
-                    onClick={() => onNavigate?.("tasks")}
-                  >
-                    <Loader2 className="h-3 w-3 text-amber-500 animate-spin shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs text-foreground/90 truncate group-hover:text-foreground transition-colors">
-                        {task.title}
-                      </p>
-                      <p className="text-[0.6rem] text-muted-foreground/50">
-                        {assignee
-                          ? `${assignee.emoji ?? "🤖"} ${assignee.name}`
-                          : "Unassigned"}
-                        {task.startedAt && (
-                          <> &middot; {formatElapsed(task.startedAt)}</>
-                        )}
-                      </p>
-                    </div>
-                    <span className="text-[0.6rem] uppercase tracking-wider text-amber-500/70 shrink-0">
-                      {task.type}
-                    </span>
-                    <ChevronRight className="h-3 w-3 text-muted-foreground/20 group-hover:text-muted-foreground/50 shrink-0 transition-colors" />
-                  </button>
-                );
-              })}
-            </div>
-          </Card>
-        )}
-
-        {/* Blockers Alert — only shown when there are blocked tasks */}
-        {blockedTasksList.length > 0 && (
-          <Card className="p-5 mb-6 border-red-500/20 bg-red-500/3">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-red-400" />
-                <span className="text-xs font-semibold uppercase tracking-wider text-red-400">
-                  Blockers
-                </span>
-                <span className="text-[0.6rem] px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/20 font-medium uppercase tracking-wider">
-                  {blockedTasksList.length} task{blockedTasksList.length > 1 ? "s" : ""} blocked
-                </span>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 gap-1 text-[0.65rem] text-red-400/70 hover:text-red-400"
-                onClick={() => onNavigate?.("tasks")}
-              >
-                Resolve
-                <ChevronRight className="h-3 w-3" />
-              </Button>
-            </div>
-            <div className="space-y-1.5">
-              {blockedTasksList.map((task) => (
-                <button
-                  key={task._id}
-                  className="w-full flex items-center gap-3 px-3 py-2 rounded-md hover:bg-red-500/5 transition-colors text-left group"
-                  onClick={() => onNavigate?.("tasks")}
-                >
-                  <div className="h-1.5 w-1.5 rounded-full bg-red-400 shrink-0" />
-                  <span className="text-xs text-foreground/80 truncate flex-1 group-hover:text-foreground transition-colors">
-                    {task.title}
-                  </span>
-                  <span className="text-[0.6rem] text-muted-foreground/40 shrink-0">{task.type}</span>
-                </button>
-              ))}
-            </div>
-          </Card>
-        )}
-
-        {/* Task Pipeline + Recent Activity */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <NeonChartContainer className="p-5">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <BarChart3 className="h-4 w-4 text-muted-foreground" />
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Task Pipeline
-                </span>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 gap-1 text-[0.65rem] text-muted-foreground hover:text-foreground"
-                onClick={() => onNavigate?.("tasks")}
-              >
-                Open board
-                <ChevronRight className="h-3 w-3" />
-              </Button>
-            </div>
-            <div className="h-[240px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={Object.entries(statusCounts).map(([status, count]) => ({
-                    name: status.replace(/_/g, " "),
-                    count,
-                    fill: status === "DONE" ? "var(--neon-green)" : status === "IN_PROGRESS" ? "var(--neon-cyan)" : "var(--muted-foreground)",
-                  }))}
-                  layout="vertical"
-                  margin={{ top: 0, right: 8, left: 0, bottom: 0 }}
-                >
-                  <XAxis type="number" hide />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    width={72}
-                    tick={{ fill: "var(--muted-foreground)", fontSize: 10 }}
-                    tickLine={{ stroke: "var(--glass-border)" }}
-                    axisLine={{ stroke: "var(--glass-border)" }}
-                  />
-                  <RechartsTooltip
-                    contentStyle={{
-                      background: "var(--glass-bg)",
-                      border: "1px solid var(--glass-border)",
-                      borderRadius: "8px",
-                    }}
-                    labelStyle={{ color: "var(--foreground)" }}
-                    formatter={(value: number) => [value, "Tasks"]}
-                  />
-                  <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={20}>
-                    {Object.entries(statusCounts).map(([status], i) => (
-                      <Cell
-                        key={status}
-                        fill={
-                          status === "DONE"
-                            ? "var(--neon-green)"
-                            : status === "IN_PROGRESS" || status === "REVIEW"
-                              ? "var(--neon-cyan)"
-                              : status === "BLOCKED" || status === "NEEDS_APPROVAL"
-                                ? "var(--neon-magenta)"
-                                : NeonChartTheme.gradientColors[0]
-                        }
-                      />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </NeonChartContainer>
-
-          <Card className="p-5">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Activity className="h-4 w-4 text-muted-foreground" />
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Recent Activity
-                </span>
-              </div>
-              <span className="text-[0.6rem] text-muted-foreground/40">Live</span>
-            </div>
-            <div className="space-y-0.5 max-h-[280px] overflow-y-auto">
-              {activities.slice(0, 12).map((activity) => (
-                <div
-                  key={activity._id}
-                  className="flex items-start gap-3 px-3 py-2 rounded-md hover:bg-muted/50 transition-colors cursor-default"
-                >
-                  <div className="mt-1 shrink-0">
-                    <Clock className="h-3 w-3 text-muted-foreground/40" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs text-foreground/80 leading-relaxed truncate">
-                      {activity.description}
-                    </p>
-                    <p className="text-[0.6rem] text-muted-foreground/50 mt-0.5">
-                      <span className="uppercase tracking-wider">{activity.actorType}</span>
-                      {" · "}
-                      {new Date(activity._creationTime).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </p>
-                  </div>
-                </div>
-              ))}
-              {activities.length === 0 && (
-                <div className="py-10 text-center">
-                  <Activity className="h-6 w-6 text-muted-foreground/20 mx-auto mb-2" />
-                  <p className="text-xs text-muted-foreground/50">No recent activity</p>
-                  <p className="text-[0.65rem] text-muted-foreground/30 mt-1">
-                    Activity will appear here once agents start working
-                  </p>
-                </div>
-              )}
-            </div>
-          </Card>
-        </div>
-
-        {/* Usage trends — tokens + cost over time */}
-        {usageTimeSeries && usageTimeSeries.length > 0 && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-            <NeonChartContainer className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Token usage
-                </span>
-                <div className="flex gap-1">
-                  <Button
-                    variant={chartWindowHours === 24 ? "secondary" : "ghost"}
-                    size="sm"
-                    className="h-7 text-[0.65rem]"
-                    onClick={() => setChartWindowHours(24)}
-                  >
-                    24h
-                  </Button>
-                  <Button
-                    variant={chartWindowHours === 168 ? "secondary" : "ghost"}
-                    size="sm"
-                    className="h-7 text-[0.65rem]"
-                    onClick={() => setChartWindowHours(168)}
-                  >
-                    7d
-                  </Button>
-                  <Button
-                    variant={chartWindowHours === 720 ? "secondary" : "ghost"}
-                    size="sm"
-                    className="h-7 text-[0.65rem]"
-                    onClick={() => setChartWindowHours(720)}
-                  >
-                    30d
-                  </Button>
-                </div>
-              </div>
-              <div className="h-[200px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart
-                    data={usageTimeSeries.map((d) => ({
-                      ...d,
-                      totalTokens: d.inputTokens + d.outputTokens,
-                    }))}
-                    margin={{ top: 4, right: 8, left: 0, bottom: 0 }}
-                  >
-                    <XAxis
-                      dataKey="period"
-                      tick={{ fill: NeonChartTheme.styles.fill, fontSize: 10 }}
-                      tickFormatter={(v) =>
-                      chartWindowHours === 24
-                        ? v.slice(11, 13)
-                        : chartWindowHours === 168
-                          ? v.slice(5, 10)
-                          : v.slice(0, 10)
-                    }
-                    />
-                    <YAxis
-                      tick={{ fill: NeonChartTheme.styles.fill, fontSize: 10 }}
-                      tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))}
-                    />
-                    <RechartsTooltip
-                      contentStyle={{
-                        background: "var(--glass-bg)",
-                        border: "1px solid var(--glass-border)",
-                        borderRadius: "8px",
-                      }}
-                      formatter={(value: number) => [value >= 1000 ? `${(value / 1000).toFixed(1)}k` : value, "Tokens"]}
-                      labelFormatter={(l) => (typeof l === "string" ? l : "")}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="totalTokens"
-                      stroke="var(--neon-cyan)"
-                      fill="var(--neon-cyan)"
-                      fillOpacity={0.2}
-                      strokeWidth={1.5}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </NeonChartContainer>
-            <NeonChartContainer className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Cost trend
-                </span>
-              </div>
-              <div className="h-[200px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart
-                    data={usageTimeSeries}
-                    margin={{ top: 4, right: 8, left: 0, bottom: 0 }}
-                  >
-                    <XAxis
-                      dataKey="period"
-                      tick={{ fill: NeonChartTheme.styles.fill, fontSize: 10 }}
-                      tickFormatter={(v) =>
-                      chartWindowHours === 24
-                        ? v.slice(11, 13)
-                        : chartWindowHours === 168
-                          ? v.slice(5, 10)
-                          : v.slice(0, 10)
-                    }
-                    />
-                    <YAxis
-                      tick={{ fill: NeonChartTheme.styles.fill, fontSize: 10 }}
-                      tickFormatter={(v) => `$${Number(v).toFixed(2)}`}
-                    />
-                    <RechartsTooltip
-                      contentStyle={{
-                        background: "var(--glass-bg)",
-                        border: "1px solid var(--glass-border)",
-                        borderRadius: "8px",
-                      }}
-                      formatter={(value: number) => [`$${Number(value).toFixed(2)}`, "Cost"]}
-                      labelFormatter={(l) => (typeof l === "string" ? l : "")}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="costUsd"
-                      stroke="var(--neon-green)"
-                      strokeWidth={2}
-                      dot={false}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </NeonChartContainer>
-          </div>
-        )}
-
-        {/* Top tasks by cost — clickable to open task */}
-        {tasks.filter((t) => t.actualCost > 0).length > 0 && (
-          <Card className="p-4 mb-4">
-            <div className="text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-              Top tasks by cost
-            </div>
-            <div className="space-y-1">
-              {[...tasks]
-                .filter((t) => t.actualCost > 0)
-                .sort((a, b) => b.actualCost - a.actualCost)
-                .slice(0, 5)
-                .map((task) => (
-                  <button
-                    key={task._id}
-                    type="button"
-                    onClick={() => {
-                      onTaskSelect?.(task._id);
-                      onNavigate?.("tasks");
-                    }}
-                    className="w-full flex items-center justify-between px-3 py-2 rounded-md hover:bg-muted/50 transition-colors text-left group"
-                  >
-                    <span className="text-xs text-foreground/90 truncate flex-1 mr-2 group-hover:text-foreground">
-                      {task.title}
-                    </span>
-                    <span className="text-xs font-medium text-[var(--neon-green)] shrink-0">
-                      ${task.actualCost.toFixed(2)}
-                    </span>
-                    <ChevronRight className="h-3 w-3 text-muted-foreground/40 shrink-0" />
-                  </button>
-                ))}
-            </div>
-          </Card>
-        )}
-
-        {/* Top runs by tokens — isolated so missing Convex function doesn't crash dashboard */}
-        <SectionErrorBoundary>
-          <TopRunsByTokensSection
-            projectId={projectId}
-            onTaskSelect={onTaskSelect}
-            onNavigate={onNavigate}
-          />
-        </SectionErrorBoundary>
-
-        {/* Velocity / Summary Footer */}
-        <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[
-            {
-              icon: TrendingUp,
-              label: "Throughput",
-              value: `${doneTasks} tasks`,
-              sub: "completed total",
-            },
-            {
-              icon: Cpu,
-              label: "Squad Utilization",
-              value: agents.length > 0 ? `${Math.round(((activeAgents ?? 0) / agents.length) * 100)}%` : "0%",
-              sub: `${activeAgents ?? 0}/${agents.length} agents active`,
-            },
-            {
-              icon: DollarSign,
-              label: "Avg Cost / Task",
-              value: doneTasks > 0 ? `$${(Number(totalCost) / doneTasks).toFixed(3)}` : "$0.000",
-              sub: "per completed task",
-            },
-            {
-              icon: Shield,
-              label: "Policy Status",
-              value: approvals.length === 0 ? "Clear" : `${approvals.length} pending`,
-              sub: approvals.length > 0 ? "review required" : "no approvals needed",
-            },
-          ].map((item) => (
-            <div key={item.label} className="flex items-center gap-3 px-4 py-3 rounded-lg bg-muted/30 border border-border/50">
-              <item.icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" strokeWidth={1.5} />
-              <div>
-                <div className="text-xs font-semibold text-foreground">{item.value}</div>
-                <div className="text-[0.6rem] text-muted-foreground/60 uppercase tracking-wider">{item.label}</div>
-                <div className="text-[0.6rem] text-muted-foreground/40">{item.sub}</div>
-              </div>
-            </div>
-          ))}
-        </div>
 
         {/* Customize layout dialog — reorder sections; order persisted to localStorage */}
         <Dialog open={customizeLayout} onOpenChange={(open) => !open && setCustomizeLayout(false)}>

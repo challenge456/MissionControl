@@ -1,11 +1,20 @@
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id, Doc } from "../../../convex/_generated/dataModel";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Sheet,
   SheetContent,
@@ -32,6 +41,7 @@ export function TaskDrawer({
 
   const postMessage = useMutation(api.messages.post);
   const transitionTask = useMutation(api.tasks.transition);
+  const updateTask = useMutation(api.tasks.update);
 
   if (!taskId) return null;
 
@@ -56,6 +66,7 @@ export function TaskDrawer({
             setLoading={setLoading}
             postMessage={postMessage}
             transitionTask={transitionTask}
+            updateTask={updateTask}
             taskId={taskId}
             onClose={onClose}
           />
@@ -76,6 +87,7 @@ function TaskDrawerContent({
   setLoading,
   postMessage,
   transitionTask,
+  updateTask,
   taskId,
   onClose,
 }: {
@@ -89,6 +101,7 @@ function TaskDrawerContent({
   setLoading: (v: boolean) => void;
   postMessage: any;
   transitionTask: any;
+  updateTask: any;
   taskId: Id<"tasks">;
   onClose: () => void;
 }) {
@@ -150,6 +163,22 @@ function TaskDrawerContent({
           <StatusBadge status={task.status} />
           <Badge variant="outline" className="text-xs">{task.type}</Badge>
           <Badge variant="outline" className="text-xs">P{task.priority}</Badge>
+          {task.dueAt != null && (
+            <Badge
+              variant="outline"
+              className={cn(
+                "text-xs",
+                task.dueAt < Date.now()
+                  ? "border-destructive text-destructive"
+                  : task.dueAt < Date.now() + 86400000 * 2
+                    ? "border-amber-500 text-amber-500"
+                    : ""
+              )}
+            >
+              Due {new Date(task.dueAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+              {task.dueAt < Date.now() && " (overdue)"}
+            </Badge>
+          )}
         </div>
       </div>
 
@@ -161,18 +190,36 @@ function TaskDrawerContent({
           </Section>
         )}
 
-        {task.assigneeIds.length > 0 && (
-          <Section title="Assignees">
-            <div className="flex gap-2 flex-wrap">
-              {task.assigneeIds.map((id: Id<"agents">) => {
+        <Section title="Assignees">
+          <div className="flex gap-2 flex-wrap items-center">
+            {task.assigneeIds.length > 0 ? (
+              task.assigneeIds.map((id: Id<"agents">) => {
                 const agent = agentMap.get(id) || ({} as Agent);
                 return agent._id ? (
                   <AgentChip key={id} agent={agent} />
                 ) : null;
-              })}
-            </div>
-          </Section>
-        )}
+              })
+            ) : (
+              <span className="text-sm text-muted-foreground">Unassigned</span>
+            )}
+            <ReassignDropdown
+              taskId={taskId}
+              currentAssigneeIds={task.assigneeIds}
+              agents={agents}
+              updateTask={updateTask}
+              setLoading={setLoading}
+            />
+          </div>
+        </Section>
+
+        <Section title="Redirect">
+          <RedirectForm
+            taskId={taskId}
+            postMessage={postMessage}
+            loading={loading}
+            setLoading={setLoading}
+          />
+        </Section>
 
         {task.workPlan && (
           <Section title="Work Plan">
@@ -271,6 +318,132 @@ function TaskDrawerContent({
   );
 }
 
+function ReassignDropdown({
+  taskId,
+  currentAssigneeIds,
+  agents,
+  updateTask,
+  setLoading,
+}: {
+  taskId: Id<"tasks">;
+  currentAssigneeIds: Id<"agents">[];
+  agents: Agent[];
+  updateTask: (args: { taskId: Id<"tasks">; assigneeIds: Id<"agents">[] }) => Promise<unknown>;
+  setLoading: (v: boolean) => void;
+}) {
+  const [selectedIds, setSelectedIds] = useState<Id<"agents">[]>(currentAssigneeIds);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    setSelectedIds(currentAssigneeIds);
+  }, [currentAssigneeIds]);
+
+  const handleReassign = async () => {
+    setLoading(true);
+    try {
+      await updateTask({ taskId, assigneeIds: selectedIds });
+      setOpen(false);
+    } catch (e) {
+      console.error(e);
+    }
+    setLoading(false);
+  };
+
+  const toggleAgent = (id: Id<"agents">) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  return (
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm">
+          Reassign…
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-56 max-h-[280px] overflow-y-auto">
+        <DropdownMenuLabel>Assign to</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {agents.map((a) => (
+          <DropdownMenuCheckboxItem
+            key={a._id}
+            checked={selectedIds.includes(a._id)}
+            onCheckedChange={() => toggleAgent(a._id)}
+            onSelect={(e) => e.preventDefault()}
+          >
+            <span>{a.emoji || "🤖"} {a.name}</span>
+          </DropdownMenuCheckboxItem>
+        ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault();
+            setSelectedIds([]);
+          }}
+        >
+          Clear assignees
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault();
+            handleReassign();
+          }}
+        >
+          Apply
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function RedirectForm({
+  taskId,
+  postMessage,
+  loading,
+  setLoading,
+}: {
+  taskId: Id<"tasks">;
+  postMessage: (args: { taskId: Id<"tasks">; authorType: string; authorUserId: string; type: string; content: string; idempotencyKey: string }) => Promise<unknown>;
+  loading: boolean;
+  setLoading: (v: boolean) => void;
+}) {
+  const [redirectText, setRedirectText] = useState("");
+
+  const handleRedirect = async () => {
+    if (!redirectText.trim()) return;
+    setLoading(true);
+    try {
+      await postMessage({
+        taskId,
+        authorType: "HUMAN",
+        authorUserId: "operator",
+        type: "COMMENT",
+        content: `Redirect: ${redirectText.trim()}`,
+        idempotencyKey: `redirect:${taskId}:${Date.now()}`,
+      });
+      setRedirectText("");
+    } catch (e) {
+      console.error(e);
+    }
+    setLoading(false);
+  }
+
+  return (
+    <div className="flex gap-2">
+      <input
+        type="text"
+        value={redirectText}
+        onChange={(e) => setRedirectText(e.target.value)}
+        placeholder="Instruction for the agent..."
+        className="flex-1 min-w-0 px-3 py-2 rounded-md border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+      />
+      <Button size="sm" onClick={handleRedirect} disabled={loading || !redirectText.trim()}>
+        Send redirect
+      </Button>
+    </div>
+  );
+}
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
@@ -289,6 +462,7 @@ const STATUS_VARIANTS: Record<string, "default" | "secondary" | "destructive" | 
   REVIEW: "outline",
   NEEDS_APPROVAL: "destructive",
   BLOCKED: "destructive",
+  FAILED: "destructive",
   DONE: "default",
   CANCELED: "secondary",
 };

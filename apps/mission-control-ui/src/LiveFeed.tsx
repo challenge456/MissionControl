@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { X } from "lucide-react";
+import { CheckCircle2, X } from "lucide-react";
 
 type FeedFilter = "all" | "tasks" | "comments" | "decisions" | "docs" | "status";
 const FEED_PAGE_SIZE = 10;
@@ -38,7 +38,7 @@ export function LiveFeed({ projectId, expanded, onToggle }: LiveFeedProps) {
           onClick={onToggle}
           className="[writing-mode:vertical-lr] text-xs font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer bg-transparent border-0 flex items-center gap-2"
           aria-label="Expand live activity feed"
-          title="Open live feed"
+          title="Open live activity"
         >
           <span>Feed</span>
           <Badge variant="outline" className="text-[10px] px-1 py-0">{totalCount}</Badge>
@@ -88,6 +88,7 @@ export function LiveFeed({ projectId, expanded, onToggle }: LiveFeedProps) {
     taskId?: Id<"tasks">;
     taskTitle?: string;
     action?: string;
+    isCompleted?: boolean;
   }> = [];
 
   for (const a of activities) {
@@ -104,14 +105,19 @@ export function LiveFeed({ projectId, expanded, onToggle }: LiveFeedProps) {
       (filter === "status" && statusActions.has(a.action)) ||
       (filter === "decisions" && decisionActions.has(a.action));
     if (passes) {
+      const desc = (a.description || "").toLowerCase();
+      const isCompleted =
+        a.action === "TASK_TRANSITION" &&
+        (desc.includes("done") || (a as { afterState?: { toStatus?: string } }).afterState?.toStatus === "DONE");
       feedItems.push({
         type: "activity",
         ts: (a as { _creationTime: number })._creationTime,
         author,
-        text: a.description,
+        text: isCompleted && taskTitle ? `Completed: ${taskTitle}` : a.description,
         taskId: a.taskId,
         taskTitle,
         action: a.action,
+        isCompleted,
       });
     }
   }
@@ -140,13 +146,13 @@ export function LiveFeed({ projectId, expanded, onToggle }: LiveFeedProps) {
     <aside className="w-72 border-l border-border bg-card flex flex-col shrink-0">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-        <span className="text-xs font-semibold uppercase tracking-wider text-foreground">Live Feed</span>
+        <span className="text-xs font-semibold uppercase tracking-wider text-foreground">Live Activity</span>
         <button
           type="button"
           onClick={onToggle}
           className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
           aria-label="Collapse live activity feed"
-          title="Collapse live feed"
+          title="Collapse live activity"
         >
           <X className="h-4 w-4" />
         </button>
@@ -189,12 +195,17 @@ export function LiveFeed({ projectId, expanded, onToggle }: LiveFeedProps) {
           ) : (
             displayed.map((item, i) => (
               <div key={i} className="py-2 border-b border-border last:border-0">
-                <div className="text-xs text-foreground">
-                  <strong>{item.author}</strong>
-                  {item.type === "message" ? " commented" : " · "}
-                  {item.taskTitle && (
-                    <span className="text-muted-foreground"> on &apos;{item.taskTitle}&apos;</span>
+                <div className="flex items-start gap-1.5 text-xs text-foreground">
+                  {item.isCompleted && (
+                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-emerald-500" aria-hidden />
                   )}
+                  <div className="min-w-0 flex-1">
+                    <strong>{item.author}</strong>
+                    {item.type === "message" ? " commented" : " · "}
+                    {item.taskTitle && !item.isCompleted && (
+                      <span className="text-muted-foreground"> on &apos;{item.taskTitle}&apos;</span>
+                    )}
+                  </div>
                 </div>
                 <div className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{item.text}</div>
                 <div className="text-[11px] text-muted-foreground/60 mt-1">{formatTime(item.ts)}</div>

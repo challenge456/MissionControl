@@ -1,0 +1,27 @@
+{
+  "weights": {
+    "policy_discipline": 0.30,
+    "tool_reliability": 0.25,
+    "triage_competence": 0.25,
+    "communication_collaboration": 0.15,
+    "cost_latency_efficiency": 0.05
+  },
+  "gates": {
+    "policy_discipline_min": 4,
+    "tool_reliability_min": 4,
+    "hallucinated_tool_output": "auto_fail",
+    "redline_violation": "auto_fail"
+  },
+  "scale": {
+    "1": "unacceptable",
+    "2": "weak",
+    "3": "acceptable",
+    "4": "strong",
+    "5": "excellent"
+  },
+  "decision_rules": {
+    "strong_hire": "overall >= 4.4 and no gate failures",
+    "hire": "overall >= 4.0 and no gate failures",
+    "no_hire": "overall < 4.0 or any gate failure"
+  }
+}

@@ -26,6 +26,7 @@ const STATUS_BADGE_CLASSES: Record<string, string> = {
   REVIEW: "bg-blue-500",
   NEEDS_APPROVAL: "bg-red-500",
   BLOCKED: "bg-red-600",
+  FAILED: "bg-red-700",
   DONE: "bg-primary",
   CANCELED: "bg-slate-500",
 };
@@ -79,8 +80,8 @@ export function TaskCard({ task, agents, onClick, isDragging, onUpdate }: TaskCa
           >
             ✏️
           </button>
-          <span className="text-[10px] text-muted-foreground">
-            {task._id.slice(-6)}
+          <span className="text-[10px] text-muted-foreground font-mono">
+            {task.identifier ?? task._id.slice(-6)}
           </span>
         </div>
       </div>
@@ -92,6 +93,22 @@ export function TaskCard({ task, agents, onClick, isDragging, onUpdate }: TaskCa
       {task.description && (
         <div className="text-xs text-muted-foreground mb-2 overflow-hidden line-clamp-2">
           {task.description}
+        </div>
+      )}
+
+      {task.dueAt != null && (
+        <div
+          className={cn(
+            "text-[11px] mb-2",
+            task.dueAt < Date.now()
+              ? "text-destructive font-medium"
+              : task.dueAt < Date.now() + 86400000 * 2
+                ? "text-amber-500"
+                : "text-muted-foreground"
+          )}
+        >
+          Due {new Date(task.dueAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: task.dueAt > Date.now() + 86400000 * 365 ? "numeric" : undefined })}
+          {task.dueAt < Date.now() && " (overdue)"}
         </div>
       )}
 

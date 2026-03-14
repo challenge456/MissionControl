@@ -18,15 +18,15 @@ The backend is entirely Convex. There is no Express server, no REST API, and no 
 
 ---
 
-## Database Tables (19 total)
+## Database Tables (25+ total; see convex/schema.ts)
 
 ### Core Data
 
 | Table | Purpose | Key Fields |
 |---|---|---|
-| `projects` | Multi-project workspaces | name, slug, policyDefaults |
+| `projects` | Multi-project workspaces | name, slug, policyDefaults, taskPrefix, nextTaskNumber |
 | `agents` | Agent registry | name, role, status, budgetDaily, budgetPerRun, spendToday, currentTaskId |
-| `tasks` | Task management | title, type, status, priority, assigneeIds, actualCost, workPlan, deliverable, source (DASHBOARD/TELEGRAM/GITHUB/AGENT/API/TRELLO/SEED/MISSION_PROMPT/PRD_IMPORT) |
+| `tasks` | Task management | title, type, status, priority, assigneeIds, dueAt (optional deadline ms), actualCost, workPlan, deliverable, identifier (e.g. "MC-042"), goalId, source (DASHBOARD/TELEGRAM/…) |
 | `taskTransitions` | Immutable audit log of status changes | taskId, fromStatus, toStatus, actorType, reason, idempotencyKey |
 | `prdDocuments` | Stored PRDs for import pipeline | projectId, title, content, taskCount, parsedAt, createdBy |
 | `messages` | Task thread messages | taskId, authorType, type (COMMENT/WORK_PLAN/PROGRESS/ARTIFACT/REVIEW/SYSTEM), content |
@@ -37,6 +37,14 @@ The backend is entirely Convex. There is no Express server, no REST API, and no 
 |---|---|---|
 | `runs` | Agent execution turns | agentId, taskId, model, inputTokens, outputTokens, costUsd, status |
 | `toolCalls` | Tool call tracking | runId, toolName, riskLevel, status, inputPreview, outputPreview |
+
+### Goal Alignment & Cost Tracking
+
+| Table | Purpose | Key Fields |
+|---|---|---|
+| `goals` | Hierarchical goal tree (company > team > agent > task) | projectId, title, level, parentGoalId, status, ownerAgentId, progressPct, targetDate |
+| `costEvents` | Granular per-LLM-call cost tracking | agentId, taskId, goalId, provider, model, inputTokens, outputTokens, costCents, occurredAt, billingCode |
+| `taskRelations` | Semantic task relationships | sourceTaskId, targetTaskId, relationType (BLOCKS/BLOCKED_BY/RELATED/DUPLICATE), createdAt |
 
 ### Safety & Approvals
 
@@ -70,6 +78,17 @@ The backend is entirely Convex. There is no Express server, no REST API, and no 
 | `webhooks` | Webhook subscriptions | url, events, active |
 | `webhookDeliveries` | Webhook delivery tracking | webhookId, status, attempts |
 
+### Agent Hiring Pipeline (Comms > Hiring)
+
+| Table | Purpose | Key Fields |
+|---|---|---|
+| `agentRoleSpecs` | Role requisition (Stage 0) | projectId, name, slug, purpose, outcomes, scope, tooling, policyEnvelope, successMetrics, scorecard, specYaml, createdAt, updatedAt |
+| `hiringCandidates` | Candidate per role | projectId, roleSpecId, label, source (model_provider/template/internal), status (draft/screening/assessed/panel/offer/no_hire), createdAt |
+| `screenReports` | Stage 2 recruiter screen | candidateId, roleSpecId, pass, scores, disqualifiers, rawResponse, createdAt |
+| `assessmentPackets` | Stage 3 assessments | candidateId, roleSpecId, assessments, overallScores, createdAt |
+| `panelPackets` | Stage 4 panel interview | candidateId, roleSpecId, panelNotes, hireDecisionDraft, createdAt |
+| `decisionRecords` | Stage 5 hire decision | candidateId, roleSpecId, decision, autonomyLevel, offerConfigSnapshot, decidedBy, createdAt |
+
 ### Indexes
 
 All tables use indexes for efficient querying. Common patterns:
@@ -95,6 +114,7 @@ All tables use indexes for efficient querying. Common patterns:
 | `search` | query | Search tasks by title/description/labels |
 | `getWithTimeline` | query | Task with full timeline (transitions, messages, runs, approvals) |
 | `getAllowedTransitionsForHuman` | query | Valid status transitions for human actors |
+| `validateOutputForReview` | query | Pre-REVIEW check: deliverable + checklist format/length (returns `{ valid, errors }`) |
 | `exportIncidentReport` | query | Export task as markdown report |
 | `create` | mutation | Create task with idempotency |
 | `transition` | mutation | Transition task status (state machine validated) |
@@ -126,6 +146,9 @@ All tables use indexes for efficient querying. Common patterns:
 | `listByTask` | query | Runs for a task |
 | `listRecent` | query | Recent runs |
 | `getStats` | query | Run statistics |
+| `getTopRunsByTokens` | query | Top runs by token count (dashboard) |
+| `getUsageTimeSeries` | query | Time-bucketed tokens/cost for trend charts |
+| `getUsageByModel` | query | Per-model usage (24h window) |
 | `start` | mutation | Start run with budget checks |
 | `complete` | mutation | Complete run, update costs |
 
@@ -152,6 +175,27 @@ All tables use indexes for efficient querying. Common patterns:
 | `postWorkPlan` | mutation | Post work plan message |
 | `postProgress` | mutation | Post progress update |
 | `postReview` | mutation | Post review message |
+
+### Agent Hiring (convex/agentHiring.ts)
+
+| Function | Type | Purpose |
+|---|---|---|
+| `listRoleSpecs` | query | List role specs by project |
+| `getRoleSpec` | query | Get role spec by ID |
+| `listCandidates` | query | List candidates by project and/or roleSpecId |
+| `getCandidate` | query | Get candidate with pipeline artifacts |
+| `getScreenReport` | query | Get screen report for candidate |
+| `getAssessmentPacket` | query | Get assessment packet for candidate |
+| `getPanelPacket` | query | Get panel packet for candidate |
+| `getDecisionRecord` | query | Get decision record for candidate |
+| `createRoleSpec` | mutation | Create role spec |
+| `updateRoleSpec` | mutation | Update role spec |
+| `createCandidate` | mutation | Create hiring candidate |
+| `updateCandidateStatus` | mutation | Update candidate status |
+| `saveScreenReport` | mutation | Save screen report (Stage 2) |
+| `saveAssessmentPacket` | mutation | Save assessment packet (Stage 3) |
+| `savePanelPacket` | mutation | Save panel packet (Stage 4) |
+| `saveDecisionRecord` | mutation | Save decision record (Stage 5) |
 
 ### Search (convex/search.ts)
 

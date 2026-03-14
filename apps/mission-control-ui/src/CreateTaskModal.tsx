@@ -53,6 +53,7 @@ export function CreateTaskModal({
   const [description, setDescription] = useState("");
   const [type, setType] = useState<string>("ENGINEERING");
   const [priority, setPriority] = useState(3);
+  const [dueAt, setDueAt] = useState<string>("");
   const [assigneeIds, setAssigneeIds] = useState<Id<"agents">[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -76,6 +77,7 @@ export function CreateTaskModal({
         description: description.trim() || undefined,
         type,
         priority,
+        dueAt: dueAt ? new Date(dueAt).getTime() : undefined,
         assigneeIds: assigneeIds.length > 0 ? assigneeIds : undefined,
         idempotencyKey: `ui-create:${Date.now()}`,
         source: "DASHBOARD",
@@ -164,6 +166,17 @@ export function CreateTaskModal({
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="task-due">Due date</Label>
+            <Input
+              id="task-due"
+              type="date"
+              value={dueAt}
+              onChange={(e) => setDueAt(e.target.value)}
+              className="w-full"
+            />
           </div>
 
           {agents && agents.length > 0 && (

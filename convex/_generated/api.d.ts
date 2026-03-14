@@ -10,6 +10,7 @@
 
 import type * as activities from "../activities.js";
 import type * as agentDocuments from "../agentDocuments.js";
+import type * as agentHiring from "../agentHiring.js";
 import type * as agentLearning from "../agentLearning.js";
 import type * as agents from "../agents.js";
 import type * as alertRules from "../alertRules.js";
@@ -21,6 +22,7 @@ import type * as codegen from "../codegen.js";
 import type * as comments from "../comments.js";
 import type * as contentDrops from "../contentDrops.js";
 import type * as coordinator from "../coordinator.js";
+import type * as costEvents from "../costEvents.js";
 import type * as crons from "../crons.js";
 import type * as e2e from "../e2e.js";
 import type * as execution from "../execution.js";
@@ -31,6 +33,7 @@ import type * as flakySteps from "../flakySteps.js";
 import type * as gatewayConnection from "../gatewayConnection.js";
 import type * as gherkin from "../gherkin.js";
 import type * as github from "../github.js";
+import type * as goals from "../goals.js";
 import type * as governance_approvalRecords from "../governance/approvalRecords.js";
 import type * as governance_changeRecords from "../governance/changeRecords.js";
 import type * as governance_deployments from "../governance/deployments.js";
@@ -93,6 +96,7 @@ import type * as savedViews from "../savedViews.js";
 import type * as scheduledJobs from "../scheduledJobs.js";
 import type * as search from "../search.js";
 import type * as seed from "../seed.js";
+import type * as seedAgentHiring from "../seedAgentHiring.js";
 import type * as seedMemory from "../seedMemory.js";
 import type * as seedMissionControlDemo from "../seedMissionControlDemo.js";
 import type * as seedOrgChart from "../seedOrgChart.js";
@@ -103,6 +107,7 @@ import type * as setupSellerFiAgents from "../setupSellerFiAgents.js";
 import type * as squad from "../squad.js";
 import type * as standup from "../standup.js";
 import type * as subscriptions from "../subscriptions.js";
+import type * as taskRelations from "../taskRelations.js";
 import type * as taskRouter from "../taskRouter.js";
 import type * as tasks from "../tasks.js";
 import type * as telegram from "../telegram.js";
@@ -127,6 +132,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   activities: typeof activities;
   agentDocuments: typeof agentDocuments;
+  agentHiring: typeof agentHiring;
   agentLearning: typeof agentLearning;
   agents: typeof agents;
   alertRules: typeof alertRules;
@@ -138,6 +144,7 @@ declare const fullApi: ApiFromModules<{
   comments: typeof comments;
   contentDrops: typeof contentDrops;
   coordinator: typeof coordinator;
+  costEvents: typeof costEvents;
   crons: typeof crons;
   e2e: typeof e2e;
   execution: typeof execution;
@@ -148,6 +155,7 @@ declare const fullApi: ApiFromModules<{
   gatewayConnection: typeof gatewayConnection;
   gherkin: typeof gherkin;
   github: typeof github;
+  goals: typeof goals;
   "governance/approvalRecords": typeof governance_approvalRecords;
   "governance/changeRecords": typeof governance_changeRecords;
   "governance/deployments": typeof governance_deployments;
@@ -210,6 +218,7 @@ declare const fullApi: ApiFromModules<{
   scheduledJobs: typeof scheduledJobs;
   search: typeof search;
   seed: typeof seed;
+  seedAgentHiring: typeof seedAgentHiring;
   seedMemory: typeof seedMemory;
   seedMissionControlDemo: typeof seedMissionControlDemo;
   seedOrgChart: typeof seedOrgChart;
@@ -220,6 +229,7 @@ declare const fullApi: ApiFromModules<{
   squad: typeof squad;
   standup: typeof standup;
   subscriptions: typeof subscriptions;
+  taskRelations: typeof taskRelations;
   taskRouter: typeof taskRouter;
   tasks: typeof tasks;
   telegram: typeof telegram;

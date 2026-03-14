@@ -1,0 +1,13 @@
+{
+  "id": "echo-test",
+  "label": "Echo script (self-test)",
+  "version": "1.0",
+  "execution": {
+    "backend": "cli",
+    "cli": {
+      "cmd": "python3",
+      "args": ["examples/echo_candidate.py", "${CASE_PATH}", "--out", "${OUT_PATH}"],
+      "timeout_ms": 10000
+    }
+  }
+}

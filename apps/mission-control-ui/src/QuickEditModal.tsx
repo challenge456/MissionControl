@@ -17,6 +17,9 @@ export function QuickEditModal({ task, onClose, onSave }: QuickEditModalProps) {
   const [status, setStatus] = useState(task.status);
   const [type, setType] = useState(task.type);
   const [estimatedCost, setEstimatedCost] = useState(task.estimatedCost || 0);
+  const [dueAt, setDueAt] = useState<string>(
+    task.dueAt ? new Date(task.dueAt).toISOString().slice(0, 10) : ""
+  );
   const [saving, setSaving] = useState(false);
   
   const updateTask = useMutation(api.tasks.update);
@@ -32,6 +35,7 @@ export function QuickEditModal({ task, onClose, onSave }: QuickEditModalProps) {
         status,
         type,
         estimatedCost,
+        dueAt: dueAt ? new Date(dueAt).getTime() : null,
       });
       onSave();
       onClose();
@@ -252,6 +256,27 @@ export function QuickEditModal({ task, onClose, onSave }: QuickEditModalProps) {
                 onChange={(e) => setEstimatedCost(Number(e.target.value))}
                 step="0.01"
                 min="0"
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  background: "#0f172a",
+                  border: "1px solid #334155",
+                  borderRadius: "6px",
+                  color: "#e2e8f0",
+                  fontSize: "14px",
+                }}
+              />
+            </div>
+
+            {/* Due date */}
+            <div>
+              <label style={{ display: "block", marginBottom: "8px", fontSize: "14px", fontWeight: 500 }}>
+                Due date
+              </label>
+              <input
+                type="date"
+                value={dueAt}
+                onChange={(e) => setDueAt(e.target.value)}
                 style={{
                   width: "100%",
                   padding: "10px 12px",

@@ -78,27 +78,34 @@ export function AgentDetailFlyout({
   const agent = useQuery(api.agents.get, { agentId });
   if (!agent) {
     return (
-      <aside
-        ref={panelRef}
-        className={FLYOUT_PANEL_CLASS}
-        style={{ width: FLYOUT_WIDTH }}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Agent detail"
-        tabIndex={-1}
-      >
-        <div className="p-4 flex items-center justify-between border-b border-border">
-          <span className="text-muted-foreground text-sm">Loading…</span>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-white/10"
-            aria-label="Close"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-      </aside>
+      <>
+        <div
+          className="fixed inset-0 z-[55] bg-black/40"
+          aria-hidden
+          onClick={onClose}
+        />
+        <aside
+          ref={panelRef}
+          className={FLYOUT_PANEL_CLASS}
+          style={{ width: FLYOUT_WIDTH, minWidth: 320 }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Agent detail"
+          tabIndex={-1}
+        >
+          <div className="p-4 flex items-center justify-between border-b border-border">
+            <span className="text-muted-foreground text-sm">Loading…</span>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-sidebar"
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+        </aside>
+      </>
     );
   }
 
@@ -120,16 +127,25 @@ export function AgentDetailFlyout({
   const ratioClass =
     ratio > 0.9 ? "text-red-500" : ratio > 0.7 ? "text-amber-500" : "text-primary";
 
+  const hasContact =
+    (meta.email as string) || (meta.telegram as string) || (meta.whatsapp as string) || (meta.discord as string);
+
   return (
-    <aside
-      ref={panelRef}
-      className={FLYOUT_PANEL_CLASS}
-      style={{ width: FLYOUT_WIDTH }}
-      role="dialog"
-      aria-modal="true"
-      aria-label={`${agent.name} details`}
-      tabIndex={-1}
-    >
+    <>
+      <div
+        className="fixed inset-0 z-[55] bg-black/40"
+        aria-hidden
+        onClick={onClose}
+      />
+      <aside
+        ref={panelRef}
+        className={FLYOUT_PANEL_CLASS}
+        style={{ width: FLYOUT_WIDTH, minWidth: 320 }}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${agent.name} details`}
+        tabIndex={-1}
+      >
       <div className="shrink-0 p-4 border-b border-border flex items-start justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0">
           <div
@@ -160,7 +176,7 @@ export function AgentDetailFlyout({
         <button
           type="button"
           onClick={onClose}
-          className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-white/10 shrink-0"
+          className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-sidebar shrink-0"
           aria-label="Close agent detail"
         >
           <X className="h-5 w-5" />
@@ -178,10 +194,16 @@ export function AgentDetailFlyout({
         </DetailSection>
 
         <DetailSection title="Contact Channels">
-          <DetailRow label="Email" value={(meta.email as string) || "—"} mono />
-          <DetailRow label="Telegram" value={(meta.telegram as string) || "—"} />
-          <DetailRow label="WhatsApp" value={(meta.whatsapp as string) || "—"} />
-          <DetailRow label="Discord" value={(meta.discord as string) || "—"} />
+          {hasContact ? (
+            <>
+              {(meta.email as string) && <DetailRow label="Email" value={meta.email as string} mono />}
+              {(meta.telegram as string) && <DetailRow label="Telegram" value={meta.telegram as string} />}
+              {(meta.whatsapp as string) && <DetailRow label="WhatsApp" value={meta.whatsapp as string} />}
+              {(meta.discord as string) && <DetailRow label="Discord" value={meta.discord as string} />}
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">No contact channels configured</p>
+          )}
         </DetailSection>
 
         <DetailSection title="Configuration">
@@ -234,5 +256,6 @@ export function AgentDetailFlyout({
         </div>
       )}
     </aside>
+    </>
   );
 }

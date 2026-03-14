@@ -6,6 +6,7 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   LayoutDashboard,
+  LayoutGrid,
   ListTodo,
   GitBranch,
   Bot,
@@ -27,10 +28,18 @@ import {
   ChevronRight,
   Shield,
   Bell,
+  UserPlus,
+  Settings,
+  Radar,
+  Factory,
+  GitMerge,
+  MessageCircle,
+  Clock,
   type LucideIcon,
 } from "lucide-react";
 import type { MainView } from "../TopNav";
 
+/** Primary app shell uses CommandNav + TabBar in App.tsx; AppSideNav is available for alternative layouts. */
 interface NavGroup {
   label: string;
   items: NavItem[];
@@ -49,6 +58,7 @@ const navGroups: NavGroup[] = [
       { id: "tasks", label: "Tasks", icon: ListTodo },
       { id: "dag", label: "DAG", icon: GitBranch },
       { id: "calendar", label: "Calendar", icon: Calendar },
+      { id: "ops-schedule", label: "Schedule", icon: Clock },
     ],
   },
   {
@@ -85,6 +95,17 @@ const navGroups: NavGroup[] = [
       { id: "telegraph", label: "Telegraph", icon: Radio },
       { id: "meetings", label: "Meetings", icon: Video },
       { id: "voice", label: "Voice", icon: Mic },
+      { id: "hiring", label: "Hiring", icon: UserPlus },
+    ],
+  },
+  {
+    label: "Platform",
+    items: [
+      { id: "system", label: "System", icon: Settings },
+      { id: "radar", label: "Radar", icon: Radar },
+      { id: "factory", label: "Factory", icon: Factory },
+      { id: "pipeline", label: "Pipeline", icon: GitMerge },
+      { id: "feedback", label: "Feedback", icon: MessageCircle },
     ],
   },
   {
@@ -93,6 +114,7 @@ const navGroups: NavGroup[] = [
       { id: "people", label: "People", icon: UserCircle },
       { id: "org", label: "Org Chart", icon: Building2 },
       { id: "office", label: "Office", icon: LayoutDashboard },
+      { id: "live-office", label: "Live Office", icon: LayoutGrid },
       { id: "search", label: "Search", icon: Search },
     ],
   },
