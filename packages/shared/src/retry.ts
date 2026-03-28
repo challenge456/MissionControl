@@ -103,7 +103,7 @@ export function createHeartbeat(
 ): { start: () => void; stop: () => void } {
   const fullConfig = { ...defaultRetryConfig, ...config, maxAttempts: Infinity };
   let isRunning = false;
-  let timeoutId: NodeJS.Timeout | null = null;
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
   let consecutiveFailures = 0;
   
   const beat = async () => {
