@@ -52,11 +52,12 @@ export function ScheduleView({ projectId, onNavigate, onTaskSelect }: ScheduleVi
     .slice(0, 15);
 
   return (
-    <main className="flex-1 overflow-auto bg-background">
+    <main className="mc-page">
       <PageHeader
         title="Schedule"
         description="What's running and when. Upcoming tasks, scheduled jobs, and Convex crons in one place."
         icon={<Calendar className="h-4 w-4" />}
+        eyebrow="Operations"
         actions={
           <div className="flex gap-2">
             {onNavigate && (
@@ -73,7 +74,30 @@ export function ScheduleView({ projectId, onNavigate, onTaskSelect }: ScheduleVi
           </div>
         }
       />
-      <div className="p-6 space-y-6">
+      <div className="mc-page-body mc-page-stack">
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card className="p-4">
+            <div className="mc-kicker">Upcoming tasks</div>
+            <div className="mt-2 text-3xl font-semibold text-foreground">{upcomingTasks.length}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Scheduled work in the next seven days</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">Scheduled jobs</div>
+            <div className="mt-2 text-3xl font-semibold text-cyan-100">{jobsList.length}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Jobs with persisted next-run timestamps</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">Recurring tasks</div>
+            <div className="mt-2 text-3xl font-semibold text-amber-100">{scheduledTasks.filter((task) => task.recurrence).length}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Operator routines and repeating agent work</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">Convex crons</div>
+            <div className="mt-2 text-3xl font-semibold text-foreground">{CONVEX_CRONS.length}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Background jobs defined in code</div>
+          </Card>
+        </div>
+
         {/* Upcoming tasks */}
         <Card className="p-4">
           <h3 className="text-sm font-semibold text-foreground flex items-center gap-2 mb-3">

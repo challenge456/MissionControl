@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
-import { Search } from "lucide-react";
+import { Search, Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -116,16 +116,16 @@ export function SearchBar({ projectId, onResultClick }: SearchBarProps) {
           onKeyDown={handleKeyDown}
           onFocus={() => query.length >= 2 && setIsOpen(true)}
           placeholder="Search tasks, approvals, agents..."
-          className="h-8 pl-8 text-sm"
+          className="h-10 pl-9 text-sm"
           aria-label="Search tasks, approvals, and agents"
         />
       </div>
 
       {isOpen && (
-        <div className="absolute z-[1000] mt-1.5 w-full overflow-hidden rounded-lg border border-border bg-popover shadow-lg">
-          <div className="border-b border-border px-3 py-2 text-xs text-muted-foreground">
+        <div className="absolute z-[1000] mt-2 w-full overflow-hidden rounded-2xl border border-[var(--panel-line-strong)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--shell-panel-strong)_99%,transparent),color-mix(in_srgb,var(--background)_92%,transparent))] shadow-[var(--card-shadow-hover)]">
+          <div className="border-b border-[var(--panel-line)] px-4 py-3 text-[11px] font-medium text-muted-foreground">
             {nonActionableFeedback ? (
-              <span className="text-amber-500">This item has no linked task</span>
+              <span className="text-amber-400">This item has no linked task</span>
             ) : (
               <>{results?.totalResults ?? 0} result(s)</>
             )}
@@ -167,7 +167,7 @@ export function SearchBar({ projectId, onResultClick }: SearchBarProps) {
               title="Agents"
               rows={agentResults.map((agent) => ({
                 key: `agent-${agent._id}`,
-                title: `${agent.emoji || "🤖"} ${agent.name}`,
+                title: agent.name,
                 subtitle: `${agent.role} · ${agent.status}`,
                 onClick: undefined,
                 isSelected: false,
@@ -195,7 +195,7 @@ export function SearchBar({ projectId, onResultClick }: SearchBarProps) {
       )}
 
       {noResults && (
-        <div className="absolute z-[1000] mt-1.5 w-full rounded-lg border border-border bg-popover px-4 py-3 text-center text-sm text-muted-foreground shadow-lg">
+        <div className="absolute z-[1000] mt-2 w-full rounded-2xl border border-[var(--panel-line)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--shell-panel-strong)_99%,transparent),color-mix(in_srgb,var(--background)_92%,transparent))] px-4 py-3 text-center text-sm text-muted-foreground shadow-[var(--card-shadow)]">
           No results for "{query}"
         </div>
       )}
@@ -219,8 +219,8 @@ function SearchSection({
   if (!rows.length) return null;
 
   return (
-    <div className="border-b border-border/70 p-2 last:border-b-0">
-      <p className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+    <div className="border-b border-[var(--panel-line)] p-2 last:border-b-0">
+      <p className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
         {title}
       </p>
       {rows.map((row) => (
@@ -230,14 +230,17 @@ function SearchSection({
           onClick={row.onClick}
           disabled={!row.onClick}
           className={cn(
-            "w-full rounded-md px-2 py-2 text-left transition-colors",
-            row.isSelected && "bg-accent",
+            "w-full rounded-lg px-3 py-2.5 text-left transition-colors",
+            row.isSelected && "bg-cyan-400/8",
             row.onClick
-              ? "cursor-pointer text-foreground hover:bg-accent"
+              ? "cursor-pointer text-foreground hover:bg-cyan-400/6"
               : "cursor-default text-muted-foreground/90"
           )}
         >
-          <span className="block truncate text-sm font-medium">{row.title}</span>
+          <span className="flex items-center gap-2 truncate text-sm font-medium">
+            {title === "Agents" && <Bot className="h-3.5 w-3.5 text-cyan-200" />}
+            <span className="truncate">{row.title}</span>
+          </span>
           <span className="block truncate text-xs text-muted-foreground">{row.subtitle}</span>
         </button>
       ))}

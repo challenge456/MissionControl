@@ -4,9 +4,10 @@ import type { Id } from "../../../convex/_generated/dataModel";
 import { PageHeader } from "./components/PageHeader";
 import { Card } from "./components/ui/card";
 import { Button } from "./components/ui/button";
+import { Badge } from "./components/ui/badge";
 import { StatusDot } from "./components/ui/status-dot";
 import { cn } from "@/lib/utils";
-import { Settings, Activity, ExternalLink, Clock, Radar, Factory, MessageSquare } from "lucide-react";
+import { Settings, Activity, ExternalLink, Clock, Radar, Factory, MessageSquare, AlertTriangle, Bot, CheckCircle2 } from "lucide-react";
 
 /** Static list of Convex crons (from crons.ts) for read-only display */
 const CONVEX_CRONS = [
@@ -62,11 +63,12 @@ export function SystemView({
   const isHealthy = issues.length === 0;
 
   return (
-    <main className="flex-1 overflow-auto bg-background">
+    <main className="mc-page">
       <PageHeader
         title="System"
         description="System health, gateway status, and scheduled crons. One place for platform status."
         icon={<Settings className="h-4 w-4" />}
+        eyebrow="Platform"
         actions={
           <div className="flex gap-2">
             {onOpenHealthDashboard && (
@@ -84,8 +86,43 @@ export function SystemView({
           </div>
         }
       />
-      <div className="p-6 space-y-6">
+      <div className="mc-page-body mc-page-stack">
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card className="p-4">
+            <div className="mc-kicker">Platform state</div>
+            <div className={cn("mt-2 text-3xl font-semibold", isHealthy ? "text-emerald-100" : "text-rose-200")}>
+              {isHealthy ? "Stable" : "Attention"}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">Current operator posture based on alerts, failures, and approvals</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">Open alerts</div>
+            <div className="mt-2 flex items-center gap-2 text-3xl font-semibold text-amber-100">
+              <AlertTriangle className="h-5 w-5" />
+              {alertsList.length}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">Signals that still need platform triage</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">Active agents</div>
+            <div className="mt-2 flex items-center gap-2 text-3xl font-semibold text-cyan-100">
+              <Bot className="h-5 w-5" />
+              {agentsList.filter((a) => a.status === "ACTIVE").length}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">Agents currently trusted to accept work</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">Scheduled jobs</div>
+            <div className="mt-2 flex items-center gap-2 text-3xl font-semibold text-foreground">
+              <Clock className="h-5 w-5 text-cyan-100" />
+              {jobsList.length}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">Recurring background work visible to the operator</div>
+          </Card>
+        </div>
+
         {/* Live operations summary */}
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <Card className="p-4">
           <h3 className="text-sm font-semibold text-foreground mb-3">Live summary</h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
@@ -130,6 +167,23 @@ export function SystemView({
           )}
         </Card>
 
+        <Card className="p-5">
+          <div className="mc-kicker">Operator brief</div>
+          <div className="mt-2 space-y-3 text-sm leading-relaxed text-muted-foreground">
+            <p>Use System for trust checks and routing, not deep investigation. If something is noisy here, jump into Radar or Feedback immediately.</p>
+            <p>The platform is healthy only when alerts are controlled, approvals are not stale, and quarantines are explained rather than ignored.</p>
+          </div>
+          <div className="mt-4 rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-3">
+            <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Fast lanes</div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button size="sm" variant="outline" onClick={() => onNavigate?.("radar")}>Radar</Button>
+              <Button size="sm" variant="outline" onClick={() => onNavigate?.("factory")}>Factory</Button>
+              <Button size="sm" variant="outline" onClick={() => onNavigate?.("feedback")}>Feedback</Button>
+            </div>
+          </div>
+        </Card>
+        </div>
+
         {/* Status bar */}
         <div
           className={cn(
@@ -162,7 +216,7 @@ export function SystemView({
                   <span
                     key={i}
                     className={cn(
-                      "px-2 py-0.5 rounded-full border text-[0.6rem] font-medium uppercase tracking-wider",
+                      "px-2 py-0.5 rounded-full border text-[0.65rem] font-medium uppercase tracking-wider",
                       issue.variant === "error"
                         ? "bg-red-500/10 border-red-500/20 text-red-400"
                         : "bg-amber-500/10 border-amber-500/20 text-amber-500"
@@ -175,6 +229,36 @@ export function SystemView({
             </>
           )}
         </div>
+
+        {alertsList.length > 0 && (
+          <Card className="p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="mc-kicker">Open alerts</div>
+                <div className="mt-1 text-sm font-semibold text-foreground">Signals currently shaping platform trust</div>
+              </div>
+              {onNavigate && (
+                <Button size="sm" variant="outline" onClick={() => onNavigate("feedback")}>
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Review in feedback
+                </Button>
+              )}
+            </div>
+            <div className="mt-4 space-y-2">
+              {alertsList.slice(0, 5).map((alert) => (
+                <div key={alert._id} className="rounded-lg border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm text-foreground">{alert.title}</div>
+                    <Badge variant="outline" className="border-amber-300/20 text-amber-100">
+                      {alert.severity}
+                    </Badge>
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">{alert.description ?? "No description provided."}</div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
 
         {/* Convex crons (read-only) */}
         <Card className="p-4">

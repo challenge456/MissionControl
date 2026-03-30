@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   UserPlus,
   Briefcase,
@@ -78,145 +79,208 @@ export function HiringView({ projectId }: HiringViewProps) {
   const saveAssessmentPacket = useMutation(api.agentHiring.saveAssessmentPacket);
   const savePanelPacket = useMutation(api.agentHiring.savePanelPacket);
   const saveDecisionRecord = useMutation(api.agentHiring.saveDecisionRecord);
+  const roleCount = roleSpecs?.length ?? 0;
+  const candidateCount = candidates?.length ?? 0;
+  const selectedStage = selectedCandidate ? "evaluation" : selectedRoleSpecId ? "candidate review" : "role definition";
 
   if (!projectId) {
     return (
-      <main className="flex-1 overflow-auto p-6">
-        <PageHeader title="Agent Hiring Pipeline" />
-        <p className="text-muted-foreground mt-2">Select a project to manage agent hiring.</p>
+      <main className="mc-page">
+        <PageHeader
+          title="Hiring"
+          description="Define role specs, compare candidates, and record an explicit hire or no-hire decision."
+          eyebrow="Comms"
+          icon={<UserPlus className="h-4.5 w-4.5" strokeWidth={1.7} />}
+        />
+        <div className="mc-page-body">
+          <EmptyState
+            icon={Briefcase}
+            title="Select a project first"
+            description="Hiring is scoped to a project so role specs, candidates, and evaluation records stay attached to a real operating context."
+          />
+        </div>
       </main>
     );
   }
 
   return (
-    <main className="flex-1 overflow-hidden flex flex-col bg-background">
+    <main className="mc-page">
       <PageHeader
-        title="Agent Hiring Pipeline"
-        description="Role specs, candidates, and pipeline stages (Screen → Assessments → Panel → Decision)"
+        title="Hiring"
+        description="Role specs, candidates, and decision records for building a reliable operator-grade agent bench."
+        eyebrow="Comms"
+        icon={<UserPlus className="h-4.5 w-4.5" strokeWidth={1.7} />}
+        status={
+          <Badge variant="outline" className="border-cyan-300/20 text-cyan-100">
+            {roleCount} roles
+          </Badge>
+        }
+        actions={
+          <Button variant="neon-cyan" size="sm" onClick={() => setShowNewRoleForm(true)}>
+            <Plus className="h-4 w-4" />
+            New role
+          </Button>
+        }
       />
 
-      <div className="flex flex-1 overflow-hidden border-t border-border">
-        {/* Left: Role list */}
-        <div className="w-72 border-r border-border flex flex-col bg-card/30">
-          <div className="p-3 border-b border-border flex justify-between items-center">
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Roles
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 px-2"
-              onClick={() => setShowNewRoleForm(true)}
-            >
-              <Plus className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-          <div className="flex-1 overflow-y-auto p-2">
-            {!roleSpecs ? (
-              <p className="text-sm text-muted-foreground p-2">Loading…</p>
-            ) : roleSpecs.length === 0 ? (
-              <p className="text-sm text-muted-foreground p-2">No roles. Create one to start.</p>
-            ) : (
-              roleSpecs.map((r) => (
-                <button
-                  key={r._id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedRoleSpecId(r._id);
-                    setSelectedCandidateId(null);
-                  }}
-                  className={cn(
-                    "w-full text-left rounded-lg px-3 py-2.5 text-sm transition-colors",
-                    selectedRoleSpecId === r._id
-                      ? "bg-primary/15 text-primary border border-primary/30"
-                      : "hover:bg-muted/50 text-foreground"
-                  )}
-                >
-                  <div className="font-medium truncate">{r.name}</div>
-                  <div className="text-xs text-muted-foreground truncate">{r.slug}</div>
-                </button>
-              ))
-            )}
-          </div>
+      <div className="mc-page-body mc-page-stack">
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card className="p-4">
+            <div className="mc-kicker">Role specs</div>
+            <div className="mt-2 text-3xl font-semibold text-foreground">{roleCount}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Distinct operator or agent roles currently defined</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">Candidates</div>
+            <div className="mt-2 text-3xl font-semibold text-cyan-100">{candidateCount}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Candidates attached to the currently selected role</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">Current stage</div>
+            <div className="mt-2 text-3xl font-semibold text-foreground">{selectedStage}</div>
+            <div className="mt-1 text-xs text-muted-foreground">The hiring flow state currently surfaced in this workspace</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">Decision standard</div>
+            <div className="mt-2 text-3xl font-semibold text-emerald-200">Explicit</div>
+            <div className="mt-1 text-xs text-muted-foreground">Every role should end with a recorded hire or no-hire outcome</div>
+          </Card>
         </div>
 
-        {/* Center: Candidates + pipeline */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          {!selectedRoleSpecId ? (
-            <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
-              Select a role or create one
+        <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,0.9fr)_minmax(0,1.1fr)]">
+          <Card className="p-0 overflow-hidden">
+            <div className="flex items-center justify-between border-b border-[var(--panel-line)] px-4 py-3">
+              <div className="mc-kicker">Roles</div>
+              <Button variant="ghost" size="sm" className="h-8" onClick={() => setShowNewRoleForm(true)}>
+                <Plus className="h-4 w-4" />
+              </Button>
             </div>
-          ) : (
-            <>
-              <div className="p-3 border-b border-border flex justify-between items-center">
-                <h2 className="text-sm font-semibold text-foreground">
-                  {selectedRole?.name ?? "Role"} — Candidates
-                </h2>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowAddCandidateForm(true)}
-                >
-                  <UserPlus className="h-3.5 w-3.5 mr-1.5" />
+            <div className="p-3">
+              {!roleSpecs ? (
+                <div className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-6 text-sm text-muted-foreground">
+                  Loading role specs…
+                </div>
+              ) : roleSpecs.length === 0 ? (
+                <EmptyState
+                  icon={Briefcase}
+                  title="No role specs yet"
+                  description="Start with the role definition so candidates are judged against a real mandate instead of instinct."
+                  action={
+                    <Button variant="neon-cyan" size="sm" onClick={() => setShowNewRoleForm(true)}>
+                      Create role
+                    </Button>
+                  }
+                />
+              ) : (
+                <div className="space-y-2">
+                  {roleSpecs.map((role) => (
+                    <button
+                      key={role._id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedRoleSpecId(role._id);
+                        setSelectedCandidateId(null);
+                      }}
+                      className={cn(
+                        "w-full rounded-xl border px-4 py-3 text-left transition-colors",
+                        selectedRoleSpecId === role._id
+                          ? "border-cyan-300/20 bg-cyan-400/8"
+                          : "border-[var(--panel-line)] bg-[color:var(--shell-panel)] hover:border-[var(--panel-line-strong)]"
+                      )}
+                    >
+                      <div className="text-sm font-semibold text-foreground">{role.name}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">{role.slug}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </Card>
+
+          <Card className="p-0 overflow-hidden">
+            <div className="flex items-center justify-between border-b border-[var(--panel-line)] px-4 py-3">
+              <div>
+                <div className="mc-kicker">Candidates</div>
+                <div className="mt-1 text-sm font-semibold text-foreground">{selectedRole?.name ?? "Select a role"}</div>
+              </div>
+              {selectedRoleSpecId ? (
+                <Button variant="outline" size="sm" onClick={() => setShowAddCandidateForm(true)}>
+                  <UserPlus className="h-4 w-4" />
                   Add candidate
                 </Button>
-              </div>
-              <div className="flex-1 overflow-hidden flex">
-                {/* Candidate list */}
-                <div className="w-56 border-r border-border flex flex-col overflow-hidden">
-                  <div className="flex-1 overflow-y-auto p-2">
-                    {!candidates ? (
-                      <p className="text-xs text-muted-foreground p-2">Loading…</p>
-                    ) : candidates.length === 0 ? (
-                      <p className="text-xs text-muted-foreground p-2">No candidates yet.</p>
-                    ) : (
-                      candidates.map((c) => (
-                        <button
-                          key={c._id}
-                          type="button"
-                          onClick={() => setSelectedCandidateId(c._id)}
-                          className={cn(
-                            "w-full text-left rounded-lg px-2.5 py-2 text-xs transition-colors",
-                            selectedCandidateId === c._id
-                              ? "bg-primary/15 text-primary border border-primary/30"
-                              : "hover:bg-muted/50 text-foreground"
-                          )}
-                        >
-                          <div className="font-medium truncate">{c.label}</div>
-                          <Badge
-                            variant="outline"
-                            className={cn("mt-1 text-[10px]", STATUS_BADGE[c.status] ?? "")}
-                          >
-                            {c.status}
-                          </Badge>
-                        </button>
-                      ))
-                    )}
-                  </div>
+              ) : null}
+            </div>
+            <div className="p-3">
+              {!selectedRoleSpecId ? (
+                <EmptyState
+                  icon={ClipboardList}
+                  title="Choose a role"
+                  description="Candidate review begins after the target role is clearly defined."
+                />
+              ) : !candidates ? (
+                <div className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-6 text-sm text-muted-foreground">
+                  Loading candidates…
                 </div>
+              ) : candidates.length === 0 ? (
+                <EmptyState
+                  icon={UserPlus}
+                  title="No candidates yet"
+                  description="Add a candidate to begin screening, assessments, panel review, and the final decision record."
+                  action={
+                    <Button variant="neon-cyan" size="sm" onClick={() => setShowAddCandidateForm(true)}>
+                      Add candidate
+                    </Button>
+                  }
+                />
+              ) : (
+                <div className="space-y-2">
+                  {candidates.map((candidate) => (
+                    <button
+                      key={candidate._id}
+                      type="button"
+                      onClick={() => setSelectedCandidateId(candidate._id)}
+                      className={cn(
+                        "w-full rounded-xl border px-4 py-3 text-left transition-colors",
+                        selectedCandidateId === candidate._id
+                          ? "border-cyan-300/20 bg-cyan-400/8"
+                          : "border-[var(--panel-line)] bg-[color:var(--shell-panel)] hover:border-[var(--panel-line-strong)]"
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold text-foreground">{candidate.label}</div>
+                          <div className="mt-1 text-xs text-muted-foreground">{candidate.source}</div>
+                        </div>
+                        <Badge variant="outline" className={cn("text-[10px]", STATUS_BADGE[candidate.status] ?? "border-[var(--panel-line)] text-muted-foreground")}>
+                          {candidate.status}
+                        </Badge>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </Card>
 
-                {/* Pipeline detail */}
-                <div className="flex-1 overflow-y-auto p-4">
-                  {!selectedCandidateId ? (
-                    <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-sm">
-                      <ClipboardList className="h-10 w-10 mb-2 opacity-50" />
-                      Select a candidate to view or record pipeline stages
-                    </div>
-                  ) : (
-                    <CandidatePipelineDetail
-                      projectId={projectId}
-                      roleSpecId={selectedRoleSpecId}
-                      candidate={selectedCandidate}
-                      onSaveScreenReport={saveScreenReport}
-                      onSaveAssessmentPacket={saveAssessmentPacket}
-                      onSavePanelPacket={savePanelPacket}
-                      onSaveDecisionRecord={saveDecisionRecord}
-                    />
-                  )}
-                </div>
-              </div>
-            </>
-          )}
+          <Card className="p-5">
+            {!selectedCandidateId ? (
+              <EmptyState
+                icon={ClipboardList}
+                title="Select a candidate"
+                description="Once a candidate is selected, record screen outcomes, assessments, panel notes, and the final hire decision here."
+              />
+            ) : (
+              <CandidatePipelineDetail
+                projectId={projectId}
+                roleSpecId={selectedRoleSpecId!}
+                candidate={selectedCandidate}
+                onSaveScreenReport={saveScreenReport}
+                onSaveAssessmentPacket={saveAssessmentPacket}
+                onSavePanelPacket={savePanelPacket}
+                onSaveDecisionRecord={saveDecisionRecord}
+              />
+            )}
+          </Card>
         </div>
       </div>
 
@@ -303,7 +367,7 @@ function NewRoleSpecForm({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <Card className="w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+      <Card className="w-full max-w-lg max-h-[90vh] overflow-y-auto p-6">
         <h3 className="text-lg font-semibold mb-4">New role spec (Stage 0)</h3>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -399,7 +463,7 @@ function AddCandidateForm({
             <select
               value={source}
               onChange={(e) => setSource(e.target.value as "model_provider" | "template" | "internal")}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              className="w-full rounded-2xl border border-[var(--panel-line)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--shell-panel)_98%,transparent),color-mix(in_srgb,var(--background)_90%,transparent))] px-3.5 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <option value="model_provider">Model / provider</option>
               <option value="template">Template</option>
@@ -634,7 +698,7 @@ function PanelPacketForm({
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <Label>Hire decision draft</Label>
-          <select value={draft} onChange={(e) => setDraft(e.target.value as "strong_hire" | "hire" | "no_hire")} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1">
+          <select value={draft} onChange={(e) => setDraft(e.target.value as "strong_hire" | "hire" | "no_hire")} className="mt-1 w-full rounded-2xl border border-[var(--panel-line)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--shell-panel)_98%,transparent),color-mix(in_srgb,var(--background)_90%,transparent))] px-3.5 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <option value="strong_hire">Strong Hire</option>
             <option value="hire">Hire</option>
             <option value="no_hire">No Hire</option>
@@ -684,7 +748,7 @@ function DecisionRecordForm({
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <Label>Decision</Label>
-          <select value={decision} onChange={(e) => setDecision(e.target.value as "strong_hire" | "hire" | "no_hire")} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1">
+          <select value={decision} onChange={(e) => setDecision(e.target.value as "strong_hire" | "hire" | "no_hire")} className="mt-1 w-full rounded-2xl border border-[var(--panel-line)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--shell-panel)_98%,transparent),color-mix(in_srgb,var(--background)_90%,transparent))] px-3.5 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <option value="strong_hire">Strong Hire</option>
             <option value="hire">Hire</option>
             <option value="no_hire">No Hire</option>
@@ -692,7 +756,7 @@ function DecisionRecordForm({
         </div>
         <div>
           <Label>Autonomy level (L1–L3)</Label>
-          <select value={autonomyLevel} onChange={(e) => setAutonomyLevel(Number(e.target.value) as 1 | 2 | 3)} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1">
+          <select value={autonomyLevel} onChange={(e) => setAutonomyLevel(Number(e.target.value) as 1 | 2 | 3)} className="mt-1 w-full rounded-2xl border border-[var(--panel-line)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--shell-panel)_98%,transparent),color-mix(in_srgb,var(--background)_90%,transparent))] px-3.5 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <option value={1}>L1 — Human-approved</option>
             <option value={2}>L2 — Sandbox autonomous</option>
             <option value={3}>L3 — Policy-bounded</option>

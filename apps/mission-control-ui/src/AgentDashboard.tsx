@@ -87,7 +87,7 @@ export function AgentDashboard({ projectId, onClose, onSelectAgent }: AgentDashb
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
-      <div className="bg-card rounded-[10px] shadow-2xl max-w-[80rem] w-full max-h-[90vh] overflow-hidden flex flex-col">
+      <div className="bg-card rounded-lg shadow-2xl max-w-[80rem] w-full max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="p-6 border-b border-border">
           <div className="flex items-center justify-between">
@@ -226,7 +226,7 @@ export function AgentDashboard({ projectId, onClose, onSelectAgent }: AgentDashb
                     <div className="text-xs text-muted-foreground mb-0.5">Allowed Task Types</div>
                     <div className="flex flex-wrap gap-1 mt-1.5">
                       {agent.allowedTaskTypes.map((type) => (
-                        <span key={type} className="text-xs px-2 py-0.5 bg-secondary text-muted-foreground rounded">
+                        <span key={type} className="text-xs px-2 py-0.5 bg-secondary text-muted-foreground rounded-md">
                           {type}
                         </span>
                       ))}

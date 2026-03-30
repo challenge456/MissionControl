@@ -4,9 +4,11 @@ import { cn } from "@/lib/utils";
 
 type NeonBadgeVariant = "neon-success" | "neon-cyan" | "neon-error";
 
-export interface NeonBadgeProps extends Omit<BadgeProps, "variant"> {
+type BaseBadgeProps = React.ComponentProps<typeof Badge>;
+
+export type NeonBadgeProps = Omit<BaseBadgeProps, "variant"> & {
   variant?: NeonBadgeVariant;
-}
+};
 
 function NeonBadge({ className, variant = "neon-success", ...props }: NeonBadgeProps) {
   return (

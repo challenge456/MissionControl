@@ -326,7 +326,7 @@ export function Kanban({
               {activeTask.title}
             </div>
             <div className="text-xs text-muted-foreground">
-              {activeTask.type} &bull; P{activeTask.priority}
+              {activeTask.type} • P{activeTask.priority}
             </div>
           </div>
         ) : null}
@@ -383,7 +383,7 @@ function Column({
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border/50 bg-muted/20">
         <Icon className={cn("h-3.5 w-3.5 shrink-0", colorClass)} />
         <span className="text-[11px] font-bold uppercase tracking-wider text-foreground/80">{label}</span>
-        <Badge variant="outline" className={cn("ml-auto h-5 text-[10px] font-bold px-1.5 border", COLUMN_BADGE_COLOR[status])}>
+        <Badge variant="outline" className={cn("ml-auto h-5 text-[11px] font-bold px-1.5 border", COLUMN_BADGE_COLOR[status])}>
           {tasks.length}
         </Badge>
       </div>
@@ -475,7 +475,7 @@ function Card({
       >
         {/* Identifier + Title */}
         {task.identifier && (
-          <div className="text-[10px] font-mono text-muted-foreground mb-1">{task.identifier}</div>
+          <div className="text-[11px] font-mono text-muted-foreground mb-1">{task.identifier}</div>
         )}
         <div className="font-medium text-sm text-card-foreground leading-snug line-clamp-2 mb-2">
           {task.title}
@@ -483,24 +483,24 @@ function Card({
 
         {/* Metadata chips */}
         <div className="flex flex-wrap gap-1 mb-2">
-          <Badge variant="outline" className="text-[10px] h-5 px-1.5 font-normal">
+          <Badge variant="outline" className="text-[11px] h-5 px-1.5 font-normal">
             {task.type}
           </Badge>
-          <Badge variant={priority.variant} className="text-[10px] h-5 px-1.5 font-medium">
+          <Badge variant={priority.variant} className="text-[11px] h-5 px-1.5 font-medium">
             {priority.label}
           </Badge>
           {src && (
-            <Badge 
-              variant="outline" 
+            <Badge
+              variant="outline"
               className={cn(
-                "text-[10px] h-5 px-1.5 font-normal gap-1",
+                "text-[11px] h-5 px-1.5 font-normal gap-1",
                 src.isSpecial && "bg-primary/10 border-primary/20 text-primary"
               )}
             >
               {src.isSpecial ? (
                 <Sparkles className="h-2.5 w-2.5" strokeWidth={2} />
               ) : (
-                <span className="text-[9px]">{src.icon}</span>
+                <span className="text-[11px]">{src.icon}</span>
               )}
               {src.label}
             </Badge>
@@ -513,13 +513,13 @@ function Card({
             {task.labels.slice(0, 3).map((label) => (
               <span
                 key={label}
-                className="text-[10px] px-1.5 py-0.5 bg-muted text-muted-foreground rounded"
+                className="text-[11px] px-1.5 py-0.5 bg-muted text-muted-foreground rounded-md"
               >
                 {label}
               </span>
             ))}
             {task.labels.length > 3 && (
-              <span className="text-[10px] text-muted-foreground">
+              <span className="text-[11px] text-muted-foreground">
                 +{task.labels.length - 3}
               </span>
             )}
@@ -528,7 +528,7 @@ function Card({
 
         {/* Blocked reason */}
         {task.blockedReason && (
-          <div className="text-xs px-2 py-1.5 bg-destructive/10 text-destructive rounded mb-2 flex items-start gap-1.5">
+          <div className="text-xs px-2 py-1.5 bg-destructive/10 text-destructive rounded-md mb-2 flex items-start gap-1.5">
             <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
             <span className="line-clamp-2">{task.blockedReason}</span>
           </div>
@@ -548,13 +548,13 @@ function Card({
               <span
                 key={i}
                 title={agent!.name}
-                className="flex h-5 w-5 items-center justify-center rounded-full bg-muted text-[10px] border-2 border-card"
+                className="flex h-5 w-5 items-center justify-center rounded-full bg-muted text-[11px] border-2 border-card"
               >
                 {agent!.emoji || agent!.name.charAt(0)}
               </span>
             ))}
             {assignees.length > 3 && (
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-muted text-[9px] border-2 border-card">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-muted text-[11px] border-2 border-card">
                 +{assignees.length - 3}
               </span>
             )}
@@ -569,7 +569,7 @@ function Card({
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 text-[10px] px-2 text-muted-foreground"
+              className="h-6 text-[11px] px-2 text-muted-foreground"
               onClick={(e) => { e.stopPropagation(); onPlanTask(task._id); }}
             >
               <Sparkles className="h-3 w-3 mr-1" />
@@ -579,7 +579,7 @@ function Card({
           {allowedToStatuses.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2 text-muted-foreground">
+                <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground">
                   <ArrowRight className="h-3 w-3 mr-1" />
                   Move
                 </Button>
@@ -600,7 +600,7 @@ function Card({
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 text-[10px] px-2 text-muted-foreground ml-auto"
+            className="h-6 text-[11px] px-2 text-muted-foreground ml-auto"
             onClick={onSelect}
           >
             <ExternalLink className="h-3 w-3 mr-1" />

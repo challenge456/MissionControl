@@ -152,7 +152,7 @@ export function PoliciesView({ projectId }: { projectId: Id<"projects"> | null }
       {/* Scope filters */}
       <div className="px-6 pb-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
         <label className="block">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Tenant</span>
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Tenant</span>
           <select
             value={selectedTenantId ?? ""}
             onChange={(e) => setSelectedTenantId((e.target.value || null) as Id<"tenants"> | null)}
@@ -165,7 +165,7 @@ export function PoliciesView({ projectId }: { projectId: Id<"projects"> | null }
           </select>
         </label>
         <label className="block">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Template</span>
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Template</span>
           <select
             value={selectedTemplateId ?? ""}
             onChange={(e) => setSelectedTemplateId((e.target.value || null) as Id<"agentTemplates"> | null)}
@@ -178,7 +178,7 @@ export function PoliciesView({ projectId }: { projectId: Id<"projects"> | null }
           </select>
         </label>
         <label className="block">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Version</span>
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Version</span>
           <select
             value={selectedVersionId ?? ""}
             onChange={(e) => setSelectedVersionId((e.target.value || null) as Id<"agentVersions"> | null)}
@@ -207,7 +207,7 @@ export function PoliciesView({ projectId }: { projectId: Id<"projects"> | null }
                 <h3 className="font-semibold text-foreground leading-tight">{envelope.name}</h3>
                 <span
                   className={cn(
-                    "rounded border px-1.5 py-0.5 text-[10px] font-semibold shrink-0",
+                    "rounded border px-1.5 py-0.5 text-[11px] font-semibold shrink-0",
                     envelope.active ? "bg-primary/15 text-primary/70 dark:text-primary border-primary/30" : "bg-zinc-500/15 text-zinc-500 border-zinc-500/30"
                   )}
                 >
@@ -215,12 +215,12 @@ export function PoliciesView({ projectId }: { projectId: Id<"projects"> | null }
                 </span>
               </div>
               <div className="flex flex-wrap gap-1.5 mb-2">
-                <span className="rounded border border-border bg-muted/40 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                <span className="rounded border border-border bg-muted/40 px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
                   {scope}
                 </span>
                 <span
                   className={cn(
-                    "rounded border px-1.5 py-0.5 text-[10px] font-semibold",
+                    "rounded border px-1.5 py-0.5 text-[11px] font-semibold",
                     defaultDecision === "ALLOW" && "bg-primary/15 text-primary/70 dark:text-primary border-primary/30",
                     defaultDecision === "DENY" && "bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30",
                     defaultDecision === "NEEDS_APPROVAL" && "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30",
@@ -232,7 +232,7 @@ export function PoliciesView({ projectId }: { projectId: Id<"projects"> | null }
               </div>
               {/* Autonomy tier 0–5 */}
               <div className="mb-3">
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
                   Autonomy tier
                 </div>
                 <div className="flex gap-0.5">
@@ -250,11 +250,11 @@ export function PoliciesView({ projectId }: { projectId: Id<"projects"> | null }
                   ))}
                 </div>
               </div>
-              <div className="text-[10px] text-muted-foreground mb-3">
+              <div className="text-[11px] text-muted-foreground mb-3">
                 {toolCount > 0 ? `${toolCount} tool rule${toolCount !== 1 ? "s" : ""}` : "No tool rules"}
                 {rules.requireApprovalOnRisk?.length ? ` · Approval on ${rules.requireApprovalOnRisk.join(", ")}` : ""}
               </div>
-              <div className="text-[10px] text-muted-foreground/70 mt-auto">
+              <div className="text-[11px] text-muted-foreground/70 mt-auto">
                 Updated {fmtTime(envelope.updatedAt)}
               </div>
               <div className="flex gap-2 mt-3 pt-3 border-t border-border">
@@ -317,7 +317,7 @@ export function PoliciesView({ projectId }: { projectId: Id<"projects"> | null }
                 </select>
               </label>
               <div className="rounded-md border border-border bg-muted/30 p-2.5 text-sm">
-                <div className="text-[10px] uppercase text-muted-foreground">Decision</div>
+                <div className="text-[11px] uppercase text-muted-foreground">Decision</div>
                 <div className={cn(
                   "mt-1 font-semibold",
                   evalResult?.decision === "ALLOW" && "text-primary",
@@ -328,7 +328,7 @@ export function PoliciesView({ projectId }: { projectId: Id<"projects"> | null }
                 </div>
               </div>
               <div className="rounded-md border border-border bg-muted/30 p-2.5 text-sm">
-                <div className="text-[10px] uppercase text-muted-foreground">Source</div>
+                <div className="text-[11px] uppercase text-muted-foreground">Source</div>
                 <div className="mt-1 font-medium text-foreground/80">{evalResult?.source ?? "…"}</div>
               </div>
             </div>

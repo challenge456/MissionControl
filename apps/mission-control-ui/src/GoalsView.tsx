@@ -3,6 +3,11 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id, Doc } from "../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
+import { PageHeader } from "./components/PageHeader";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Target, GitBranch, CheckCircle2, PauseCircle } from "lucide-react";
 
 interface GoalsViewProps {
   projectId: Id<"projects"> | null;
@@ -329,9 +334,17 @@ export function GoalsView({ projectId, onTaskSelect }: GoalsViewProps) {
 
   if (!projectId) {
     return (
-      <main className="flex-1 overflow-auto bg-background p-6">
-        <div className="flex items-center justify-center h-full text-muted-foreground">
-          Select a project to view goals.
+      <main className="mc-page">
+        <PageHeader
+          title="Goals"
+          description="Track the hierarchy between company goals, team goals, and task execution."
+          icon={<Target className="h-4.5 w-4.5" strokeWidth={1.7} />}
+          eyebrow="Operations"
+        />
+        <div className="mc-page-body">
+          <Card className="flex min-h-[420px] items-center justify-center p-12 text-center text-muted-foreground">
+            Select a project to view goals.
+          </Card>
         </div>
       </main>
     );
@@ -341,92 +354,161 @@ export function GoalsView({ projectId, onTaskSelect }: GoalsViewProps) {
     if (statusFilter === "ALL") return true;
     return root.status === statusFilter;
   });
+  const topLevelGoals = hierarchy ?? [];
+  const activeGoals = topLevelGoals.filter((goal) => goal.status === "ACTIVE").length;
+  const achievedGoals = topLevelGoals.filter((goal) => goal.status === "ACHIEVED").length;
+  const plannedGoals = topLevelGoals.filter((goal) => goal.status === "PLANNED").length;
 
   return (
-    <main className="flex-1 overflow-auto bg-background p-6">
-      {/* Header */}
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground mt-0 mb-1">Goal Alignment</h1>
-          <p className="text-sm text-muted-foreground mt-0">
-            Every task traces back to a company goal. If you can&apos;t explain why it matters, it shouldn&apos;t exist.
-          </p>
+    <main className="mc-page">
+      <PageHeader
+        title="Goals"
+        description="Every task should trace back to a real goal. If you cannot explain why it matters, it should not be in the system."
+        icon={<Target className="h-4.5 w-4.5" strokeWidth={1.7} />}
+        eyebrow="Operations"
+        status={
+          <Badge variant="outline" className="border-cyan-300/20 text-cyan-100">
+            {topLevelGoals.length} top-level goals
+          </Badge>
+        }
+        actions={
+          <Button onClick={() => setShowCreate(true)} size="sm" variant="neon-cyan">
+            <Target className="h-3.5 w-3.5 mr-1.5" />
+            New Goal
+          </Button>
+        }
+      />
+      <div className="mc-page-body mc-page-stack">
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card className="p-4">
+            <div className="mc-kicker">Top level</div>
+            <div className="mt-2 text-3xl font-semibold text-foreground">{topLevelGoals.length}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Company-level direction currently tracked</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">Active</div>
+            <div className="mt-2 flex items-center gap-2 text-3xl font-semibold text-cyan-100">
+              <GitBranch className="h-5 w-5" />
+              {activeGoals}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">Goals currently driving execution</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">Achieved</div>
+            <div className="mt-2 flex items-center gap-2 text-3xl font-semibold text-emerald-100">
+              <CheckCircle2 className="h-5 w-5" />
+              {achievedGoals}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">Goals that have already closed the loop</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">Planned</div>
+            <div className="mt-2 flex items-center gap-2 text-3xl font-semibold text-amber-100">
+              <PauseCircle className="h-5 w-5" />
+              {plannedGoals}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">Ideas not yet shaping execution</div>
+          </Card>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors flex items-center gap-2"
-        >
-          <span>+</span>
-          <span>New Goal</span>
-        </button>
-      </div>
 
-      {/* Status filter */}
-      <div className="flex items-center gap-2 mb-6">
-        {(["ALL", "ACTIVE", "PLANNED", "ACHIEVED", "CANCELLED"] as const).map((s) => (
-          <button
-            key={s}
-            onClick={() => setStatusFilter(s)}
-            className={cn(
-              "px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
-              statusFilter === s
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted text-muted-foreground hover:text-foreground"
+        <Card className="p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="mc-kicker">Goal filters</div>
+              <div className="mt-1 text-sm font-semibold text-foreground">Focus the goal tree by lifecycle state</div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(["ALL", "ACTIVE", "PLANNED", "ACHIEVED", "CANCELLED"] as const).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setStatusFilter(s)}
+                  className={cn(
+                    "rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] transition-colors",
+                    statusFilter === s
+                      ? "border-cyan-300/20 bg-cyan-400/10 text-cyan-100"
+                      : "border-[var(--panel-line)] bg-[color:var(--shell-panel)] text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {s === "ALL" ? "All" : STATUS_CONFIG[s].label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </Card>
+
+        {!hierarchy ? (
+          <Card className="flex items-center justify-center py-20 text-muted-foreground">
+            Loading goals...
+          </Card>
+        ) : filteredHierarchy && filteredHierarchy.length === 0 ? (
+          <Card className="flex flex-col items-center justify-center py-20 text-center">
+            <span className="text-4xl mb-4">🎯</span>
+            <p className="text-muted-foreground text-sm mb-4">
+              {statusFilter === "ALL"
+                ? "No goals yet. Start by defining your company mission."
+                : `No ${statusFilter.toLowerCase()} goals.`}
+            </p>
+            {statusFilter === "ALL" && (
+              <Button onClick={() => setShowCreate(true)} variant="neon-cyan" size="sm">
+                Create First Goal
+              </Button>
             )}
-          >
-            {s === "ALL" ? "All" : STATUS_CONFIG[s].label}
-          </button>
-        ))}
-        {hierarchy && (
-          <span className="ml-auto text-xs text-muted-foreground">
-            {hierarchy.length} top-level goal{hierarchy.length !== 1 ? "s" : ""}
-          </span>
+          </Card>
+        ) : (
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+            <Card className="p-4">
+              <div className="mb-4">
+                <div className="mc-kicker">Goal tree</div>
+                <div className="mt-1 text-sm font-semibold text-foreground">Execution should ladder into strategy</div>
+              </div>
+              <div className="space-y-1">
+                {filteredHierarchy?.map((root) => (
+                  <GoalNode
+                    key={root._id}
+                    node={root as GoalNodeData}
+                    depth={0}
+                    projectId={projectId}
+                    onTaskSelect={onTaskSelect}
+                  />
+                ))}
+              </div>
+            </Card>
+
+            <Card className="p-5">
+              <div className="mc-kicker">Operator guidance</div>
+              <div className="mt-2 space-y-3 text-sm leading-relaxed text-muted-foreground">
+                <p>Goals should stay few, sharp, and causal. If a task cannot trace back to a goal, it is work without a reason.</p>
+                <p>Use company goals to set direction, team goals to route ownership, and task goals only when work needs measurable closure.</p>
+              </div>
+              <div className="mt-4 rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] p-4">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Current mix</div>
+                <div className="mt-3 grid gap-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Active</span>
+                    <span className="font-semibold text-cyan-100">{activeGoals}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Planned</span>
+                    <span className="font-semibold text-amber-100">{plannedGoals}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Achieved</span>
+                    <span className="font-semibold text-emerald-100">{achievedGoals}</span>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {showCreate && (
+          <CreateGoalModal
+            projectId={projectId}
+            defaultLevel="COMPANY"
+            onClose={() => setShowCreate(false)}
+          />
         )}
       </div>
-
-      {/* Tree */}
-      {!hierarchy ? (
-        <div className="flex items-center justify-center py-20 text-muted-foreground">
-          Loading goals...
-        </div>
-      ) : filteredHierarchy && filteredHierarchy.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <span className="text-4xl mb-4">🎯</span>
-          <p className="text-muted-foreground text-sm mb-4">
-            {statusFilter === "ALL"
-              ? "No goals yet. Start by defining your company mission."
-              : `No ${statusFilter.toLowerCase()} goals.`}
-          </p>
-          {statusFilter === "ALL" && (
-            <button
-              onClick={() => setShowCreate(true)}
-              className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
-            >
-              Create First Goal
-            </button>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-1">
-          {filteredHierarchy?.map((root) => (
-            <GoalNode
-              key={root._id}
-              node={root as GoalNodeData}
-              depth={0}
-              projectId={projectId}
-              onTaskSelect={onTaskSelect}
-            />
-          ))}
-        </div>
-      )}
-
-      {showCreate && (
-        <CreateGoalModal
-          projectId={projectId}
-          defaultLevel="COMPANY"
-          onClose={() => setShowCreate(false)}
-        />
-      )}
     </main>
   );
 }

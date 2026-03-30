@@ -4,6 +4,8 @@ import type { Id } from "../../../convex/_generated/dataModel";
 import { PageHeader } from "./components/PageHeader";
 import { Card } from "./components/ui/card";
 import { Button } from "./components/ui/button";
+import { Badge } from "./components/ui/badge";
+import { EmptyState } from "./components/ui/empty-state";
 import { Radar, Calendar, AlertTriangle, ListTodo, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -39,11 +41,16 @@ export function RadarView({ projectId, onNavigate, onTaskSelect }: RadarViewProp
     .slice(0, 10);
 
   return (
-    <main className="flex-1 overflow-auto bg-background">
+    <main className="mc-page">
       <PageHeader
         title="Radar"
         description="What's on the horizon. Upcoming deadlines, scheduled runs, and recent alerts."
         icon={<Radar className="h-4 w-4" />}
+        status={
+          <Badge variant="outline" className="border-cyan-300/20 text-cyan-100">
+            horizon view
+          </Badge>
+        }
         actions={
           onNavigate && (
             <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => onNavigate("system")}>
@@ -53,106 +60,134 @@ export function RadarView({ projectId, onNavigate, onTaskSelect }: RadarViewProp
           )
         }
       />
-      <div className="p-6 space-y-6">
-        {/* Tasks due in next 7 days */}
-        <Card className="p-4">
-          <h3 className="text-sm font-semibold text-foreground flex items-center gap-2 mb-3">
-            <ListTodo className="h-4 w-4 text-muted-foreground" />
-            Due in next 7 days
-          </h3>
-          {sortedByDue.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No tasks with due dates in the next week.
+      <div className="mc-page-body mc-page-stack">
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card className="p-4">
+            <div className="mc-kicker">Due soon</div>
+            <div className="mt-2 text-3xl font-semibold text-foreground">{sortedByDue.length}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Tasks with due dates in the next seven days</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">Next runs</div>
+            <div className="mt-2 text-3xl font-semibold text-cyan-100">{nextJobs.length}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Scheduled jobs visible on the near horizon</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">Alerts</div>
+            <div className="mt-2 text-3xl font-semibold text-amber-100">{alertsList.length}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Open alert conditions that may need operator review</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">Posture</div>
+            <div className="mt-2 text-3xl font-semibold text-foreground">
+              {alertsList.length > 0 ? "Watch" : "Calm"}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">Quick horizon read based on deadlines and alerts</div>
+          </Card>
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_320px]">
+          <Card className="p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="mc-kicker">Due in next 7 days</div>
               {onNavigate && (
-                <>
-                  {" "}
-                  <button type="button" className="underline hover:text-foreground" onClick={() => onNavigate("tasks")}>View Tasks</button>
-                  {" or "}
-                  <button type="button" className="underline hover:text-foreground" onClick={() => onNavigate("system")}>System</button>.
-                </>
+                <Button variant="outline" size="sm" onClick={() => onNavigate("calendar")}>
+                  View calendar
+                </Button>
               )}
-            </p>
-          ) : (
-            <ul className="space-y-2">
-              {sortedByDue.slice(0, 15).map((t) => {
-                const dueAt = (t as { dueAt?: number }).dueAt;
-                const dueStr = dueAt ? new Date(dueAt).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }) : "—";
-                return (
-                  <li key={t._id}>
+            </div>
+            {sortedByDue.length === 0 ? (
+              <div className="mt-4">
+                <EmptyState
+                  icon={ListTodo}
+                  title="Nothing due soon"
+                  description="No tasks with due dates are landing in the next week."
+                />
+              </div>
+            ) : (
+              <div className="mt-4 space-y-3">
+                {sortedByDue.slice(0, 15).map((task) => {
+                  const dueAt = (task as { dueAt?: number }).dueAt;
+                  const dueStr = dueAt
+                    ? new Date(dueAt).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })
+                    : "—";
+                  return (
                     <button
+                      key={task._id}
                       type="button"
-                      className={cn(
-                        "w-full text-left px-3 py-2 rounded-md text-sm transition-colors",
-                        "hover:bg-muted/50 border border-transparent hover:border-border"
-                      )}
-                      onClick={() => onTaskSelect?.(t._id)}
+                      className="w-full rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-3 text-left transition-colors hover:border-[var(--panel-line-strong)]"
+                      onClick={() => onTaskSelect?.(task._id)}
                     >
-                      <span className="font-medium text-foreground">{t.title}</span>
-                      <span className="text-muted-foreground ml-2">{dueStr}</span>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-medium text-foreground">{task.title}</span>
+                        <span className="text-xs text-muted-foreground">{dueStr}</span>
+                      </div>
                     </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          {onNavigate && sortedByDue.length > 0 && (
-            <Button variant="ghost" size="sm" className="mt-2 text-xs" onClick={() => onNavigate("calendar")}>
-              View Calendar
-            </Button>
-          )}
-        </Card>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
 
-        {/* Next scheduled job runs */}
-        <Card className="p-4">
-          <h3 className="text-sm font-semibold text-foreground flex items-center gap-2 mb-3">
-            <Calendar className="h-4 w-4 text-muted-foreground" />
-            Next scheduled job runs
-          </h3>
-          {nextJobs.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No upcoming job runs.</p>
-          ) : (
-            <ul className="space-y-2">
-              {nextJobs.map((j) => (
-                <li key={j._id} className="flex items-center justify-between text-sm py-1.5 border-b border-border last:border-0">
-                  <span className="font-medium text-foreground">{j.name}</span>
-                  <span className="text-muted-foreground text-xs">
-                    {j.nextRun ? new Date(j.nextRun).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-          {onNavigate && (
-            <Button variant="ghost" size="sm" className="mt-2 text-xs" onClick={() => onNavigate("schedules")}>
-              View Schedules
-            </Button>
-          )}
-        </Card>
+          <div className="space-y-4">
+            <Card className="p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="mc-kicker">Next scheduled runs</div>
+                {onNavigate && (
+                  <Button variant="outline" size="sm" onClick={() => onNavigate("schedules")}>
+                    View schedules
+                  </Button>
+                )}
+              </div>
+              {nextJobs.length === 0 ? (
+                <div className="mt-4 text-sm text-muted-foreground">No upcoming job runs.</div>
+              ) : (
+                <div className="mt-4 space-y-3">
+                  {nextJobs.map((job) => (
+                    <div key={job._id} className="flex items-center justify-between rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-3 text-sm">
+                      <span className="font-medium text-foreground">{job.name}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {job.nextRun
+                          ? new Date(job.nextRun).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+                          : "—"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
 
-        {/* Recent alerts */}
-        <Card className="p-4">
-          <h3 className="text-sm font-semibold text-foreground flex items-center gap-2 mb-3">
-            <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-            Recent alerts
-          </h3>
-          {alertsList.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No recent alerts.</p>
-          ) : (
-            <ul className="space-y-2">
-              {alertsList.slice(0, 10).map((a) => (
-                <li key={a._id} className="text-sm py-1.5 border-b border-border last:border-0">
-                  <span className={cn(
-                    "font-medium",
-                    a.severity === "ERROR" || a.severity === "CRITICAL" ? "text-red-400" : "text-amber-500"
-                  )}>
-                    {a.severity}
-                  </span>
-                  <span className="text-muted-foreground ml-2">{a.title}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
+            <Card className="p-5">
+              <div className="mc-kicker">Recent alerts</div>
+              {alertsList.length === 0 ? (
+                <div className="mt-4 text-sm text-muted-foreground">No recent alerts.</div>
+              ) : (
+                <div className="mt-4 space-y-2">
+                  {alertsList.slice(0, 10).map((alert) => (
+                    <div key={alert._id} className="rounded-lg border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-3 text-sm">
+                      <span className={cn("font-medium", alert.severity === "ERROR" || alert.severity === "CRITICAL" ? "text-red-400" : "text-amber-400")}>
+                        {alert.severity}
+                      </span>
+                      <span className="ml-2 text-muted-foreground">{alert.title}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+          </div>
+
+          <Card className="p-5">
+            <div className="mc-kicker">Operator guidance</div>
+            <div className="mt-2 space-y-3 text-sm leading-relaxed text-muted-foreground">
+              <div className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-4">
+                Use Radar to decide what needs attention next, not to inspect every detail of execution.
+              </div>
+              <div className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-4">
+                When a date or alert looks risky here, drill into Tasks, Schedules, or System immediately.
+              </div>
+            </div>
+          </Card>
+        </div>
       </div>
     </main>
   );

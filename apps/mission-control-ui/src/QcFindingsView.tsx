@@ -28,6 +28,20 @@ interface QcFindingsViewProps {
   projectId: Id<"projects"> | null;
 }
 
+type FindingItem = {
+  _id: string;
+  severity: string;
+  category: string;
+  title: string;
+  description: string;
+  filePaths?: string[];
+  suggestedFix?: string;
+  confidence?: number;
+  runId?: string | null;
+  qcRunId?: string | null;
+  environment?: string | null;
+};
+
 function SeverityBadge({ severity }: { severity: string }) {
   const colors: Record<string, string> = {
     RED: "bg-red-500/10 text-red-600 border-red-500/20",
@@ -67,7 +81,7 @@ export function QcFindingsView({ projectId }: QcFindingsViewProps) {
 
   const byCategory = useMemo(() => {
     if (!findings) return {};
-    const map: Record<string, typeof findings> = {};
+    const map: Record<string, FindingItem[]> = {};
     for (const f of findings) {
       if (!map[f.category]) map[f.category] = [];
       map[f.category].push(f);
@@ -186,7 +200,7 @@ export function QcFindingsView({ projectId }: QcFindingsViewProps) {
         </Card>
       ) : groupByCategory ? (
         <div className="space-y-4">
-          {Object.entries(byCategory).map(([category, items]) => (
+          {Object.entries(byCategory as Record<string, FindingItem[]>).map(([category, items]) => (
             <Card key={category}>
               <div className="px-4 py-2 border-b border-border flex items-center gap-2">
                 <span className="font-medium">{category}</span>

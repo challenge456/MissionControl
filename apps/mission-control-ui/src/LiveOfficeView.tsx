@@ -9,7 +9,11 @@ import { api } from "../../../convex/_generated/api";
 import { motion, AnimatePresence } from "framer-motion";
 import type { Id, Doc } from "../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
-import { Coffee, Droplets, Bot, ListChecks } from "lucide-react";
+import { PageHeader } from "./components/PageHeader";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Coffee, Droplets, Bot, ListChecks, Building2, Waves } from "lucide-react";
 
 interface LiveOfficeViewProps {
   projectId: Id<"projects"> | null;
@@ -64,14 +68,9 @@ export function LiveOfficeView({ projectId }: LiveOfficeViewProps) {
 
   if (agents === undefined) {
     return (
-      <main className="flex-1 flex items-center justify-center bg-background p-6" role="region" aria-label="Live Office">
-        <div className="flex flex-col items-center gap-3">
-          <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
-            className="w-8 h-8 border-2 border-border border-t-primary rounded-full"
-          />
-          <span className="text-sm text-muted-foreground">Loading live office…</span>
+      <main className="mc-page" role="region" aria-label="Live Office">
+        <div className="mc-page-body">
+          <div className="h-[620px] rounded-2xl border border-[var(--panel-line)] skeleton-shimmer" />
         </div>
       </main>
     );
@@ -79,58 +78,86 @@ export function LiveOfficeView({ projectId }: LiveOfficeViewProps) {
 
   return (
     <main
-      className="flex-1 flex flex-col min-h-0 bg-background text-foreground overflow-hidden"
+      className="mc-page"
       role="region"
       aria-label="Live Office"
       data-testid="live-office-view"
     >
-      {/* Top bar */}
-      <header className="shrink-0 flex items-center justify-between px-4 py-2.5 border-b border-border bg-card/80">
-        <div className="flex items-center gap-4">
-          <h1 id="live-office-title" className="text-lg font-bold text-foreground m-0">Live Office</h1>
-          <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <span className="w-2 h-2 rounded-full bg-primary" aria-hidden />
-            <span className="font-medium text-foreground">{workingCount}</span> working
-          </span>
-          <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <span className="w-2 h-2 rounded-full bg-blue-500" aria-hidden />
-            <span className="font-medium text-foreground">{onBreakCount}</span> on break
-          </span>
+      <PageHeader
+        title="Live Office"
+        description="A spatial view of active desks, idle agents, and recent motion across the office floor."
+        eyebrow="Comms"
+        icon={<Building2 className="h-4.5 w-4.5" strokeWidth={1.7} />}
+        status={
+          <Badge variant="outline" className="border-cyan-300/20 text-cyan-100">
+            {workingCount} working / {onBreakCount} on break
+          </Badge>
+        }
+      />
+
+      <div className="mc-page-body mc-page-stack min-h-0">
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card className="p-4">
+            <div className="mc-kicker">Working desks</div>
+            <div className="mt-2 text-3xl font-semibold text-cyan-100">{workingCount}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Desks currently attached to active task execution</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">Break room</div>
+            <div className="mt-2 text-3xl font-semibold text-foreground">{onBreakCount}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Agents waiting, paused, offline, or otherwise detached from work</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">Recent activity</div>
+            <div className="mt-2 text-3xl font-semibold text-foreground">{activities?.length ?? 0}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Latest recorded events available for visual context</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">Clock</div>
+            <div className="mt-2 text-3xl font-semibold text-foreground">
+              {new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">Local operator time for reading the office state</div>
+          </Card>
         </div>
-        <time className="text-sm text-muted-foreground tabular-nums" dateTime={new Date().toISOString()}>
-          {new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" })}
-        </time>
-      </header>
 
-      {/* Content: office area + activity sidebar */}
-      <div className="flex-1 flex min-h-0 overflow-hidden">
-        {/* Left: Office canvas (orchestrator + workstations + break room) */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-auto p-4 md:p-6">
+        <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <Card className="min-h-0 overflow-hidden p-0">
+            <div className="flex min-h-0 flex-col">
+              <div className="border-b border-[var(--panel-line)] px-5 py-4">
+                <div className="mc-kicker">Office floor</div>
+                <div className="mt-1 text-sm text-muted-foreground">
+                  Use the floor plan to understand who is actually busy, who is parked, and whether the execution surface feels balanced.
+                </div>
+              </div>
+
+              {/* Left: Office canvas (orchestrator + workstations + break room) */}
+              <div className="flex-1 flex flex-col min-w-0 overflow-auto p-4 md:p-6">
           {/* Orchestrator */}
-          <div className="flex justify-center mb-4 shrink-0">
-            <motion.div
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex items-center gap-3 px-4 py-2 rounded-xl bg-card border border-border shadow-sm"
-            >
-              <div className="w-10 h-10 rounded-full bg-primary/20 border-2 border-primary flex items-center justify-center shrink-0">
-                <Bot className="w-5 h-5 text-primary" aria-hidden />
-              </div>
-              <div>
-                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Mission Control
+                <div className="flex justify-center mb-4 shrink-0">
+                  <motion.div
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex items-center gap-3 rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-3 shadow-[var(--card-shadow)]"
+                  >
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full border border-cyan-300/20 bg-cyan-400/8 text-cyan-100 shadow-[var(--glow-cyan)]">
+                      <Bot className="w-5 h-5" aria-hidden />
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        Mission Control
+                      </div>
+                      <div className="text-sm font-medium text-foreground">
+                        Orchestrating the team
+                      </div>
+                    </div>
+                  </motion.div>
                 </div>
-                <div className="text-sm font-medium text-foreground">
-                  Orchestrating the team
-                </div>
-              </div>
-            </motion.div>
-          </div>
 
-          {/* Workstations + Break Room in a responsive grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_240px] gap-4 lg:gap-6 min-h-0">
+                {/* Workstations + Break Room in a responsive grid */}
+                <div className="grid grid-cols-1 lg:grid-cols-[1fr_240px] gap-4 lg:gap-6 min-h-0">
             {/* Workstations — fixed 2x3 grid with min height so it always shows */}
-            <section aria-label="Workstations" className="min-h-[320px]">
+                  <section aria-label="Workstations" className="min-h-[320px]">
               <div className="grid grid-cols-2 grid-rows-3 gap-3 sm:gap-4">
                 {Array.from({ length: WORKSTATION_SLOTS }).map((_, i) => {
                   const slot = working[i];
@@ -144,7 +171,7 @@ export function LiveOfficeView({ projectId }: LiveOfficeViewProps) {
                         "rounded-xl border-2 flex flex-col overflow-hidden min-h-[120px]",
                         slot
                           ? "border-primary/40 bg-primary/5 shadow-md shadow-primary/5"
-                          : "border-border bg-card"
+                          : "border-[var(--panel-line)] bg-[color:var(--shell-panel)]"
                       )}
                     >
                       <div className="flex-1 flex flex-col p-2 min-h-0">
@@ -157,7 +184,7 @@ export function LiveOfficeView({ projectId }: LiveOfficeViewProps) {
                         >
                           {slot ? (
                             <>
-                              <div className="p-1.5 sm:p-2 flex items-center gap-2 border-b border-border shrink-0">
+                              <div className="p-1.5 sm:p-2 flex items-center gap-2 border-b border-[var(--panel-line)] shrink-0">
                                 <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 border-primary/50 bg-primary/20 text-primary shrink-0">
                                   {slot.agent.emoji || slot.agent.name.charAt(0).toUpperCase()}
                                 </div>
@@ -205,10 +232,10 @@ export function LiveOfficeView({ projectId }: LiveOfficeViewProps) {
                   );
                 })}
               </div>
-            </section>
+                  </section>
 
             {/* Break Room */}
-            <section aria-label="Break Room" className="lg:max-w-[240px] shrink-0">
+                  <section aria-label="Break Room" className="lg:max-w-[240px] shrink-0">
               <div className="rounded-xl border-2 border-dashed border-blue-500/40 bg-blue-500/5 p-3 min-h-[200px] flex flex-col">
                 <div className="text-xs font-bold text-blue-400 uppercase tracking-wider mb-2 flex items-center gap-2 shrink-0">
                   <Coffee className="w-3.5 h-3.5" aria-hidden />
@@ -259,62 +286,81 @@ export function LiveOfficeView({ projectId }: LiveOfficeViewProps) {
                   </AnimatePresence>
                 </div>
               </div>
-            </section>
+                  </section>
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          <div className="space-y-4">
+            <Card className="overflow-hidden p-0">
+              <div className="border-b border-[var(--panel-line)] px-4 py-3 flex items-center gap-2">
+                <ListChecks className="w-4 h-4 text-muted-foreground" aria-hidden />
+                <span className="mc-kicker">Recent activity</span>
+              </div>
+              <div className="max-h-[420px] overflow-auto p-3">
+                {activities === undefined ? (
+                  <div className="rounded-lg border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-6 text-sm text-muted-foreground">
+                    Loading recent activity…
+                  </div>
+                ) : activities.length === 0 ? (
+                  <EmptyState
+                    icon={Waves}
+                    title="No recent activity"
+                    description="Live Office becomes more useful once the activity stream has events to anchor what you’re seeing."
+                    className="px-4 py-10"
+                  />
+                ) : (
+                  <ul className="space-y-2" role="list">
+                    {activities.map((act) => {
+                      const created =
+                        "_creationTime" in act && typeof (act as { _creationTime?: number })._creationTime === "number"
+                          ? (act as { _creationTime: number })._creationTime
+                          : Date.now();
+                      return (
+                        <li
+                          key={act._id}
+                          className="rounded-lg border border-[var(--panel-line)] bg-[color:var(--shell-panel)] p-3 text-xs"
+                        >
+                          <div className="mb-0.5 text-muted-foreground">{formatTime(created)}</div>
+                          <div className="line-clamp-2 text-foreground">{act.description}</div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            </Card>
+
+            <Card className="p-5">
+              <div className="mc-kicker">Operator guidance</div>
+              <div className="mt-2 space-y-3 text-sm leading-relaxed text-muted-foreground">
+                <div className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-4">
+                  Live Office is for situational awareness, not deep diagnostics. If something looks off here, drill into Office or System.
+                </div>
+                <div className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-4">
+                  A healthy floor should show a believable balance between active desks and deliberate idle time, not constant saturation.
+                </div>
+              </div>
+            </Card>
           </div>
         </div>
-
-        {/* Right: Recent Activity sidebar */}
-        <aside className="w-64 lg:w-72 shrink-0 border-l border-border bg-card/50 flex flex-col overflow-hidden">
-          <div className="px-3 py-2.5 border-b border-border flex items-center gap-2 shrink-0">
-            <ListChecks className="w-4 h-4 text-muted-foreground" aria-hidden />
-            <span className="text-xs font-semibold uppercase tracking-wider text-foreground">
-              Recent Activity
-            </span>
-          </div>
-          <div className="flex-1 overflow-auto p-2 min-h-0">
-            {activities === undefined ? (
-              <div className="p-3 text-muted-foreground text-xs">Loading…</div>
-            ) : activities.length === 0 ? (
-              <div className="p-3 text-muted-foreground text-xs">No recent activity</div>
-            ) : (
-              <ul className="space-y-1.5" role="list">
-                {activities.map((act) => {
-                  const created = "_creationTime" in act && typeof (act as { _creationTime?: number })._creationTime === "number"
-                    ? (act as { _creationTime: number })._creationTime
-                    : Date.now();
-                  return (
-                    <li
-                      key={act._id}
-                      className="text-xs p-2 rounded-lg bg-background/50 border border-border"
-                    >
-                      <div className="text-muted-foreground mb-0.5">
-                        {formatTime(created)}
-                      </div>
-                      <div className="text-foreground line-clamp-2">
-                        {act.description}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-        </aside>
       </div>
 
-      {/* Bottom bar */}
-      <footer className="shrink-0 flex items-center gap-4 px-4 py-2 border-t border-border bg-card/80 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-primary" aria-hidden />
-          {workingCount} working
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-blue-500" aria-hidden />
-          {onBreakCount} on break
-        </span>
-        <time className="ml-auto tabular-nums" dateTime={new Date().toISOString()}>
-          {new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" })}
-        </time>
+      <footer className="border-t border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-5 py-3 text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-4">
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-primary" aria-hidden />
+            {workingCount} working
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-blue-500" aria-hidden />
+            {onBreakCount} on break
+          </span>
+          <time className="ml-auto tabular-nums" dateTime={new Date().toISOString()}>
+            {new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" })}
+          </time>
+        </div>
       </footer>
     </main>
   );

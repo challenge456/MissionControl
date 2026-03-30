@@ -4,6 +4,12 @@ import { api } from "../../../convex/_generated/api";
 import { motion, AnimatePresence } from "framer-motion";
 import type { Id, Doc } from "../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
+import { PageHeader } from "./components/PageHeader";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Building2, RotateCcw } from "lucide-react";
 
 interface OfficeViewProps {
   projectId: Id<"projects"> | null;
@@ -124,30 +130,31 @@ export function OfficeView({ projectId }: OfficeViewProps) {
 
   if (!agents) {
     return (
-      <main className="flex-1 overflow-auto bg-background p-6">
-        <div className="flex flex-col items-center justify-center h-full">
-          <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
-            className="w-7 h-7 border-3 border-border border-t-primary rounded-full"
-          />
-          <div className="text-muted-foreground mt-3">Loading office...</div>
+      <main className="mc-page">
+        <div className="mc-page-body">
+          <div className="h-[640px] rounded-2xl border border-[var(--panel-line)] skeleton-shimmer" />
         </div>
       </main>
     );
   }
 
   return (
-    <main className="flex-1 overflow-auto bg-background p-6">
-      {/* Header */}
-      <div className="mb-6">
-        <div className="flex items-start justify-between mb-4">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground m-0">Agent Office</h1>
-            <p className="text-sm text-muted-foreground mt-0.5 mb-0">Real-time agent workstation view</p>
-          </div>
-          {stats.quarantined > 0 && (
-            <button
+    <main className="mc-page">
+      <PageHeader
+        title="Office"
+        description="Live workstation view for agent posture, task attachment, budget burn, and heartbeat quality."
+        eyebrow="Comms"
+        icon={<Building2 className="h-4.5 w-4.5" strokeWidth={1.7} />}
+        status={
+          <Badge variant="outline" className="border-cyan-300/20 text-cyan-100">
+            {stats.total} agents
+          </Badge>
+        }
+        actions={
+          stats.quarantined > 0 ? (
+            <Button
+              variant="neon-cyan"
+              size="sm"
               onClick={async () => {
                 setResetting(true);
                 try {
@@ -160,118 +167,141 @@ export function OfficeView({ projectId }: OfficeViewProps) {
                 }
               }}
               disabled={resetting}
-              className={cn(
-                "px-4 py-2 text-xs font-semibold border-none rounded-lg text-white cursor-pointer transition-opacity whitespace-nowrap self-start",
-                resetting ? "bg-muted-foreground cursor-not-allowed" : "bg-primary"
-              )}
             >
-              {resetting ? "Resetting..." : `Reset ${stats.quarantined} Quarantined`}
-            </button>
-          )}
+              <RotateCcw className="h-4 w-4" />
+              {resetting ? "Resetting" : `Reset ${stats.quarantined} quarantined`}
+            </Button>
+          ) : undefined
+        }
+      />
+
+      <div className="mc-page-body mc-page-stack">
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card className="p-4">
+            <div className="mc-kicker">Working</div>
+            <div className="mt-2 text-3xl font-semibold text-cyan-100">{stats.working}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Agents with an active task and healthy execution posture</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">Idle</div>
+            <div className="mt-2 text-3xl font-semibold text-foreground">{stats.idle}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Active agents that are waiting on new assignment</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">Paused / offline</div>
+            <div className="mt-2 text-3xl font-semibold text-amber-100">{stats.paused + stats.offline}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Agents not expected to produce work right now</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">Quarantined</div>
+            <div className="mt-2 text-3xl font-semibold text-red-300">{stats.quarantined}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Agents that need explicit recovery before they can rejoin execution</div>
+          </Card>
         </div>
 
-        {/* Stats Row */}
-        <div className="flex gap-2 flex-wrap">
-          <StatChip
-            label={`All (${stats.total})`}
-            value={stats.total}
-            colorClass="text-muted-foreground"
-            dotClass="bg-muted-foreground"
-            activeBorderClass="border-muted-foreground"
-            activeBgClass="bg-muted-foreground/15"
-            active={filterStatus === "ALL"}
-            onClick={() => setFilterStatus("ALL")}
-            hideValue
-          />
-          <span className="w-px h-5 bg-border shrink-0" />
-          <StatChip
-            label="Working"
-            value={stats.working}
-            colorClass="text-primary"
-            dotClass="bg-primary"
-            activeBorderClass="border-primary"
-            activeBgClass="bg-primary/15"
-            active={filterStatus === "ACTIVE"}
-            onClick={() => setFilterStatus(filterStatus === "ACTIVE" ? "ALL" : "ACTIVE")}
-          />
-          <StatChip
-            label="Idle"
-            value={stats.idle}
-            colorClass="text-blue-400"
-            dotClass="bg-blue-500"
-            activeBorderClass="border-blue-500"
-            activeBgClass="bg-blue-500/15"
-            active={false}
-          />
-          <StatChip
-            label="Paused"
-            value={stats.paused}
-            colorClass="text-amber-400"
-            dotClass="bg-amber-500"
-            activeBorderClass="border-amber-500"
-            activeBgClass="bg-amber-500/15"
-            active={filterStatus === "PAUSED"}
-            onClick={() => setFilterStatus(filterStatus === "PAUSED" ? "ALL" : "PAUSED")}
-          />
-          <StatChip
-            label="Offline"
-            value={stats.offline}
-            colorClass="text-muted-foreground"
-            dotClass="bg-muted-foreground"
-            activeBorderClass="border-muted-foreground"
-            activeBgClass="bg-muted-foreground/15"
-            active={filterStatus === "OFFLINE"}
-            onClick={() => setFilterStatus(filterStatus === "OFFLINE" ? "ALL" : "OFFLINE")}
-          />
-          {stats.quarantined > 0 && (
+        <Card className="p-4">
+          <div className="flex flex-wrap gap-2">
             <StatChip
-              label="Quarantined"
-              value={stats.quarantined}
-              colorClass="text-red-400"
-              dotClass="bg-red-500"
-              activeBorderClass="border-red-500"
-              activeBgClass="bg-red-500/15"
-              active={filterStatus === "QUARANTINED"}
-              onClick={() =>
-                setFilterStatus(filterStatus === "QUARANTINED" ? "ALL" : "QUARANTINED")
-              }
+              label={`All (${stats.total})`}
+              value={stats.total}
+              colorClass="text-muted-foreground"
+              dotClass="bg-muted-foreground"
+              activeBorderClass="border-muted-foreground"
+              activeBgClass="bg-muted-foreground/15"
+              active={filterStatus === "ALL"}
+              onClick={() => setFilterStatus("ALL")}
+              hideValue
             />
-          )}
-        </div>
-      </div>
-
-      {/* Agent Grid */}
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
-        <AnimatePresence mode="popLayout">
-          {filteredAgents.map(({ agent, currentTask }) => (
-            <motion.div
-              key={agent._id}
-              layout
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              transition={{ duration: 0.25 }}
-            >
-              <AgentCard
-                agent={agent}
-                currentTask={currentTask}
-                isSelected={agent._id === selectedAgent}
-                onSelect={() =>
-                  setSelectedAgent(selectedAgent === agent._id ? null : agent._id)
-                }
+            <StatChip
+              label="Working"
+              value={stats.working}
+              colorClass="text-primary"
+              dotClass="bg-primary"
+              activeBorderClass="border-primary"
+              activeBgClass="bg-primary/15"
+              active={filterStatus === "ACTIVE"}
+              onClick={() => setFilterStatus(filterStatus === "ACTIVE" ? "ALL" : "ACTIVE")}
+            />
+            <StatChip
+              label="Paused"
+              value={stats.paused}
+              colorClass="text-amber-400"
+              dotClass="bg-amber-500"
+              activeBorderClass="border-amber-500"
+              activeBgClass="bg-amber-500/15"
+              active={filterStatus === "PAUSED"}
+              onClick={() => setFilterStatus(filterStatus === "PAUSED" ? "ALL" : "PAUSED")}
+            />
+            <StatChip
+              label="Offline"
+              value={stats.offline}
+              colorClass="text-muted-foreground"
+              dotClass="bg-muted-foreground"
+              activeBorderClass="border-muted-foreground"
+              activeBgClass="bg-muted-foreground/15"
+              active={filterStatus === "OFFLINE"}
+              onClick={() => setFilterStatus(filterStatus === "OFFLINE" ? "ALL" : "OFFLINE")}
+            />
+            {stats.quarantined > 0 ? (
+              <StatChip
+                label="Quarantined"
+                value={stats.quarantined}
+                colorClass="text-red-400"
+                dotClass="bg-red-500"
+                activeBorderClass="border-red-500"
+                activeBgClass="bg-red-500/15"
+                active={filterStatus === "QUARANTINED"}
+                onClick={() => setFilterStatus(filterStatus === "QUARANTINED" ? "ALL" : "QUARANTINED")}
               />
-            </motion.div>
-          ))}
-        </AnimatePresence>
-
-        {filteredAgents.length === 0 && (
-          <div className="col-span-full flex flex-col items-center justify-center py-16 px-5">
-            <span className="text-2xl">&#128373;</span>
-            <p className="text-muted-foreground mt-2 mb-0">
-              No agents match the current filter
-            </p>
+            ) : null}
           </div>
-        )}
+        </Card>
+
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
+            <AnimatePresence mode="popLayout">
+              {filteredAgents.map(({ agent, currentTask }) => (
+                <motion.div
+                  key={agent._id}
+                  layout
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  transition={{ duration: 0.25 }}
+                >
+                  <AgentCard
+                    agent={agent}
+                    currentTask={currentTask}
+                    isSelected={agent._id === selectedAgent}
+                    onSelect={() => setSelectedAgent(selectedAgent === agent._id ? null : agent._id)}
+                  />
+                </motion.div>
+              ))}
+            </AnimatePresence>
+
+            {filteredAgents.length === 0 ? (
+              <div className="col-span-full">
+                <EmptyState
+                  icon={Building2}
+                  title="No agents match this filter"
+                  description="Relax the office filter or reactivate the relevant workers to repopulate this workstation view."
+                />
+              </div>
+            ) : null}
+          </div>
+
+          <Card className="p-5">
+            <div className="mc-kicker">Operator guidance</div>
+            <div className="mt-2 space-y-3 text-sm leading-relaxed text-muted-foreground">
+              <div className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-4">
+                Working and healthy are not the same thing. Use the heartbeat and error posture together before trusting an active agent.
+              </div>
+              <div className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-4">
+                Quarantined agents should be treated as a system-design problem first, not just an agent-level problem.
+              </div>
+            </div>
+          </Card>
+        </div>
       </div>
 
       {/* Detail Panel */}
@@ -438,9 +468,9 @@ function AgentCard({ agent, currentTask, isSelected, onSelect }: AgentCardProps)
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between">
-                <div className="text-[0.6rem] text-primary font-semibold uppercase tracking-wider mb-0.5">Working on</div>
+                <div className="text-[0.65rem] text-primary font-semibold uppercase tracking-wider mb-0.5">Working on</div>
                 {currentTask.startedAt && (
-                  <div className="text-[0.6rem] text-muted-foreground">
+                  <div className="text-[0.65rem] text-muted-foreground">
                     {formatElapsed(currentTask.startedAt)}
                   </div>
                 )}
@@ -743,7 +773,7 @@ function AgentDetailPanel({
                     <span className="flex-1 text-xs text-foreground overflow-hidden text-ellipsis whitespace-nowrap">
                       {t.title}
                     </span>
-                    <span className="text-[0.6rem] text-muted-foreground shrink-0">
+                    <span className="text-[0.65rem] text-muted-foreground shrink-0">
                       {t.status}
                     </span>
                   </div>

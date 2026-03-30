@@ -52,7 +52,7 @@ export function PriorityChip({ priority, size = "sm", className }: PriorityChipP
       className={cn(
         "font-medium border gap-1",
         config.classes,
-        isSm ? "text-[10px] h-5 px-1.5" : "text-xs h-6 px-2",
+        isSm ? "text-[11px] h-5 px-1.5" : "text-xs h-6 px-2",
         className
       )}
     >

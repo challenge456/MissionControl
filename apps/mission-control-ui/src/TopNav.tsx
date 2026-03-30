@@ -19,6 +19,8 @@ export type MainView =
   | "memory"
   | "captures"
   | "docs"
+  | "design-system"
+  | "skills"
   | "people"
   | "org"
   | "office"

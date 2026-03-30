@@ -49,24 +49,28 @@ export function CommandNav({
   return (
     <nav
       className={cn(
-        "relative flex items-center h-12 px-2 border-b border-[var(--glass-border)] bg-[var(--glass-bg)]/90 backdrop-blur-[var(--blur-panel)]",
+        "relative flex items-center gap-3 border-b border-[var(--panel-line)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--shell-panel)_97%,transparent),color-mix(in_srgb,var(--background)_90%,transparent))] px-3 py-2 backdrop-blur-[var(--blur-panel)]",
         className
       )}
       aria-label="Command center navigation"
     >
-      <div className="flex items-center flex-1 overflow-x-auto">
-        {/* Brand mark */}
-        <div className="hidden lg:flex items-center gap-2 pl-3 pr-5 mr-2 border-r border-[var(--glass-border)] shrink-0">
-          <div className="h-6 w-6 rounded-lg bg-primary flex items-center justify-center shadow-[var(--glow-green)]">
-            <Crosshair className="h-3.5 w-3.5 text-white" />
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(103,232,249,0.04),transparent_18%,transparent_82%,rgba(45,212,191,0.04))]" />
+      <div className="relative flex min-w-0 flex-1 items-center overflow-x-auto">
+        <div className="hidden shrink-0 items-center gap-3 rounded-xl border border-[var(--panel-line)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--shell-panel)_98%,transparent),color-mix(in_srgb,var(--background)_88%,transparent))] px-3 py-2 xl:flex">
+          <div className="flex h-9 w-9 items-center justify-center rounded-2xl border border-cyan-400/16 bg-cyan-400/6 text-cyan-200 shadow-[var(--glow-cyan)]">
+            <Crosshair className="h-4 w-4" />
           </div>
-          <span className="text-xs font-bold tracking-widest uppercase text-foreground/70">
-            MC
-          </span>
+          <div className="leading-none">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.26em] text-muted-foreground/50">
+              Command Grid
+            </div>
+            <div className="font-[family:var(--font-display)] text-sm font-semibold tracking-[0.18em] text-foreground">
+              SellerFi Ops
+            </div>
+          </div>
         </div>
 
-        {/* Nav items */}
-        <div className="flex flex-1 min-w-0">
+        <div className="ml-3 flex min-w-0 flex-1 rounded-2xl border border-[var(--panel-line)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--shell-panel)_98%,transparent),color-mix(in_srgb,var(--background)_88%,transparent))] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
           {navItems.map((item) => {
             const isActive = activeSection === item.id;
             const Icon = item.icon;
@@ -76,35 +80,33 @@ export function CommandNav({
                 key={item.id}
                 onClick={() => onSectionChange(item.id)}
                 className={cn(
-                  "relative flex-1 flex items-center justify-center gap-1.5 h-12 min-w-[52px] px-2",
-                  "text-[11px] font-semibold tracking-wide uppercase",
-                  "transition-all duration-150",
+                  "relative flex h-10 min-w-[64px] flex-1 items-center justify-center gap-2 rounded-lg px-2.5",
+                  "text-[11px] font-semibold uppercase tracking-[0.18em]",
+                  "transition-all duration-200",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background rounded-md",
                   isActive
-                    ? "text-[var(--neon-green)]"
-                    : "text-muted-foreground hover:text-foreground hover:bg-[var(--neon-cyan-dim)]"
+                    ? "text-cyan-100"
+                    : "text-muted-foreground hover:text-foreground"
                 )}
                 aria-current={isActive ? "page" : undefined}
               >
-                {/* Active background pill */}
                 {isActive && (
                   <motion.div
                     layoutId="command-nav-bg"
-                    className="absolute inset-x-0.5 inset-y-1.5 rounded-md bg-[var(--neon-green)]/15"
+                    className="absolute inset-0 rounded-lg border border-cyan-400/16 bg-[linear-gradient(135deg,rgba(103,232,249,0.12),rgba(45,212,191,0.04)_55%,rgba(11,17,32,0.04))] shadow-[var(--glow-cyan)]"
                     transition={{ type: "spring", stiffness: 500, damping: 40 }}
                   />
                 )}
 
-                <Icon className={cn("h-3.5 w-3.5 shrink-0 relative", isActive && "drop-shadow-sm")} />
-                <span className="hidden md:inline relative">{item.label}</span>
-                <span className="hidden sm:inline md:hidden relative">{item.shortLabel}</span>
+                <Icon className={cn("relative h-3.5 w-3.5 shrink-0", isActive && "drop-shadow-[0_0_12px_rgba(103,232,249,0.45)]")} />
+                <span className="relative hidden md:inline">{item.label}</span>
+                <span className="relative hidden sm:inline md:hidden">{item.shortLabel}</span>
 
-                {/* Bottom indicator */}
                 {isActive && (
                   <motion.div
                     layoutId="command-nav-active"
-                    className="absolute inset-x-2 bottom-0 h-[2.5px] rounded-full bg-[var(--neon-green)]"
-                    style={{ boxShadow: "var(--glow-green)" }}
+                    className="absolute inset-x-3 bottom-1 h-[2.5px] rounded-full bg-cyan-300"
+                    style={{ boxShadow: "var(--glow-cyan)" }}
                     transition={{ type: "spring", stiffness: 500, damping: 35 }}
                   />
                 )}

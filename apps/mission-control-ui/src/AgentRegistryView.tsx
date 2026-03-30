@@ -189,10 +189,11 @@ export function AgentRegistryView({
   };
 
   return (
-    <main className="flex-1 overflow-auto">
+    <main className="mc-page">
       <PageHeader
         title="Agent Registry"
         description={`${agents.length} agents · ${activeCount} active`}
+        eyebrow="Agents"
         status={
           gatewayConfigured ? (
             <Badge variant="outline" className="text-[10px] border-primary/40 text-primary/90">
@@ -222,8 +223,32 @@ export function AgentRegistryView({
         onImported={() => toast("Agent imported")}
       />
 
+      <div className="mc-page-body mc-page-stack">
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card className="p-4">
+          <div className="mc-kicker">Active</div>
+          <div className="mt-2 text-3xl font-semibold text-cyan-100">{activeCount}</div>
+          <div className="mt-1 text-xs text-muted-foreground">Agents currently trusted to take live work</div>
+        </Card>
+        <Card className="p-4">
+          <div className="mc-kicker">Paused</div>
+          <div className="mt-2 text-3xl font-semibold text-amber-100">{pausedCount}</div>
+          <div className="mt-1 text-xs text-muted-foreground">Agents intentionally held out of the queue</div>
+        </Card>
+        <Card className="p-4">
+          <div className="mc-kicker">Quarantined</div>
+          <div className="mt-2 text-3xl font-semibold text-rose-200">{quarantinedCount}</div>
+          <div className="mt-1 text-xs text-muted-foreground">Agents requiring intervention before reuse</div>
+        </Card>
+        <Card className="p-4">
+          <div className="mc-kicker">Assigned tasks</div>
+          <div className="mt-2 text-3xl font-semibold text-foreground">{assignedCount}</div>
+          <div className="mt-1 text-xs text-muted-foreground">Tasks currently routed to one or more agents</div>
+        </Card>
+      </div>
+
       {/* Fleet health bar */}
-      <div className="px-6 pb-3 flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={() => setStatusFilter("ALL")}
@@ -292,7 +317,7 @@ export function AgentRegistryView({
       </div>
 
       {/* Compact operator controls */}
-      <div className="px-6 pb-4 flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={handlePauseAll}>
           <Pause className="h-3 w-3 mr-1" />
           Pause Squad
@@ -331,7 +356,7 @@ export function AgentRegistryView({
       </div>
 
       {/* Search + filters */}
-      <div className="px-6 pb-4">
+      <div>
         <div className="relative max-w-xs">
           <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <input
@@ -345,7 +370,7 @@ export function AgentRegistryView({
       </div>
 
       {/* 2-column agent grid */}
-      <div className="px-6 pb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {filteredAgents.map((agent) => {
           const lastHB = agent.lastHeartbeatAt ? formatRelativeTime(agent.lastHeartbeatAt) : "Never";
           const aCount = taskCountByAgent.get(agent._id) ?? 0;
@@ -446,7 +471,7 @@ export function AgentRegistryView({
       </div>
 
       {filteredAgents.length === 0 && (
-        <div className="px-6 pb-6 text-center py-12">
+        <div className="text-center py-12">
           <p className="text-muted-foreground text-sm mb-4">
             {agents.length === 0 ? "No agents registered yet." : "No agents match the current filters."}
           </p>
@@ -512,6 +537,7 @@ export function AgentRegistryView({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </div>
     </main>
   );
 }

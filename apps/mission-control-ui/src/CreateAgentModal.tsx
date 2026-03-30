@@ -263,7 +263,7 @@ export function CreateAgentModal({
                 )}
                 aria-label="Toggle sub-agent spawning"
               >
-                <div className={cn("absolute top-[3px] left-[3px] w-[18px] h-[18px] rounded-full bg-white transition-transform", form.canSpawn && "translate-x-4")} />
+                <div className={cn("absolute top-[3px] left-[3px] w-4.5 h-4.5 rounded-full bg-white transition-transform", form.canSpawn && "translate-x-4")} />
               </button>
               <span className="text-sm text-foreground">Can spawn sub-agents</span>
             </div>

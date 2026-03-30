@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Card } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +24,7 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { EmptyState } from "@/components/ui/empty-state";
 import { CreateAgentModal, type CreateAgentForm } from "@/CreateAgentModal";
+import { PageHeader } from "./components/PageHeader";
 import { Users, X, ChevronDown, Plus } from "lucide-react";
 
 interface OrgViewProps {
@@ -304,9 +306,9 @@ export function OrgView({ projectId }: OrgViewProps) {
 
   if (!hierarchy) {
     return (
-      <main className="flex-1 overflow-hidden bg-background p-6 flex flex-col">
-        <div className="flex items-center justify-center h-full text-muted-foreground">
-          Loading org chart...
+      <main className="mc-page">
+        <div className="mc-page-body">
+          <div className="h-[640px] rounded-2xl border border-[var(--panel-line)] skeleton-shimmer" />
         </div>
       </main>
     );
@@ -314,18 +316,26 @@ export function OrgView({ projectId }: OrgViewProps) {
 
   if (hierarchy.length === 0) {
     return (
-      <main className="flex-1 overflow-hidden bg-background p-6 flex flex-col">
-        <EmptyState
-          icon={Users}
-          title="No Org Chart Yet"
-          description="Add team members and agents to build your organizational hierarchy."
-          action={
-            <Button onClick={() => handleOpenCreate()} className="mt-4">
-              <Plus className="h-4 w-4 mr-2" />
-              Add Your First Agent
-            </Button>
-          }
+      <main className="mc-page">
+        <PageHeader
+          title="Org Chart"
+          description="Human and agent structure for the current project, including ownership, role posture, and organizational relationships."
+          eyebrow="Comms"
+          icon={<Users className="h-4.5 w-4.5" strokeWidth={1.7} />}
         />
+        <div className="mc-page-body">
+          <EmptyState
+            icon={Users}
+            title="No org chart yet"
+            description="Add team members and agents to build the reporting structure and ownership model for this project."
+            action={
+              <Button onClick={() => handleOpenCreate()} className="mt-4">
+                <Plus className="h-4 w-4 mr-2" />
+                Add your first agent
+              </Button>
+            }
+          />
+        </div>
         <CreateAgentModal
           open={showCreateModal}
           projectId={projectId}
@@ -359,41 +369,68 @@ export function OrgView({ projectId }: OrgViewProps) {
   const drawerOpen = selectedNode !== null;
 
   return (
-    <main className="flex-1 overflow-hidden bg-background p-6 flex flex-col">
-      {/* Header */}
-      <div className="mb-8 flex-shrink-0">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-lg font-semibold text-foreground">Organization</h1>
-            {missionData?.missionStatement && (
-              <p className="text-sm italic text-muted-foreground mt-2 max-w-xl">
-                &ldquo;{missionData.missionStatement}&rdquo;
-              </p>
-            )}
-          </div>
-          <Button onClick={() => handleOpenCreate()}>
+    <main className="mc-page">
+      <PageHeader
+        title="Org Chart"
+        description="Human and agent reporting structure for the operating system behind this project."
+        eyebrow="Comms"
+        icon={<Users className="h-4.5 w-4.5" strokeWidth={1.7} />}
+        status={
+          <Badge variant="outline" className="border-cyan-300/20 text-cyan-100">
+            {totalHumans + apiAgents + localModels} nodes
+          </Badge>
+        }
+        actions={
+          <Button onClick={() => handleOpenCreate()} variant="neon-cyan" size="sm">
             <Plus className="h-4 w-4 mr-2" />
-            Add Agent
+            Add agent
           </Button>
+        }
+      />
+
+      <div className="mc-page-body mc-page-stack">
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card className="p-4">
+            <div className="mc-kicker">Humans</div>
+            <div className="mt-2 text-3xl font-semibold text-foreground">{totalHumans}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Human operators represented in the current hierarchy</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">API agents</div>
+            <div className="mt-2 text-3xl font-semibold text-cyan-100">{apiAgents}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Hosted or provider-backed agents in the current org structure</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">Local models</div>
+            <div className="mt-2 text-3xl font-semibold text-foreground">{localModels}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Intern-class or local runtime workers in the hierarchy</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">Daily budget</div>
+            <div className="mt-2 text-3xl font-semibold text-emerald-200">${totalBudget.toFixed(0)}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Combined budget exposure across agents in this view</div>
+          </Card>
         </div>
 
-        {/* Metrics */}
-        <div className="flex gap-4 flex-wrap">
-          <MetricPill icon="👤" value={totalHumans} label="Human" />
-          <MetricPill icon="🤖" value={apiAgents} label="API Agents" />
-          <MetricPill icon="💻" value={localModels} label="Local Models" />
-          <MetricPill icon="💰" value={`$${totalBudget.toFixed(0)}/day`} label="Daily Budget" />
-        </div>
+        {missionData?.missionStatement ? (
+          <Card className="p-5">
+            <div className="mc-kicker">Operator brief</div>
+            <p className="mt-2 max-w-4xl text-sm italic leading-relaxed text-muted-foreground">
+              &ldquo;{missionData.missionStatement}&rdquo;
+            </p>
+          </Card>
+        ) : null}
 
-        {actionError && (
-          <div className="mt-4 px-3 py-2.5 rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 text-sm flex items-center justify-between gap-3" role="alert">
-            <span>{actionError}</span>
-            <button onClick={() => setActionError(null)} className="text-red-400 hover:text-red-300" aria-label="Dismiss error">
-              <X className="h-4 w-4" />
-            </button>
+        {actionError ? (
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300" role="alert">
+            <div className="flex items-center justify-between gap-3">
+              <span>{actionError}</span>
+              <button onClick={() => setActionError(null)} className="text-red-300 hover:text-red-200" aria-label="Dismiss error">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
           </div>
-        )}
-      </div>
+        ) : null}
 
       {/* Chart + Drawer */}
       <div className="flex flex-1 overflow-hidden">
@@ -431,6 +468,7 @@ export function OrgView({ projectId }: OrgViewProps) {
             }
           />
         )}
+      </div>
       </div>
 
       <CreateAgentModal
@@ -830,7 +868,7 @@ function AgentDocumentCard({
               {title}
             </span>
             {!empty && (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-primary/10 text-primary border-primary/20">
+              <Badge variant="outline" className="text-[11px] px-1.5 py-0 bg-primary/10 text-primary border-primary/20">
                 active
               </Badge>
             )}

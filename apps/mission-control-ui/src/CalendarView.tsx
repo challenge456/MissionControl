@@ -4,6 +4,7 @@ import { api } from "../../../convex/_generated/api";
 import type { Id, Doc } from "../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "./components/PageHeader";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Calendar, RefreshCw } from "lucide-react";
 
@@ -47,7 +48,7 @@ export function CalendarView({ projectId }: CalendarViewProps) {
   const tasksByDay = groupTasksByDay(scheduledTasks, weekDays);
 
   return (
-    <main className="flex-1 overflow-auto bg-background">
+    <main className="mc-page">
       <PageHeader
         title="Calendar"
         description={
@@ -55,6 +56,7 @@ export function CalendarView({ projectId }: CalendarViewProps) {
             ? `${scheduledTasks.length} scheduled · ${recurringTasks.length} recurring — confirm your agents are being proactive`
             : "Cron jobs and scheduled tasks for your agents. Schedule routines to confirm your open claw is being proactive."
         }
+        eyebrow="Operations"
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -80,15 +82,38 @@ export function CalendarView({ projectId }: CalendarViewProps) {
         }
       />
 
-      <div className="px-6 py-4">
+      <div className="mc-page-body mc-page-stack">
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card className="p-4">
+          <div className="mc-kicker">Scheduled</div>
+          <div className="mt-2 text-3xl font-semibold text-foreground">{scheduledTasks.length}</div>
+          <div className="mt-1 text-xs text-muted-foreground">Tasks visible on the calendar</div>
+        </Card>
+        <Card className="p-4">
+          <div className="mc-kicker">Recurring</div>
+          <div className="mt-2 text-3xl font-semibold text-cyan-100">{recurringTasks.length}</div>
+          <div className="mt-1 text-xs text-muted-foreground">Routines still repeating without manual re-entry</div>
+        </Card>
+        <Card className="p-4">
+          <div className="mc-kicker">Today</div>
+          <div className="mt-2 text-3xl font-semibold text-amber-100">{tasksByDay[today.getDay()]?.length ?? 0}</div>
+          <div className="mt-1 text-xs text-muted-foreground">Tasks currently landing on today&apos;s schedule</div>
+        </Card>
+        <Card className="p-4">
+          <div className="mc-kicker">View</div>
+          <div className="mt-2 text-3xl font-semibold text-foreground capitalize">{viewMode}</div>
+          <div className="mt-1 text-xs text-muted-foreground">Switch between a weekly scan and a focused today view</div>
+        </Card>
+      </div>
+
       {scheduledTasks.length === 0 && (
-        <div className="rounded-xl border border-dashed border-border bg-muted/20 p-12 text-center">
+        <Card className="rounded-xl border border-dashed border-border bg-muted/20 p-12 text-center">
           <Calendar className="h-12 w-12 mx-auto text-muted-foreground/40 mb-4" />
           <h3 className="text-sm font-semibold text-foreground mb-1">No scheduled tasks</h3>
           <p className="text-xs text-muted-foreground max-w-sm mx-auto">
             Add a due date or recurrence to tasks from the task drawer to see them here. Great for standups, reviews, and recurring agent routines.
           </p>
-        </div>
+        </Card>
       )}
 
       {scheduledTasks.length > 0 && recurringTasks.length > 0 && (

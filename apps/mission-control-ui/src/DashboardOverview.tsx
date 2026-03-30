@@ -36,6 +36,7 @@ import {
   Calendar,
   Inbox,
   X,
+  Sparkles,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -56,11 +57,11 @@ import { StatusDot, type StatusDotVariant } from "@/components/ui/status-dot";
 import { AutoRefreshBadge } from "@/components/ui/auto-refresh-badge";
 import { SkeletonCard } from "@/components/ui/skeleton-card";
 import { MissionBanner } from "@/components/MissionBanner";
-import { NetworkConnections } from "@/components/NetworkConnections";
 import { NeonChartContainer, NeonChartTheme } from "@/components/NeonChartTheme";
 import { QuotaFuelGauge } from "@/components/QuotaFuelGauge";
 import { cn } from "@/lib/utils";
 import { getOrchestrationBaseUrl } from "@/lib/orchestrationUrl";
+import { getBuildPipelineStages, getCurrentBuildStage } from "@/lib/buildPipeline";
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart,
@@ -196,20 +197,22 @@ function MetricCard({
   return (
     <Card
       className={cn(
-        "p-5 relative overflow-hidden group transition-all duration-200",
-        onClick && "cursor-pointer hover:shadow-lg hover:border-border/80 hover:-translate-y-[1px]"
+        "group relative overflow-hidden p-5 md:p-6 transition-all duration-200",
+        onClick && "cursor-pointer hover:border-cyan-300/20 hover:shadow-[0_24px_60px_rgba(8,47,73,0.28)] hover:-translate-y-[1px]"
       )}
       onClick={onClick}
     >
-      <div className={`absolute top-0 left-0 right-0 h-[2px] ${topBar}`} />
+      <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(103,232,249,0.6),transparent)]" />
+      <div className={`absolute inset-x-5 top-0 h-[2px] rounded-full ${topBar}`} />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(103,232,249,0.08),transparent_28%),radial-gradient(circle_at_bottom_left,rgba(16,185,129,0.05),transparent_24%)] opacity-80" />
 
-      <div className="flex items-start justify-between mb-4">
-        <div className={`rounded-xl ${iconBg} p-2.5 border`}>
+      <div className="relative mb-5 flex items-start justify-between">
+        <div className={`rounded-2xl ${iconBg} p-3 border shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]`}>
           <Icon className={`h-4 w-4 ${accent}`} strokeWidth={1.5} />
         </div>
         <div className="flex items-center gap-2">
           {badge && (
-            <span className={cn("text-[0.6rem] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded border", badgeStyles[badgeVariant])}>
+            <span className={cn("text-[0.65rem] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded border", badgeStyles[badgeVariant])}>
               {badge}
             </span>
           )}
@@ -219,22 +222,22 @@ function MetricCard({
         </div>
       </div>
 
-      <div className={`text-3xl font-bold tracking-tight tabular-nums ${accent} mb-1`}>
+      <div className={`relative mb-1 font-[family:var(--font-display)] text-[2rem] font-semibold tracking-[-0.05em] tabular-nums ${accent}`}>
         {value}
       </div>
-      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <div className="relative text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
         {label}
       </div>
       {subtitle && (
-        <div className="text-[11px] text-muted-foreground/60 mt-1.5 leading-relaxed">
+        <div className="relative mt-2 text-[11px] leading-relaxed text-muted-foreground/72">
           {subtitle}
         </div>
       )}
       {trend && (
         <div className={cn(
-          "flex items-center gap-1 mt-2 text-[10px] font-medium",
-          trend.direction === "up" ? "text-primary" :
-          trend.direction === "down" ? "text-red-400" : "text-muted-foreground"
+          "relative mt-3 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-medium",
+          trend.direction === "up" ? "bg-emerald-300/12 text-emerald-100" :
+          trend.direction === "down" ? "bg-red-400/12 text-red-200" : "bg-muted/60 text-muted-foreground"
         )}>
           <TrendingUp className={cn("h-3 w-3", trend.direction === "down" && "rotate-180")} />
           {trend.label}
@@ -295,7 +298,7 @@ function AgentSquadCard({
                     size="sm"
                   />
                 </div>
-                <span className="text-[0.6rem] uppercase tracking-wider text-muted-foreground/60">
+                <span className="text-[0.65rem] uppercase tracking-wider text-muted-foreground/60">
                   {agent.role}
                 </span>
               </div>
@@ -303,16 +306,16 @@ function AgentSquadCard({
             </div>
             <div className="mt-2 pl-8">
               {currentTask ? (
-                <p className="text-[0.65rem] text-muted-foreground leading-relaxed truncate">
+                <p className="text-[0.7rem] text-muted-foreground leading-relaxed truncate">
                   {currentTask.title}
                 </p>
               ) : (
-                <p className="text-[0.65rem] text-muted-foreground/40 italic">
+                <p className="text-[0.7rem] text-muted-foreground/40 italic">
                   {agent.status === "ACTIVE" ? "Idle" : agent.status.toLowerCase()}
                 </p>
               )}
               {agent.lastHeartbeatAt && (
-                <p className="text-[0.6rem] text-muted-foreground/30 mt-0.5">
+                <p className="text-[0.65rem] text-muted-foreground/30 mt-0.5">
                   Last seen {formatRelativeTime(agent.lastHeartbeatAt)}
                 </p>
               )}
@@ -322,7 +325,7 @@ function AgentSquadCard({
         <TooltipContent side="top" className="max-w-[280px]">
           <div className="font-medium">{agent.name}</div>
           <div className="text-[0.65rem] text-muted-foreground break-all">{agent._id}</div>
-          <div className="text-[0.65rem] mt-0.5">Click to open agent details</div>
+          <div className="text-[0.7rem] mt-0.5">Click to open agent details</div>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -460,7 +463,7 @@ function QuickActionsBar({
             <div className={cn("p-2 rounded-lg bg-muted/40 group-hover:bg-muted/80 transition-colors")}>
               <action.icon className={cn("h-3.5 w-3.5", action.accent)} strokeWidth={1.5} />
             </div>
-            <span className="text-[0.6rem] font-medium text-muted-foreground group-hover:text-foreground transition-colors text-center leading-tight">
+            <span className="text-[0.65rem] font-medium text-muted-foreground group-hover:text-foreground transition-colors text-center leading-tight">
               {action.label}
             </span>
           </button>
@@ -525,7 +528,7 @@ function SystemStatusBar({
           <span
             key={i}
             className={cn(
-              "px-2 py-0.5 rounded-full border text-[0.6rem] font-medium uppercase tracking-wider",
+              "px-2 py-0.5 rounded-full border text-[0.65rem] font-medium uppercase tracking-wider",
               issue.variant === "error"
                 ? "bg-red-500/10 border-red-500/20 text-red-400"
                 : "bg-amber-500/10 border-amber-500/20 text-amber-500"
@@ -537,7 +540,7 @@ function SystemStatusBar({
       </div>
       <div className="ml-auto flex items-center gap-1.5 text-muted-foreground/60">
         <Clock className="h-3 w-3" />
-        <span className="text-[0.6rem]">{new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+        <span className="text-[0.65rem]">{new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
       </div>
     </div>
   );
@@ -547,20 +550,8 @@ function SystemStatusBar({
 // ERROR BOUNDARY (so missing Convex function doesn't crash the whole dashboard)
 // ─────────────────────────────────────────────────────────────────────────────
 
-class SectionErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { hasError: boolean }
-> {
-  state = { hasError: false };
-
-  static getDerivedStateFromError(): { hasError: boolean } {
-    return { hasError: true };
-  }
-
-  render() {
-    if (this.state.hasError) return null;
-    return this.props.children;
-  }
+function SectionErrorBoundary({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -634,8 +625,8 @@ function TopRunsByTokensSection({
                 </TooltipTrigger>
                 <TooltipContent side="top" className="max-w-[320px]">
                   <div className="text-[0.65rem] break-all font-mono">{fullSessionId}</div>
-                  {run.taskId && <div className="text-[0.6rem] text-muted-foreground mt-0.5">Click to open task</div>}
-                  {!run.taskId && run.sessionKey && <div className="text-[0.6rem] text-muted-foreground mt-0.5">Click to open Live Agent Chat</div>}
+                  {run.taskId && <div className="text-[0.65rem] text-muted-foreground mt-0.5">Click to open task</div>}
+                  {!run.taskId && run.sessionKey && <div className="text-[0.65rem] text-muted-foreground mt-0.5">Click to open Live Agent Chat</div>}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -738,6 +729,7 @@ export function DashboardOverview({
   const [deploying, setDeploying] = useState(false);
   const [customizeLayout, setCustomizeLayout] = useState(false);
   const [gatewayConfigured, setGatewayConfigured] = useState<boolean | null>(null);
+  const [dashboardLens, setDashboardLens] = useState<"operator" | "builder" | "executive">("operator");
   const [quickStartDismissed, setQuickStartDismissed] = useState<boolean>(() => {
     try {
       return localStorage.getItem("mc.quickstart.dismissed") === "1";
@@ -818,6 +810,7 @@ export function DashboardOverview({
   const approvals = useQuery(api.approvals.listPending, projectId ? { projectId, limit: 100 } : { limit: 100 });
   const openAlerts = useQuery(api.alerts.listOpen, { limit: 10 });
   const activities = useQuery(api.activities.listRecent, projectId ? { projectId, limit: 12 } : { limit: 12 });
+  const missionData = useQuery(api.mission.getMission, projectId ? { projectId } : {});
   const usageByModel = useQuery(api.runs.getUsageByModel, projectId ? { projectId, windowHours: 24 } : { windowHours: 24 });
   const [chartWindowHours, setChartWindowHours] = useState<24 | 168 | 720>(24);
   const usageTimeSeries = useQuery(
@@ -889,22 +882,169 @@ export function DashboardOverview({
   const buildTasks = tasks.filter(
     (t) => t.status === "IN_PROGRESS" && (t.type === "ENGINEERING" || t.type === "OPS")
   );
+  const hasMission = Boolean(missionData?.missionStatement?.trim());
+  const pipelineStages = getBuildPipelineStages({
+    hasMission,
+    taskCount: tasks.length,
+    activeAgents,
+    gatewayConfigured,
+    approvalsCount: approvals.length,
+  });
+  const currentBuildStage = getCurrentBuildStage(pipelineStages);
 
   const blockedTasksList = tasks.filter((t) => t.status === "BLOCKED").slice(0, 4);
+  const priorityQueue = (
+    blockedTasksList.length > 0
+      ? blockedTasksList
+      : tasks.filter((t) => ["NEEDS_APPROVAL", "IN_PROGRESS", "ASSIGNED"].includes(t.status)).slice(0, 4)
+  );
+  const analystQueue = [
+    ...approvals.slice(0, 2).map((approval) => ({
+      id: `approval-${approval._id}`,
+      title: approval.title,
+      detail: approval.description || "Operator approval is required before execution can continue.",
+      urgency: "High",
+      lane: "Approval",
+      onClick: onOpenApprovals,
+      actionLabel: "Review",
+    })),
+    ...priorityQueue.map((task) => ({
+      id: `task-${task._id}`,
+      title: task.title,
+      detail:
+        task.status === "BLOCKED"
+          ? task.blockedReason || "Execution is stalled until someone removes a dependency."
+          : task.description || "This task is shaping the next operator decision.",
+      urgency:
+        task.status === "BLOCKED" || task.status === "NEEDS_APPROVAL"
+          ? "High"
+          : task.status === "IN_PROGRESS"
+            ? "Medium"
+            : "Low",
+      lane: task.status.replace(/_/g, " "),
+      onClick: () => onTaskSelect?.(task._id),
+      actionLabel: "Open",
+    })),
+  ].slice(0, 5);
+  const signalLandscape = [
+    {
+      label: "Queue pressure",
+      value: `${statusCounts.INBOX + blockedTasks}`,
+      detail: "inbox + blocked",
+      percent: tasks.length > 0 ? Math.min(100, Math.round(((statusCounts.INBOX + blockedTasks) / tasks.length) * 100)) : 0,
+      tone: "bg-amber-300",
+    },
+    {
+      label: "Execution heat",
+      value: `${inProgressTasks}`,
+      detail: "actively moving",
+      percent: tasks.length > 0 ? Math.min(100, Math.round((inProgressTasks / tasks.length) * 100)) : 0,
+      tone: "bg-cyan-300",
+    },
+    {
+      label: "Human gates",
+      value: `${approvals.length}`,
+      detail: "pending reviews",
+      percent: Math.min(100, approvals.length * 18),
+      tone: "bg-rose-300",
+    },
+    {
+      label: "Fleet pulse",
+      value: `${activeAgents}/${agents.length}`,
+      detail: "live agents",
+      percent: agents.length > 0 ? Math.round((activeAgents / agents.length) * 100) : 0,
+      tone: "bg-emerald-300",
+    },
+  ];
+  const throughputSignals = [
+    {
+      label: "Gateway",
+      value: gatewayConfigured ? "Connected" : "Needs setup",
+      tone: gatewayConfigured ? "text-emerald-100" : "text-amber-200",
+      detail: gatewayConfigured ? "Streaming and session control are reachable." : "Realtime work is trust-limited until the gateway is connected.",
+    },
+    {
+      label: "Approvals",
+      value: approvals.length > 0 ? `${approvals.length} pending` : "Clear",
+      tone: approvals.length > 0 ? "text-amber-200" : "text-cyan-100",
+      detail: approvals.length > 0 ? "Operator review is gating execution." : "No human review bottlenecks right now.",
+    },
+    {
+      label: "Queue",
+      value: tasks.length > 0 ? `${tasks.length} tasks` : "Empty",
+      tone: tasks.length > 0 ? "text-cyan-100" : "text-amber-200",
+      detail: tasks.length > 0 ? `${statusCounts.INBOX} still waiting in the inbox.` : "Seed the next task so the system does not idle out.",
+    },
+  ];
   const showQuickStart =
     !quickStartDismissed &&
     (gatewayConfigured === false || agents.length === 0 || tasks.length === 0);
 
-  const networkConnections = [
-    { id: "l1", from: { x: 18, y: 22 }, to: { x: 50, y: 50 } },
-    { id: "l2", from: { x: 18, y: 50 }, to: { x: 50, y: 50 } },
-    { id: "l3", from: { x: 18, y: 78 }, to: { x: 50, y: 50 } },
-    { id: "r1", from: { x: 50, y: 50 }, to: { x: 82, y: 22 } },
-    { id: "r2", from: { x: 50, y: 50 }, to: { x: 82, y: 50 } },
-    { id: "r3", from: { x: 50, y: 50 }, to: { x: 82, y: 78 } },
-  ];
-
   const alertsList = openAlerts ?? [];
+  const pinnedSectionIds = new Set(["statusBar", "quickActions", "actionQueue"]);
+  const lensMeta: Record<"operator" | "builder" | "executive", { label: string; detail: string; sections: Set<string> }> = {
+    operator: {
+      label: "Operator",
+      detail: "Triage blockers, queue pressure, and next actions.",
+      sections: new Set(["healthStrip", "watchNext", "upcoming", "blockers", "taskPipelineActivity"]),
+    },
+    builder: {
+      label: "Builder",
+      detail: "Track build throughput, cost, and execution signals.",
+      sections: new Set(["buildQueue", "usageTrends", "topTasksByCost", "topRunsByTokens", "agentSquad", "aiUsage"]),
+    },
+    executive: {
+      label: "Executive",
+      detail: "Review health, spend, and delivery posture without the operational clutter.",
+      sections: new Set(["healthStrip", "metricRow1", "metricRow2", "usageTrends", "velocityFooter"]),
+    },
+  } as const;
+  const primaryHeadline =
+    approvals.length > 0
+      ? `${approvals.length} approval${approvals.length === 1 ? "" : "s"} are waiting on you`
+      : blockedTasks > 0
+        ? `${blockedTasks} blocker${blockedTasks === 1 ? "" : "s"} are slowing execution`
+        : activeAgents === 0
+          ? "The fleet is idle"
+          : inProgressTasks > 0
+            ? `${inProgressTasks} task${inProgressTasks === 1 ? "" : "s"} are actively moving`
+            : "The system is steady and ready";
+  const primaryDetail =
+    approvals.length > 0
+      ? "Resolve pending decisions first so agents can continue with confidence."
+      : blockedTasks > 0
+        ? "Open the task board and clear blockers before throughput degrades."
+        : activeAgents === 0
+          ? "Bring agents online or seed work before the queue loses momentum."
+          : inProgressTasks > 0
+            ? "Execution is healthy. Review recent events and decide what should happen next."
+            : "There are no active blockers. Use the home view to seed the next move.";
+  const checklistItems = [
+    {
+      id: "gateway",
+      label: "Gateway connected",
+      detail: gatewayConfigured ? "Live streaming and chat are available." : "Streaming is not configured yet.",
+      done: Boolean(gatewayConfigured),
+      actionLabel: gatewayConfigured ? "Review gateway" : "Connect gateway",
+      onClick: gatewayConfigured ? () => onNavigate?.("gateway") : onNavigateToGateway,
+    },
+    {
+      id: "fleet",
+      label: "Agents online",
+      detail: activeAgents > 0 ? `${activeAgents} live agent${activeAgents === 1 ? "" : "s"} available.` : "No live agents are currently reporting in.",
+      done: activeAgents > 0,
+      actionLabel: "Open agents",
+      onClick: () => onNavigate?.("agents"),
+    },
+    {
+      id: "queue",
+      label: "Mission queue seeded",
+      detail: tasks.length > 0 ? `${tasks.length} queued task${tasks.length === 1 ? "" : "s"} in the system.` : "No tasks are queued right now.",
+      done: tasks.length > 0,
+      actionLabel: tasks.length > 0 ? "Open tasks" : "Create task",
+      onClick: tasks.length > 0 ? () => onNavigate?.("tasks") : onOpenCreateTask,
+    },
+  ];
 
   const renderDashboardSection = (id: string): React.ReactNode => {
     switch (id) {
@@ -997,7 +1137,7 @@ export function DashboardOverview({
                   {issues.map((label, i) => (
                     <span
                       key={i}
-                      className="text-[0.6rem] px-2 py-0.5 rounded-full border bg-amber-500/10 border-amber-500/20 text-amber-500"
+                      className="text-[0.65rem] px-2 py-0.5 rounded-full border bg-amber-500/10 border-amber-500/20 text-amber-500"
                     >
                       {label}
                     </span>
@@ -1072,7 +1212,7 @@ export function DashboardOverview({
               {hasAny ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <p className="text-[0.6rem] text-muted-foreground/70 mb-2">Next tasks</p>
+                    <p className="text-[0.65rem] text-muted-foreground/70 mb-2">Next tasks</p>
                     {upcomingTasks.length === 0 ? (
                       <p className="text-xs text-muted-foreground/70">None in next 7 days</p>
                     ) : (
@@ -1089,7 +1229,7 @@ export function DashboardOverview({
                             >
                               {t.title}
                             </button>
-                            <span className="text-[0.6rem] text-muted-foreground">
+                            <span className="text-[0.65rem] text-muted-foreground">
                               {t.scheduledFor
                                 ? new Date(t.scheduledFor).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
                                 : ""}
@@ -1100,7 +1240,7 @@ export function DashboardOverview({
                     )}
                   </div>
                   <div>
-                    <p className="text-[0.6rem] text-muted-foreground/70 mb-2">Next job runs</p>
+                    <p className="text-[0.65rem] text-muted-foreground/70 mb-2">Next job runs</p>
                     {nextJobRuns.length === 0 ? (
                       <p className="text-xs text-muted-foreground/70">None scheduled</p>
                     ) : (
@@ -1264,7 +1404,7 @@ export function DashboardOverview({
                 <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Agent Squad
                 </span>
-                <span className="text-[0.6rem] text-muted-foreground/50 ml-1">
+                <span className="text-[0.65rem] text-muted-foreground/50 ml-1">
                   {activeAgents} active / {agents.length} total
                 </span>
               </div>
@@ -1304,7 +1444,7 @@ export function DashboardOverview({
                 <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Build Queue
                 </span>
-                <span className="text-[0.6rem] text-muted-foreground/50 ml-1">
+                <span className="text-[0.65rem] text-muted-foreground/50 ml-1">
                   {buildTasks.length} active
                 </span>
               </div>
@@ -1334,12 +1474,12 @@ export function DashboardOverview({
                       <p className="text-xs text-foreground/90 truncate group-hover:text-foreground transition-colors">
                         {task.title}
                       </p>
-                      <p className="text-[0.6rem] text-muted-foreground/50">
+                      <p className="text-[0.65rem] text-muted-foreground/50">
                         {assignee ? `${assignee.emoji ?? "🤖"} ${assignee.name}` : "Unassigned"}
                         {task.startedAt && <> &middot; {formatElapsed(task.startedAt)}</>}
                       </p>
                     </div>
-                    <span className="text-[0.6rem] uppercase tracking-wider text-amber-500/70 shrink-0">
+                    <span className="text-[0.65rem] uppercase tracking-wider text-amber-500/70 shrink-0">
                       {task.type}
                     </span>
                     <ChevronRight className="h-3 w-3 text-muted-foreground/20 group-hover:text-muted-foreground/50 shrink-0 transition-colors" />
@@ -1358,7 +1498,7 @@ export function DashboardOverview({
                 <span className="text-xs font-semibold uppercase tracking-wider text-red-400">
                   Blockers
                 </span>
-                <span className="text-[0.6rem] px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/20 font-medium uppercase tracking-wider">
+                <span className="text-[0.65rem] px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/20 font-medium uppercase tracking-wider">
                   {blockedTasksList.length} task{blockedTasksList.length > 1 ? "s" : ""} blocked
                 </span>
               </div>
@@ -1383,7 +1523,7 @@ export function DashboardOverview({
                   <span className="text-xs text-foreground/80 truncate flex-1 group-hover:text-foreground transition-colors">
                     {task.title}
                   </span>
-                  <span className="text-[0.6rem] text-muted-foreground/40 shrink-0">{task.type}</span>
+                  <span className="text-[0.65rem] text-muted-foreground/40 shrink-0">{task.type}</span>
                 </button>
               ))}
             </div>
@@ -1467,7 +1607,7 @@ export function DashboardOverview({
                     Recent Activity
                   </span>
                 </div>
-                <span className="text-[0.6rem] text-muted-foreground/40">Live</span>
+                <span className="text-[0.65rem] text-muted-foreground/40">Live</span>
               </div>
               <div className="space-y-0.5 max-h-[280px] overflow-y-auto">
                 {activities.slice(0, 12).map((activity) => (
@@ -1482,7 +1622,7 @@ export function DashboardOverview({
                       <p className="text-xs text-foreground/80 leading-relaxed truncate">
                         {activity.description}
                       </p>
-                      <p className="text-[0.6rem] text-muted-foreground/50 mt-0.5">
+                      <p className="text-[0.65rem] text-muted-foreground/50 mt-0.5">
                         <span className="uppercase tracking-wider">{activity.actorType}</span>
                         {" · "}
                         {new Date(activity._creationTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
@@ -1662,8 +1802,8 @@ export function DashboardOverview({
                 <item.icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" strokeWidth={1.5} />
                 <div>
                   <div className="text-xs font-semibold text-foreground">{item.value}</div>
-                  <div className="text-[0.6rem] text-muted-foreground/60 uppercase tracking-wider">{item.label}</div>
-                  <div className="text-[0.6rem] text-muted-foreground/40">{item.sub}</div>
+                  <div className="text-[0.65rem] text-muted-foreground/60 uppercase tracking-wider">{item.label}</div>
+                  <div className="text-[0.65rem] text-muted-foreground/40">{item.sub}</div>
                 </div>
               </div>
             ))}
@@ -1674,264 +1814,410 @@ export function DashboardOverview({
     }
   };
 
-  const orderedSectionNodes = orderedIds.map((id) => (
+  const filteredSectionIds = orderedIds.filter((id) => !pinnedSectionIds.has(id) && lensMeta[dashboardLens].sections.has(id as keyof typeof SECTION_LABELS | string));
+  const orderedSectionNodes = filteredSectionIds
+    .filter((id) => !pinnedSectionIds.has(id))
+    .map((id) => (
     <React.Fragment key={id}>
       {renderDashboardSection(id)}
     </React.Fragment>
-  ));
+    ));
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <main className="flex-1 overflow-auto">
-      <div className="max-w-[1400px] mx-auto px-6 py-5">
+      <div className="max-w-[1720px] mx-auto px-6 py-5">
+        <SystemStatusBar agents={agents} tasks={tasks} approvals={approvals} />
+
         <MissionBanner
           projectId={projectId}
           onEditClick={() => onOpenMissionModal?.()}
           onReversePromptClick={() => onOpenSuggestionsDrawer?.()}
+          brief={{
+            stageLabel: currentBuildStage.label,
+            stageEyebrow: currentBuildStage.eyebrow,
+            artifact: currentBuildStage.artifact,
+            rule:
+              currentBuildStage.id === "prototype"
+                ? "Get a yes on the prototype before backend complexity expands."
+                : currentBuildStage.id === "backend"
+                  ? "Generate backend shape from approved frontend and docs, not guesswork."
+                  : "Define actors and constraints before expanding feature scope.",
+          }}
+          className="mb-6"
         />
 
-        {gatewayConfigured === false && onNavigateToGateway && (
-          <Card className="mb-6 p-4 border-primary/30 bg-primary/5 flex flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-primary/10 p-2">
-                <Radio className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-foreground">Connect OpenClaw Gateway</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Connect to your Gateway for live agent chat and streaming.
-                </p>
-              </div>
-            </div>
-            <Button size="sm" variant="neon" onClick={onNavigateToGateway}>
-              Connect Gateway
-            </Button>
-          </Card>
-        )}
-
-        {showQuickStart && (
-          <Card className="mb-6 p-4 border-border/70 bg-card/80">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="text-sm font-semibold text-foreground">Quick start</h3>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Get Mission Control operational fast: connect the gateway, check your agents, and add the first task.
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {onNavigateToGateway && gatewayConfigured === false && (
-                    <Button size="sm" variant="neon" onClick={onNavigateToGateway}>
-                      Connect Gateway
-                    </Button>
-                  )}
-                  {onNavigate && (
-                    <Button size="sm" variant="outline" onClick={() => onNavigate("agents")}>
-                      Open Agent Registry
-                    </Button>
-                  )}
-                  {onOpenCreateTask && (
-                    <Button size="sm" variant="outline" onClick={onOpenCreateTask}>
-                      Create Task
-                    </Button>
-                  )}
-                </div>
-              </div>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-8 w-8 shrink-0"
-                aria-label="Dismiss quick start"
-                onClick={() => {
-                  setQuickStartDismissed(true);
-                  try {
-                    localStorage.setItem("mc.quickstart.dismissed", "1");
-                  } catch {
-                    // ignore
-                  }
-                }}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          </Card>
-        )}
-
-        {/* Network hub: left (Suppliers) | center (Core) | right (Customers) */}
-        <div className="relative grid grid-cols-1 lg:grid-cols-[1fr_minmax(300px,380px)_1fr] gap-4 lg:gap-6 mb-8 min-h-[320px]">
-          <NetworkConnections connections={networkConnections} />
-
-          {/* Left: Suppliers */}
-          <div className="flex flex-col gap-3 justify-center">
-            <Card
-              className="p-4 cursor-pointer hover:-translate-y-0.5 transition-all"
-              onClick={() => onNavigate?.("tasks")}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground">
-                  INBOX
-                </span>
-                <span className="text-xl font-bold tabular-nums text-[var(--neon-cyan)]">
-                  {statusCounts.INBOX}
-                </span>
-              </div>
-              <p className="text-[0.6rem] text-muted-foreground/70 mt-1">Tasks ready</p>
-            </Card>
-            <Card
-              className="p-4 cursor-pointer hover:-translate-y-0.5 transition-all"
-              onClick={onOpenApprovals}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Pending approvals
-                </span>
-                <span className="text-xl font-bold tabular-nums text-[var(--neon-cyan)]">
-                  {approvals.length}
-                </span>
-              </div>
-              <p className="text-[0.6rem] text-muted-foreground/70 mt-1">Awaiting review</p>
-            </Card>
-            <Card
-              className="p-4 cursor-pointer hover:-translate-y-0.5 transition-all"
-              onClick={() => onNavigate?.("agents")}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Agent pool
-                </span>
-                <span className="text-xl font-bold tabular-nums text-[var(--neon-cyan)]">
-                  {agents.length}
-                </span>
-              </div>
-              <p className="text-[0.6rem] text-muted-foreground/70 mt-1">{activeAgents} active</p>
-            </Card>
-          </div>
-
-          {/* Center: Core system */}
-          <Card className="relative flex flex-col items-center justify-center p-6 border-[var(--glass-border-green)] shadow-[var(--glow-green)]">
-            <div className="absolute top-0 left-0 right-0 h-[2px] bg-[var(--neon-green)]/60 rounded-t-xl" />
-            <div className="flex items-center gap-2 mb-2">
-              <div className="h-8 w-8 rounded-lg bg-[var(--neon-green)]/20 flex items-center justify-center border border-[var(--glass-border-green)]">
-                <Cpu className="h-4 w-4 text-[var(--neon-green)]" strokeWidth={1.5} />
-              </div>
-              <h2 className="text-sm font-bold uppercase tracking-wider text-foreground">
-                Mission Control
-              </h2>
-            </div>
-            <p className="text-[0.65rem] text-muted-foreground text-center mb-4">
-              Core system status
-            </p>
-            <div className="flex flex-wrap items-center justify-center gap-2 mb-4">
-              <Button
-                disabled={deploying}
-                variant="neon"
-                size="sm"
-                className="h-8 gap-1.5 text-xs"
-                onClick={async () => {
-                  setDeploying(true);
-                  try {
-                    await deploySquad({ projectId: projectId ?? undefined });
-                  } finally {
-                    setDeploying(false);
-                  }
-                }}
-              >
-                {deploying ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Rocket className="h-3 w-3" />
-                )}
-                Deploy Squad
-              </Button>
-              <AutoRefreshBadge interval={15} active />
-              <span className="flex items-center gap-1.5 text-xs font-medium text-[var(--neon-green)]">
-                <span className="h-1.5 w-1.5 rounded-full bg-[var(--neon-green)] status-dot-pulse" />
-                Live
-              </span>
-            </div>
-            <div className="grid grid-cols-2 gap-3 w-full">
-              <div className="text-center p-2 rounded-lg bg-[var(--glass-bg)] border border-[var(--glass-border)]">
-                <span className="text-lg font-bold tabular-nums text-[var(--neon-green)]">{activeAgents}</span>
-                <p className="text-[0.6rem] text-muted-foreground">Active</p>
-              </div>
-              <div className="text-center p-2 rounded-lg bg-[var(--glass-bg)] border border-[var(--glass-border)]">
-                <span className="text-lg font-bold tabular-nums text-[var(--neon-green)]">{inProgressTasks}</span>
-                <p className="text-[0.6rem] text-muted-foreground">In progress</p>
-              </div>
-            </div>
-          </Card>
-
-          {/* Right: Customers */}
-          <div className="flex flex-col gap-3 justify-center">
-            <Card
-              className="p-4 cursor-pointer hover:-translate-y-0.5 transition-all"
-              onClick={() => onNavigate?.("tasks")}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Completed
-                </span>
-                <span className="text-xl font-bold tabular-nums text-[var(--neon-green)]">
-                  {doneTasks}
-                </span>
-              </div>
-              <p className="text-[0.6rem] text-muted-foreground/70 mt-1">{completionRate}% rate</p>
-            </Card>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Card
-                    className="p-4 cursor-pointer hover:-translate-y-0.5 transition-all"
-                    onClick={() => onNavigate?.("tasks")}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground">
-                        Total spend
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.7fr)_360px] mb-8">
+          <Card className="overflow-hidden">
+            <div className="grid gap-0 xl:grid-cols-[minmax(0,1.2fr)_380px]">
+              <div className="relative border-b border-[var(--panel-line)] p-6 xl:border-b-0 xl:border-r">
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.12),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(16,185,129,0.14),transparent_28%)]" />
+                <div className="relative">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-100/80">
+                        Home command deck
                       </span>
-                      <span className="text-lg font-bold tabular-nums text-[var(--neon-green)]">
-                        ${totalCost.toFixed(2)}
+                      <span className="rounded-full border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-3 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                        {activeAgents} live agents
                       </span>
                     </div>
-                    <p className="text-[0.6rem] text-muted-foreground/70 mt-1">Across tasks</p>
-                    <p className="text-[0.6rem] text-muted-foreground/50 mt-1 flex items-center gap-1">
-                      Est. monthly savings
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span
-                            className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-muted-foreground/30 text-muted-foreground/70 hover:text-muted-foreground cursor-help text-[0.5rem] font-bold"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            ?
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom" className="max-w-[260px]">
-                          Savings vs. paying full window price without cache/optimizations.
-                        </TooltipContent>
-                      </Tooltip>
-                      <span className="tabular-nums">—</span>
-                    </p>
-                  </Card>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" className="max-w-[240px]">
-                  Cost from agent runs. Savings vs. paying list price without run-level optimizations.
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            <Card
-              className="p-4 cursor-pointer hover:-translate-y-0.5 transition-all"
-              onClick={() => onNavigate?.("tasks")}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Recent activity
-                </span>
-                <span className="text-xl font-bold tabular-nums text-[var(--neon-green)]">
-                  {activities.length}
-                </span>
+                    <div className="flex flex-wrap gap-2">
+                      {(Object.keys(lensMeta) as Array<keyof typeof lensMeta>).map((lens) => (
+                        <button
+                          key={lens}
+                          type="button"
+                          onClick={() => setDashboardLens(lens)}
+                          className={cn(
+                            "rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] transition-all",
+                            dashboardLens === lens
+                              ? "border-cyan-300/20 bg-cyan-400/10 text-cyan-100 shadow-[var(--glow-cyan)]"
+                              : "border-[var(--panel-line)] bg-[color:var(--shell-panel)] text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          {lensMeta[lens].label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <h1 className="mt-4 max-w-3xl font-[family:var(--font-display)] text-3xl font-semibold leading-tight tracking-[0.04em] text-foreground xl:text-4xl">
+                    {primaryHeadline}
+                  </h1>
+                  <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground xl:text-base">
+                    {primaryDetail}
+                  </p>
+                  <p className="mt-2 text-[11px] font-medium uppercase tracking-[0.16em] text-cyan-100/70">
+                    {lensMeta[dashboardLens].detail}
+                  </p>
+
+                  <div className="mt-5 flex flex-wrap gap-2">
+                    {approvals.length > 0 && onOpenApprovals && (
+                      <Button variant="neon-cyan" size="sm" onClick={onOpenApprovals}>
+                        <Shield className="h-3.5 w-3.5" />
+                        Review approvals
+                      </Button>
+                    )}
+                    {blockedTasks > 0 && onNavigate && (
+                      <Button variant="outline" size="sm" onClick={() => onNavigate("tasks")}>
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                        Resolve blockers
+                      </Button>
+                    )}
+                    {onOpenCreateTask && (
+                      <Button variant="outline" size="sm" onClick={onOpenCreateTask}>
+                        <Plus className="h-3.5 w-3.5" />
+                        New task
+                      </Button>
+                    )}
+                    {onOpenSuggestionsDrawer && (
+                      <Button variant="ghost" size="sm" onClick={onOpenSuggestionsDrawer}>
+                        <Sparkles className="h-3.5 w-3.5" />
+                        Reverse prompt
+                      </Button>
+                    )}
+                  </div>
+
+                  <div className="mt-6 grid grid-cols-2 gap-3 xl:grid-cols-4">
+                    {[
+                      { label: "Active agents", value: activeAgents, sub: `${agents.length} total agents`, accent: "text-cyan-100" },
+                      { label: "In progress", value: inProgressTasks, sub: `${statusCounts.INBOX} waiting in inbox`, accent: "text-emerald-100" },
+                      { label: "Pending approvals", value: approvals.length, sub: approvals.length > 0 ? "human action required" : "all clear", accent: approvals.length > 0 ? "text-amber-200" : "text-cyan-100" },
+                      { label: "Blocked tasks", value: blockedTasks, sub: blockedTasks > 0 ? "throughput at risk" : "no current blockers", accent: blockedTasks > 0 ? "text-rose-200" : "text-cyan-100" },
+                    ].map((item) => (
+                      <div key={item.label} className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-4">
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                          {item.label}
+                        </div>
+                        <div className={cn("mt-2 text-3xl font-semibold tabular-nums", item.accent)}>
+                          {item.value}
+                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground">{item.sub}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-5 grid gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+                    <div className="rounded-2xl border border-[var(--panel-line)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--shell-panel)_92%,transparent),color-mix(in_srgb,var(--background)_88%,transparent))] p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-200/70">
+                            Critical path
+                          </div>
+                          <div className="mt-1 text-sm font-semibold text-foreground">
+                            {priorityQueue.length > 0 ? "What is slowing or gating progress right now" : "No active blockers in the critical path"}
+                          </div>
+                        </div>
+                        {onNavigate && (
+                          <Button variant="ghost" size="sm" onClick={() => onNavigate("tasks")}>
+                            Open board
+                          </Button>
+                        )}
+                      </div>
+                      <div className="mt-4 space-y-2">
+                        {priorityQueue.length > 0 ? (
+                          priorityQueue.map((task) => (
+                            <button
+                              key={task._id}
+                              type="button"
+                              onClick={() => onTaskSelect?.(task._id)}
+                              className="flex w-full items-start justify-between gap-3 rounded-lg border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-3 text-left transition-all hover:border-cyan-300/20 hover:bg-cyan-400/6"
+                            >
+                              <div className="min-w-0">
+                                <div className="text-sm font-semibold text-foreground">{task.title}</div>
+                                <div className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                                  {task.status === "BLOCKED"
+                                    ? task.blockedReason || "Blocked work needs operator action before execution can continue."
+                                    : task.description || "This task is currently shaping the next operator decision."}
+                                </div>
+                              </div>
+                              <span className="rounded-full border border-[var(--panel-line)] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                                {task.status.replace(/_/g, " ")}
+                              </span>
+                            </button>
+                          ))
+                        ) : (
+                          <div className="rounded-lg border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-4 text-sm text-muted-foreground">
+                            The queue is clear. This is the right time to seed a new task, inspect recent output quality, or tighten routing rules before pressure returns.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-[var(--panel-line)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--shell-panel)_92%,transparent),color-mix(in_srgb,var(--background)_88%,transparent))] p-4">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-200/70">
+                        Operator readout
+                      </div>
+                      <div className="mt-1 text-sm font-semibold text-foreground">
+                        Trust indicators for the current operating state
+                      </div>
+                      <div className="mt-4 space-y-3">
+                        {throughputSignals.map((signal) => (
+                          <div key={signal.label} className="rounded-lg border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                                {signal.label}
+                              </div>
+                              <div className={cn("text-xs font-semibold uppercase tracking-[0.14em]", signal.tone)}>
+                                {signal.value}
+                              </div>
+                            </div>
+                            <div className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                              {signal.detail}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <p className="text-[0.6rem] text-muted-foreground/70 mt-1">Events</p>
+
+              <div className="p-6">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-200/70">
+                      Live pulse
+                    </div>
+                    <div className="mt-1 text-sm font-semibold text-foreground">Recent operational movement</div>
+                  </div>
+                  <AutoRefreshBadge interval={15} active />
+                </div>
+
+                <div className="mt-4 space-y-2">
+                  {activities.slice(0, 5).map((activity) => (
+                    <div key={activity._id} className="rounded-lg border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-3">
+                      <div className="flex items-start gap-3">
+                        <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-cyan-300 status-dot-pulse" />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm leading-relaxed text-foreground/90">{activity.description}</p>
+                          <p className="mt-1 text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                            {activity.actorType} · {new Date(activity._creationTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 rounded-xl border border-[var(--panel-line)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--shell-panel)_92%,transparent),transparent)] px-4 py-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Execution posture</div>
+                      <div className="mt-1 text-sm font-semibold text-foreground">
+                        {completionRate}% completion rate
+                      </div>
+                    </div>
+                    <span className="rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-100">
+                      ${totalCost.toFixed(2)} spent
+                    </span>
+                  </div>
+                  <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                    <div className="rounded-2xl border border-[var(--panel-line)] px-3 py-3">
+                      <div className="text-xl font-semibold text-foreground">{doneTasks}</div>
+                      <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Completed</div>
+                    </div>
+                    <div className="rounded-2xl border border-[var(--panel-line)] px-3 py-3">
+                      <div className="text-xl font-semibold text-foreground">{reviewTasks}</div>
+                      <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Review</div>
+                    </div>
+                    <div className="rounded-2xl border border-[var(--panel-line)] px-3 py-3">
+                      <div className="text-xl font-semibold text-foreground">{activities.length}</div>
+                      <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Events</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          <div className="space-y-4">
+            <Card className="p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-200/70">
+                    Launch checklist
+                  </div>
+                  <div className="mt-1 text-sm font-semibold text-foreground">
+                    Get Mission Control into a trustworthy operating state
+                  </div>
+                </div>
+                {showQuickStart && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 shrink-0"
+                    aria-label="Dismiss quick start"
+                    onClick={() => {
+                      setQuickStartDismissed(true);
+                      try {
+                        localStorage.setItem("mc.quickstart.dismissed", "1");
+                      } catch {
+                        // ignore
+                      }
+                    }}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+              <div className="mt-4 space-y-3">
+                {checklistItems.map((item) => (
+                  <div key={item.id} className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3">
+                        <StatusDot variant={item.done ? "healthy" : "warning"} pulse={!item.done} size="md" />
+                        <div>
+                          <div className="text-sm font-semibold text-foreground">{item.label}</div>
+                          <div className="mt-1 text-xs leading-relaxed text-muted-foreground">{item.detail}</div>
+                        </div>
+                      </div>
+                      {item.onClick && (
+                        <Button size="sm" variant={item.done ? "outline" : "neon"} onClick={item.onClick}>
+                          {item.actionLabel}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </Card>
+
+            {renderDashboardSection("actionQueue")}
           </div>
         </div>
 
+        {renderDashboardSection("quickActions")}
+        <div className="mb-8 grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+          <Card className="p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-200/70">
+                  Analyst queue
+                </div>
+                <div className="mt-1 text-sm font-semibold text-foreground">
+                  Triage what deserves operator attention next
+                </div>
+              </div>
+              <span className="rounded-full border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                {analystQueue.length} live items
+              </span>
+            </div>
+            <div className="mt-4 space-y-3">
+              {analystQueue.map((item) => (
+                <div key={item.id} className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="text-sm font-semibold text-foreground">{item.title}</div>
+                        <span className="rounded-full border border-[var(--panel-line)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                          {item.lane}
+                        </span>
+                        <span
+                          className={cn(
+                            "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em]",
+                            item.urgency === "High"
+                              ? "bg-rose-400/12 text-rose-200"
+                              : item.urgency === "Medium"
+                                ? "bg-amber-300/12 text-amber-100"
+                                : "bg-cyan-300/10 text-cyan-100"
+                          )}
+                        >
+                          {item.urgency}
+                        </span>
+                      </div>
+                      <div className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                        {item.detail}
+                      </div>
+                    </div>
+                    {item.onClick && (
+                      <Button variant="outline" size="sm" onClick={item.onClick}>
+                        {item.actionLabel}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card className="p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-200/70">
+                  Signal landscape
+                </div>
+                <div className="mt-1 text-sm font-semibold text-foreground">
+                  Live health ratios inspired by modern observability decks
+                </div>
+              </div>
+              <AutoRefreshBadge interval={15} active />
+            </div>
+            <div className="mt-4 grid gap-3">
+              {signalLandscape.map((signal) => (
+                <div key={signal.label} className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                        {signal.label}
+                      </div>
+                      <div className="mt-1 text-sm text-muted-foreground">{signal.detail}</div>
+                    </div>
+                    <div className="text-2xl font-semibold tracking-[-0.04em] text-foreground">
+                      {signal.value}
+                    </div>
+                  </div>
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted/60">
+                    <div
+                      className={cn("h-full rounded-full", signal.tone)}
+                      style={{ width: `${signal.percent}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
         {orderedSectionNodes}
 
         {/* Customize layout dialog renders below; section order is driven by orderedSectionNodes above. */}

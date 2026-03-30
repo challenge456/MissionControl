@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { ExternalLink, FileText, ChevronRight, Search, MessageSquare, BookOpen, Loader2, Zap, RotateCcw, Send, X } from "lucide-react";
+import { ExternalLink, FileText, ChevronRight, Search, MessageSquare, BookOpen, Loader2, Zap, RotateCcw, Send, X, FolderGit2, Bot, NotebookPen, Boxes, type LucideIcon } from "lucide-react";
 import { useAction, useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "./components/PageHeader";
 import { TabBar } from "./components/TabBar";
 import { cn } from "@/lib/utils";
@@ -12,6 +13,7 @@ import { cn } from "@/lib/utils";
 // ---------------------------------------------------------------------------
 
 const DOC_LINKS = [
+  { title: "Design DNA",           path: "design.md",                             icon: "🧬", description: "Shared design contract" },
   { title: "PRD V2",               path: "docs/PRD_V2.md",                         icon: "📋", description: "Product requirements" },
   { title: "App Flow",             path: "docs/APP_FLOW.md",                        icon: "🔄", description: "Application architecture" },
   { title: "Backend Structure",    path: "docs/BACKEND_STRUCTURE.md",              icon: "🏗️", description: "Backend overview" },
@@ -32,6 +34,13 @@ interface QuickLinkItem {
   icon: string;
   category: string;
 }
+
+const QUICK_LINK_CATEGORY_ICONS: Record<string, LucideIcon> = {
+  Project: FolderGit2,
+  "AI Tools": Bot,
+  Workspace: NotebookPen,
+  Infra: Boxes,
+};
 
 const QUICK_LINKS: QuickLinkItem[] = [
   // Project
@@ -81,7 +90,38 @@ function KnowledgeTab() {
   const categories = Array.from(new Set(QUICK_LINKS.map((l) => l.category)));
 
   return (
-    <div className="px-6 pb-6 space-y-8">
+    <div className="mc-page-body mc-page-stack">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,0.75fr)]">
+        <Card className="p-5">
+          <div className="mc-kicker">Knowledge system</div>
+          <div className="mt-2 text-xl font-semibold text-foreground">The operating handbook for Mission Control</div>
+          <div className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+            Keep the mission, architecture, and runbooks close to the operator surface so every decision is grounded in the same source of truth.
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Badge variant="outline" className="border-cyan-300/20 text-cyan-100">
+              {DOC_LINKS.length} curated docs
+            </Badge>
+            <Badge variant="outline" className="border-emerald-300/20 text-emerald-100">
+              {QUICK_LINKS.length} linked tools
+            </Badge>
+          </div>
+        </Card>
+
+        <Card className="p-5">
+          <div className="mc-kicker">Operator guidance</div>
+          <div className="mt-2 text-sm font-semibold text-foreground">Use this surface for stable context, not transient chatter.</div>
+          <div className="mt-3 space-y-2 text-xs leading-relaxed text-muted-foreground">
+            <div className="rounded-lg border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-3 py-3">
+              Open docs first when you need trusted project context or process guidance.
+            </div>
+            <div className="rounded-lg border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-3 py-3">
+              Use search when you know the question but not the source document, then use repo chat for follow-up.
+            </div>
+          </div>
+        </Card>
+      </div>
+
       {/* Project docs grid */}
       <div>
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Project Docs</h2>
@@ -95,8 +135,8 @@ function KnowledgeTab() {
               className="block group"
             >
               <Card className="p-4 h-full flex items-center gap-3 hover:shadow-md hover:border-primary/30 transition-all cursor-pointer group-hover:bg-muted/30">
-                <div className="h-10 w-10 rounded-xl bg-muted border border-border flex items-center justify-center text-xl shrink-0">
-                  {doc.icon}
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-cyan-300/16 bg-cyan-400/8 text-cyan-100">
+                  <FileText className="h-4.5 w-4.5" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-foreground truncate">{doc.title}</p>
@@ -121,19 +161,26 @@ function KnowledgeTab() {
               <p className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-widest mb-2 px-1">{cat}</p>
               <Card className="divide-y divide-border">
                 {QUICK_LINKS.filter((l) => l.category === cat).map((link) => (
-                  <a
-                    key={link.href}
-                    href={link.href}
-                    target={link.href.startsWith("obsidian://") || link.href.startsWith("cursor://") ? "_self" : "_blank"}
-                    rel="noopener noreferrer"
-                    className="flex items-center justify-between px-4 py-2.5 hover:bg-muted/50 transition-colors group"
-                  >
-                    <span className="flex items-center gap-3 text-sm font-medium text-foreground group-hover:text-primary transition-colors">
-                      <span className="text-base w-5 text-center">{link.icon}</span>
-                      {link.label}
-                    </span>
-                    <ExternalLink className="h-3.5 w-3.5 text-muted-foreground/50 group-hover:text-primary transition-colors shrink-0" />
-                  </a>
+                  (() => {
+                    const LinkIcon = QUICK_LINK_CATEGORY_ICONS[link.category] ?? FileText;
+                    return (
+                      <a
+                        key={link.href}
+                        href={link.href}
+                        target={link.href.startsWith("obsidian://") || link.href.startsWith("cursor://") ? "_self" : "_blank"}
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-between px-4 py-2.5 hover:bg-muted/50 transition-colors group"
+                      >
+                        <span className="flex items-center gap-3 text-sm font-medium text-foreground group-hover:text-primary transition-colors">
+                          <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--panel-line)] bg-[color:var(--shell-panel)] text-cyan-100">
+                            <LinkIcon className="h-4 w-4" />
+                          </span>
+                          {link.label}
+                        </span>
+                        <ExternalLink className="h-3.5 w-3.5 text-muted-foreground/50 group-hover:text-primary transition-colors shrink-0" />
+                      </a>
+                    );
+                  })()
                 ))}
               </Card>
             </div>
@@ -210,7 +257,7 @@ function SearchTab() {
   }
 
   return (
-    <div className="px-6 pb-6 space-y-5">
+    <div className="mc-page-body mc-page-stack">
       {/* Index status */}
       <Card className="p-4">
         <div className="flex items-center justify-between gap-4">
@@ -379,7 +426,7 @@ function ChatTab() {
   ];
 
   return (
-    <div className="flex flex-col h-[calc(100vh-200px)] px-6 pb-6">
+    <div className="mc-page-body flex h-[calc(100vh-220px)] flex-col gap-5">
       {/* Header bar */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
@@ -517,8 +564,17 @@ export function DocsView() {
   const [activeTab, setActiveTab] = useState("knowledge");
 
   return (
-    <main className="flex-1 overflow-auto">
-      <PageHeader title="Documentation" description="Project guides and technical references" />
+    <main className="mc-page">
+      <PageHeader
+        title="Documentation"
+        description="Project guides, runbooks, search, and repo-aware chat in one knowledge surface."
+        icon={<BookOpen className="h-4.5 w-4.5" strokeWidth={1.7} />}
+        status={
+          <Badge variant="outline" className="border-cyan-300/20 text-cyan-100">
+            {DOC_LINKS.length} docs
+          </Badge>
+        }
+      />
       <TabBar tabs={TABS} activeTab={activeTab} onTabChange={setActiveTab} className="px-6" />
 
       {activeTab === "knowledge" && <KnowledgeTab />}

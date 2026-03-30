@@ -11,6 +11,10 @@ import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
+import { PageHeader } from "./components/PageHeader";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { GitBranch, Network, AlertTriangle, CheckCircle2 } from "lucide-react";
 
 interface MissionDAGViewProps {
   projectId: Id<"projects"> | null;
@@ -159,13 +163,15 @@ export function MissionDAGView({ projectId, onTaskSelect }: MissionDAGViewProps)
     [filteredNodes, edges]
   );
 
+  const positionedNodes = Array.from(layout.positions.values()) as Array<{ x: number; y: number }>;
+
   const canvasWidth = Math.max(
     800,
-    ...Array.from(layout.positions.values()).map((p) => p.x + layout.nodeWidth + 40)
+    ...positionedNodes.map((p) => p.x + layout.nodeWidth + 40)
   );
   const canvasHeight = Math.max(
     400,
-    ...Array.from(layout.positions.values()).map((p) => p.y + layout.nodeHeight + 40)
+    ...positionedNodes.map((p) => p.y + layout.nodeHeight + 40)
   );
 
   const statusCounts = useMemo(() => {
@@ -175,53 +181,102 @@ export function MissionDAGView({ projectId, onTaskSelect }: MissionDAGViewProps)
     }
     return counts;
   }, [nodes]);
+  const blockedCount = statusCounts.BLOCKED ?? 0;
+  const doneCount = statusCounts.DONE ?? 0;
 
   return (
-    <main className="flex-1 overflow-auto p-6">
-      {/* Header */}
-      <div className="flex justify-between items-start mb-5 flex-wrap gap-3">
-        <div>
-          <h2 className="text-foreground text-2xl font-bold m-0">Mission DAG</h2>
-          <p className="text-muted-foreground text-sm mt-1 mb-0">
-            {nodes.length} tasks, {edges.length} dependencies
-          </p>
+    <main className="mc-page">
+      <PageHeader
+        title="Mission DAG"
+        description="Visualize dependency structure, sequencing, and blockers across the mission graph."
+        icon={<GitBranch className="h-4.5 w-4.5" strokeWidth={1.7} />}
+        eyebrow="Operations"
+        status={
+          <Badge variant="outline" className="border-cyan-300/20 text-cyan-100">
+            {nodes.length} tasks · {edges.length} dependencies
+          </Badge>
+        }
+      />
+      <div className="mc-page-body mc-page-stack">
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card className="p-4">
+            <div className="mc-kicker">Graph size</div>
+            <div className="mt-2 text-3xl font-semibold text-foreground">{nodes.length}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Tasks currently represented in the dependency graph</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">Edges</div>
+            <div className="mt-2 flex items-center gap-2 text-3xl font-semibold text-cyan-100">
+              <Network className="h-5 w-5" />
+              {edges.length}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">Explicit dependencies shaping execution order</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">Blocked</div>
+            <div className="mt-2 flex items-center gap-2 text-3xl font-semibold text-rose-200">
+              <AlertTriangle className="h-5 w-5" />
+              {blockedCount}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">Nodes currently breaking flow through the graph</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">Done</div>
+            <div className="mt-2 flex items-center gap-2 text-3xl font-semibold text-emerald-100">
+              <CheckCircle2 className="h-5 w-5" />
+              {doneCount}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">Completed tasks already cleared from critical flow</div>
+          </Card>
         </div>
-        <div className="flex gap-1.5 flex-wrap">
-          <button
-            className={cn(
-              "px-2.5 py-1 border rounded-md text-xs cursor-pointer",
-              filter === "all"
-                ? "bg-muted text-foreground border-primary"
-                : "bg-card border-border text-muted-foreground"
-            )}
-            onClick={() => setFilter("all")}
-          >
-            All ({nodes.length})
-          </button>
-          {Object.entries(statusCounts).map(([status, count]) => (
-            <button
-              key={status}
-              className={cn(
-                "px-2.5 py-1 border rounded-md text-xs cursor-pointer border-l-[3px]",
-                filter === status
-                  ? "bg-muted text-foreground border-primary"
-                  : "bg-card border-border text-muted-foreground"
-              )}
-              style={{ borderLeftColor: STATUS_COLORS[status] }}
-              onClick={() => setFilter(filter === status ? "all" : status)}
-            >
-              {status} ({count})
-            </button>
-          ))}
-        </div>
-      </div>
 
-      {/* DAG Canvas */}
-      <div className="bg-background border border-border rounded-[10px] overflow-auto max-h-[calc(100vh-280px)]">
+        <Card className="p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="mc-kicker">Graph filters</div>
+              <div className="mt-1 text-sm font-semibold text-foreground">Focus the dependency map by task state</div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                className={cn(
+                  "rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] transition-colors",
+                  filter === "all"
+                    ? "border-cyan-300/20 bg-cyan-400/10 text-cyan-100"
+                    : "border-[var(--panel-line)] bg-[color:var(--shell-panel)] text-muted-foreground"
+                )}
+                onClick={() => setFilter("all")}
+              >
+                All ({nodes.length})
+              </button>
+              {(Object.entries(statusCounts) as Array<[string, number]>).map(([status, count]) => (
+                <button
+                  key={status}
+                  className={cn(
+                    "rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] transition-colors",
+                    filter === status
+                      ? "border-cyan-300/20 bg-cyan-400/10 text-cyan-100"
+                      : "border-[var(--panel-line)] bg-[color:var(--shell-panel)] text-muted-foreground"
+                  )}
+                  onClick={() => setFilter(filter === status ? "all" : status)}
+                >
+                  {status} ({count})
+                </button>
+              ))}
+            </div>
+          </div>
+        </Card>
+
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <Card className="overflow-hidden p-0">
+          <div className="border-b border-[var(--panel-line)] px-5 py-4">
+            <div className="mc-kicker">Dependency canvas</div>
+            <div className="mt-1 text-sm font-semibold text-foreground">Read downstream relationships before changing task sequencing</div>
+          </div>
+          <div className="overflow-auto max-h-[calc(100vh-320px)] bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.05),transparent_28%),linear-gradient(180deg,rgba(6,11,23,0.96),rgba(8,15,28,0.96))]">
         <svg
           width={canvasWidth}
           height={canvasHeight}
-          className="bg-background"
+          className="bg-transparent"
         >
           {/* Edges */}
           {edges.map((edge, i) => {
@@ -327,19 +382,31 @@ export function MissionDAGView({ projectId, onTaskSelect }: MissionDAGViewProps)
             );
           })}
         </svg>
-      </div>
-
-      {/* Legend */}
-      <div className="flex gap-4 mt-4 flex-wrap">
-        {Object.entries(STATUS_COLORS).map(([status, color]) => (
-          <div key={status} className="flex items-center gap-1.5">
-            <div
-              className="w-2.5 h-2.5 rounded-full"
-              style={{ background: color }}
-            />
-            <span className="text-muted-foreground text-xs">{status}</span>
           </div>
-        ))}
+        </Card>
+
+        <Card className="p-4">
+          <div className="mc-kicker">Operator guidance</div>
+          <div className="mt-2 space-y-3 text-sm leading-relaxed text-muted-foreground">
+            <p>Use the graph to inspect sequencing before you change task ownership. A node with many incoming lines usually represents a coordination choke point.</p>
+            <p>Blocked nodes matter most when they sit early in the graph. Clear them before optimizing lower-value branches.</p>
+          </div>
+          <div className="mt-4 rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] p-4">
+            <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Legend</div>
+            <div className="mt-3 flex gap-3 flex-wrap">
+              {Object.entries(STATUS_COLORS).map(([status, color]) => (
+                <div key={status} className="flex items-center gap-1.5">
+                  <div
+                    className="w-2.5 h-2.5 rounded-full"
+                    style={{ background: color }}
+                  />
+                  <span className="text-muted-foreground text-xs">{status}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Card>
+        </div>
       </div>
     </main>
   );

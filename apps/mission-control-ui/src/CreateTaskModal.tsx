@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id, Doc } from "../../../convex/_generated/dataModel";
+import { Bot, CalendarDays, Flag, Layers3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -99,89 +100,111 @@ export function CreateTaskModal({
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[520px]">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[640px]">
         <DialogHeader>
           <DialogTitle>Create Task</DialogTitle>
           <DialogDescription>
-            Add a new task to the current queue and optionally assign agents.
+            Add work to the queue with clear routing, priority, and due-date context so agents can execute without guesswork.
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="task-title">Title</Label>
-            <Input
-              id="task-title"
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Task title"
-              autoFocus
-              required
-            />
-          </div>
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(240px,0.7fr)]">
+            <div className="space-y-4 rounded-2xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] p-4">
+              <div className="flex items-center gap-2">
+                <Layers3 className="h-4 w-4 text-cyan-200" />
+                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Task brief</div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="task-title">Title</Label>
+                <Input
+                  id="task-title"
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="What needs to be done?"
+                  autoFocus
+                  required
+                />
+              </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="task-description">Description</Label>
-            <Textarea
-              id="task-description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Optional description"
-              rows={4}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="task-type">Type</Label>
-              <Select value={type} onValueChange={setType}>
-                <SelectTrigger id="task-type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {TASK_TYPES.map((taskType) => (
-                    <SelectItem key={taskType} value={taskType}>
-                      {taskType}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="space-y-1.5">
+                <Label htmlFor="task-description">Description</Label>
+                <Textarea
+                  id="task-description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Add enough context that the next operator or agent knows the goal, constraints, and expected outcome."
+                  rows={5}
+                />
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="task-priority">Priority</Label>
-              <Select
-                value={String(priority)}
-                onValueChange={(value) => setPriority(Number(value))}
-              >
-                <SelectTrigger id="task-priority">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PRIORITIES.map((p) => (
-                    <SelectItem key={p.value} value={String(p.value)}>
-                      {p.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="task-due">Due date</Label>
-            <Input
-              id="task-due"
-              type="date"
-              value={dueAt}
-              onChange={(e) => setDueAt(e.target.value)}
-              className="w-full"
-            />
+            <div className="space-y-4 rounded-2xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] p-4">
+              <div className="flex items-center gap-2">
+                <Flag className="h-4 w-4 text-emerald-200" />
+                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Routing</div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="task-type">Type</Label>
+                  <Select value={type} onValueChange={setType}>
+                    <SelectTrigger id="task-type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TASK_TYPES.map((taskType) => (
+                        <SelectItem key={taskType} value={taskType}>
+                          {taskType}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="task-priority">Priority</Label>
+                  <Select
+                    value={String(priority)}
+                    onValueChange={(value) => setPriority(Number(value))}
+                  >
+                    <SelectTrigger id="task-priority">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PRIORITIES.map((p) => (
+                        <SelectItem key={p.value} value={String(p.value)}>
+                          {p.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="task-due">Due date</Label>
+                  <div className="relative">
+                    <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      id="task-due"
+                      type="date"
+                      value={dueAt}
+                      onChange={(e) => setDueAt(e.target.value)}
+                      className="w-full pl-10"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           {agents && agents.length > 0 && (
-            <div className="space-y-2">
-              <Label>Assignees</Label>
+            <div className="space-y-3 rounded-2xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] p-4">
+              <div className="flex items-center gap-2">
+                <Bot className="h-4 w-4 text-cyan-200" />
+                <Label>Assignees</Label>
+              </div>
               <div className="flex flex-wrap gap-2">
                 {(agents as Doc<"agents">[]).map((agent) => {
                   const selected = assigneeIds.includes(agent._id);
@@ -189,12 +212,14 @@ export function CreateTaskModal({
                     <Button
                       key={agent._id}
                       type="button"
-                      variant={selected ? "secondary" : "outline"}
+                      variant={selected ? "neon-cyan" : "outline"}
                       size="sm"
-                      className="h-8 gap-1.5"
+                      className="h-10 gap-2 rounded-2xl px-3"
                       onClick={() => toggleAssignee(agent._id)}
                     >
-                      <span>{agent.emoji || "🤖"}</span>
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full border border-cyan-300/16 bg-cyan-400/8 text-cyan-100">
+                        <Bot className="h-3.5 w-3.5" />
+                      </span>
                       <span>{agent.name}</span>
                     </Button>
                   );
@@ -204,7 +229,7 @@ export function CreateTaskModal({
           )}
 
           {error && (
-            <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {error}
             </div>
           )}

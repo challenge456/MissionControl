@@ -31,7 +31,7 @@ const PILL_VARIANTS: Record<string, string> = {
 function StatusPill({ value }: { value: string }) {
   const cls = PILL_VARIANTS[value.toUpperCase()] ?? "bg-muted text-foreground border-border";
   return (
-    <span className={cn("inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap", cls)}>
+    <span className={cn("inline-flex items-center rounded-md border px-1.5 py-0.5 text-[11px] font-semibold whitespace-nowrap", cls)}>
       {value}
     </span>
   );
@@ -44,7 +44,7 @@ function StatCard({ icon: Icon, label, value, accent }: {
     <Card className="p-4">
       <div className="flex items-center gap-2 mb-2">
         <Icon className="h-3.5 w-3.5 text-muted-foreground" strokeWidth={1.5} />
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</span>
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</span>
       </div>
       <p className={cn("text-2xl font-bold tracking-tight tabular-nums", accent ?? "text-foreground")}>{value}</p>
     </Card>
@@ -107,10 +107,11 @@ export function AuditView({ projectId: _projectId }: { projectId: Id<"projects">
   };
 
   return (
-    <main className="flex-1 overflow-auto">
+    <main className="mc-page">
       <PageHeader
         title="ARM Audit"
         description="Governance trail for approvals, lifecycle transitions, deployments, and policy decisions."
+        eyebrow="Operations"
         actions={
           <Button size="sm" variant="outline" onClick={handleExport}>
             <Download className="h-3.5 w-3.5 mr-1.5" />
@@ -120,14 +121,16 @@ export function AuditView({ projectId: _projectId }: { projectId: Id<"projects">
       />
 
       {/* Stats */}
-      <div className="px-6 py-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="mc-page-body mc-page-stack">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatCard icon={FileText}   label="Change Records"   value={(changes ?? []).length} />
         <StatCard icon={ShieldCheck} label="Approval Records" value={(approvals ?? []).length} />
         <StatCard icon={Clock}      label="Pending Approvals" value={pendingCount} accent={pendingCount > 0 ? "text-amber-500" : undefined} />
         <StatCard icon={XCircle}    label="Denied Decisions"  value={deniedCount}  accent={deniedCount  > 0 ? "text-red-500"   : undefined} />
       </div>
 
-      <div className="px-6 pb-4 flex flex-col gap-4">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="flex flex-col gap-4">
         {/* Change records */}
         <TableSection
           title="Change Records"
@@ -159,7 +162,7 @@ export function AuditView({ projectId: _projectId }: { projectId: Id<"projects">
             <thead>
               <tr className="bg-muted/50 border-b border-border">
                 {["Time", "Type", "Summary", "Project", "Instance", "Version", "Related"].map((h) => (
-                  <th key={h} className="px-3 py-2.5 font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">{h}</th>
+                  <th key={h} className="px-3 py-2.5 font-semibold text-muted-foreground uppercase tracking-wider text-[11px]">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -193,7 +196,7 @@ export function AuditView({ projectId: _projectId }: { projectId: Id<"projects">
             <thead>
               <tr className="bg-muted/50 border-b border-border">
                 {["Requested", "Action", "Risk", "Status", "Decided", "Reason"].map((h) => (
-                  <th key={h} className="px-3 py-2.5 font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">{h}</th>
+                  <th key={h} className="px-3 py-2.5 font-semibold text-muted-foreground uppercase tracking-wider text-[11px]">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -219,6 +222,16 @@ export function AuditView({ projectId: _projectId }: { projectId: Id<"projects">
             </tbody>
           </table>
         </TableSection>
+      </div>
+
+      <Card className="p-5">
+        <div className="mc-kicker">Audit guidance</div>
+        <div className="mt-2 space-y-3 text-sm leading-relaxed text-muted-foreground">
+          <p>Use this surface to confirm that risky actions were reviewed and that the decision trail still makes sense after the fact.</p>
+          <p>If audit volume becomes noisy, the real fix is tighter routing and better change summaries upstream, not more rows here.</p>
+        </div>
+      </Card>
+      </div>
       </div>
     </main>
   );

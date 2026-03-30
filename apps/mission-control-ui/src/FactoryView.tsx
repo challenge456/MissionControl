@@ -5,6 +5,8 @@ import { cn } from "@/lib/utils";
 import { PageHeader } from "./components/PageHeader";
 import { Card } from "./components/ui/card";
 import { Button } from "./components/ui/button";
+import { Badge } from "./components/ui/badge";
+import { EmptyState } from "./components/ui/empty-state";
 import { Factory, Play, Clock, Radar, Settings } from "lucide-react";
 
 interface FactoryViewProps {
@@ -32,11 +34,16 @@ export function FactoryView({ projectId, onNavigate }: FactoryViewProps) {
   }
 
   return (
-    <main className="flex-1 overflow-auto bg-background">
+    <main className="mc-page">
       <PageHeader
         title="Factory"
         description="Batch and automated runs. Scheduled jobs that run without you."
         icon={<Factory className="h-4 w-4" />}
+        status={
+          <Badge variant="outline" className="border-cyan-300/20 text-cyan-100">
+            {displayJobs.length} jobs
+          </Badge>
+        }
         actions={
           onNavigate && (
             <div className="flex gap-2">
@@ -56,54 +63,91 @@ export function FactoryView({ projectId, onNavigate }: FactoryViewProps) {
           )
         }
       />
-      <div className="p-6">
+      <div className="mc-page-body mc-page-stack">
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card className="p-4">
+            <div className="mc-kicker">Factory jobs</div>
+            <div className="mt-2 text-3xl font-semibold text-foreground">{displayJobs.length}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Automated or batched jobs visible in this workspace</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">Enabled</div>
+            <div className="mt-2 text-3xl font-semibold text-cyan-100">{displayJobs.filter((job) => job.enabled).length}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Jobs currently allowed to run without intervention</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">Paused</div>
+            <div className="mt-2 text-3xl font-semibold text-amber-100">{displayJobs.filter((job) => !job.enabled).length}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Jobs waiting on a restart or policy change</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">Mode</div>
+            <div className="mt-2 text-3xl font-semibold text-foreground">{factoryJobs.length > 0 ? "Curated" : "All"}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Whether the view is scoped to factory-native job types</div>
+          </Card>
+        </div>
+
         {displayJobs.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border bg-muted/20 p-12 text-center">
-            <Factory className="h-12 w-12 mx-auto text-muted-foreground/40 mb-4" />
-            <h3 className="text-sm font-semibold text-foreground mb-1">No factory jobs</h3>
-            <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-              Scheduled jobs (workflows, batch, mission prompts) will appear here. Add them from Schedules.
-            </p>
-            {onNavigate && (
-              <div className="flex flex-wrap justify-center gap-2 mt-4">
-                <Button variant="outline" size="sm" onClick={() => onNavigate("schedules")}>
-                  Go to Schedules
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => onNavigate("radar")}>
-                  Radar
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => onNavigate("system")}>
-                  System
-                </Button>
-              </div>
-            )}
-          </div>
+          <Card className="p-5">
+            <EmptyState
+              icon={Factory}
+              title="No factory jobs"
+              description="Scheduled jobs, workflow batches, and automated mission prompts will appear here once they are configured."
+              action={
+                onNavigate ? (
+                  <Button variant="neon-cyan" onClick={() => onNavigate("schedules")}>
+                    Go to schedules
+                  </Button>
+                ) : undefined
+              }
+            />
+          </Card>
         ) : (
-          <div className="space-y-3">
-            {displayJobs.map((j) => (
-              <Card key={j._id} className="p-4 flex items-center justify-between gap-4">
-                <div className="min-w-0">
-                  <div className="font-semibold text-foreground">{j.name}</div>
-                  <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
-                      Next: {formatNextRun(j.nextRun)}
-                    </span>
-                    {j.lastRun != null && (
-                      <span>Last: {new Date(j.lastRun).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
-                    )}
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="space-y-3">
+              {displayJobs.map((job) => (
+                <Card key={job._id} className="p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-foreground">{job.name}</div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <Badge variant="outline" className={cn(job.enabled ? "border-cyan-300/20 text-cyan-100" : "border-[var(--panel-line)] text-muted-foreground")}>
+                          {job.enabled ? "Enabled" : "Paused"}
+                        </Badge>
+                        {job.jobType ? (
+                          <Badge variant="outline" className="border-[var(--panel-line)] text-muted-foreground">
+                            {job.jobType}
+                          </Badge>
+                        ) : null}
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          Next: {formatNextRun(job.nextRun)}
+                        </span>
+                        {job.lastRun != null && (
+                          <span>
+                            Last: {new Date(job.lastRun).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
+                </Card>
+              ))}
+            </div>
+
+            <Card className="p-5">
+              <div className="mc-kicker">Operator guidance</div>
+              <div className="mt-2 space-y-3 text-sm leading-relaxed text-muted-foreground">
+                <div className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-4">
+                  Factory is for repeatable execution, not one-off intervention. If a job needs constant babysitting, it belongs back in system design.
                 </div>
-                <div className="shrink-0">
-                  <span className={cn(
-                    "px-2 py-0.5 rounded text-[10px] font-medium uppercase",
-                    j.enabled ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
-                  )}>
-                    {j.enabled ? "Enabled" : "Paused"}
-                  </span>
+                <div className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-4">
+                  Watch the next run and last run together. A healthy pipeline is predictable in both cadence and recovery.
                 </div>
-              </Card>
-            ))}
+              </div>
+            </Card>
           </div>
         )}
       </div>

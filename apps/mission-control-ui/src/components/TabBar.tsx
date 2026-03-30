@@ -38,62 +38,62 @@ export function TabBar({ tabs, activeTab, onTabChange, className }: TabBarProps)
   return (
     <div
       className={cn(
-        "flex items-center gap-1 px-4 py-2.5",
-        "border-b border-[var(--glass-border)] bg-[var(--glass-bg)]/90 backdrop-blur-[var(--blur-panel)]",
+        "border-b border-[var(--panel-line)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--shell-panel)_95%,transparent),color-mix(in_srgb,var(--background)_90%,transparent))] px-4 py-2.5 backdrop-blur-[var(--blur-panel)]",
         className
       )}
       role="tablist"
     >
-      {tabs.map((tab, index) => {
-        const isActive = activeTab === tab.id;
-        return (
-          <button
-            key={tab.id}
-            role="tab"
-            aria-selected={isActive}
-            tabIndex={isActive ? 0 : -1}
-            onClick={() => onTabChange(tab.id)}
-            onKeyDown={(event) => handleKeyDown(event, index)}
-            className={cn(
-              "relative rounded-lg px-3.5 py-1.5",
-              "text-[11.5px] font-semibold tracking-wide",
-              "transition-all duration-150",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
-              isActive
-                ? "text-[var(--neon-green)]"
-                : "text-muted-foreground hover:text-foreground hover:bg-[var(--neon-cyan-dim)]"
-            )}
-          >
-            {isActive && (
-              <motion.div
-                layoutId="tab-bar-pill"
-                className="absolute inset-0 rounded-lg bg-[var(--glass-bg)] border border-[var(--glass-border-green)] shadow-[var(--glow-green)]"
-                transition={{
-                  type: "spring",
-                  stiffness: 450,
-                  damping: 32,
-                }}
-              />
-            )}
-            <span className="relative z-10 flex items-center gap-1.5">
-              {tab.label}
-              {tab.count !== undefined && tab.count > 0 && (
-                <span
-                  className={cn(
-                    "min-w-[18px] h-[17px] flex items-center justify-center",
-                    "rounded-full text-[9px] font-bold px-1",
-                    isActive
-                      ? "bg-primary/15 text-primary"
-                      : "bg-muted/80 text-muted-foreground"
-                  )}
-                >
-                  {tab.count}
-                </span>
+      <div className="flex items-center gap-1.5 overflow-x-auto rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        {tabs.map((tab, index) => {
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              role="tab"
+              aria-selected={isActive}
+              tabIndex={isActive ? 0 : -1}
+              onClick={() => onTabChange(tab.id)}
+              onKeyDown={(event) => handleKeyDown(event, index)}
+              className={cn(
+                "relative rounded-lg px-4 py-2",
+                "text-[11px] font-semibold uppercase tracking-[0.16em]",
+                "transition-all duration-200",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
+                isActive
+                  ? "text-cyan-100"
+                  : "text-muted-foreground hover:text-foreground hover:bg-cyan-400/8"
               )}
-            </span>
-          </button>
-        );
-      })}
+            >
+              {isActive && (
+                <motion.div
+                  layoutId="tab-bar-pill"
+                  className="absolute inset-0 rounded-lg border border-cyan-400/16 bg-[linear-gradient(135deg,rgba(103,232,249,0.12),rgba(15,23,42,0.34))] shadow-[var(--glow-cyan)]"
+                  transition={{
+                    type: "spring",
+                    stiffness: 450,
+                    damping: 32,
+                  }}
+                />
+              )}
+              <span className="relative z-10 flex items-center gap-1.5 whitespace-nowrap">
+                {tab.label}
+                {tab.count !== undefined && tab.count > 0 && (
+                  <span
+                    className={cn(
+                      "flex h-[17px] min-w-4.5 items-center justify-center rounded-full px-1 text-[9px] font-bold",
+                      isActive
+                        ? "bg-cyan-300/15 text-cyan-100"
+                        : "bg-muted/80 text-muted-foreground"
+                    )}
+                  >
+                    {tab.count}
+                  </span>
+                )}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

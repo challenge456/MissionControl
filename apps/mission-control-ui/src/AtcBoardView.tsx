@@ -140,13 +140,13 @@ export function AtcBoardView({
                   {redact(agent.name, privacyMode)}
                 </p>
                 <div className="flex flex-wrap gap-1 mt-1">
-                  <Badge variant="secondary" className="text-[10px] font-normal">
+                  <Badge variant="secondary" className="text-[11px] font-normal">
                     {ROLE_LABELS[agent.role] ?? agent.role}
                   </Badge>
                   <Badge
                     variant={agent.status === "ACTIVE" ? "default" : "outline"}
                     className={cn(
-                      "text-[10px] font-normal",
+                      "text-[11px] font-normal",
                       agent.status === "QUARANTINED" && "border-red-500/50 text-red-400",
                       agent.status === "PAUSED" && "border-amber-500/50 text-amber-400"
                     )}
@@ -156,7 +156,7 @@ export function AtcBoardView({
                 </div>
               </div>
               {isIdle && (
-                <span className="shrink-0 text-[10px] font-medium text-amber-500 uppercase tracking-wider">
+                <span className="shrink-0 text-[11px] font-medium text-amber-500 uppercase tracking-wider">
                   Idle
                 </span>
               )}
@@ -168,7 +168,7 @@ export function AtcBoardView({
                 <p className="text-sm font-medium text-foreground truncate" title={currentTask.title}>
                   {redact(currentTask.title, privacyMode)}
                 </p>
-                <Badge variant="outline" className="text-[10px] font-normal">
+                <Badge variant="outline" className="text-[11px] font-normal">
                   {currentTask.status}
                 </Badge>
                 <div className="flex gap-2 mt-2">
@@ -192,7 +192,7 @@ export function AtcBoardView({
               <span title="Tokens this session">{sessionTokens.toLocaleString()} tok</span>
             </div>
 
-            <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+            <div className="flex items-center justify-between text-[11px] text-muted-foreground">
               <span title="Last heartbeat">♥ {formatTimeAgo(agent.lastHeartbeatAt)}</span>
               <Button
                 size="sm"

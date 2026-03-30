@@ -527,8 +527,8 @@ export function ContentPipelineView({ projectId }: ContentPipelineViewProps) {
 
   if (isLoading) {
     return (
-      <main className="flex-1 overflow-auto p-6">
-        <div className="grid grid-cols-4 gap-4">
+      <main className="mc-page">
+        <div className="mc-page-body grid grid-cols-4 gap-4">
           {Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} lines={3} />)}
         </div>
       </main>
@@ -555,7 +555,7 @@ export function ContentPipelineView({ projectId }: ContentPipelineViewProps) {
   };
 
   return (
-    <main className="flex-1 overflow-hidden flex flex-col">
+    <main className="mc-page flex flex-col overflow-hidden">
       <PageHeader
         title="Content Pipeline"
         description={
@@ -563,6 +563,7 @@ export function ContentPipelineView({ projectId }: ContentPipelineViewProps) {
             ? `${stats.total} drops · ${stats.byStatus.PUBLISHED ?? 0} published · ${stats.byStatus.SUBMITTED ?? 0} pending review`
             : "Track content from idea to publication. Ideas → Drafting → Review → Published."
         }
+        eyebrow="Content"
         actions={
           <div className="flex items-center gap-2 flex-wrap">
           {contentDrops.length === 0 && (
@@ -611,6 +612,30 @@ export function ContentPipelineView({ projectId }: ContentPipelineViewProps) {
       }
       />
 
+      <div className="mc-page-body mc-page-stack">
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card className="p-4">
+          <div className="mc-kicker">Drops</div>
+          <div className="mt-2 text-3xl font-semibold text-foreground">{contentDrops.length}</div>
+          <div className="mt-1 text-xs text-muted-foreground">Content units tracked end to end</div>
+        </Card>
+        <Card className="p-4">
+          <div className="mc-kicker">Published</div>
+          <div className="mt-2 text-3xl font-semibold text-emerald-100">{stats?.byStatus.PUBLISHED ?? 0}</div>
+          <div className="mt-1 text-xs text-muted-foreground">Drops that already cleared the pipeline</div>
+        </Card>
+        <Card className="p-4">
+          <div className="mc-kicker">Pending review</div>
+          <div className="mt-2 text-3xl font-semibold text-amber-100">{stats?.byStatus.SUBMITTED ?? 0}</div>
+          <div className="mt-1 text-xs text-muted-foreground">Items still waiting on editorial or operator review</div>
+        </Card>
+        <Card className="p-4">
+          <div className="mc-kicker">Pipeline tasks</div>
+          <div className="mt-2 text-3xl font-semibold text-cyan-100">{captures.length}</div>
+          <div className="mt-1 text-xs text-muted-foreground">Upstream work shaping the publishing queue</div>
+        </Card>
+      </div>
+
       {/* Filters (Drops tab only) */}
       {tab === "drops" && contentDrops.length > 0 && (
         <div className="flex items-center gap-2 px-6 py-2.5 border-b border-border/30 bg-muted/20 flex-wrap">
@@ -657,7 +682,7 @@ export function ContentPipelineView({ projectId }: ContentPipelineViewProps) {
 
       {/* Tab Content */}
       {tab === "drops" && (
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto">
           {filteredDrops.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <Package className="h-12 w-12 text-muted-foreground/20 mb-4" />
@@ -709,7 +734,7 @@ export function ContentPipelineView({ projectId }: ContentPipelineViewProps) {
 
       {tab === "pipeline" && (
         <div className="flex-1 overflow-x-auto">
-          <div className="flex gap-4 p-6 min-w-max h-full">
+          <div className="flex gap-4 px-6 py-6 min-w-max h-full">
             {PIPELINE_COLUMNS.map((col, colIdx) => (
               <motion.div
                 key={col.id}
@@ -759,6 +784,7 @@ export function ContentPipelineView({ projectId }: ContentPipelineViewProps) {
           <CreateDropForm projectId={projectId} agents={agents} onClose={() => setShowCreate(false)} />
         )}
       </AnimatePresence>
+      </div>
     </main>
   );
 }

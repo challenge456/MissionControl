@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext, useMemo, useCallback } from "react";
+import { useState, useEffect, createContext, useContext, useMemo, useCallback, lazy, Suspense } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
 import { api } from "../../../convex/_generated/api";
@@ -7,28 +7,49 @@ import { type MainView, type CommandSection } from "./TopNav";
 import { CommandNav } from "./components/CommandNav";
 import { TabBar, type TabItem } from "./components/TabBar";
 import { AppTopBar } from "./components/AppTopBar";
-import { DashboardOverview } from "./DashboardOverview";
-import { TaskDrawerTabs } from "./TaskDrawerTabs";
 import { Sidebar, SIDEBAR_WIDTH } from "./Sidebar";
 import { SearchBar } from "./SearchBar";
 import { useToast } from "./Toast";
 import { useKeyboardShortcuts } from "./KeyboardShortcuts";
-
-// Sections
-import { OpsSection } from "./sections/OpsSection";
-import { AgentsSection } from "./sections/AgentsSection";
-import { ChatSection } from "./sections/ChatSection";
-import { ContentSection } from "./sections/ContentSection";
-import { CommsSection } from "./sections/CommsSection";
-import { KnowledgeSection } from "./sections/KnowledgeSection";
-import { CodeSection } from "./sections/CodeSection";
-import { QualitySection } from "./sections/QualitySection";
-import { PlatformSection } from "./sections/PlatformSection";
-
-// Modal layer + state
-import { ModalLayer } from "./ModalLayer";
 import { useModalState } from "./hooks/useModalState";
 import { PrivacyProvider } from "./contexts/PrivacyContext";
+
+const DashboardOverview = lazy(() =>
+  import("./DashboardOverview").then((module) => ({ default: module.DashboardOverview }))
+);
+const TaskDrawerTabs = lazy(() =>
+  import("./TaskDrawerTabs").then((module) => ({ default: module.TaskDrawerTabs }))
+);
+const ModalLayer = lazy(() =>
+  import("./ModalLayer").then((module) => ({ default: module.ModalLayer }))
+);
+const OpsSection = lazy(() =>
+  import("./sections/OpsSection").then((module) => ({ default: module.OpsSection }))
+);
+const AgentsSection = lazy(() =>
+  import("./sections/AgentsSection").then((module) => ({ default: module.AgentsSection }))
+);
+const ChatSection = lazy(() =>
+  import("./sections/ChatSection").then((module) => ({ default: module.ChatSection }))
+);
+const ContentSection = lazy(() =>
+  import("./sections/ContentSection").then((module) => ({ default: module.ContentSection }))
+);
+const CommsSection = lazy(() =>
+  import("./sections/CommsSection").then((module) => ({ default: module.CommsSection }))
+);
+const KnowledgeSection = lazy(() =>
+  import("./sections/KnowledgeSection").then((module) => ({ default: module.KnowledgeSection }))
+);
+const CodeSection = lazy(() =>
+  import("./sections/CodeSection").then((module) => ({ default: module.CodeSection }))
+);
+const QualitySection = lazy(() =>
+  import("./sections/QualitySection").then((module) => ({ default: module.QualitySection }))
+);
+const PlatformSection = lazy(() =>
+  import("./sections/PlatformSection").then((module) => ({ default: module.PlatformSection }))
+);
 
 // ============================================================================
 // PROJECT CONTEXT
@@ -38,6 +59,17 @@ interface ProjectContextType {
   projectId: Id<"projects"> | null;
   setProjectId: (id: Id<"projects"> | null) => void;
   project: Doc<"projects"> | null | undefined;
+}
+
+type ShellAiTone = "active" | "thinking" | "idle" | "offline";
+
+interface ShellAiStatus {
+  tone: ShellAiTone;
+  label: string;
+  detail: string;
+  lastSeenLabel: string;
+  agentId: Id<"agents"> | null;
+  taskId: Id<"tasks"> | null;
 }
 
 const ProjectContext = createContext<ProjectContextType>({
@@ -73,7 +105,7 @@ function ProjectSwitcher() {
         const value = e.target.value;
         setProjectId(value ? (value as Id<"projects">) : null);
       }}
-      className="h-8 rounded-md border border-input bg-secondary px-3 text-sm text-foreground cursor-pointer min-w-[140px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="h-10 min-w-[168px] rounded-2xl border border-[var(--panel-line)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--background)_90%,transparent))] px-3.5 text-sm font-medium text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-xl transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <option value="">All Projects</option>
       {projects.map((p) => (
@@ -93,7 +125,8 @@ const STORAGE_KEY_VIEW = "mc.last_view";
 
 const VALID_MAIN_VIEWS: MainView[] = [
   "home", "atc", "tasks", "agents", "directory", "policies", "deployments", "audit", "telemetry",
-  "dag", "chat", "council", "calendar", "projects", "memory", "captures", "docs", "people", "org",
+  "dag", "chat", "council", "calendar", "projects", "memory", "captures", "docs", "skills", "people", "org",
+  "design-system",
   "office", "live-office", "search", "identity", "telegraph", "meetings", "voice", "content-pipeline",
   "crm", "command", "code", "recorder", "test-generation", "api-import", "execution", "flaky-steps",
   "hybrid-workflows", "schedule", "codegen", "gherkin", "metrics", "qc-dashboard", "qc-runs",
@@ -176,6 +209,8 @@ const SECTION_TABS: Record<CommandSection, TabItem[] | null> = {
   ],
   knowledge: [
     { id: "docs", label: "Knowledge" },
+    { id: "design-system", label: "Design DNA" },
+    { id: "skills", label: "Skills" },
     { id: "memory", label: "Memory" },
     { id: "search", label: "Search" },
   ],
@@ -204,7 +239,7 @@ const SECTION_TABS: Record<CommandSection, TabItem[] | null> = {
     { id: "system", label: "System" },
     { id: "radar", label: "Radar" },
     { id: "factory", label: "Factory" },
-    { id: "pipeline", label: "Pipeline" },
+    { id: "pipeline", label: "Build Pipeline" },
     { id: "feedback", label: "Feedback" },
   ],
 };
@@ -217,7 +252,7 @@ function viewToSection(view: MainView): CommandSection {
   if (["captures", "projects", "content-pipeline"].includes(view)) return "content";
   if (["qc-dashboard", "qc-runs", "qc-environments", "qc-findings", "qc-metrics", "qc-rulesets"].includes(view)) return "quality";
   if (["telegraph", "meetings", "voice", "people", "org", "office", "live-office", "crm", "hiring", "team"].includes(view)) return "comms";
-  if (["docs", "search", "memory"].includes(view)) return "knowledge";
+  if (["docs", "design-system", "skills", "search", "memory"].includes(view)) return "knowledge";
   if (["system", "radar", "factory", "pipeline", "feedback"].includes(view)) return "platform";
   if ([
     "code", "recorder", "test-generation", "api-import", "execution",
@@ -234,9 +269,133 @@ function useHeaderMetrics() {
   const { projectId } = useProject();
   const agents = useQuery(api.agents.listAll, projectId ? { projectId } : {});
   const tasks = useQuery(api.tasks.listAll, projectId ? { projectId } : {});
+  const [statusTick, setStatusTick] = useState(() => Date.now());
   const activeCount = agents?.filter((a) => a.status === "ACTIVE").length ?? 0;
   const taskCount = tasks?.length ?? 0;
-  return { activeCount, taskCount };
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setStatusTick(Date.now());
+    }, 15_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const aiStatus = useMemo<ShellAiStatus>(() => {
+    if (!agents || agents.length === 0) {
+      return {
+        tone: "offline",
+        label: "No active fleet",
+        detail: "Register or resume an agent to bring Mission Control online.",
+        lastSeenLabel: "No heartbeat",
+        agentId: null,
+        taskId: null,
+      };
+    }
+
+    const taskTitleById = new Map(tasks?.map((task) => [task._id, task.title]) ?? []);
+    const freshestAgent = [...agents].sort((left, right) => {
+      const leftStamp = left.lastHeartbeatAt ?? 0;
+      const rightStamp = right.lastHeartbeatAt ?? 0;
+      return rightStamp - leftStamp;
+    })[0];
+
+    const lastHeartbeatAt = freshestAgent?.lastHeartbeatAt ?? null;
+    const ageMs = lastHeartbeatAt ? statusTick - lastHeartbeatAt : Number.POSITIVE_INFINITY;
+    const taskTitle = freshestAgent?.currentTaskId
+      ? taskTitleById.get(freshestAgent.currentTaskId) ?? "active task"
+      : null;
+
+    const lastSeenLabel = !lastHeartbeatAt
+      ? "No signal"
+      : ageMs < 60_000
+        ? "Live now"
+        : ageMs < 3_600_000
+          ? `Last signal ${Math.floor(ageMs / 60_000)}m ago`
+          : ageMs < 86_400_000
+            ? `Last signal ${Math.floor(ageMs / 3_600_000)}h ago`
+            : `Last signal ${Math.floor(ageMs / 86_400_000)}d ago`;
+
+    if (!freshestAgent || freshestAgent.status === "OFFLINE") {
+      return {
+        tone: "offline",
+        label: "Fleet offline",
+        detail: "No agents are currently reporting into Mission Control.",
+        lastSeenLabel,
+        agentId: freshestAgent?._id ?? null,
+        taskId: freshestAgent?.currentTaskId ?? null,
+      };
+    }
+
+    if (freshestAgent.status === "PAUSED") {
+      return {
+        tone: "idle",
+        label: "Paused by operator",
+        detail: `${freshestAgent.name} is standing by until work resumes.`,
+        lastSeenLabel,
+        agentId: freshestAgent._id,
+        taskId: freshestAgent.currentTaskId ?? null,
+      };
+    }
+
+    if (freshestAgent.status === "QUARANTINED" || freshestAgent.status === "DRAINED") {
+      return {
+        tone: "thinking",
+        label: "Needs operator review",
+        detail: `${freshestAgent.name} is ${freshestAgent.status.toLowerCase()} and may need intervention.`,
+        lastSeenLabel,
+        agentId: freshestAgent._id,
+        taskId: freshestAgent.currentTaskId ?? null,
+      };
+    }
+
+    if (ageMs <= 45_000) {
+      return {
+        tone: "active",
+        label: taskTitle ? "Working now" : "Live and responding",
+        detail: taskTitle
+          ? `${freshestAgent.name} is working on ${taskTitle}.`
+          : `${freshestAgent.name} is actively reporting heartbeat traffic.`,
+        lastSeenLabel,
+        agentId: freshestAgent._id,
+        taskId: freshestAgent.currentTaskId ?? null,
+      };
+    }
+
+    if (ageMs <= 180_000) {
+      return {
+        tone: "thinking",
+        label: taskTitle ? "Thinking through execution" : "Thinking",
+        detail: taskTitle
+          ? `${freshestAgent.name} last reported while working on ${taskTitle}.`
+          : `${freshestAgent.name} is between updates but still warm.`,
+        lastSeenLabel,
+        agentId: freshestAgent._id,
+        taskId: freshestAgent.currentTaskId ?? null,
+      };
+    }
+
+    if (ageMs > 21_600_000) {
+      return {
+        tone: "offline",
+        label: "Stale signal",
+        detail: `${freshestAgent.name} has not reported a trustworthy heartbeat recently. Inspect the fleet before relying on this state.`,
+        lastSeenLabel,
+        agentId: freshestAgent._id,
+        taskId: freshestAgent.currentTaskId ?? null,
+      };
+    }
+
+    return {
+      tone: "idle",
+      label: "Ready for next assignment",
+      detail: `${freshestAgent.name} is online but hasn’t reported activity recently.`,
+      lastSeenLabel,
+      agentId: freshestAgent._id,
+      taskId: freshestAgent.currentTaskId ?? null,
+    };
+  }, [agents, statusTick, tasks]);
+
+  return { activeCount, taskCount, aiStatus };
 }
 
 // ============================================================================
@@ -257,6 +416,20 @@ function PageTransition({ children, viewKey }: { children: React.ReactNode; view
         {children}
       </motion.div>
     </AnimatePresence>
+  );
+}
+
+function SectionLoadingState() {
+  return (
+    <main className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 flex-col gap-4 p-6">
+        <div className="h-16 rounded-2xl border border-[var(--panel-line)] skeleton-shimmer" />
+        <div className="grid flex-1 gap-4 lg:grid-cols-3">
+          <div className="rounded-2xl border border-[var(--panel-line)] skeleton-shimmer" />
+          <div className="rounded-2xl border border-[var(--panel-line)] skeleton-shimmer lg:col-span-2" />
+        </div>
+      </div>
+    </main>
   );
 }
 
@@ -400,7 +573,7 @@ export default function App() {
   const now = new Date();
   const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   const dateStr = now.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }).toUpperCase();
-  const { activeCount, taskCount } = useHeaderMetrics();
+  const { activeCount, taskCount, aiStatus } = useHeaderMetrics();
 
   // ── Section renderer ─────────────────────────────────────────────────────
   function renderSection() {
@@ -557,6 +730,7 @@ export default function App() {
           }
           activeCount={activeCount}
           taskCount={taskCount}
+          aiStatus={aiStatus}
           timeStr={timeStr}
           dateStr={dateStr}
           pendingApprovals={pendingApprovals?.length ?? 0}
@@ -575,6 +749,14 @@ export default function App() {
           onOpenApprovals={() => open("approvals")}
           onOpenNotifications={() => open("notifications")}
           onOpenAgentsFlyout={() => { setSidebarSelectedAgentId(null); open("agentsFlyout"); }}
+          onOpenAiStatus={() => {
+            if (aiStatus.taskId) {
+              setSelectedTaskId(aiStatus.taskId);
+              setCurrentView("tasks");
+              return;
+            }
+            setCurrentView("agents");
+          }}
           onOpenMissionModal={() => open("missionModal")}
           onOpenSuggestionsDrawer={() => open("suggestionsDrawer")}
         />
@@ -587,31 +769,37 @@ export default function App() {
 
         <div className="flex flex-1 overflow-hidden">
           <PageTransition viewKey={currentView}>
-            {renderSection()}
+            <Suspense fallback={<SectionLoadingState />}>
+              {renderSection()}
+            </Suspense>
           </PageTransition>
         </div>
 
-        <TaskDrawerTabs taskId={selectedTaskId} onClose={() => setSelectedTaskId(null)} />
+        <Suspense fallback={null}>
+          <TaskDrawerTabs taskId={selectedTaskId} onClose={() => setSelectedTaskId(null)} />
+        </Suspense>
 
-        <ModalLayer
-          projectId={projectId}
-          modals={modals}
-          open={open}
-          close={close}
-          selectedTaskId={selectedTaskId}
-          setSelectedTaskId={setSelectedTaskId}
-          sidebarSelectedAgentId={sidebarSelectedAgentId}
-          setSidebarSelectedAgentId={setSidebarSelectedAgentId}
-          sidebarWidth={sidebarWidth}
-          onNavigate={setCurrentView}
-          onConfirmPauseSquad={handleConfirmPauseSquad}
-          onResumeSquad={handleResumeSquad}
-          onToast={toast}
-          onNavigateToGateway={() => {
-            handleSectionChange("agents");
-            handleTabChange("gateway");
-          }}
-        />
+        <Suspense fallback={null}>
+          <ModalLayer
+            projectId={projectId}
+            modals={modals}
+            open={open}
+            close={close}
+            selectedTaskId={selectedTaskId}
+            setSelectedTaskId={setSelectedTaskId}
+            sidebarSelectedAgentId={sidebarSelectedAgentId}
+            setSidebarSelectedAgentId={setSidebarSelectedAgentId}
+            sidebarWidth={sidebarWidth}
+            onNavigate={setCurrentView}
+            onConfirmPauseSquad={handleConfirmPauseSquad}
+            onResumeSquad={handleResumeSquad}
+            onToast={toast}
+            onNavigateToGateway={() => {
+              handleSectionChange("agents");
+              handleTabChange("gateway");
+            }}
+          />
+        </Suspense>
       </div>
       </PrivacyProvider>
     </ProjectContext.Provider>

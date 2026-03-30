@@ -60,12 +60,12 @@ export function TaskCard({ task, agents, onClick, isDragging, onUpdate }: TaskCa
       <div className="flex justify-between mb-2">
         <div className="flex gap-1.5 items-center">
           <span className={cn(
-            "text-[10px] px-1.5 py-0.5 rounded text-white font-semibold",
+            "text-[11px] px-1.5 py-0.5 rounded text-white font-semibold",
             STATUS_BADGE_CLASSES[task.status] || "bg-slate-500"
           )}>
             {task.status}
           </span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-muted-foreground">
+          <span className="text-[11px] px-1.5 py-0.5 rounded bg-accent text-muted-foreground">
             P{task.priority}
           </span>
         </div>

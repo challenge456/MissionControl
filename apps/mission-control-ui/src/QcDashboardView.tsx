@@ -13,6 +13,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PageHeader } from "./components/PageHeader";
 import {
   Tooltip,
   TooltipContent,
@@ -126,75 +127,98 @@ export function QcDashboardView({ projectId, onRunSelect, onOpenStartQcRun }: Qc
 
   if (envFilter === "ALL" && !runsList) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-sm text-muted-foreground">Loading QC runs...</div>
-      </div>
+      <main className="mc-page">
+        <div className="mc-page-body flex items-center justify-center">
+          <div className="text-sm text-muted-foreground">Loading QC runs...</div>
+        </div>
+      </main>
     );
   }
   if (envFilter !== "ALL" && runsByEnv === undefined) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-sm text-muted-foreground">Loading QC runs...</div>
-      </div>
+      <main className="mc-page">
+        <div className="mc-page-body flex items-center justify-center">
+          <div className="text-sm text-muted-foreground">Loading QC runs...</div>
+        </div>
+      </main>
     );
   }
 
   return (
-    <div className="flex-1 overflow-auto p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <ShieldCheck className="h-6 w-6 text-primary" />
-            Quality Control
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Automated quality checks, coverage analysis, and delivery gates
-          </p>
-        </div>
-        <Button size="sm" className="gap-2" onClick={onOpenStartQcRun}>
-          <Play className="h-4 w-4" />
-          Start QC Run
-        </Button>
-      </div>
+    <main className="mc-page">
+      <PageHeader
+        title="Quality Control"
+        description="Automated quality checks, coverage analysis, and delivery gates."
+        icon={<ShieldCheck className="h-4.5 w-4.5" strokeWidth={1.7} />}
+        eyebrow="Quality"
+        status={
+          <Badge variant="outline" className="border-cyan-300/20 text-cyan-100">
+            {totalRuns} runs
+          </Badge>
+        }
+        actions={
+          <Button size="sm" className="gap-2" onClick={onOpenStartQcRun}>
+            <Play className="h-4 w-4" />
+            Start QC Run
+          </Button>
+        }
+      />
+      <div className="mc-page-body mc-page-stack">
 
       {/* Environment filter tabs */}
-      <Tabs value={envFilter} onValueChange={(v) => setEnvFilter(v as EnvFilter)}>
-        <TabsList className="flex flex-wrap h-auto gap-1">
-          {ENV_OPTIONS.map((env) => (
-            <TabsTrigger key={env} value={env} className="text-xs">
-              {env === "ALL" ? "All" : env}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
+      <Card className="p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="mc-kicker">Environment lens</div>
+            <div className="mt-1 text-sm font-semibold text-foreground">Filter the QC posture by environment</div>
+          </div>
+          <Tabs value={envFilter} onValueChange={(v) => setEnvFilter(v as EnvFilter)}>
+            <TabsList className="flex flex-wrap h-auto gap-1">
+              {ENV_OPTIONS.map((env) => (
+                <TabsTrigger key={env} value={env} className="text-xs">
+                  {env === "ALL" ? "All" : env}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        </div>
+      </Card>
 
       {/* Environment health strip */}
       {envSummary && envSummary.length > 0 && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs text-muted-foreground">Environments:</span>
-          {envSummary.map((s) => (
-            <TooltipProvider key={s.environment}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div
-                    className={cn(
-                      "h-2 w-2 rounded-full",
-                      s.latestGrade === "RED" && "bg-red-500",
-                      s.latestGrade === "YELLOW" && "bg-yellow-500",
-                      s.latestGrade === "GREEN" && "bg-green-500",
-                      !s.latestGrade && "bg-muted-foreground/50"
-                    )}
-                    aria-label={`${s.environment}: ${s.latestGrade ?? "no runs"}`}
-                  />
-                </TooltipTrigger>
-                <TooltipContent>
-                  {s.environment}: {s.latestGrade ?? "—"} {s.latestScore != null ? `(${s.latestScore})` : ""} · {s.runCount} runs
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          ))}
-        </div>
+        <Card className="p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="mc-kicker">Environment posture</div>
+              <div className="mt-1 text-sm font-semibold text-foreground">Quick quality read across local, staging, and production lanes</div>
+            </div>
+            <div className="flex items-center gap-3 flex-wrap">
+              {envSummary.map((s) => (
+                <TooltipProvider key={s.environment}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="rounded-full border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-3 py-1.5 text-xs text-muted-foreground">
+                        <span
+                          className={cn(
+                            "mr-2 inline-block h-2 w-2 rounded-full",
+                            s.latestGrade === "RED" && "bg-red-500",
+                            s.latestGrade === "YELLOW" && "bg-yellow-500",
+                            s.latestGrade === "GREEN" && "bg-green-500",
+                            !s.latestGrade && "bg-muted-foreground/50"
+                          )}
+                        />
+                        {s.environment}
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {s.environment}: {s.latestGrade ?? "—"} {s.latestScore != null ? `(${s.latestScore})` : ""} · {s.runCount} runs
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ))}
+            </div>
+          </div>
+        </Card>
       )}
 
       {/* Key Metrics */}
@@ -249,6 +273,8 @@ export function QcDashboardView({ projectId, onRunSelect, onOpenStartQcRun }: Qc
         </Card>
       </div>
 
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="space-y-4">
       {/* Quality Score Trend */}
       {scoresForTrend.length > 0 && (
         <Card className="p-6">
@@ -263,7 +289,7 @@ export function QcDashboardView({ projectId, onRunSelect, onOpenStartQcRun }: Qc
                     <TooltipTrigger asChild>
                       <div className="flex-1 flex flex-col items-center gap-1 cursor-default">
                         <div className={cn("w-full rounded-t", color)} style={{ height: `${height}%` }} />
-                        <div className="text-[0.6rem] text-muted-foreground">#{s.runSequence}</div>
+                        <div className="text-[0.65rem] text-muted-foreground">#{s.runSequence}</div>
                       </div>
                     </TooltipTrigger>
                     <TooltipContent>
@@ -299,6 +325,16 @@ export function QcDashboardView({ projectId, onRunSelect, onOpenStartQcRun }: Qc
           </div>
         </Card>
       )}
+      </div>
+
+      <Card className="p-5">
+        <div className="mc-kicker">Operator guidance</div>
+        <div className="mt-2 space-y-3 text-sm leading-relaxed text-muted-foreground">
+          <p>The dashboard matters most when it tells you whether a release should keep moving. Trends matter less than the newest red findings and the latest gate result.</p>
+          <p>Use environment filters to separate local noise from production risk. A green local run does not buy confidence if staging is yellow or red.</p>
+        </div>
+      </Card>
+      </div>
 
       {/* Recent Runs */}
       <Card className="p-6">
@@ -338,6 +374,7 @@ export function QcDashboardView({ projectId, onRunSelect, onOpenStartQcRun }: Qc
           ))}
         </div>
       </Card>
-    </div>
+      </div>
+    </main>
   );
 }

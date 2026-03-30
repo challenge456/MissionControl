@@ -89,7 +89,7 @@ function MemoryModal({
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000]" onClick={onClose}>
-      <div className="bg-card border border-border rounded-[10px] w-full max-w-[520px] max-h-[85vh] overflow-auto shadow-[0_20px_60px_rgba(0,0,0,0.4)]" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-card border border-border rounded-lg w-full max-w-[520px] max-h-[85vh] overflow-auto shadow-[0_20px_60px_rgba(0,0,0,0.4)]" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-lg font-semibold text-foreground m-0">
             {mode === "create" ? "Add Memory" : "Edit Memory"}
@@ -233,7 +233,7 @@ function PatternModal({
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000]" onClick={onClose}>
-      <div className="bg-card border border-border rounded-[10px] w-full max-w-[520px] max-h-[85vh] overflow-auto shadow-[0_20px_60px_rgba(0,0,0,0.4)]" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-card border border-border rounded-lg w-full max-w-[520px] max-h-[85vh] overflow-auto shadow-[0_20px_60px_rgba(0,0,0,0.4)]" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-lg font-semibold text-foreground m-0">
             {mode === "create" ? "Add Pattern" : "Edit Pattern"}
@@ -329,7 +329,7 @@ function DeleteConfirm({
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000]" onClick={onCancel}>
       <div
-        className="bg-card border border-border rounded-[10px] w-full max-w-[420px] max-h-[85vh] overflow-auto shadow-[0_20px_60px_rgba(0,0,0,0.4)]"
+        className="bg-card border border-border rounded-lg w-full max-w-[420px] max-h-[85vh] overflow-auto shadow-[0_20px_60px_rgba(0,0,0,0.4)]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">

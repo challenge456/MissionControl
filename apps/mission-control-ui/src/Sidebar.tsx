@@ -214,7 +214,7 @@ function SidebarButton({
       <span className="flex items-center justify-center gap-1.5">
         {label}
         {badge && (
-          <Badge variant="default" className="text-[10px] px-1.5 py-0 h-4 min-w-[18px] justify-center">
+          <Badge variant="default" className="text-[10px] px-1.5 py-0 h-4 min-w-4.5 justify-center">
             {badge}
           </Badge>
         )}

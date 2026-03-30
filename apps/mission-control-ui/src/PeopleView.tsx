@@ -4,23 +4,30 @@ import { api } from "../../../convex/_generated/api";
 import type { Id, Doc } from "../../../convex/_generated/dataModel";
 import { AddPersonModal } from "./AddPersonModal";
 import { EditPersonModal } from "./EditPersonModal";
+import { PageHeader } from "./components/PageHeader";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { UserPlus, Search, Users, Shield, Mail, Building2 } from "lucide-react";
 
 interface PeopleViewProps {
   projectId: Id<"projects"> | null;
 }
 
 const ROLE_BADGE_CLASSES: Record<string, string> = {
-  OWNER: "text-amber-400 bg-amber-500/10 border-amber-400/20",
-  ADMIN: "text-red-500 bg-red-500/10 border-red-500/20",
-  MANAGER: "text-amber-500 bg-amber-500/10 border-amber-500/20",
-  MEMBER: "text-blue-500 bg-blue-500/10 border-blue-500/20",
-  VIEWER: "text-slate-500 bg-slate-500/10 border-slate-500/20",
+  OWNER: "border-amber-400/20 bg-amber-500/10 text-amber-300",
+  ADMIN: "border-red-400/20 bg-red-500/10 text-red-300",
+  MANAGER: "border-cyan-300/20 bg-cyan-400/10 text-cyan-100",
+  MEMBER: "border-[var(--panel-line)] bg-[color:var(--shell-panel)] text-foreground",
+  VIEWER: "border-[var(--panel-line)] bg-[color:var(--shell-panel)] text-muted-foreground",
 };
 
 const ACCESS_LEVEL_CLASSES: Record<string, string> = {
-  ADMIN: "text-red-500",
-  EDIT: "text-amber-500",
+  ADMIN: "text-red-300",
+  EDIT: "text-amber-300",
 };
 
 export function PeopleView({ projectId }: PeopleViewProps) {
@@ -36,134 +43,164 @@ export function PeopleView({ projectId }: PeopleViewProps) {
 
   if (!orgMembers) {
     return (
-      <main className="flex-1 overflow-auto bg-background p-6">
-        <div className="flex items-center justify-center h-full text-muted-foreground">
-          Loading team...
+      <main className="mc-page">
+        <div className="mc-page-body">
+          <div className="h-[620px] rounded-2xl border border-[var(--panel-line)] skeleton-shimmer" />
         </div>
       </main>
     );
   }
 
-  const filtered = orgMembers.filter((m) => {
+  const filtered = orgMembers.filter((member) => {
     const matchesSearch =
       !searchQuery ||
-      m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (m.email && m.email.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      m.role.toLowerCase().includes(searchQuery.toLowerCase());
+      member.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (member.email && member.email.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      member.role.toLowerCase().includes(searchQuery.toLowerCase());
 
-    const matchesRole =
-      !roleFilter || (m.systemRole || "MEMBER") === roleFilter;
-
+    const matchesRole = !roleFilter || ((member as any).systemRole || "MEMBER") === roleFilter;
     return matchesSearch && matchesRole;
   });
 
   const roleCounts: Record<string, number> = {};
-  orgMembers.forEach((m) => {
-    const sr = (m as any).systemRole || "MEMBER";
-    roleCounts[sr] = (roleCounts[sr] || 0) + 1;
+  orgMembers.forEach((member) => {
+    const role = (member as any).systemRole || "MEMBER";
+    roleCounts[role] = (roleCounts[role] || 0) + 1;
   });
 
+  const activeCount = orgMembers.filter((member) => member.active).length;
+  const leadershipCount = orgMembers.filter((member) => ["OWNER", "ADMIN", "MANAGER"].includes((member as any).systemRole || "MEMBER")).length;
+
   const getProjectName = (pid: Id<"projects">) => {
-    return projects?.find((p) => p._id === pid)?.name || "Unknown";
+    return projects?.find((project) => project._id === pid)?.name || "Unknown";
   };
 
   return (
-    <main className="flex-1 overflow-auto bg-background p-6">
-      {/* Header */}
-      <div className="flex justify-between items-start mb-5">
-        <div>
-          <h1 className="text-3xl font-semibold text-foreground mt-0 mb-1">People</h1>
-          <p className="text-base text-muted-foreground mt-0">
-            {orgMembers.length} team member{orgMembers.length !== 1 ? "s" : ""}
-          </p>
-        </div>
-        <button
-          className="px-5 py-2.5 text-sm font-semibold bg-primary hover:bg-primary/85 border-none rounded-lg text-primary-foreground cursor-pointer transition-opacity whitespace-nowrap"
-          onClick={() => setShowAddModal(true)}
-        >
-          + Add Member
-        </button>
-      </div>
+    <main className="mc-page">
+      <PageHeader
+        title="People"
+        description="Directory, role posture, and project access across the operating team."
+        eyebrow="Comms"
+        icon={<Users className="h-4.5 w-4.5" strokeWidth={1.7} />}
+        status={
+          <Badge variant="outline" className="border-cyan-300/20 text-cyan-100">
+            {orgMembers.length} members
+          </Badge>
+        }
+        actions={
+          <Button variant="neon-cyan" onClick={() => setShowAddModal(true)}>
+            <UserPlus className="h-4 w-4" />
+            Add member
+          </Button>
+        }
+      />
 
-      {/* Filters */}
-      <div className="flex flex-col gap-3 mb-6">
-        <input
-          className="px-3.5 py-2.5 bg-card border border-border rounded-lg text-foreground text-sm outline-none max-w-[420px] focus:border-blue-500 transition-colors"
-          placeholder="Search by name, email, or role..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          aria-label="Search team members by name, email, or role"
-        />
-        <div className="flex gap-2 flex-wrap">
-          <button
-            className={cn(
-              "px-3.5 py-1 text-[0.8125rem] font-medium rounded-full border cursor-pointer transition-all",
-              roleFilter === null
-                ? "border-blue-500 text-blue-500 bg-blue-500/10"
-                : "border-border text-muted-foreground bg-transparent hover:text-foreground"
-            )}
-            onClick={() => setRoleFilter(null)}
-          >
-            All ({orgMembers.length})
-          </button>
-          {["OWNER", "ADMIN", "MANAGER", "MEMBER", "VIEWER"].map((r) =>
-            roleCounts[r] ? (
-              <button
-                key={r}
-                className={cn(
-                  "px-3.5 py-1 text-[0.8125rem] font-medium rounded-full border cursor-pointer transition-all",
-                  roleFilter === r
-                    ? "border-blue-500 text-blue-500 bg-blue-500/10"
-                    : "border-border text-muted-foreground bg-transparent hover:text-foreground"
+      <div className="mc-page-body mc-page-stack">
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card className="p-4">
+            <div className="mc-kicker">Team size</div>
+            <div className="mt-2 text-3xl font-semibold text-foreground">{orgMembers.length}</div>
+            <div className="mt-1 text-xs text-muted-foreground">People available in the directory</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">Active now</div>
+            <div className="mt-2 text-3xl font-semibold text-cyan-100">{activeCount}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Members currently marked active</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">Leadership</div>
+            <div className="mt-2 text-3xl font-semibold text-amber-100">{leadershipCount}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Owner, admin, and manager roles</div>
+          </Card>
+          <Card className="p-4">
+            <div className="mc-kicker">Role filters</div>
+            <div className="mt-2 text-3xl font-semibold text-foreground">{Object.keys(roleCounts).length}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Distinct role groups in this workspace</div>
+          </Card>
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+          <Card className="p-5">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="relative max-w-[420px] flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  className="pl-9"
+                  placeholder="Search by name, email, or role"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  aria-label="Search team members"
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <FilterChip
+                  label={`All (${orgMembers.length})`}
+                  active={roleFilter === null}
+                  onClick={() => setRoleFilter(null)}
+                />
+                {["OWNER", "ADMIN", "MANAGER", "MEMBER", "VIEWER"].map((role) =>
+                  roleCounts[role] ? (
+                    <FilterChip
+                      key={role}
+                      label={`${role} (${roleCounts[role]})`}
+                      active={roleFilter === role}
+                      onClick={() => setRoleFilter(roleFilter === role ? null : role)}
+                    />
+                  ) : null
                 )}
-                onClick={() => setRoleFilter(roleFilter === r ? null : r)}
-              >
-                {r.charAt(0) + r.slice(1).toLowerCase()} ({roleCounts[r]})
-              </button>
-            ) : null
-          )}
+              </div>
+            </div>
+
+            {orgMembers.length === 0 ? (
+              <div className="mt-4">
+                <EmptyState
+                  icon={Users}
+                  title="No team members yet"
+                  description="Add the first team member so roles, access, and ownership can be routed clearly."
+                  action={
+                    <Button variant="neon-cyan" onClick={() => setShowAddModal(true)}>
+                      <UserPlus className="h-4 w-4" />
+                      Add first member
+                    </Button>
+                  }
+                />
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="mt-4">
+                <EmptyState
+                  icon={Search}
+                  title="No matching members"
+                  description="Try widening the search or removing the active role filter."
+                />
+              </div>
+            ) : (
+              <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
+                {filtered.map((member) => (
+                  <PersonCard
+                    key={member._id}
+                    member={member}
+                    getProjectName={getProjectName}
+                    onClick={() => setEditMember(member)}
+                  />
+                ))}
+              </div>
+            )}
+          </Card>
+
+          <Card className="p-5">
+            <div className="mc-kicker">Operator guidance</div>
+            <div className="mt-2 space-y-3 text-sm leading-relaxed text-muted-foreground">
+              <div className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-4">
+                Keep titles and roles current. Team context becomes routing context across the whole system.
+              </div>
+              <div className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-4">
+                Use this surface to validate who can see, change, and approve work before issues become access incidents.
+              </div>
+            </div>
+          </Card>
         </div>
       </div>
 
-      {/* People Grid */}
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-4">
-        {filtered.map((member) => (
-          <PersonCard
-            key={member._id}
-            member={member}
-            getProjectName={getProjectName}
-            onClick={() => setEditMember(member)}
-          />
-        ))}
-      </div>
-
-      {filtered.length === 0 && orgMembers.length > 0 && (
-        <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-          <div className="text-6xl mb-4">🔍</div>
-          <div className="text-2xl font-semibold text-foreground mb-2">No matching members</div>
-          <div className="text-base text-muted-foreground">
-            Try adjusting your search or filters
-          </div>
-        </div>
-      )}
-
-      {orgMembers.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-          <div className="text-6xl mb-4">👥</div>
-          <div className="text-2xl font-semibold text-foreground mb-2">No team members yet</div>
-          <div className="text-base text-muted-foreground">
-            Add team members to build your directory and assign roles
-          </div>
-          <button
-            className="mt-4 px-5 py-2.5 text-sm font-semibold bg-primary hover:bg-primary/85 border-none rounded-lg text-primary-foreground cursor-pointer transition-opacity whitespace-nowrap"
-            onClick={() => setShowAddModal(true)}
-          >
-            + Add First Member
-          </button>
-        </div>
-      )}
-
-      {/* Modals */}
       <AddPersonModal
         open={showAddModal}
         onClose={() => setShowAddModal(false)}
@@ -175,6 +212,23 @@ export function PeopleView({ projectId }: PeopleViewProps) {
         member={editMember}
       />
     </main>
+  );
+}
+
+function FilterChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        "rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] transition-colors",
+        active
+          ? "border-cyan-300/20 bg-cyan-400/10 text-cyan-100"
+          : "border-[var(--panel-line)] bg-[color:var(--shell-panel)] text-muted-foreground hover:text-foreground"
+      )}
+      onClick={onClick}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -190,126 +244,78 @@ function PersonCard({ member, getProjectName, onClick }: PersonCardProps) {
     | { projectId: Id<"projects">; accessLevel: string }[]
     | undefined;
   const permissions = (member as any).permissions as string[] | undefined;
-  const badgeClasses = ROLE_BADGE_CLASSES[systemRole] || ROLE_BADGE_CLASSES.MEMBER;
 
   return (
-    <div
-      className="p-5 bg-card border border-border rounded-xl cursor-pointer transition-all hover:border-blue-500/50 flex flex-col gap-3 relative"
+    <button
+      type="button"
+      className="rounded-2xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] p-5 text-left transition-colors hover:border-[var(--panel-line-strong)]"
       onClick={onClick}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } }}
-      tabIndex={0}
-      role="button"
       aria-label={`View details for ${member.name}`}
     >
-      {/* Top row: avatar + info */}
-      <div className="flex gap-4 items-start">
-        <div className={cn(
-          "w-14 h-14 rounded-full flex items-center justify-center text-white text-2xl font-semibold shrink-0",
-          member.active ? "bg-blue-500" : "bg-slate-500"
-        )}>
+      <div className="flex items-start gap-4">
+        <div
+          className={cn(
+            "flex h-14 w-14 shrink-0 items-center justify-center rounded-full border text-base font-semibold",
+            member.active ? "border-cyan-300/20 bg-cyan-400/10 text-cyan-100" : "border-[var(--panel-line)] bg-background/50 text-muted-foreground"
+          )}
+        >
           {member.avatar || member.name.charAt(0).toUpperCase()}
         </div>
-        <div className="flex-1 min-w-0">
-          <div className="text-lg font-semibold text-foreground mb-0.5">{member.name}</div>
-          {member.title && (
-            <div className="text-[0.8125rem] text-muted-foreground mb-0.5">{member.title}</div>
-          )}
-          <div className="text-[0.8125rem] font-medium text-blue-500">{member.role}</div>
-        </div>
-      </div>
-
-      {/* System role badge */}
-      <div className="flex items-center gap-2.5">
-        <span className={cn(
-          "px-2.5 py-0.5 text-[0.6875rem] font-bold rounded-full tracking-wide uppercase border",
-          badgeClasses
-        )}>
-          {systemRole}
-        </span>
-        <div className="flex items-center gap-1.5">
-          <div className={cn(
-            "w-2 h-2 rounded-full",
-            member.active ? "bg-primary" : "bg-slate-500"
-          )} />
-          <span className="text-xs text-muted-foreground">
-            {member.active ? "Active" : "Inactive"}
-          </span>
-        </div>
-      </div>
-
-      {/* Email */}
-      {member.email && (
-        <a
-          href={`mailto:${member.email}`}
-          className="text-[0.8125rem] text-blue-500 no-underline hover:underline"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {member.email}
-        </a>
-      )}
-
-      {/* Project access */}
-      {projectAccess && projectAccess.length > 0 && (
-        <div className="flex flex-col gap-1.5 pt-2 border-t border-border">
-          <div className="text-[0.6875rem] font-bold text-muted-foreground uppercase tracking-wide">
-            Project Access
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="text-lg font-semibold text-foreground">{member.name}</div>
+            <span className={cn("rounded-full border px-2.5 py-0.5 text-[0.66rem] font-semibold uppercase tracking-[0.14em]", ROLE_BADGE_CLASSES[systemRole] || ROLE_BADGE_CLASSES.MEMBER)}>
+              {systemRole}
+            </span>
           </div>
-          <div className="flex flex-wrap gap-1.5">
-            {projectAccess.slice(0, 3).map((pa) => (
-              <span key={pa.projectId} className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-background border border-border rounded-md text-xs">
-                <span className="text-muted-foreground">
-                  {getProjectName(pa.projectId)}
+          {member.title ? <div className="mt-1 text-sm text-muted-foreground">{member.title}</div> : null}
+          <div className="mt-1 text-sm text-cyan-100">{member.role}</div>
+        </div>
+      </div>
+
+      <div className="mt-4 space-y-3 border-t border-[var(--panel-line)] pt-4">
+        {member.email ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Mail className="h-4 w-4" />
+            <span className="truncate">{member.email}</span>
+          </div>
+        ) : null}
+
+        {projectAccess && projectAccess.length > 0 ? (
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              <Building2 className="h-3.5 w-3.5" />
+              Project access
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {projectAccess.slice(0, 3).map((access) => (
+                <span key={access.projectId} className="rounded-full border border-[var(--panel-line)] px-2.5 py-1 text-xs text-foreground">
+                  {getProjectName(access.projectId)}
+                  <span className={cn("ml-1", ACCESS_LEVEL_CLASSES[access.accessLevel] ?? "text-muted-foreground")}>
+                    {access.accessLevel}
+                  </span>
                 </span>
-                <span className={cn(
-                  "font-semibold text-[0.6875rem]",
-                  ACCESS_LEVEL_CLASSES[pa.accessLevel] || "text-blue-500"
-                )}>
-                  {pa.accessLevel}
-                </span>
-              </span>
-            ))}
-            {projectAccess.length > 3 && (
-              <span className="px-2.5 py-0.5 text-xs text-muted-foreground bg-background rounded-md border border-border">
-                +{projectAccess.length - 3} more
-              </span>
-            )}
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        ) : null}
 
-      {/* Permissions count */}
-      {permissions && permissions.length > 0 && (
-        <div className="text-xs text-muted-foreground">
-          {permissions.length} permission{permissions.length !== 1 ? "s" : ""}{" "}
-          granted
-        </div>
-      )}
-
-      {/* Responsibilities */}
-      {member.responsibilities && member.responsibilities.length > 0 && (
-        <div className="flex flex-col gap-1.5 pt-2 border-t border-border">
-          <div className="text-[0.6875rem] font-bold text-muted-foreground uppercase tracking-wide">
-            Responsibilities
+        {permissions && permissions.length > 0 ? (
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              <Shield className="h-3.5 w-3.5" />
+              Permissions
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {permissions.slice(0, 4).map((permission) => (
+                <Badge key={permission} variant="outline" className="border-[var(--panel-line)] text-muted-foreground">
+                  {permission}
+                </Badge>
+              ))}
+            </div>
           </div>
-          <ul className="mt-0 mb-0 pl-4.5">
-            {member.responsibilities.slice(0, 3).map((resp, i) => (
-              <li key={i} className="text-[0.8125rem] text-muted-foreground leading-relaxed">
-                {resp}
-              </li>
-            ))}
-            {member.responsibilities.length > 3 && (
-              <li className="text-[0.8125rem] text-muted-foreground leading-relaxed">
-                +{member.responsibilities.length - 3} more...
-              </li>
-            )}
-          </ul>
-        </div>
-      )}
-
-      {/* Edit hint */}
-      <div className="absolute bottom-2 right-3 text-[0.6875rem] text-muted-foreground opacity-50">
-        Click to edit
+        ) : null}
       </div>
-    </div>
+    </button>
   );
 }

@@ -210,7 +210,7 @@ export function KanbanFilters({ projectId, currentUserId, filters, onFiltersChan
                 >
                   {config.shortLabel}
                   {!isActive && (
-                    <span className="ml-1 text-[10px] opacity-60 hidden sm:inline">{config.label}</span>
+                    <span className="ml-1 text-[11px] opacity-60 hidden sm:inline">{config.label}</span>
                   )}
                 </button>
               );

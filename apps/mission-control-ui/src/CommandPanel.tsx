@@ -118,11 +118,11 @@ function AgentFleet({ projectId, onToast }: { projectId: Id<"projects"> | null; 
           <span className="text-lg shrink-0">{agent.emoji || "🤖"}</span>
           <div className="flex-1 min-w-0">
             <p className="text-xs font-semibold text-foreground truncate">{agent.name}</p>
-            <p className="text-[10px] text-muted-foreground truncate">{agent.role}</p>
+            <p className="text-[11px] text-muted-foreground truncate">{agent.role}</p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <span className={cn("h-2 w-2 rounded-full", statusColor(agent.status))} />
-            <span className="text-[10px] text-muted-foreground">{agent.status}</span>
+            <span className="text-[11px] text-muted-foreground">{agent.status}</span>
             {(agent.status === "ACTIVE" || agent.status === "PAUSED") && (
               <button
                 onClick={() => handleToggle(agent)}
@@ -190,19 +190,19 @@ function ApprovalQueue({ projectId, onToast }: { projectId: Id<"projects"> | nul
         <div key={a._id} className="flex items-start gap-3 px-3 py-2.5 rounded-lg border border-border bg-muted/20">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-0.5">
-              <span className={cn("text-[10px] font-bold px-1.5 py-0.5 rounded", riskColor(a.riskLevel))}>
+              <span className={cn("text-[11px] font-bold px-1.5 py-0.5 rounded", riskColor(a.riskLevel))}>
                 {a.riskLevel}
               </span>
-              <span className="text-[10px] text-muted-foreground">{a.actionType}</span>
+              <span className="text-[11px] text-muted-foreground">{a.actionType}</span>
             </div>
             <p className="text-xs text-foreground truncate">{a.actionSummary}</p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">{a.justification?.slice(0, 80)}</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">{a.justification?.slice(0, 80)}</p>
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <button
               onClick={() => handleApprove(a._id)}
               disabled={loading === a._id}
-              className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold bg-primary/10 text-primary hover:bg-primary/15 transition-colors disabled:opacity-40"
+              className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold bg-primary/10 text-primary hover:bg-primary/15 transition-colors disabled:opacity-40"
             >
               {loading === a._id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
               OK
@@ -210,7 +210,7 @@ function ApprovalQueue({ projectId, onToast }: { projectId: Id<"projects"> | nul
             <button
               onClick={() => handleDeny(a._id)}
               disabled={loading === a._id}
-              className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors disabled:opacity-40"
+              className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors disabled:opacity-40"
             >
               <XCircle className="h-3 w-3" />
               No
@@ -332,11 +332,11 @@ function ActivityFeed({ projectId }: { projectId: Id<"projects"> | null }) {
     <div className="space-y-0 divide-y divide-border/40">
       {activities.map((a) => (
         <div key={a._id} className="flex items-start gap-3 py-2.5">
-          <span className={cn("text-[10px] font-bold mt-0.5 shrink-0 min-w-[70px]", actionColor(a.action))}>
+          <span className={cn("text-[11px] font-bold mt-0.5 shrink-0 min-w-[70px]", actionColor(a.action))}>
             {a.action.replace(/_/g, " ").slice(0, 12)}
           </span>
           <p className="text-xs text-foreground flex-1 leading-relaxed truncate">{a.description}</p>
-          <span className="text-[10px] text-muted-foreground shrink-0">
+          <span className="text-[11px] text-muted-foreground shrink-0">
             {new Date(a._creationTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           </span>
         </div>
@@ -414,7 +414,7 @@ function TaskPipeline({ projectId }: { projectId: Id<"projects"> | null }) {
         const pct = Math.round((n / total) * 100);
         return (
           <div key={label} className="flex items-center gap-3">
-            <span className="text-[10px] font-mono text-muted-foreground w-24 shrink-0">{label.replace("_", " ")}</span>
+            <span className="text-[11px] font-mono text-muted-foreground w-24 shrink-0">{label.replace("_", " ")}</span>
             <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
               <div className={cn("h-full rounded-full transition-all", color)} style={{ width: `${pct}%` }} />
             </div>
@@ -533,7 +533,7 @@ export function CommandPanel({ projectId, onOpenSuggestionsDrawer }: CommandPane
                 <span className={cn("h-2 w-2 rounded-full shrink-0", stat.dot)} />
                 <div>
                   <p className={cn("text-lg font-bold leading-none", stat.color)}>{stat.value}</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">{stat.label}</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">{stat.label}</p>
                 </div>
               </div>
             ))}
@@ -558,7 +558,7 @@ export function CommandPanel({ projectId, onOpenSuggestionsDrawer }: CommandPane
                     </div>
                     <div className="min-w-0">
                       <p className="text-xs font-semibold text-foreground leading-tight">{action.label}</p>
-                      <p className="text-[10px] text-muted-foreground leading-relaxed mt-0.5 line-clamp-2">{action.description}</p>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed mt-0.5 line-clamp-2">{action.description}</p>
                     </div>
                   </div>
                 </Card>
@@ -614,7 +614,7 @@ export function CommandPanel({ projectId, onOpenSuggestionsDrawer }: CommandPane
                 {actionLog.map((entry, i) => (
                   <div key={i} className="flex items-center justify-between py-2">
                     <span className="text-xs text-foreground font-medium">{entry.label.replace(/-/g, " ")}</span>
-                    <span className="text-[10px] text-muted-foreground">{entry.time}</span>
+                    <span className="text-[11px] text-muted-foreground">{entry.time}</span>
                   </div>
                 ))}
               </div>

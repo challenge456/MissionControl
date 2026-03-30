@@ -79,7 +79,7 @@ export function TelemetryView({ projectId }: { projectId: Id<"projects"> | null 
   const inWindow    = stats?.inWindow ?? 0;
 
   return (
-    <main className="flex-1 overflow-auto">
+    <main className="mc-page">
       <PageHeader
         title="ARM Telemetry"
         description={
@@ -87,6 +87,7 @@ export function TelemetryView({ projectId }: { projectId: Id<"projects"> | null 
             ? `Live stream · ${inWindow} events in last ${windowMinutes}m`
             : "Operational events stream for runs, tool calls, workflow steps, and decision traces."
         }
+        eyebrow="Operations"
         actions={
           <Button size="sm" onClick={handleEmitTestEvent} variant="outline">
             <Zap className="h-3.5 w-3.5 mr-1.5" />
@@ -96,7 +97,8 @@ export function TelemetryView({ projectId }: { projectId: Id<"projects"> | null 
       />
 
       {/* Summary stats */}
-      <div className="px-6 py-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="mc-page-body mc-page-stack">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { icon: Activity,     label: "Total Events",     value: totalEvents,             accent: "text-foreground" },
           { icon: Radio,        label: `Last ${windowMinutes}m`, value: inWindow,          accent: inWindow > 0 ? "text-blue-500" : "text-foreground" },
@@ -113,7 +115,8 @@ export function TelemetryView({ projectId }: { projectId: Id<"projects"> | null 
         ))}
       </div>
 
-      <div className="px-6 pb-4 flex flex-col gap-4">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="flex flex-col gap-4">
         {/* Filters + Event type breakdown */}
         <Card className="overflow-hidden">
           <div className="px-5 py-3 border-b border-border bg-muted/30 flex items-center justify-between gap-3 flex-wrap">
@@ -198,6 +201,16 @@ export function TelemetryView({ projectId }: { projectId: Id<"projects"> | null 
             </div>
           )}
         </Card>
+      </div>
+
+      <Card className="p-5">
+        <div className="mc-kicker">Telemetry guidance</div>
+        <div className="mt-2 space-y-3 text-sm leading-relaxed text-muted-foreground">
+          <p>Telemetry is useful only when it helps explain a decision, a failure, or a bottleneck. Treat spikes without narrative as a sign of poor instrumentation.</p>
+          <p>Use the time window to isolate operator incidents first, then widen the window only when you need trend context.</p>
+        </div>
+      </Card>
+      </div>
       </div>
     </main>
   );

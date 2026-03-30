@@ -149,7 +149,7 @@ export function AppSideNav({
       <aside
         className={cn(
           "flex flex-col border-r border-border bg-sidebar text-sidebar-foreground transition-all duration-200",
-          collapsed ? "w-[52px]" : "w-[220px]"
+          collapsed ? "w-14" : "w-56"
         )}
       >
         {/* Logo / Brand */}
@@ -187,7 +187,7 @@ export function AppSideNav({
                 <Shield className="h-3.5 w-3.5 mr-1" />
                 Approvals
                 {pendingApprovals > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold">
+                  <span className="absolute -top-1 -right-1 min-w-4.5 h-4.5 flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold">
                     {pendingApprovals}
                   </span>
                 )}
@@ -213,7 +213,7 @@ export function AppSideNav({
                   <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground relative" onClick={onOpenApprovals}>
                     <Shield className="h-4 w-4" />
                     {pendingApprovals > 0 && (
-                      <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[9px] font-bold">
+                      <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[9px] font-bold">
                         {pendingApprovals}
                       </span>
                     )}
@@ -227,12 +227,12 @@ export function AppSideNav({
 
         {/* Navigation groups */}
         <ScrollArea className="flex-1">
-          <nav className="flex flex-col gap-1 p-2" aria-label="Main navigation">
+          <nav className="flex flex-col gap-1 p-2" aria-label="Main navigation" role="navigation">
             {navGroups.map((group, gi) => (
               <div key={group.label}>
                 {gi > 0 && <Separator className="my-2" />}
                 {!collapsed && (
-                  <span className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <span className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                     {group.label}
                   </span>
                 )}
@@ -248,7 +248,7 @@ export function AppSideNav({
                             variant={isActive ? "secondary" : "ghost"}
                             size="icon"
                             className={cn(
-                              "h-8 w-8 my-0.5",
+                              "h-9 w-9 my-0.5",
                               isActive
                                 ? "bg-sidebar-accent text-sidebar-accent-foreground"
                                 : "text-muted-foreground hover:text-foreground"
@@ -269,7 +269,7 @@ export function AppSideNav({
                       key={item.id}
                       variant={isActive ? "secondary" : "ghost"}
                       className={cn(
-                        "w-full justify-start h-8 px-2 text-sm my-0.5",
+                        "w-full justify-start h-9 px-2 text-sm my-0.5",
                         isActive
                           ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
                           : "text-muted-foreground hover:text-foreground"
