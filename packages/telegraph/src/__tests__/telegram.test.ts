@@ -99,10 +99,15 @@ describe("TelegramTelegraphProvider", () => {
         new Error("Telegram API error")
       );
 
+      // Suppress console.error output from this test
+      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
       // Should not throw; message is still stored
       const result = await provider.sendMessage("thread-1", "Important message");
       expect(result.status).toBe("SENT");
       expect(convexClient.sendMessage).toHaveBeenCalled();
+
+      consoleErrorSpy.mockRestore();
     });
   });
 
