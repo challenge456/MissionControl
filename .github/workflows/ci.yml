@@ -2,9 +2,9 @@ name: CI — Mission Control
 
 on:
   push:
-    branches: [main, master, 'feat/*', 'bugfix/*']
+    branches: [main, master, 'feat/*', 'bugfix/*', 'sf/*']
   pull_request:
-    branches: [main, master]
+    branches: [main, master, 'sf/*']
 
 jobs:
   smoke:
