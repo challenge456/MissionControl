@@ -54,6 +54,10 @@ export const importSkillMarkdown = mutation({
     owner: v.string(),
     type: v.optional(importableTypeArg),
     contentHash: v.optional(v.string()),
+    // Structural review score from the skill linter (0-100) and tags for
+    // registry categorization — both optional, set at import time
+    qualityScore: v.optional(v.number()),
+    tags: v.optional(v.array(v.string())),
     projectId: v.optional(v.id("projects")),
     tenantId: v.optional(v.id("tenants")),
     actorId: v.optional(v.string()),
@@ -105,6 +109,7 @@ export const importSkillMarkdown = mutation({
         tenantId: args.tenantId,
         createdAt: now,
         updatedAt: now,
+      tags: args.tags,
       }));
 
     // First import gets 0.1.0; re-imports bump the patch of the latest version.
@@ -131,6 +136,7 @@ export const importSkillMarkdown = mutation({
       sourcePath: args.sourcePath,
       sourceCommitSha: args.sourceCommitSha,
       createdAt: now,
+      qualityScore: args.qualityScore,
     });
 
     await ctx.db.insert("activities", {

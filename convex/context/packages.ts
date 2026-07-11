@@ -160,6 +160,58 @@ export const getVersion = query({
 // Mutations
 // ---------------------------------------------------------------------------
 
+/**
+ * Registry listing: packages joined with their current (or latest) version's
+ * score/security fields. Powers the Registry UI.
+ */
+export const listWithCurrentVersions = query({
+  args: {
+    type: v.optional(contextPackageTypeArg),
+    status: v.optional(contextPackageStatusArg),
+  },
+  handler: async (ctx, args) => {
+    let rows = await ctx.db.query("contextPackages").collect();
+    if (args.type) rows = rows.filter((r: any) => r.type === args.type);
+    if (args.status) rows = rows.filter((r: any) => r.status === args.status);
+
+    const result = [];
+    for (const pkg of rows as any[]) {
+      let version: any = pkg.currentVersionId
+        ? await ctx.db.get(pkg.currentVersionId)
+        : null;
+      if (!version) {
+        const versions = await ctx.db
+          .query("contextPackageVersions")
+          .withIndex("by_package", (q: any) => q.eq("packageId", pkg._id))
+          .collect();
+        version = versions.sort((a: any, b: any) => b.createdAt - a.createdAt)[0] ?? null;
+      }
+      result.push({
+        _id: pkg._id,
+        slug: pkg.slug,
+        name: pkg.name,
+        displayName: pkg.displayName,
+        description: pkg.description,
+        type: pkg.type,
+        status: pkg.status,
+        owner: pkg.owner,
+        tags: pkg.tags ?? [],
+        riskLevel: pkg.riskLevel,
+        version: version?.version ?? null,
+        versionStatus: version?.status ?? null,
+        qualityScore: version?.qualityScore ?? null,
+        impactScore: version?.impactScore ?? null,
+        securityStatus: version?.securityStatus ?? null,
+        sourceRepo: version?.sourceRepo ?? null,
+        updatedAt: pkg.updatedAt,
+      });
+    }
+    return result.sort(
+      (a: any, b: any) => (b.qualityScore ?? -1) - (a.qualityScore ?? -1)
+    );
+  },
+});
+
 export const create = mutation({
   args: {
     name: v.string(),

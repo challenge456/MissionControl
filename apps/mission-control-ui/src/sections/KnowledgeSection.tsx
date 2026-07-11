@@ -5,6 +5,8 @@ import { DesignSystemView } from "../DesignSystemView";
 import { MemoryView } from "../MemoryView";
 import { SearchBar } from "../SearchBar";
 import { SkillsView } from "../SkillsView";
+import { RegistryView } from "../RegistryView";
+import { useFlag } from "../hooks/useFlag";
 import { PageHeader } from "../components/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +21,7 @@ interface KnowledgeSectionProps {
 export function KnowledgeSection({ currentView, projectId, onTaskSelect }: KnowledgeSectionProps) {
   if (currentView === "docs") return <DocsView />;
   if (currentView === "design-system") return <DesignSystemView />;
-  if (currentView === "skills") return <SkillsView />;
+  if (currentView === "skills") return <SkillsRoute />;
   if (currentView === "memory") return <MemoryView projectId={projectId} />;
   if (currentView === "search") {
     return (
@@ -61,4 +63,9 @@ export function KnowledgeSection({ currentView, projectId, onTaskSelect }: Knowl
     );
   }
   return null;
+}
+
+function SkillsRoute() {
+  const registryEnabled = useFlag("context.registry");
+  return registryEnabled ? <RegistryView /> : <SkillsView />;
 }
