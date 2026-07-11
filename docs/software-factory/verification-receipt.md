@@ -226,3 +226,61 @@ pnpm exec tsc --noEmit -p convex/tsconfig.json
 - Added receipt-linked evidence lineage on `verificationReceipts`
 - Added a dedicated `ExecutionRunInspector` reachable from linked runs and verification receipts
 - Added authenticated orchestration endpoints and CLI inspection commands for structured run traces
+
+## Fifth slice — WorkOrder revision, reopen, supersede, and governance expiry lifecycle
+
+| Criterion | Result | Evidence |
+| --- | --- | --- |
+| Immutable revision history exists and is approval-driven | PASS | `convex/schema.ts`, `convex/lib/workOrderRevision.ts`, `convex/workOrders.ts`, `convex/__tests__/workOrderRevision.test.ts` |
+| Explicit reopen decisions preserve lineage and stale prior evidence | PASS | `convex/workOrders.ts#reopenWorkOrder`, `convex/__tests__/workOrderGovernance.test.ts`, live reopen verification below |
+| Supersession links original and replacement WorkOrders | PASS | `convex/workOrders.ts#supersedeWorkOrder`, live supersession verification below |
+| Approval and receipt validity windows can expire authoritatively | PASS | `convex/lib/workOrderGovernance.ts`, `convex/workOrders.ts#expireGovernanceRecords`, live expiry verification below |
+| UI, CLI, and orchestration expose the same lifecycle commands | PASS | `apps/mission-control-ui/src/controlPlane/WorkOrdersView.tsx`, `scripts/mc`, `apps/orchestration-server/src/index.ts` |
+| Lifecycle model and governance logic are test-covered | PASS | `apps/mission-control-ui/src/controlPlane/workOrderLifecycleModel.test.ts`, `convex/__tests__/workOrderDispatch.test.ts`, `convex/__tests__/workOrderGovernance.test.ts`, `convex/__tests__/workOrderRevision.test.ts` |
+
+### Additional checks executed
+
+```bash
+pnpm exec convex codegen --typecheck disable
+pnpm exec vitest run convex/__tests__/workOrderDispatch.test.ts convex/__tests__/workOrderGovernance.test.ts convex/__tests__/workOrderRevision.test.ts apps/mission-control-ui/src/controlPlane/workOrderLifecycleModel.test.ts apps/mission-control-ui/src/controlPlane/workOrdersModel.test.ts
+pnpm exec tsc --noEmit -p convex/tsconfig.json
+pnpm --filter mission-control-ui typecheck
+pnpm --filter mission-control-ui build
+pnpm run ci:prepare
+pnpm --filter @mission-control/orchestration-server typecheck
+pnpm --filter @mission-control/orchestration-server build
+pnpm run ci:typecheck
+pnpm run ci:test
+pnpm run ci:test:e2e
+```
+
+### Local end-to-end lifecycle evidence
+
+- reopen and reaccept verification WorkOrder: `wd70m7g2e6r485xmdh0fg26dkd8ab517`
+  - reopen decision: `y17ay7etwx3n3yqp75q7xh15f98abm3a`
+  - original receipt: `x5775838hwkxdmdtf6690ve0cn8abs2e` → `STALE`
+  - replacement receipt: `x576r0c7cqateqbg4ntv5rhryx8aaawr` → `PASSED`
+  - final state: `DONE`, verification: `PASS`
+  - observed lifecycle events: `WORK_ORDER_REOPENED`, `VERIFICATION_STALE`, `WORK_ORDER_ACCEPTED`
+- selective revision invalidation verification WorkOrder: `wd77sjtzm8xe58am3epwy1yers8abca0`
+  - current revision: `2`
+  - unaffected criterion `ac-1` stayed `PASS`
+  - changed criterion `ac-2` became `STALE`
+  - latest dispatch linked run revision `2`
+- active-run revision block verification WorkOrder: `wd71qrmxb0sr9c09dw6bf96xvh8aa5zr`
+  - active run revision stayed `1` while WorkOrder advanced to revision `2`
+  - WorkOrder remained `BLOCKED` until replacement execution
+  - observed lifecycle events included `REVISION_REQUESTED`, `REVISION_APPROVED`, and `REVISION_APPLIED`
+- approval-expiry verification WorkOrder: `wd70r7jdjx0bhm7ww8tta6n0yd8aarfc`
+  - approval decision: `x176q7277dkasm96nn9rp3ychs8abc9r`
+  - final approval status: `EXPIRED`
+  - blocking reasons included `Expired approvals: SECURITY`
+  - observed lifecycle events: `APPROVAL_REQUESTED`, `APPROVAL_APPROVED`, `APPROVAL_EXPIRED`, `GOVERNANCE_RECORDS_EXPIRED`
+- receipt-expiry verification WorkOrder: `wd7c57m8cae9ywk0g48em9efk18ab16z`
+  - receipt: `x57fpzbv0rcdayxc1dxztj3kan8abk6q` → `STALE`
+  - final verification status: `STALE`
+  - blocking reason: `Stale criteria: ac-1`
+- supersession verification:
+  - original WorkOrder: `wd730tjzk2mfr0qsc4scgp807x8aajd2` → state `SUPERSEDED`
+  - replacement WorkOrder: `wd7df781m9sm3bazvykezyb7j58aarq4`
+  - lineage preserved via `supersededByWorkOrderId` / `supersedesWorkOrderId`

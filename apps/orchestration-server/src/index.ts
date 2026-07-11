@@ -363,6 +363,7 @@ app.post("/workorders/:workOrderId/approvals", async (c) => {
       requestedAction: body.requestedAction ?? "Approve protected work-order action",
       riskLevel: body.riskLevel,
       requestedBy: body.requestedBy ?? "orchestration-server",
+      expiresAt: body.expiresAt,
       metadata: body.metadata,
     });
     return c.json({ success: true, result });
@@ -407,6 +408,7 @@ app.post("/workorders/:workOrderId/verification-receipts", async (c) => {
       status: body.status,
       exceptionOrWaiver: body.exceptionOrWaiver,
       waiverApprovalDecisionId: body.waiverApprovalDecisionId,
+      validUntil: body.validUntil,
       metadata: body.metadata,
     });
     return c.json({ success: true, result });
@@ -425,6 +427,134 @@ app.post("/workorders/:workOrderId/accept", async (c) => {
       actorId: body.actorId ?? "orchestration-server",
       idempotencyKey: body.idempotencyKey ?? `orch-accept:${workOrderId}`,
     });
+    return c.json({ success: true, result });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+app.get("/workorders/:workOrderId/revisions", async (c) => {
+  try {
+    const workOrderId = c.req.param("workOrderId");
+    const result = await client.query(ConvexQueries.workOrders.revisionHistory as any, { workOrderId });
+    return c.json({ success: true, result });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+app.get("/workorders/:workOrderId/governance", async (c) => {
+  try {
+    const workOrderId = c.req.param("workOrderId");
+    const result = await client.query(ConvexQueries.workOrders.governanceValidity as any, { workOrderId });
+    return c.json({ success: true, result });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+app.get("/workorders/:workOrderId/expired-approvals", async (c) => {
+  try {
+    const workOrderId = c.req.param("workOrderId");
+    const result = await client.query(ConvexQueries.workOrders.listExpiredApprovals as any, { workOrderId });
+    return c.json({ success: true, result });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+app.get("/workorders/:workOrderId/stale-evidence", async (c) => {
+  try {
+    const workOrderId = c.req.param("workOrderId");
+    const result = await client.query(ConvexQueries.workOrders.listStaleEvidence as any, { workOrderId });
+    return c.json({ success: true, result });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+app.post("/workorders/:workOrderId/revisions", async (c) => {
+  try {
+    const workOrderId = c.req.param("workOrderId");
+    const body = await c.req.json().catch(() => ({}));
+    const result = await client.mutation(ConvexMutations.workOrders.requestWorkOrderRevision as any, {
+      workOrderId,
+      idempotencyKey: body.idempotencyKey ?? `orch-revision:${workOrderId}:${Date.now()}`,
+      patch: body.patch ?? {},
+      changeSummary: body.changeSummary ?? "Revise WorkOrder",
+      reason: body.reason ?? "Revision requested",
+      requestedBy: body.requestedBy ?? "orchestration-server",
+      impactedAcceptanceCriteria: body.impactedAcceptanceCriteria,
+      impactedApprovalTypes: body.impactedApprovalTypes,
+      metadata: body.metadata,
+    });
+    return c.json({ success: true, result });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+app.post("/workorder-revisions/:workOrderRevisionId/approve", async (c) => {
+  try {
+    const workOrderRevisionId = c.req.param("workOrderRevisionId");
+    const body = await c.req.json().catch(() => ({}));
+    const result = await client.mutation(ConvexMutations.workOrders.approveWorkOrderRevision as any, {
+      workOrderRevisionId,
+      approvedBy: body.approvedBy ?? "orchestration-server",
+    });
+    return c.json({ success: true, result });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+app.post("/workorders/:workOrderId/reopen", async (c) => {
+  try {
+    const workOrderId = c.req.param("workOrderId");
+    const body = await c.req.json().catch(() => ({}));
+    const result = await client.mutation(ConvexMutations.workOrders.reopenWorkOrder as any, {
+      workOrderId,
+      idempotencyKey: body.idempotencyKey ?? `orch-reopen:${workOrderId}:${Date.now()}`,
+      reason: body.reason,
+      sourceIssueOrDefect: body.sourceIssueOrDefect,
+      requestedBy: body.requestedBy ?? "orchestration-server",
+      approvedBy: body.approvedBy ?? body.requestedBy ?? "orchestration-server",
+      reopenScope: body.reopenScope ?? "full-workorder",
+      acceptanceCriteriaImpacted: body.acceptanceCriteriaImpacted,
+      invalidatedReceiptIds: body.invalidatedReceiptIds,
+      invalidatedApprovalIds: body.invalidatedApprovalIds,
+      newRequiredActions: body.newRequiredActions,
+      metadata: body.metadata,
+    });
+    return c.json({ success: true, result });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+app.post("/workorders/:workOrderId/supersede", async (c) => {
+  try {
+    const workOrderId = c.req.param("workOrderId");
+    const body = await c.req.json().catch(() => ({}));
+    const result = await client.mutation(ConvexMutations.workOrders.supersedeWorkOrder as any, {
+      workOrderId,
+      replacementWorkOrderId: body.replacementWorkOrderId,
+      idempotencyKey: body.idempotencyKey ?? `orch-supersede:${workOrderId}:${body.replacementWorkOrderId}`,
+      reason: body.reason,
+      actorType: body.actorType ?? "SYSTEM",
+      actorId: body.actorId ?? "orchestration-server",
+      metadata: body.metadata,
+    });
+    return c.json({ success: true, result });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+app.post("/workorders/:workOrderId/governance/expire", async (c) => {
+  try {
+    const workOrderId = c.req.param("workOrderId");
+    const result = await client.mutation(ConvexMutations.workOrders.expireGovernanceRecords as any, { workOrderId });
     return c.json({ success: true, result });
   } catch (err: any) {
     return c.json({ error: err.message }, 400);

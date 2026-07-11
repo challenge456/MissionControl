@@ -45,6 +45,20 @@ COMMANDS:
                         Dispatch a WorkOrder through the governed server-side boundary
     accept <workOrderId>
                         Accept a WorkOrder once approvals and verification are satisfied
+    revision-history <workOrderId>
+                        List WorkOrder revisions
+    request-revision <workOrderId> <patch-json>
+                        Request a structured WorkOrder revision using inline JSON patch
+    reopen <workOrderId> <reason>
+                        Reopen a WorkOrder with a governance reason
+    governance <workOrderId>
+                        Show governance validity, expiry, and stale evidence summary
+    expired-approvals <workOrderId>
+                        List expired approvals for a WorkOrder
+    stale-evidence <workOrderId>
+                        List stale verification evidence for a WorkOrder
+    supersede <workOrderId> <replacementWorkOrderId> <reason>
+                        Supersede one WorkOrder with another
     run-summary <runId> Show structured run summary
     run-events <runDocId>
                         List structured run events for an execution run
@@ -62,6 +76,8 @@ EXAMPLES:
     mc run feature-dev "Add OAuth"      # Start workflow
     mc dispatch wd711... feature-dev    # Dispatch a WorkOrder
     mc accept wd711...                  # Accept a WorkOrder
+    mc revision-history wd711...        # Show revision history
+    mc reopen wd711... "Defect found"   # Reopen a WorkOrder
     mc run-summary abc12345             # Show run summary
     mc tasks INBOX                      # List inbox tasks
     mc claim                            # Claim next task
@@ -255,6 +271,94 @@ EOF
     echo "$result"
 }
 
+cmd_revision_history() {
+    source_env
+    check_convex
+    local work_order_id="${1:-}"
+    [[ -n "$work_order_id" ]] || { log_error "WorkOrder ID required"; exit 1; }
+    cd "$MC_DIR"
+    npx convex run api.workOrders.revisionHistory "{\"workOrderId\":\"$work_order_id\"}" 2>/dev/null || {
+        log_error "Failed to load revision history"
+        exit 1
+    }
+}
+
+cmd_request_revision() {
+    source_env
+    check_convex
+    local work_order_id="${1:-}"
+    local patch_json="${2:-}"
+    [[ -n "$work_order_id" && -n "$patch_json" ]] || { log_error "Usage: mc request-revision <workOrderId> <patch-json>"; exit 1; }
+    cd "$MC_DIR"
+    npx convex run api.workOrders.requestWorkOrderRevision "{\"workOrderId\":\"$work_order_id\",\"idempotencyKey\":\"mc-revision-${work_order_id}-$(date +%s)\",\"changeSummary\":\"CLI revision request\",\"reason\":\"Requested from mc CLI\",\"requestedBy\":\"mc-cli\",\"patch\":$patch_json}" 2>/dev/null || {
+        log_error "Failed to request revision"
+        exit 1
+    }
+}
+
+cmd_reopen() {
+    source_env
+    check_convex
+    local work_order_id="${1:-}"
+    local reason="${2:-}"
+    [[ -n "$work_order_id" && -n "$reason" ]] || { log_error "Usage: mc reopen <workOrderId> <reason>"; exit 1; }
+    cd "$MC_DIR"
+    npx convex run api.workOrders.reopenWorkOrder "{\"workOrderId\":\"$work_order_id\",\"idempotencyKey\":\"mc-reopen-${work_order_id}-$(date +%s)\",\"reason\":$(jq -Rn --arg v "$reason" '$v'),\"requestedBy\":\"mc-cli\",\"approvedBy\":\"mc-cli\",\"reopenScope\":\"full-workorder\"}" 2>/dev/null || {
+        log_error "Failed to reopen WorkOrder"
+        exit 1
+    }
+}
+
+cmd_governance() {
+    source_env
+    check_convex
+    local work_order_id="${1:-}"
+    [[ -n "$work_order_id" ]] || { log_error "WorkOrder ID required"; exit 1; }
+    cd "$MC_DIR"
+    npx convex run api.workOrders.governanceValidity "{\"workOrderId\":\"$work_order_id\"}" 2>/dev/null || {
+        log_error "Failed to fetch governance validity"
+        exit 1
+    }
+}
+
+cmd_expired_approvals() {
+    source_env
+    check_convex
+    local work_order_id="${1:-}"
+    [[ -n "$work_order_id" ]] || { log_error "WorkOrder ID required"; exit 1; }
+    cd "$MC_DIR"
+    npx convex run api.workOrders.listExpiredApprovals "{\"workOrderId\":\"$work_order_id\"}" 2>/dev/null || {
+        log_error "Failed to list expired approvals"
+        exit 1
+    }
+}
+
+cmd_stale_evidence() {
+    source_env
+    check_convex
+    local work_order_id="${1:-}"
+    [[ -n "$work_order_id" ]] || { log_error "WorkOrder ID required"; exit 1; }
+    cd "$MC_DIR"
+    npx convex run api.workOrders.listStaleEvidence "{\"workOrderId\":\"$work_order_id\"}" 2>/dev/null || {
+        log_error "Failed to list stale evidence"
+        exit 1
+    }
+}
+
+cmd_supersede() {
+    source_env
+    check_convex
+    local work_order_id="${1:-}"
+    local replacement_work_order_id="${2:-}"
+    local reason="${3:-}"
+    [[ -n "$work_order_id" && -n "$replacement_work_order_id" && -n "$reason" ]] || { log_error "Usage: mc supersede <workOrderId> <replacementWorkOrderId> <reason>"; exit 1; }
+    cd "$MC_DIR"
+    npx convex run api.workOrders.supersedeWorkOrder "{\"workOrderId\":\"$work_order_id\",\"replacementWorkOrderId\":\"$replacement_work_order_id\",\"idempotencyKey\":\"mc-supersede-${work_order_id}-${replacement_work_order_id}\",\"reason\":$(jq -Rn --arg v "$reason" '$v'),\"actorType\":\"HUMAN\",\"actorId\":\"mc-cli\"}" 2>/dev/null || {
+        log_error "Failed to supersede WorkOrder"
+        exit 1
+    }
+}
+
 cmd_run_summary() {
     source_env
     check_convex
@@ -401,6 +505,34 @@ case "${1:-help}" in
     accept)
         shift
         cmd_accept "$@"
+        ;;
+    revision-history)
+        shift
+        cmd_revision_history "$@"
+        ;;
+    request-revision)
+        shift
+        cmd_request_revision "$@"
+        ;;
+    reopen)
+        shift
+        cmd_reopen "$@"
+        ;;
+    governance)
+        shift
+        cmd_governance "$@"
+        ;;
+    expired-approvals)
+        shift
+        cmd_expired_approvals "$@"
+        ;;
+    stale-evidence)
+        shift
+        cmd_stale_evidence "$@"
+        ;;
+    supersede)
+        shift
+        cmd_supersede "$@"
         ;;
     run-summary)
         shift

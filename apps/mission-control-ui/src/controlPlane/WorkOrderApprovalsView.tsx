@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ShieldCheck } from "lucide-react";
 
-const STATUS_OPTIONS = ["PENDING", "APPROVED", "CONDITIONAL", "REJECTED", "REVISION_REQUESTED", "EXPIRED", "SUPERSEDED"] as const;
+const STATUS_OPTIONS = ["PENDING", "APPROVED", "CONDITIONAL", "REJECTED", "REVISION_REQUESTED", "EXPIRED", "SUPERSEDED", "REVOKED"] as const;
 
 export function WorkOrderApprovalsView({ projectId }: { projectId: Id<"projects"> | null }) {
   const [status, setStatus] = useState<(typeof STATUS_OPTIONS)[number]>("PENDING");
@@ -91,6 +91,8 @@ export function WorkOrderApprovalsView({ projectId }: { projectId: Id<"projects"
                 <div><span className="text-foreground/80">Approver:</span> {approval.approver ?? "—"}</div>
                 <div><span className="text-foreground/80">Requested by:</span> {approval.requestedBy ?? "—"}</div>
                 <div><span className="text-foreground/80">Run:</span> {approval.latestRun?.runId ?? "—"}</div>
+                <div><span className="text-foreground/80">Revision:</span> {approval.workOrderRevisionNumber ? `r${approval.workOrderRevisionNumber}` : "—"}</div>
+                <div><span className="text-foreground/80">Expires:</span> {approval.expiresAt ? new Date(approval.expiresAt).toLocaleString() : "—"}</div>
               </div>
 
               <div className="mt-3 rounded-lg border border-[var(--panel-line)] bg-background/40 p-3 text-xs text-muted-foreground">

@@ -66,6 +66,30 @@ describe("work order dispatch policy", () => {
 
     expect(result).toEqual({ ok: true });
   });
+
+  it("allows dispatch from reopened when no active run exists", () => {
+    const result = validateDispatchable({
+      state: "REOPENED",
+      riskLevel: "LOW",
+      approvalStatus: "NOT_REQUIRED",
+      hasWorkflowId: true,
+      activeRunStatuses: [],
+    });
+
+    expect(result).toEqual({ ok: true });
+  });
+
+  it("blocks dispatch for superseded work", () => {
+    const result = validateDispatchable({
+      state: "SUPERSEDED",
+      riskLevel: "LOW",
+      approvalStatus: "NOT_REQUIRED",
+      hasWorkflowId: true,
+      activeRunStatuses: [],
+    });
+
+    expect(result).toEqual({ ok: false, reason: "invalid-state:SUPERSEDED" });
+  });
 });
 
 describe("work order lifecycle synchronization", () => {

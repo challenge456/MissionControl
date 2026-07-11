@@ -20,6 +20,12 @@ export const ConvexQueries = {
     listEvents: "workflowRuns:listEvents",
     listArtifacts: "workflowRuns:listArtifacts",
   },
+  workOrders: {
+    revisionHistory: "workOrders:revisionHistory",
+    governanceValidity: "workOrders:governanceValidity",
+    listExpiredApprovals: "workOrders:listExpiredApprovals",
+    listStaleEvidence: "workOrders:listStaleEvidence",
+  },
 } as const;
 
 export const ConvexMutations = {
@@ -32,6 +38,11 @@ export const ConvexMutations = {
     decideApprovalDecision: "workOrders:decideApprovalDecision",
     recordVerificationReceipt: "workOrders:recordVerificationReceipt",
     accept: "workOrders:accept",
+    requestWorkOrderRevision: "workOrders:requestWorkOrderRevision",
+    approveWorkOrderRevision: "workOrders:approveWorkOrderRevision",
+    reopenWorkOrder: "workOrders:reopenWorkOrder",
+    supersedeWorkOrder: "workOrders:supersedeWorkOrder",
+    expireGovernanceRecords: "workOrders:expireGovernanceRecords",
   },
   workflowRuns: {
     recordEvent: "workflowRuns:recordEvent",

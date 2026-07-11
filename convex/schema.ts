@@ -94,8 +94,10 @@ const workOrderState = v.union(
   v.literal("BLOCKED"),
   v.literal("AWAITING_APPROVAL"),
   v.literal("AWAITING_VERIFICATION"),
+  v.literal("REOPENED"),
   v.literal("DONE"),
-  v.literal("CANCELED")
+  v.literal("CANCELED"),
+  v.literal("SUPERSEDED")
 );
 
 const verificationStatus = v.union(
@@ -112,7 +114,9 @@ const approvalDecisionStatus = v.union(
   v.literal("APPROVED"),
   v.literal("REJECTED"),
   v.literal("CONDITIONAL"),
-  v.literal("REVISION_REQUESTED")
+  v.literal("REVISION_REQUESTED"),
+  v.literal("EXPIRED"),
+  v.literal("REVOKED")
 );
 
 const workOrderApprovalDecisionStatus = v.union(
@@ -122,7 +126,29 @@ const workOrderApprovalDecisionStatus = v.union(
   v.literal("REJECTED"),
   v.literal("REVISION_REQUESTED"),
   v.literal("EXPIRED"),
+  v.literal("SUPERSEDED"),
+  v.literal("REVOKED")
+);
+
+const workOrderRevisionStatus = v.union(
+  v.literal("APPLIED"),
+  v.literal("PENDING_APPROVAL"),
+  v.literal("REJECTED"),
   v.literal("SUPERSEDED")
+);
+
+const revisionMateriality = v.union(
+  v.literal("NO_ACTION"),
+  v.literal("REVERIFICATION"),
+  v.literal("REAPPROVAL"),
+  v.literal("BOTH"),
+  v.literal("FULL_REOPEN")
+);
+
+const riskReassessment = v.union(
+  v.literal("UNCHANGED"),
+  v.literal("INCREASED"),
+  v.literal("DECREASED")
 );
 
 const workOrderApprovalDecisionAction = v.union(
@@ -686,6 +712,12 @@ export default defineSchema({
     blockingIssue: v.optional(v.string()),
     requiredHumanAction: v.optional(v.string()),
     currentExecutionRunId: v.optional(v.id("workflowRuns")),
+    currentRevisionNumber: v.optional(v.number()),
+    currentRevisionId: v.optional(v.id("workOrderRevisions")),
+    acceptedRevisionNumber: v.optional(v.number()),
+    supersededByWorkOrderId: v.optional(v.id("workOrders")),
+    supersedesWorkOrderId: v.optional(v.id("workOrders")),
+    governancePolicyId: v.optional(v.id("governancePolicies")),
 
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -718,10 +750,18 @@ export default defineSchema({
       v.literal("APPROVAL_REVISION_REQUESTED"),
       v.literal("APPROVAL_EXPIRED"),
       v.literal("APPROVAL_SUPERSEDED"),
+      v.literal("APPROVAL_REVOKED"),
+      v.literal("REVISION_REQUESTED"),
+      v.literal("REVISION_APPROVED"),
+      v.literal("REVISION_REJECTED"),
+      v.literal("REVISION_APPLIED"),
+      v.literal("WORK_ORDER_REOPENED"),
+      v.literal("WORK_ORDER_SUPERSEDED"),
       v.literal("VERIFICATION_RECORDED"),
       v.literal("VERIFICATION_FAILED"),
       v.literal("VERIFICATION_WAIVED"),
       v.literal("VERIFICATION_STALE"),
+      v.literal("GOVERNANCE_RECORDS_EXPIRED"),
       v.literal("WORK_ORDER_ACCEPTED")
     ),
     fromState: v.optional(workOrderState),
@@ -734,6 +774,105 @@ export default defineSchema({
   })
     .index("by_work_order", ["workOrderId"])
     .index("by_project", ["projectId"])
+    .index("by_idempotency", ["idempotencyKey"]),
+
+  governancePolicies: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.optional(v.id("projects")),
+    name: v.string(),
+    scope: v.union(v.literal("GLOBAL"), v.literal("PROJECT")),
+    active: v.boolean(),
+    approvalValidityHoursByRisk: v.object({
+      LOW: v.number(),
+      MEDIUM: v.number(),
+      HIGH: v.number(),
+      CRITICAL: v.number(),
+    }),
+    verificationValidityHours: v.number(),
+    approvalExpiringSoonHours: v.number(),
+    evidenceExpiringSoonHours: v.number(),
+    requireReapprovalAfterMaterialChange: v.boolean(),
+    requireReverificationAfterCodeChange: v.boolean(),
+    requireReverificationAfterWorkflowChange: v.boolean(),
+    requireReverificationAfterEnvironmentChange: v.boolean(),
+    fullReopenOnAcceptedWorkOrderChange: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    metadata: v.optional(v.any()),
+  })
+    .index("by_project_active", ["projectId", "active"])
+    .index("by_scope_active", ["scope", "active"]),
+
+  workOrderRevisions: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.optional(v.id("projects")),
+    workOrderId: v.id("workOrders"),
+    idempotencyKey: v.optional(v.string()),
+    revisionNumber: v.number(),
+    previousRevisionId: v.optional(v.id("workOrderRevisions")),
+    status: workOrderRevisionStatus,
+    changedFields: v.array(v.string()),
+    changeSummary: v.string(),
+    reason: v.string(),
+    requestedBy: v.optional(v.string()),
+    approvedBy: v.optional(v.string()),
+    createdAt: v.number(),
+    effectiveAt: v.optional(v.number()),
+    riskReassessment: riskReassessment,
+    materiality: revisionMateriality,
+    requiresReapproval: v.boolean(),
+    requiresReverification: v.boolean(),
+    requiresFullReopen: v.boolean(),
+    impactedAcceptanceCriteria: v.array(v.string()),
+    impactedApprovals: v.array(v.string()),
+    impactedVerificationReceiptIds: v.array(v.id("verificationReceipts")),
+    requestedChanges: v.any(),
+    previousSnapshot: v.any(),
+    nextSnapshot: v.any(),
+    metadata: v.optional(v.any()),
+  })
+    .index("by_work_order", ["workOrderId"])
+    .index("by_work_order_revision", ["workOrderId", "revisionNumber"])
+    .index("by_idempotency", ["idempotencyKey"]),
+
+  reopenDecisions: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.optional(v.id("projects")),
+    workOrderId: v.id("workOrders"),
+    idempotencyKey: v.optional(v.string()),
+    reason: v.string(),
+    sourceIssueOrDefect: v.optional(v.string()),
+    requestedBy: v.optional(v.string()),
+    approvedBy: v.optional(v.string()),
+    reopenScope: v.string(),
+    acceptanceCriteriaImpacted: v.array(v.string()),
+    invalidatedReceiptIds: v.array(v.id("verificationReceipts")),
+    invalidatedApprovalIds: v.array(v.id("approvalDecisions")),
+    newRequiredActions: v.array(v.string()),
+    createdAt: v.number(),
+    effectiveAt: v.number(),
+    metadata: v.optional(v.any()),
+  })
+    .index("by_work_order", ["workOrderId"])
+    .index("by_idempotency", ["idempotencyKey"]),
+
+  workOrderSupersessions: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.optional(v.id("projects")),
+    originalWorkOrderId: v.id("workOrders"),
+    replacementWorkOrderId: v.id("workOrders"),
+    idempotencyKey: v.optional(v.string()),
+    reason: v.string(),
+    actorType: actorType,
+    actorId: v.optional(v.string()),
+    unresolvedAcceptanceCriteria: v.array(v.string()),
+    unresolvedApprovalTypes: v.array(v.string()),
+    unresolvedVerificationReceiptIds: v.array(v.id("verificationReceipts")),
+    createdAt: v.number(),
+    metadata: v.optional(v.any()),
+  })
+    .index("by_original", ["originalWorkOrderId"])
+    .index("by_replacement", ["replacementWorkOrderId"])
     .index("by_idempotency", ["idempotencyKey"]),
 
   approvalDecisions: defineTable({
@@ -752,6 +891,11 @@ export default defineSchema({
     conditions: v.optional(v.array(v.string())),
     reason: v.optional(v.string()),
     supersededByApprovalDecisionId: v.optional(v.id("approvalDecisions")),
+    workOrderRevisionNumber: v.optional(v.number()),
+    expiresAt: v.optional(v.number()),
+    expiredAt: v.optional(v.number()),
+    revokedAt: v.optional(v.number()),
+    invalidatedByRevisionId: v.optional(v.id("workOrderRevisions")),
     createdAt: v.number(),
     decidedAt: v.optional(v.number()),
     metadata: v.optional(v.any()),
@@ -784,6 +928,12 @@ export default defineSchema({
     exceptionOrWaiver: v.optional(v.string()),
     waiverApprovalDecisionId: v.optional(v.id("approvalDecisions")),
     linkedRunArtifactIds: v.optional(v.array(v.id("runArtifacts"))),
+    workOrderRevisionNumber: v.optional(v.number()),
+    validUntil: v.optional(v.number()),
+    invalidatedAt: v.optional(v.number()),
+    invalidatedByRevisionId: v.optional(v.id("workOrderRevisions")),
+    invalidatedByReopenDecisionId: v.optional(v.id("reopenDecisions")),
+    invalidationReason: v.optional(v.string()),
     recordedAt: v.number(),
     metadata: v.optional(v.any()),
   })
@@ -2401,6 +2551,8 @@ export default defineSchema({
     workflowId: v.string(),
     projectId: v.optional(v.id("projects")),
     workOrderId: v.optional(v.id("workOrders")),
+    workOrderRevisionNumber: v.optional(v.number()),
+    workOrderRevisionId: v.optional(v.id("workOrderRevisions")),
     
     // Parent task
     parentTaskId: v.optional(v.id("tasks")),

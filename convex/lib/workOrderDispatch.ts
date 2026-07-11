@@ -6,10 +6,12 @@ export type DispatchableState =
   | "BLOCKED"
   | "AWAITING_APPROVAL"
   | "AWAITING_VERIFICATION"
+  | "REOPENED"
   | "DONE"
-  | "CANCELED";
+  | "CANCELED"
+  | "SUPERSEDED";
 
-export type DispatchApprovalStatus = "NOT_REQUIRED" | "PENDING" | "APPROVED" | "REJECTED" | "CONDITIONAL" | "REVISION_REQUESTED";
+export type DispatchApprovalStatus = "NOT_REQUIRED" | "PENDING" | "APPROVED" | "REJECTED" | "CONDITIONAL" | "REVISION_REQUESTED" | "EXPIRED" | "REVOKED";
 export type DispatchRiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 export type DispatchRunStatus = "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "PAUSED" | "CANCELED";
 export type DispatchVerificationStatus = "PENDING" | "PASS" | "FAIL" | "WAIVED" | "STALE";
@@ -39,7 +41,7 @@ export function validateDispatchable(args: {
   activeRunStatuses: DispatchRunStatus[];
 }): { ok: true } | { ok: false; reason: string } {
   if (!args.hasWorkflowId) return { ok: false, reason: "missing-workflow" };
-  if (!["READY", "BLOCKED", "DISPATCHED", "IN_PROGRESS", "AWAITING_APPROVAL", "AWAITING_VERIFICATION"].includes(args.state)) {
+  if (!["READY", "BLOCKED", "DISPATCHED", "IN_PROGRESS", "AWAITING_APPROVAL", "AWAITING_VERIFICATION", "REOPENED"].includes(args.state)) {
     return { ok: false, reason: `invalid-state:${args.state}` };
   }
   if (!dispatchApprovalAllowed(args)) {
