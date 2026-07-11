@@ -119,6 +119,38 @@ const deploymentStatus = v.union(
   v.literal("RETIRED")
 );
 
+const contextPackageType = v.union(
+  v.literal("SKILL"),
+  v.literal("RULES"),
+  v.literal("DOCUMENTATION"),
+  v.literal("SOUL"),
+  v.literal("WORKFLOW"),
+  v.literal("TOOL_GUIDE"),
+  v.literal("PROMPT_TEMPLATE"),
+  v.literal("POLICY"),
+  v.literal("ARCHITECTURE_GUIDE"),
+  v.literal("EVALUATION_GUIDE")
+);
+
+const contextPackageStatus = v.union(
+  v.literal("DRAFT"),
+  v.literal("ACTIVE"),
+  v.literal("DEPRECATED")
+);
+
+const contextVersionStatus = v.union(
+  v.literal("DRAFT"),
+  v.literal("PUBLISHED"),
+  v.literal("DEPRECATED")
+);
+
+const contextSecurityStatus = v.union(
+  v.literal("UNSCANNED"),
+  v.literal("PASSED"),
+  v.literal("FAILED"),
+  v.literal("QUARANTINED")
+);
+
 // ============================================================================
 // SCHEMA
 // ============================================================================
@@ -2984,4 +3016,83 @@ export default defineSchema({
   })
     .index("by_key", ["key"])
     .index("by_project_key", ["projectId", "key"]),
+
+  // -------------------------------------------------------------------------
+  // CONTEXT REGISTRY: PACKAGES (Software Factory Epic 1)
+  // -------------------------------------------------------------------------
+  // Context package identity. Status here is the package lifecycle
+  // (DRAFT/ACTIVE/DEPRECATED); per-version status lives on
+  // contextPackageVersions. Health state arrives in a later PR.
+  // All writes are gated behind the `context.registry` feature flag
+  // (convex/context/packages.ts).
+  contextPackages: defineTable({
+    name: v.string(),
+    // Unique identity, format "scope/name" (see lib/contextPackages.ts)
+    slug: v.string(),
+    displayName: v.optional(v.string()),
+    description: v.string(),
+    type: contextPackageType,
+    status: contextPackageStatus,
+    owner: v.string(),
+    tags: v.optional(v.array(v.string())),
+    riskLevel: riskLevel,
+    projectId: v.optional(v.id("projects")),
+    tenantId: v.optional(v.id("tenants")),
+    // Latest PUBLISHED version, flipped by publishVersion
+    currentVersionId: v.optional(v.id("contextPackageVersions")),
+    // Set when status becomes DEPRECATED and a successor exists
+    replacementPackageId: v.optional(v.id("contextPackages")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_slug", ["slug"])
+    .index("by_type", ["type"])
+    .index("by_status", ["status"])
+    .index("by_owner", ["owner"]),
+
+  // -------------------------------------------------------------------------
+  // CONTEXT REGISTRY: PACKAGE VERSIONS (Software Factory Epic 1)
+  // -------------------------------------------------------------------------
+  // Immutable after publish: once status is PUBLISHED the row is never
+  // patched again except the DEPRECATED lifecycle transition
+  // (status/deprecatedAt only). Content lives inline for small packages or
+  // in _storage for large ones; contentHash (sha256:<hex64>) is required at
+  // publish time and computed by the caller (CLI/client) — see
+  // lib/contextPackages.ts module docstring.
+  contextPackageVersions: defineTable({
+    packageId: v.id("contextPackages"),
+    // Semver "x.y.z", strictly increasing per package
+    version: v.string(),
+    status: contextVersionStatus,
+    // Required at publish; format sha256:<64 lowercase hex chars>
+    contentHash: v.optional(v.string()),
+    storageId: v.optional(v.id("_storage")),
+    // Inline body for small packages (< ~900KB)
+    inlineContent: v.optional(v.string()),
+    manifestVersion: v.string(),
+    // Provenance
+    sourceRepo: v.optional(v.string()),
+    sourcePath: v.optional(v.string()),
+    sourceCommitSha: v.optional(v.string()),
+    // Compatibility + declared capabilities
+    compatibility: v.optional(v.any()),
+    capabilities: v.optional(v.array(v.string())),
+    dependencies: v.optional(
+      v.array(v.object({ slug: v.string(), range: v.string() }))
+    ),
+    // Scores (populated by eval/security PRs)
+    qualityScore: v.optional(v.number()),
+    impactScore: v.optional(v.number()),
+    securityStatus: v.optional(contextSecurityStatus),
+    // Lifecycle timestamps
+    approvedBy: v.optional(v.string()),
+    approvedAt: v.optional(v.number()),
+    publishedAt: v.optional(v.number()),
+    deprecatedAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_package", ["packageId"])
+    .index("by_package_version", ["packageId", "version"])
+    .index("by_content_hash", ["contentHash"])
+    .index("by_status", ["status"]),
 });
