@@ -267,6 +267,8 @@ app.use("/status", requireAuth());
 app.use("/tick", requireAuth());
 app.use("/agents/*", requireAuth());
 app.use("/workorders/*", requireAuth());
+app.use("/runs/*", requireAuth());
+app.use("/run-artifacts/*", requireAuth());
 
 // Detailed status
 app.get("/status", (c) => {
@@ -422,6 +424,109 @@ app.post("/workorders/:workOrderId/accept", async (c) => {
       actorType: body.actorType ?? "SYSTEM",
       actorId: body.actorId ?? "orchestration-server",
       idempotencyKey: body.idempotencyKey ?? `orch-accept:${workOrderId}`,
+    });
+    return c.json({ success: true, result });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+app.get("/runs/:runId/summary", async (c) => {
+  try {
+    const runId = c.req.param("runId");
+    const run = await client.query(ConvexQueries.workflowRuns.get as any, { runId });
+    if (!run?._id) return c.json({ error: "Run not found" }, 404);
+    const result = await client.query(ConvexQueries.workflowRuns.getInspector as any, { workflowRunId: run._id });
+    return c.json({ success: true, result });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+app.get("/runs/:workflowRunId/events", async (c) => {
+  try {
+    const workflowRunId = c.req.param("workflowRunId");
+    const result = await client.query(ConvexQueries.workflowRuns.listEvents as any, { workflowRunId });
+    return c.json({ success: true, result });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+app.get("/runs/:workflowRunId/artifacts", async (c) => {
+  try {
+    const workflowRunId = c.req.param("workflowRunId");
+    const result = await client.query(ConvexQueries.workflowRuns.listArtifacts as any, { workflowRunId });
+    return c.json({ success: true, result });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+app.post("/runs/:workflowRunId/events", async (c) => {
+  try {
+    const workflowRunId = c.req.param("workflowRunId");
+    const body = await c.req.json().catch(() => ({}));
+    const result = await client.mutation(ConvexMutations.workflowRuns.recordEvent as any, {
+      workflowRunId,
+      idempotencyKey: body.idempotencyKey,
+      eventType: body.eventType,
+      workflowStep: body.workflowStep,
+      actor: body.actor,
+      agentId: body.agentId,
+      toolName: body.toolName,
+      commandSummary: body.commandSummary,
+      status: body.status,
+      startedAt: body.startedAt,
+      endedAt: body.endedAt,
+      durationMs: body.durationMs,
+      retryNumber: body.retryNumber,
+      verificationReceiptId: body.verificationReceiptId,
+      evidenceArtifactIds: body.evidenceArtifactIds,
+      errorCategory: body.errorCategory,
+      errorSummary: body.errorSummary,
+      metadata: body.metadata,
+    });
+    return c.json({ success: true, result });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+app.post("/runs/:workflowRunId/artifacts", async (c) => {
+  try {
+    const workflowRunId = c.req.param("workflowRunId");
+    const body = await c.req.json().catch(() => ({}));
+    const result = await client.mutation(ConvexMutations.workflowRuns.createArtifact as any, {
+      workflowRunId,
+      idempotencyKey: body.idempotencyKey,
+      artifactType: body.artifactType,
+      name: body.name,
+      description: body.description,
+      repositoryPath: body.repositoryPath,
+      externalLocation: body.externalLocation,
+      contentHash: body.contentHash,
+      producer: body.producer,
+      verificationReceiptId: body.verificationReceiptId,
+      acceptanceCriterionId: body.acceptanceCriterionId,
+      producingEventId: body.producingEventId,
+      retentionPolicy: body.retentionPolicy,
+      sensitivity: body.sensitivity,
+      metadata: body.metadata,
+    });
+    return c.json({ success: true, result });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+app.post("/run-artifacts/:runArtifactId/link-receipt", async (c) => {
+  try {
+    const runArtifactId = c.req.param("runArtifactId");
+    const body = await c.req.json().catch(() => ({}));
+    const result = await client.mutation(ConvexMutations.workflowRuns.linkArtifactToVerificationReceipt as any, {
+      runArtifactId,
+      verificationReceiptId: body.verificationReceiptId,
     });
     return c.json({ success: true, result });
   } catch (err: any) {

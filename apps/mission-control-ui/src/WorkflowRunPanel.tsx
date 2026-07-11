@@ -5,9 +5,11 @@
  * Real-time updates via Convex subscriptions.
  */
 
+import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { Id } from "../../../convex/_generated/dataModel";
+import { ExecutionRunInspector } from "./controlPlane/ExecutionRunInspector";
 
 interface WorkflowRunPanelProps {
   runId: string;
@@ -15,6 +17,7 @@ interface WorkflowRunPanelProps {
 }
 
 export function WorkflowRunPanel({ runId, onClose }: WorkflowRunPanelProps) {
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const run = useQuery(api.workflowRuns.get, { runId });
   const workflow = run ? useQuery(api.workflows.get, { workflowId: run.workflowId }) : null;
   
@@ -77,21 +80,37 @@ export function WorkflowRunPanel({ runId, onClose }: WorkflowRunPanelProps) {
             Run: {run.runId}
           </div>
         </div>
-        {onClose && (
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <button
-            onClick={onClose}
+            onClick={() => setInspectorOpen(true)}
             style={{
-              background: "none",
-              border: "none",
-              color: "#888",
-              fontSize: "20px",
+              backgroundColor: "#111827",
+              border: "1px solid #374151",
+              color: "#e5e7eb",
+              fontSize: "12px",
               cursor: "pointer",
-              padding: "4px 8px",
+              padding: "6px 10px",
+              borderRadius: "6px",
             }}
           >
-            ×
+            Inspector
           </button>
-        )}
+          {onClose && (
+            <button
+              onClick={onClose}
+              style={{
+                background: "none",
+                border: "none",
+                color: "#888",
+                fontSize: "20px",
+                cursor: "pointer",
+                padding: "4px 8px",
+              }}
+            >
+              ×
+            </button>
+          )}
+        </div>
       </div>
       
       {/* Status Badge */}
@@ -253,6 +272,12 @@ export function WorkflowRunPanel({ runId, onClose }: WorkflowRunPanelProps) {
           </div>
         )}
       </div>
+
+      <ExecutionRunInspector
+        open={inspectorOpen}
+        workflowRunId={run._id as Id<"workflowRuns">}
+        onClose={() => setInspectorOpen(false)}
+      />
     </div>
   );
 }

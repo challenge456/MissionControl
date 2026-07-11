@@ -31,6 +31,7 @@ import {
   summarizeRequiredAttention,
   type WorkOrderQueueFilters,
 } from "./workOrdersModel";
+import { ExecutionRunInspector } from "./ExecutionRunInspector";
 
 const RISK_STYLES: Record<string, string> = {
   LOW: "border-emerald-500/30 text-emerald-300",
@@ -86,6 +87,9 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
   const [createRequestKey, setCreateRequestKey] = useState<string | null>(null);
   const [dispatchingId, setDispatchingId] = useState<string | null>(null);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  const [inspectorRunId, setInspectorRunId] = useState<Id<"workflowRuns"> | null>(null);
+  const [inspectorReceiptId, setInspectorReceiptId] = useState<Id<"verificationReceipts"> | null>(null);
+  const [inspectorCriterionId, setInspectorCriterionId] = useState<string | null>(null);
   const [dispatchError, setDispatchError] = useState<string | null>(null);
   const [governanceError, setGovernanceError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -444,6 +448,20 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                           </div>
                           {receipt?.commandOrCheck ? <div className="mt-2 text-xs text-muted-foreground">Check: {receipt.commandOrCheck}</div> : null}
                           {receipt?.result ? <div className="mt-1 text-xs text-muted-foreground">Result: {receipt.result}</div> : null}
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={!receipt?.workflowRunId}
+                              onClick={() => {
+                                setInspectorRunId((receipt?.workflowRunId ?? null) as Id<"workflowRuns"> | null);
+                                setInspectorReceiptId((receipt?._id ?? null) as Id<"verificationReceipts"> | null);
+                                setInspectorCriterionId(receipt?.acceptanceCriterionId ?? criterion.id);
+                              }}
+                            >
+                              Inspect evidence
+                            </Button>
+                          </div>
                         </div>
                       );
                     })}
@@ -512,7 +530,20 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                               <span className="text-sm font-medium text-foreground">{run.workflowId}</span>
                               <Badge variant="outline">{run.status}</Badge>
                             </div>
-                            <div className="text-xs text-muted-foreground">{run.runId}</div>
+                            <div className="flex items-center gap-2">
+                              <div className="text-xs text-muted-foreground">{run.runId}</div>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setInspectorRunId(run._id);
+                                  setInspectorReceiptId(null);
+                                  setInspectorCriterionId(null);
+                                }}
+                              >
+                                Inspect run
+                              </Button>
+                            </div>
                           </div>
                           <div className="mt-2 grid gap-2 text-xs text-muted-foreground md:grid-cols-2">
                             <div>Runtime: <span className="text-foreground/85">{run.runtime ?? "—"}</span></div>
@@ -660,6 +691,18 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
           } finally {
             setCreating(false);
           }
+        }}
+      />
+
+      <ExecutionRunInspector
+        open={!!inspectorRunId}
+        workflowRunId={inspectorRunId}
+        verificationReceiptId={inspectorReceiptId}
+        acceptanceCriterionId={inspectorCriterionId}
+        onClose={() => {
+          setInspectorRunId(null);
+          setInspectorReceiptId(null);
+          setInspectorCriterionId(null);
         }}
       />
     </div>

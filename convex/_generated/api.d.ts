@@ -56,6 +56,7 @@ import type * as lib_legacyToolPolicy from "../lib/legacyToolPolicy.js";
 import type * as lib_operatorControls from "../lib/operatorControls.js";
 import type * as lib_outputValidation from "../lib/outputValidation.js";
 import type * as lib_riskClassifier from "../lib/riskClassifier.js";
+import type * as lib_runInspector from "../lib/runInspector.js";
 import type * as lib_sanitize from "../lib/sanitize.js";
 import type * as lib_stateMachine from "../lib/stateMachine.js";
 import type * as lib_taskEvents from "../lib/taskEvents.js";
@@ -184,6 +185,7 @@ declare const fullApi: ApiFromModules<{
   "lib/operatorControls": typeof lib_operatorControls;
   "lib/outputValidation": typeof lib_outputValidation;
   "lib/riskClassifier": typeof lib_riskClassifier;
+  "lib/runInspector": typeof lib_runInspector;
   "lib/sanitize": typeof lib_sanitize;
   "lib/stateMachine": typeof lib_stateMachine;
   "lib/taskEvents": typeof lib_taskEvents;

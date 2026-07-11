@@ -9,6 +9,7 @@ import { mutation, query, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { appendOpEvent } from "./lib/armAudit";
 import { resolveAgentRef } from "./lib/agentResolver";
+import { buildEvidenceLineage, buildFileChanges, buildRetryTimeline, orderRunEvents, summarizeRunEvents } from "./lib/runInspector";
 
 // ============================================================================
 // HELPERS
@@ -17,6 +18,168 @@ import { resolveAgentRef } from "./lib/agentResolver";
 function generateRunId(): string {
   // Generate short 8-character ID (similar to Antfarm's run IDs)
   return Math.random().toString(36).substring(2, 10);
+}
+
+const runEventType = v.union(
+  v.literal("RUN_STARTED"),
+  v.literal("STEP_STARTED"),
+  v.literal("STEP_COMPLETED"),
+  v.literal("TOOL_CALLED"),
+  v.literal("COMMAND_EXECUTED"),
+  v.literal("FILE_CHANGED"),
+  v.literal("ARTIFACT_CREATED"),
+  v.literal("CHECKPOINT_CREATED"),
+  v.literal("RETRY_STARTED"),
+  v.literal("RETRY_COMPLETED"),
+  v.literal("HUMAN_INTERVENTION_REQUESTED"),
+  v.literal("RUN_PAUSED"),
+  v.literal("RUN_RESUMED"),
+  v.literal("RUN_FAILED"),
+  v.literal("RUN_COMPLETED")
+);
+
+const runArtifactType = v.union(
+  v.literal("CODE_DIFF"),
+  v.literal("TEST_OUTPUT"),
+  v.literal("BUILD_OUTPUT"),
+  v.literal("LOG_BUNDLE"),
+  v.literal("SCREENSHOT"),
+  v.literal("GENERATED_DOCUMENT"),
+  v.literal("VERIFICATION_EVIDENCE"),
+  v.literal("PULL_REQUEST"),
+  v.literal("CHECKPOINT"),
+  v.literal("STRUCTURED_OUTPUT"),
+  v.literal("OTHER")
+);
+
+async function nextSequenceNumber(ctx: any, workflowRunId: any) {
+  const events = await ctx.db
+    .query("runEvents")
+    .withIndex("by_run", (q: any) => q.eq("workflowRunId", workflowRunId))
+    .collect();
+  return events.reduce((max: number, event: any) => Math.max(max, event.sequenceNumber), 0) + 1;
+}
+
+async function insertRunEvent(ctx: any, args: {
+  workflowRunId: any;
+  workOrderId?: any;
+  projectId?: any;
+  tenantId?: any;
+  idempotencyKey?: string;
+  eventType: string;
+  workflowStep?: string;
+  sequenceNumber?: number;
+  actor?: string;
+  agentId?: any;
+  toolName?: string;
+  commandSummary?: string;
+  status?: string;
+  startedAt?: number;
+  endedAt?: number;
+  durationMs?: number;
+  retryNumber?: number;
+  verificationReceiptId?: any;
+  evidenceArtifactIds?: any[];
+  errorCategory?: string;
+  errorSummary?: string;
+  metadata?: any;
+}) {
+  if (args.idempotencyKey) {
+    const existing = await ctx.db
+      .query("runEvents")
+      .withIndex("by_idempotency", (q: any) => q.eq("idempotencyKey", args.idempotencyKey))
+      .first();
+    if (existing) return { event: existing, created: false };
+  }
+
+  const sequenceNumber = args.sequenceNumber ?? await nextSequenceNumber(ctx, args.workflowRunId);
+  const startedAt = args.startedAt;
+  const endedAt = args.endedAt;
+  const durationMs = args.durationMs ?? (startedAt && endedAt ? Math.max(endedAt - startedAt, 0) : undefined);
+  const eventId = await ctx.db.insert("runEvents", {
+    tenantId: args.tenantId,
+    projectId: args.projectId,
+    workOrderId: args.workOrderId,
+    workflowRunId: args.workflowRunId,
+    idempotencyKey: args.idempotencyKey,
+    eventType: args.eventType as any,
+    workflowStep: args.workflowStep,
+    sequenceNumber,
+    actor: args.actor,
+    agentId: args.agentId,
+    toolName: args.toolName,
+    commandSummary: args.commandSummary,
+    status: args.status,
+    startedAt,
+    endedAt,
+    durationMs,
+    retryNumber: args.retryNumber,
+    verificationReceiptId: args.verificationReceiptId,
+    evidenceArtifactIds: args.evidenceArtifactIds,
+    errorCategory: args.errorCategory,
+    errorSummary: args.errorSummary,
+    metadata: args.metadata,
+  });
+  return { event: await ctx.db.get(eventId), created: true };
+}
+
+async function insertRunArtifact(ctx: any, args: {
+  workflowRunId: any;
+  workOrderId?: any;
+  projectId?: any;
+  tenantId?: any;
+  idempotencyKey?: string;
+  artifactType: string;
+  name: string;
+  description?: string;
+  repositoryPath?: string;
+  externalLocation?: string;
+  contentHash?: string;
+  producer?: string;
+  verificationReceiptId?: any;
+  acceptanceCriterionId?: string;
+  producingEventId?: any;
+  retentionPolicy?: string;
+  sensitivity?: string;
+  metadata?: any;
+}) {
+  if (args.idempotencyKey) {
+    const existing = await ctx.db
+      .query("runArtifacts")
+      .withIndex("by_idempotency", (q: any) => q.eq("idempotencyKey", args.idempotencyKey))
+      .first();
+    if (existing) return { artifact: existing, created: false };
+  }
+
+  const artifactId = await ctx.db.insert("runArtifacts", {
+    tenantId: args.tenantId,
+    projectId: args.projectId,
+    workOrderId: args.workOrderId,
+    workflowRunId: args.workflowRunId,
+    idempotencyKey: args.idempotencyKey,
+    artifactType: args.artifactType as any,
+    name: args.name,
+    description: args.description,
+    repositoryPath: args.repositoryPath,
+    externalLocation: args.externalLocation,
+    contentHash: args.contentHash,
+    producer: args.producer,
+    verificationReceiptId: args.verificationReceiptId,
+    acceptanceCriterionId: args.acceptanceCriterionId,
+    producingEventId: args.producingEventId,
+    retentionPolicy: args.retentionPolicy,
+    sensitivity: args.sensitivity,
+    createdAt: Date.now(),
+    metadata: args.metadata,
+  });
+  return { artifact: await ctx.db.get(artifactId), created: true };
+}
+
+async function appendReceiptArtifactLink(ctx: any, verificationReceiptId: any, artifactId: any) {
+  const receipt = await ctx.db.get(verificationReceiptId);
+  if (!receipt) return;
+  const linked = Array.from(new Set([...(receipt.linkedRunArtifactIds ?? []), artifactId]));
+  await ctx.db.patch(verificationReceiptId, { linkedRunArtifactIds: linked });
 }
 
 // ============================================================================
@@ -96,6 +259,81 @@ export const getById = query({
   args: { id: v.id("workflowRuns") },
   handler: async (ctx, args) => {
     return await ctx.db.get(args.id);
+  },
+});
+
+export const listEvents = query({
+  args: { workflowRunId: v.id("workflowRuns") },
+  handler: async (ctx, args) => {
+    const events = await ctx.db
+      .query("runEvents")
+      .withIndex("by_run_sequence", (q) => q.eq("workflowRunId", args.workflowRunId))
+      .collect();
+    return orderRunEvents(events as any);
+  },
+});
+
+export const listArtifacts = query({
+  args: { workflowRunId: v.id("workflowRuns") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("runArtifacts")
+      .withIndex("by_run", (q) => q.eq("workflowRunId", args.workflowRunId))
+      .order("desc")
+      .collect();
+  },
+});
+
+export const getInspector = query({
+  args: {
+    workflowRunId: v.id("workflowRuns"),
+    verificationReceiptId: v.optional(v.id("verificationReceipts")),
+    acceptanceCriterionId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.workflowRunId);
+    if (!run) return null;
+
+    const [workflow, workOrder, events, artifacts, receipts] = await Promise.all([
+      ctx.db.query("workflows").withIndex("by_workflow_id", (q) => q.eq("workflowId", run.workflowId)).first(),
+      run.workOrderId ? ctx.db.get(run.workOrderId) : null,
+      ctx.db.query("runEvents").withIndex("by_run_sequence", (q) => q.eq("workflowRunId", run._id)).collect(),
+      ctx.db.query("runArtifacts").withIndex("by_run", (q) => q.eq("workflowRunId", run._id)).order("desc").collect(),
+      run.workOrderId
+        ? ctx.db.query("verificationReceipts").withIndex("by_run", (q) => q.eq("workflowRunId", run._id)).collect()
+        : [],
+    ]);
+
+    const orderedEvents = orderRunEvents(events as any);
+    const eventSummary = summarizeRunEvents(orderedEvents as any);
+    const fileChanges = buildFileChanges(orderedEvents as any);
+    const retryTimeline = buildRetryTimeline(orderedEvents as any);
+    const evidenceLineage = buildEvidenceLineage({
+      verificationReceiptId: args.verificationReceiptId ?? null,
+      acceptanceCriterionId: args.acceptanceCriterionId ?? null,
+      events: orderedEvents as any,
+      artifacts: artifacts as any,
+    });
+
+    return {
+      run,
+      workflow,
+      workOrder,
+      events: orderedEvents,
+      artifacts,
+      verificationReceipts: receipts,
+      summary: {
+        currentStep: run.steps[run.currentStepIndex]?.stepId ?? null,
+        durationMs: (run.completedAt ?? Date.now()) - run.startedAt,
+        retryCount: eventSummary.retryCount,
+        humanInterventionRequired: eventSummary.humanInterventionRequired,
+        failureSummary: run.failureReason ?? eventSummary.failure,
+        blockingIssue: workOrder?.blockingIssue ?? run.failureReason ?? null,
+      },
+      fileChanges,
+      retryTimeline,
+      evidenceLineage,
+    };
   },
 });
 
@@ -219,8 +457,177 @@ export const start = mutation({
         initialInput: args.initialInput,
       },
     });
+
+    await insertRunEvent(ctx, {
+      workflowRunId: id,
+      workOrderId: args.workOrderId,
+      projectId: args.projectId,
+      eventType: "RUN_STARTED",
+      workflowStep: workflow.steps[0]?.id,
+      actor: "system",
+      status: "PENDING",
+      startedAt: now,
+      commandSummary: `Workflow ${args.workflowId} created`,
+      metadata: { runId, workflowId: args.workflowId, initialInput: args.initialInput },
+      idempotencyKey: `run-start:${runId}`,
+    });
     
     return { runId, id };
+  },
+});
+
+export const recordEvent = mutation({
+  args: {
+    workflowRunId: v.id("workflowRuns"),
+    idempotencyKey: v.optional(v.string()),
+    eventType: runEventType,
+    workflowStep: v.optional(v.string()),
+    sequenceNumber: v.optional(v.number()),
+    actor: v.optional(v.string()),
+    agentId: v.optional(v.id("agents")),
+    toolName: v.optional(v.string()),
+    commandSummary: v.optional(v.string()),
+    status: v.optional(v.string()),
+    startedAt: v.optional(v.number()),
+    endedAt: v.optional(v.number()),
+    durationMs: v.optional(v.number()),
+    retryNumber: v.optional(v.number()),
+    verificationReceiptId: v.optional(v.id("verificationReceipts")),
+    evidenceArtifactIds: v.optional(v.array(v.id("runArtifacts"))),
+    errorCategory: v.optional(v.string()),
+    errorSummary: v.optional(v.string()),
+    metadata: v.optional(v.any()),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.workflowRunId);
+    if (!run) throw new Error("Workflow run not found");
+
+    const result = await insertRunEvent(ctx, {
+      ...args,
+      workOrderId: run.workOrderId,
+      projectId: run.projectId,
+      tenantId: run.tenantId,
+    });
+
+    if (args.eventType === "HUMAN_INTERVENTION_REQUESTED") {
+      await ctx.db.patch(run._id, { humanInterventions: (run.humanInterventions ?? 0) + 1 });
+    }
+    if (args.eventType === "RUN_PAUSED") {
+      await ctx.db.patch(run._id, { status: "PAUSED" });
+    }
+    if (args.eventType === "RUN_RESUMED") {
+      await ctx.db.patch(run._id, { status: "RUNNING" });
+    }
+
+    return result;
+  },
+});
+
+export const recordEventInternal = internalMutation({
+  args: {
+    workflowRunId: v.id("workflowRuns"),
+    idempotencyKey: v.optional(v.string()),
+    eventType: runEventType,
+    workflowStep: v.optional(v.string()),
+    sequenceNumber: v.optional(v.number()),
+    actor: v.optional(v.string()),
+    agentId: v.optional(v.id("agents")),
+    toolName: v.optional(v.string()),
+    commandSummary: v.optional(v.string()),
+    status: v.optional(v.string()),
+    startedAt: v.optional(v.number()),
+    endedAt: v.optional(v.number()),
+    durationMs: v.optional(v.number()),
+    retryNumber: v.optional(v.number()),
+    verificationReceiptId: v.optional(v.id("verificationReceipts")),
+    evidenceArtifactIds: v.optional(v.array(v.id("runArtifacts"))),
+    errorCategory: v.optional(v.string()),
+    errorSummary: v.optional(v.string()),
+    metadata: v.optional(v.any()),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.workflowRunId);
+    if (!run) throw new Error("Workflow run not found");
+    return await insertRunEvent(ctx, {
+      ...args,
+      workOrderId: run.workOrderId,
+      projectId: run.projectId,
+      tenantId: run.tenantId,
+    });
+  },
+});
+
+export const createArtifact = mutation({
+  args: {
+    workflowRunId: v.id("workflowRuns"),
+    idempotencyKey: v.optional(v.string()),
+    artifactType: runArtifactType,
+    name: v.string(),
+    description: v.optional(v.string()),
+    repositoryPath: v.optional(v.string()),
+    externalLocation: v.optional(v.string()),
+    contentHash: v.optional(v.string()),
+    producer: v.optional(v.string()),
+    verificationReceiptId: v.optional(v.id("verificationReceipts")),
+    acceptanceCriterionId: v.optional(v.string()),
+    producingEventId: v.optional(v.id("runEvents")),
+    retentionPolicy: v.optional(v.string()),
+    sensitivity: v.optional(v.string()),
+    metadata: v.optional(v.any()),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.workflowRunId);
+    if (!run) throw new Error("Workflow run not found");
+    const result = await insertRunArtifact(ctx, {
+      ...args,
+      workOrderId: run.workOrderId,
+      projectId: run.projectId,
+      tenantId: run.tenantId,
+    });
+    if (result.created && args.verificationReceiptId) {
+      await appendReceiptArtifactLink(ctx, args.verificationReceiptId, result.artifact._id);
+    }
+    if (result.created) {
+      await insertRunEvent(ctx, {
+        workflowRunId: run._id,
+        workOrderId: run.workOrderId,
+        projectId: run.projectId,
+        tenantId: run.tenantId,
+        eventType: args.artifactType === "CHECKPOINT" ? "CHECKPOINT_CREATED" : "ARTIFACT_CREATED",
+        workflowStep: run.steps[run.currentStepIndex]?.stepId,
+        actor: args.producer,
+        status: "COMPLETED",
+        commandSummary: args.name,
+        evidenceArtifactIds: [result.artifact._id],
+        verificationReceiptId: args.verificationReceiptId,
+        metadata: { artifactType: args.artifactType, repositoryPath: args.repositoryPath, externalLocation: args.externalLocation },
+        idempotencyKey: args.idempotencyKey ? `${args.idempotencyKey}:event` : undefined,
+      });
+    }
+    return result;
+  },
+});
+
+export const linkArtifactToVerificationReceipt = mutation({
+  args: {
+    runArtifactId: v.id("runArtifacts"),
+    verificationReceiptId: v.id("verificationReceipts"),
+  },
+  handler: async (ctx, args) => {
+    const [artifact, receipt] = await Promise.all([
+      ctx.db.get(args.runArtifactId),
+      ctx.db.get(args.verificationReceiptId),
+    ]);
+    if (!artifact || !receipt) throw new Error("Artifact or verification receipt not found");
+    if (artifact.workflowRunId !== receipt.workflowRunId || artifact.workOrderId !== receipt.workOrderId) {
+      throw new Error("Artifact and verification receipt must belong to the same run and work order");
+    }
+    await ctx.db.patch(args.runArtifactId, {
+      verificationReceiptId: receipt._id,
+      acceptanceCriterionId: receipt.acceptanceCriterionId,
+    });
+    await appendReceiptArtifactLink(ctx, receipt._id, artifact._id);
+    return await ctx.db.get(args.runArtifactId);
   },
 });
 
@@ -278,6 +685,20 @@ export const updateStep = internalMutation({
       : null;
     if (args.status === "RUNNING") {
       await ctx.db.patch(run._id, { status: "RUNNING" });
+      await insertRunEvent(ctx, {
+        workflowRunId: run._id,
+        workOrderId: run.workOrderId,
+        projectId: run.projectId,
+        tenantId: run.tenantId,
+        eventType: "STEP_STARTED",
+        workflowStep: step.stepId,
+        actor: args.agentId ? "agent" : "system",
+        agentId: args.agentId,
+        status: "RUNNING",
+        startedAt: now,
+        retryNumber: step.retryCount,
+        idempotencyKey: `step-start:${run.runId}:${args.stepIndex}:${step.retryCount}`,
+      });
       if (run.workOrderId) {
         await ctx.runMutation(internal.workOrders.syncExecutionOutcome, {
           workflowRunId: run._id,
@@ -300,6 +721,38 @@ export const updateStep = internalMutation({
         },
       });
     } else if (args.status === "DONE") {
+      await insertRunEvent(ctx, {
+        workflowRunId: run._id,
+        workOrderId: run.workOrderId,
+        projectId: run.projectId,
+        tenantId: run.tenantId,
+        eventType: "STEP_COMPLETED",
+        workflowStep: step.stepId,
+        actor: args.agentId ? "agent" : "system",
+        agentId: args.agentId,
+        status: "COMPLETED",
+        startedAt: step.startedAt,
+        endedAt: now,
+        retryNumber: step.retryCount,
+        commandSummary: args.output,
+        idempotencyKey: `step-complete:${run.runId}:${args.stepIndex}:${step.retryCount}`,
+      });
+      if (step.retryCount > 0) {
+        await insertRunEvent(ctx, {
+          workflowRunId: run._id,
+          workOrderId: run.workOrderId,
+          projectId: run.projectId,
+          tenantId: run.tenantId,
+          eventType: "RETRY_COMPLETED",
+          workflowStep: step.stepId,
+          actor: args.agentId ? "agent" : "system",
+          agentId: args.agentId,
+          status: "COMPLETED",
+          retryNumber: step.retryCount,
+          commandSummary: args.output,
+          idempotencyKey: `retry-complete:${run.runId}:${args.stepIndex}:${step.retryCount}`,
+        });
+      }
       await appendOpEvent(ctx.db as any, {
         tenantId: run.tenantId,
         projectId: run.projectId,
@@ -316,6 +769,39 @@ export const updateStep = internalMutation({
       });
     } else if (args.status === "FAILED") {
       await ctx.db.patch(run._id, { status: "FAILED", completedAt: now, failureReason: args.failureReason ?? args.error ?? run.failureReason });
+      if (step.retryCount > 0) {
+        await insertRunEvent(ctx, {
+          workflowRunId: run._id,
+          workOrderId: run.workOrderId,
+          projectId: run.projectId,
+          tenantId: run.tenantId,
+          eventType: "RETRY_COMPLETED",
+          workflowStep: step.stepId,
+          actor: args.agentId ? "agent" : "system",
+          agentId: args.agentId,
+          status: "FAILED",
+          retryNumber: step.retryCount,
+          errorSummary: args.failureReason ?? args.error ?? run.failureReason,
+          idempotencyKey: `retry-complete:${run.runId}:${args.stepIndex}:${step.retryCount}`,
+        });
+      }
+      await insertRunEvent(ctx, {
+        workflowRunId: run._id,
+        workOrderId: run.workOrderId,
+        projectId: run.projectId,
+        tenantId: run.tenantId,
+        eventType: "RUN_FAILED",
+        workflowStep: step.stepId,
+        actor: args.agentId ? "agent" : "system",
+        agentId: args.agentId,
+        status: "FAILED",
+        startedAt: step.startedAt,
+        endedAt: now,
+        retryNumber: step.retryCount,
+        errorCategory: "STEP_FAILURE",
+        errorSummary: args.failureReason ?? args.error ?? run.failureReason,
+        idempotencyKey: `run-failed:${run.runId}:${args.stepIndex}:${step.retryCount}`,
+      });
       if (run.workOrderId) {
         await ctx.runMutation(internal.workOrders.syncExecutionOutcome, {
           workflowRunId: run._id,
@@ -368,6 +854,20 @@ export const advance = internalMutation({
       await ctx.db.patch(run._id, {
         status: "COMPLETED",
         completedAt: Date.now(),
+      });
+
+      await insertRunEvent(ctx, {
+        workflowRunId: run._id,
+        workOrderId: run.workOrderId,
+        projectId: run.projectId,
+        tenantId: run.tenantId,
+        eventType: "RUN_COMPLETED",
+        workflowStep: run.steps[run.currentStepIndex]?.stepId,
+        actor: "system",
+        status: "COMPLETED",
+        startedAt: run.startedAt,
+        endedAt: Date.now(),
+        idempotencyKey: `run-complete:${run.runId}`,
       });
 
       if (run.workOrderId) {
@@ -426,6 +926,72 @@ export const updateStatus = mutation({
     }
     
     await ctx.db.patch(run._id, updates);
+
+    if (args.status === "PAUSED") {
+      await insertRunEvent(ctx, {
+        workflowRunId: run._id,
+        workOrderId: run.workOrderId,
+        projectId: run.projectId,
+        tenantId: run.tenantId,
+        eventType: "RUN_PAUSED",
+        workflowStep: run.steps[run.currentStepIndex]?.stepId,
+        actor: "system",
+        status: "PAUSED",
+        startedAt: run.startedAt,
+        endedAt: Date.now(),
+        errorSummary: args.failureReason,
+        idempotencyKey: `run-paused:${run.runId}:${Date.now()}`,
+      });
+    }
+
+    if (args.status === "RUNNING" && run.status === "PAUSED") {
+      await insertRunEvent(ctx, {
+        workflowRunId: run._id,
+        workOrderId: run.workOrderId,
+        projectId: run.projectId,
+        tenantId: run.tenantId,
+        eventType: "RUN_RESUMED",
+        workflowStep: run.steps[run.currentStepIndex]?.stepId,
+        actor: "system",
+        status: "RUNNING",
+        startedAt: Date.now(),
+        idempotencyKey: `run-resumed:${run.runId}:${Date.now()}`,
+      });
+    }
+
+    if (args.status === "FAILED") {
+      await insertRunEvent(ctx, {
+        workflowRunId: run._id,
+        workOrderId: run.workOrderId,
+        projectId: run.projectId,
+        tenantId: run.tenantId,
+        eventType: "RUN_FAILED",
+        workflowStep: run.steps[run.currentStepIndex]?.stepId,
+        actor: "system",
+        status: "FAILED",
+        startedAt: run.startedAt,
+        endedAt: updates.completedAt,
+        errorCategory: "RUN_FAILURE",
+        errorSummary: args.failureReason,
+        idempotencyKey: `run-failed:${run.runId}`,
+      });
+    }
+
+    if (args.status === "COMPLETED") {
+      await insertRunEvent(ctx, {
+        workflowRunId: run._id,
+        workOrderId: run.workOrderId,
+        projectId: run.projectId,
+        tenantId: run.tenantId,
+        eventType: "RUN_COMPLETED",
+        workflowStep: run.steps[run.currentStepIndex]?.stepId,
+        actor: "system",
+        status: "COMPLETED",
+        startedAt: run.startedAt,
+        endedAt: updates.completedAt,
+        idempotencyKey: `run-complete:${run.runId}`,
+      });
+    }
 
     if (run.workOrderId) {
       await ctx.runMutation(internal.workOrders.syncExecutionOutcome, {
@@ -503,6 +1069,21 @@ export const incrementRetry = internalMutation({
     };
     
     await ctx.db.patch(run._id, { steps });
+
+    await insertRunEvent(ctx, {
+      workflowRunId: run._id,
+      workOrderId: run.workOrderId,
+      projectId: run.projectId,
+      tenantId: run.tenantId,
+      eventType: "RETRY_STARTED",
+      workflowStep: step.stepId,
+      actor: "system",
+      status: "RUNNING",
+      retryNumber: step.retryCount + 1,
+      errorSummary: step.error,
+      metadata: { checkpointArtifactId: null },
+      idempotencyKey: `retry-start:${run.runId}:${args.stepIndex}:${step.retryCount + 1}`,
+    });
 
     if (run.workOrderId) {
       await ctx.runMutation(internal.workOrders.recordRetry, {

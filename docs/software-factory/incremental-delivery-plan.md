@@ -63,6 +63,23 @@ Implement:
 8. CLI and orchestration entrypoints for acceptance/governance flows
 9. lifecycle and governance tests
 
+## Fourth thin vertical slice
+
+Implement:
+
+**Execution Run Inspector and Evidence Drill-Down**
+
+### Scope
+
+1. first-class `runEvents`
+2. first-class `runArtifacts`
+3. authoritative run-inspector query over `workflowRuns`
+4. artifact linkage back to `verificationReceipts`
+5. WorkOrder UI links from runs and receipts into the inspector
+6. CLI run-summary, event, and artifact inspection commands
+7. orchestration endpoints for recording structured run events and artifacts
+8. run-inspector tests and full verification
+
 ## Why this slice first
 
 Because it establishes the correct domain boundary without requiring a platform rewrite:
