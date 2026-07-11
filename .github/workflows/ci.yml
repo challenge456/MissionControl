@@ -109,6 +109,10 @@ jobs:
         run: |
           pnpm run ci:prepare
 
+      - name: Lint skills
+        run: |
+          node scripts/skill-lint.mjs
+
       - name: Run unit tests
         run: |
           pnpm run ci:test

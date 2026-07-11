@@ -46,6 +46,7 @@ COMMANDS:
     logs [run-id]       Show logs for a run
     assess              Competency Assessment (run | grade | compare | report)
     flags [set <key> <on|off>]   List or set feature flags
+    skill lint [path]   Lint SKILL.md files against the skill standard
     version             Show version
     help                Show this help
 
@@ -263,6 +264,27 @@ cmd_flags() {
     esac
 }
 
+# Command: skill
+cmd_skill() {
+    case "${1:-}" in
+        lint)
+            shift
+            if [[ ! -f "$MC_DIR/packages/context-tools/dist/index.js" ]]; then
+                log_warn "context-tools not built — building now..."
+                (cd "$MC_DIR" && pnpm --filter @mission-control/context-tools build) || {
+                    log_error "Failed to build context-tools"
+                    exit 1
+                }
+            fi
+            node "$MC_DIR/scripts/skill-lint.mjs" "$@"
+            ;;
+        *)
+            log_error "Unknown skill subcommand: ${1:-} (use: lint [path])"
+            exit 1
+            ;;
+    esac
+}
+
 cmd_version() {
     echo "Mission Control CLI v${VERSION}"
 }
@@ -302,6 +324,10 @@ case "${1:-help}" in
     flags)
         shift
         cmd_flags "$@"
+        ;;
+    skill)
+        shift
+        cmd_skill "$@"
         ;;
     version|--version|-v)
         cmd_version
