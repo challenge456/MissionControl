@@ -392,6 +392,138 @@ It returns:
 4. derived file-change and retry summaries
 5. focused evidence lineage for a receipt or acceptance criterion
 
+## 9. Fifth-slice lifecycle revision and reopen contract
+
+MissionControl keeps WorkOrder history immutable and additive.
+
+### Additional WorkOrder lifecycle states
+
+```ts
+type WorkOrderState =
+  | "DRAFT"
+  | "READY"
+  | "DISPATCHED"
+  | "IN_PROGRESS"
+  | "BLOCKED"
+  | "AWAITING_APPROVAL"
+  | "AWAITING_VERIFICATION"
+  | "REOPENED"
+  | "DONE"
+  | "CANCELED"
+  | "SUPERSEDED";
+```
+
+### WorkOrderRevision
+
+```ts
+interface WorkOrderRevision {
+  _id: Id<"workOrderRevisions">;
+  workOrderId: Id<"workOrders">;
+  revisionNumber: number;
+  status: "DRAFT" | "APPROVED" | "APPLIED" | "REJECTED";
+  changeSummary: string;
+  reason?: string;
+  requestedBy?: string;
+  approvedBy?: string;
+  previousRevisionId?: Id<"workOrderRevisions">;
+  beforeSnapshot: any;
+  afterSnapshot: any;
+  impactedAcceptanceCriteriaIds?: string[];
+  createdAt: number;
+  approvedAt?: number;
+  appliedAt?: number;
+}
+```
+
+### ReopenDecision
+
+```ts
+interface ReopenDecision {
+  _id: Id<"reopenDecisions">;
+  workOrderId: Id<"workOrders">;
+  reason: string;
+  sourceIssueOrDefect?: string;
+  requestedBy?: string;
+  approvedBy?: string;
+  reopenScope: "full-workorder" | "targeted-criteria";
+  acceptanceCriteriaImpacted?: string[];
+  invalidatedReceiptIds?: Id<"verificationReceipts">[];
+  createdAt: number;
+}
+```
+
+### WorkOrderSupersession
+
+```ts
+interface WorkOrderSupersession {
+  _id: Id<"workOrderSupersessions">;
+  workOrderId: Id<"workOrders">;
+  replacementWorkOrderId: Id<"workOrders">;
+  reason: string;
+  actorType: "HUMAN" | "SYSTEM" | "AGENT";
+  actorId?: string;
+  createdAt: number;
+}
+```
+
+### Governance validity windows
+
+- `approvalDecisions.expiresAt` allows time-bounded approvals.
+- `verificationReceipts.validUntil` allows time-bounded evidence.
+- expired approvals transition to `EXPIRED` and no longer satisfy dispatch or acceptance gates.
+- expired or invalidated receipts transition to `STALE` and block acceptance until replaced.
+
+### Authoritative lifecycle commands
+
+```ts
+type RequestWorkOrderRevisionCommand = {
+  workOrderId: Id<"workOrders">;
+  idempotencyKey: string;
+  changeSummary: string;
+  reason?: string;
+  requestedBy?: string;
+  patch: Partial<WorkOrder>;
+};
+
+type ApproveWorkOrderRevisionCommand = {
+  workOrderRevisionId: Id<"workOrderRevisions">;
+  approvedBy?: string;
+};
+
+type ReopenWorkOrderCommand = {
+  workOrderId: Id<"workOrders">;
+  idempotencyKey: string;
+  reason: string;
+  sourceIssueOrDefect?: string;
+  requestedBy?: string;
+  approvedBy?: string;
+  reopenScope: "full-workorder" | "targeted-criteria";
+  acceptanceCriteriaImpacted?: string[];
+};
+
+type SupersedeWorkOrderCommand = {
+  workOrderId: Id<"workOrders">;
+  replacementWorkOrderId: Id<"workOrders">;
+  reason: string;
+  actorType: "HUMAN" | "SYSTEM" | "AGENT";
+  actorId?: string;
+  idempotencyKey: string;
+};
+
+type ExpireGovernanceRecordsCommand = {
+  workOrderId: Id<"workOrders">;
+};
+```
+
+### Lifecycle guarantees
+
+1. revisions append immutable snapshots instead of mutating history in place
+2. applying a material revision advances `currentRevisionNumber`
+3. reopen preserves prior evidence lineage but marks impacted receipts stale
+4. supersession marks the original WorkOrder `SUPERSEDED` and links the replacement both ways
+5. expiry is server-evaluated and auditable via lifecycle events
+6. UI, CLI, and orchestration must all call these server-owned commands
+
 - `WORK_ORDER_CREATED`
 - `DISPATCH_REQUESTED`
 - `DISPATCHED`

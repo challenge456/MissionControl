@@ -32,6 +32,7 @@ import {
   type WorkOrderQueueFilters,
 } from "./workOrdersModel";
 import { ExecutionRunInspector } from "./ExecutionRunInspector";
+import { splitCurrentAndHistoricalRevisions, summarizeRevisionEffects } from "./workOrderLifecycleModel";
 
 const RISK_STYLES: Record<string, string> = {
   LOW: "border-emerald-500/30 text-emerald-300",
@@ -48,8 +49,10 @@ const STATE_STYLES: Record<string, string> = {
   BLOCKED: "border-red-500/30 text-red-300",
   AWAITING_APPROVAL: "border-amber-500/30 text-amber-300",
   AWAITING_VERIFICATION: "border-amber-500/30 text-amber-300",
+  REOPENED: "border-purple-500/30 text-purple-200",
   DONE: "border-emerald-500/30 text-emerald-300",
   CANCELED: "border-border text-muted-foreground",
+  SUPERSEDED: "border-slate-500/30 text-slate-300",
 };
 
 function prettyLabel(value: string | undefined | null) {
@@ -57,17 +60,21 @@ function prettyLabel(value: string | undefined | null) {
   return value.replace(/_/g, " ");
 }
 
-function criteriaFromText(value: string) {
+function criteriaFromText(value: string, existingCriteria: Array<{ id: string; title: string; description?: string; verificationMethod?: string }> = []) {
   return value
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean)
-    .map((title, index) => ({
-      id: `ac-${index + 1}`,
-      title,
-      verificationMethod: "MANUAL" as const,
-      status: "PENDING" as const,
-    }));
+    .map((title, index) => {
+      const existing = existingCriteria[index];
+      return {
+        id: existing?.id ?? `ac-${index + 1}`,
+        title,
+        description: existing?.description,
+        verificationMethod: (existing?.verificationMethod as "MANUAL" | "COMMAND" | "TEST" | "CHECKLIST" | undefined) ?? "MANUAL",
+        status: "PENDING" as const,
+      };
+    });
 }
 
 function latestByCriterion<T extends { acceptanceCriterionId: string; recordedAt: number }>(receipts: T[]) {
@@ -84,9 +91,15 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
   const [createOpen, setCreateOpen] = useState(false);
   const [approvalOpen, setApprovalOpen] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
+  const [revisionOpen, setRevisionOpen] = useState(false);
+  const [reopenOpen, setReopenOpen] = useState(false);
+  const [supersedeOpen, setSupersedeOpen] = useState(false);
   const [createRequestKey, setCreateRequestKey] = useState<string | null>(null);
   const [dispatchingId, setDispatchingId] = useState<string | null>(null);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  const [revisingId, setRevisingId] = useState<string | null>(null);
+  const [reopeningId, setReopeningId] = useState<string | null>(null);
+  const [supersedingId, setSupersedingId] = useState<string | null>(null);
   const [inspectorRunId, setInspectorRunId] = useState<Id<"workflowRuns"> | null>(null);
   const [inspectorReceiptId, setInspectorReceiptId] = useState<Id<"verificationReceipts"> | null>(null);
   const [inspectorCriterionId, setInspectorCriterionId] = useState<string | null>(null);
@@ -106,6 +119,11 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
   const requestApprovalDecision = useMutation(api.workOrders.requestApprovalDecision);
   const recordVerificationReceipt = useMutation(api.workOrders.recordVerificationReceipt);
   const acceptWorkOrder = useMutation(api.workOrders.accept);
+  const requestWorkOrderRevision = useMutation(api.workOrders.requestWorkOrderRevision);
+  const approveWorkOrderRevision = useMutation(api.workOrders.approveWorkOrderRevision);
+  const reopenWorkOrder = useMutation(api.workOrders.reopenWorkOrder);
+  const supersedeWorkOrder = useMutation(api.workOrders.supersedeWorkOrder);
+  const expireGovernanceRecords = useMutation(api.workOrders.expireGovernanceRecords);
   const seedDemo = useMutation(api.workOrders.seedDemo);
 
   const filtered = useMemo(() => filterWorkOrders(workOrders ?? [], filters), [workOrders, filters]);
@@ -140,7 +158,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
     const rows = workOrders ?? [];
     return {
       total: rows.length,
-      active: rows.filter((row) => ["READY", "DISPATCHED", "IN_PROGRESS", "AWAITING_APPROVAL", "AWAITING_VERIFICATION"].includes(row.state)).length,
+      active: rows.filter((row) => ["READY", "DISPATCHED", "IN_PROGRESS", "AWAITING_APPROVAL", "AWAITING_VERIFICATION", "REOPENED"].includes(row.state)).length,
       blocked: rows.filter((row) => row.state === "BLOCKED").length,
       attention: rows.filter((row) => !!row.requiredHumanAction || ["PENDING", "REVISION_REQUESTED"].includes(row.approvalStatus) || ["FAIL", "STALE"].includes(row.verificationStatus)).length,
     };
@@ -155,13 +173,13 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
     }
   }
 
-  const canDispatchSelected = !!selected && ["READY", "BLOCKED", "DISPATCHED", "IN_PROGRESS"].includes(selected.workOrder.state)
+  const canDispatchSelected = !!selected && ["READY", "BLOCKED", "DISPATCHED", "IN_PROGRESS", "REOPENED", "AWAITING_APPROVAL", "AWAITING_VERIFICATION"].includes(selected.workOrder.state)
     && !!selected.workOrder.workflowId
     && (selected.workOrder.approvalStatus === "APPROVED" || selected.workOrder.approvalStatus === "CONDITIONAL" || selected.workOrder.approvalStatus === "NOT_REQUIRED")
     && !selected.executionRuns.some((run) => ["PENDING", "RUNNING", "PAUSED"].includes(run.status));
 
   const canAcceptSelected = !!selected
-    && selected.workOrder.state !== "DONE"
+    && !["DONE", "SUPERSEDED", "CANCELED"].includes(selected.workOrder.state)
     && !selected.executionRuns.some((run) => ["PENDING", "RUNNING", "PAUSED"].includes(run.status))
     && selected.executionRuns[0]?.status === "COMPLETED"
     && selected.acceptanceSummary?.eligible;
@@ -171,6 +189,10 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
       ...receipt,
       recordedAt: receipt.recordedAt ?? receipt._creationTime ?? 0,
     }))),
+    [selected]
+  );
+  const revisionSplit = useMemo(
+    () => splitCurrentAndHistoricalRevisions((selected?.revisions ?? []) as any[], selected?.workOrder.currentRevisionId),
     [selected]
   );
 
@@ -208,7 +230,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
 
         <div className="mt-4 grid gap-3 rounded-xl border border-[var(--panel-line)] bg-card/40 p-4 lg:grid-cols-6">
           <FilterSelect label="Repository" value={filters.repository} onChange={(value) => setFilters((current) => ({ ...current, repository: value }))} options={repositories} />
-          <FilterSelect label="State" value={filters.state} onChange={(value) => setFilters((current) => ({ ...current, state: value }))} options={["READY", "DISPATCHED", "IN_PROGRESS", "BLOCKED", "AWAITING_APPROVAL", "AWAITING_VERIFICATION", "DONE"]} />
+          <FilterSelect label="State" value={filters.state} onChange={(value) => setFilters((current) => ({ ...current, state: value }))} options={["READY", "DISPATCHED", "IN_PROGRESS", "BLOCKED", "AWAITING_APPROVAL", "AWAITING_VERIFICATION", "REOPENED", "DONE", "SUPERSEDED"]} />
           <FilterSelect label="Risk" value={filters.riskLevel} onChange={(value) => setFilters((current) => ({ ...current, riskLevel: value }))} options={["LOW", "MEDIUM", "HIGH", "CRITICAL"]} />
           <FilterSelect label="Assigned" value={filters.assignedAgent} onChange={(value) => setFilters((current) => ({ ...current, assignedAgent: value }))} options={assignedAgents} />
           <FilterSelect label="Requested by" value={filters.requestedBy} onChange={(value) => setFilters((current) => ({ ...current, requestedBy: value }))} options={requestors} />
@@ -283,6 +305,19 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                       <Badge variant="outline" className={RISK_STYLES[selected.workOrder.riskLevel] ?? ""}>{selected.workOrder.riskLevel}</Badge>
                       <Badge variant="outline" className={STATE_STYLES[selected.workOrder.state] ?? ""}>{prettyLabel(selected.workOrder.state)}</Badge>
                     </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button size="sm" variant="outline" onClick={() => { setGovernanceError(null); setRevisionOpen(true); }}>Request revision</Button>
+                    <Button size="sm" variant="outline" onClick={() => { setGovernanceError(null); setReopenOpen(true); }} disabled={["SUPERSEDED", "CANCELED"].includes(selected.workOrder.state)}>Reopen</Button>
+                    <Button size="sm" variant="outline" onClick={async () => {
+                      try {
+                        setGovernanceError(null);
+                        await expireGovernanceRecords({ workOrderId: selected.workOrder._id });
+                      } catch (err) {
+                        setGovernanceError(err instanceof Error ? err.message : "Failed to expire governance records");
+                      }
+                    }}>Refresh governance</Button>
+                    <Button size="sm" variant="outline" onClick={() => { setGovernanceError(null); setSupersedeOpen(true); }} disabled={selected.workOrder.state === "SUPERSEDED"}>Supersede</Button>
                   </div>
                 </div>
 
@@ -410,6 +445,120 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                     )) : (
                       <p className="text-sm text-muted-foreground">No approval decisions recorded yet.</p>
                     )}
+                  </div>
+                </Section>
+
+                <Section title="Governance status">
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <Card className="p-3">
+                      <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Current revision</div>
+                      <div className="mt-2 text-lg font-semibold text-foreground">r{selected.workOrder.currentRevisionNumber ?? 1}</div>
+                    </Card>
+                    <Card className="p-3">
+                      <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Expiring approvals</div>
+                      <div className="mt-2 text-lg font-semibold text-amber-300">{selected.governanceStatus?.expiringApprovals?.length ?? 0}</div>
+                    </Card>
+                    <Card className="p-3">
+                      <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Expired approvals</div>
+                      <div className="mt-2 text-lg font-semibold text-red-300">{selected.governanceStatus?.expiredApprovals?.length ?? 0}</div>
+                    </Card>
+                    <Card className="p-3">
+                      <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Stale receipts</div>
+                      <div className="mt-2 text-lg font-semibold text-red-300">{selected.governanceStatus?.staleReceipts?.length ?? 0}</div>
+                    </Card>
+                  </div>
+                  <div className="mt-3 rounded-xl border border-[var(--panel-line)] bg-background/30 p-4 text-sm text-muted-foreground">
+                    <div>Required reapproval: <span className="text-foreground/85">{selected.governanceStatus?.requiredReapproval ? "Yes" : "No"}</span></div>
+                    <div className="mt-1">Required reverification: <span className="text-foreground/85">{selected.governanceStatus?.requiredReverification ? "Yes" : "No"}</span></div>
+                    <div className="mt-1">Latest accepted revision: <span className="text-foreground/85">{selected.governanceStatus?.acceptedRevisionNumber ? `r${selected.governanceStatus.acceptedRevisionNumber}` : "—"}</span></div>
+                    <div className="mt-2">Blocking reason: <span className="text-foreground/85">{selected.governanceStatus?.blockingReasons?.[0] ?? "—"}</span></div>
+                  </div>
+                </Section>
+
+                <Section title="Revision history">
+                  <div className="space-y-2">
+                    {revisionSplit.current ? (
+                      <div className="rounded-lg border border-cyan-400/30 bg-cyan-500/5 px-3 py-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-medium text-foreground">Current revision r{revisionSplit.current.revisionNumber}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">{revisionSplit.current.changeSummary}</div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline">{revisionSplit.current.status}</Badge>
+                            {revisionSplit.current.status === "PENDING_APPROVAL" ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={async () => {
+                                  try {
+                                    setGovernanceError(null);
+                                    setRevisingId(revisionSplit.current._id);
+                                    await approveWorkOrderRevision({ workOrderRevisionId: revisionSplit.current._id as Id<"workOrderRevisions">, approvedBy: "operator" });
+                                  } catch (err) {
+                                    setGovernanceError(err instanceof Error ? err.message : "Failed to approve revision");
+                                  } finally {
+                                    setRevisingId(null);
+                                  }
+                                }}
+                                disabled={revisingId === revisionSplit.current._id}
+                              >
+                                {revisingId === revisionSplit.current._id ? "Applying…" : "Approve & apply"}
+                              </Button>
+                            ) : null}
+                          </div>
+                        </div>
+                        <div className="mt-2 text-xs text-muted-foreground">{summarizeRevisionEffects(revisionSplit.current)}</div>
+                      </div>
+                    ) : null}
+                    {revisionSplit.historical.length ? revisionSplit.historical.map((revision: any) => (
+                      <div key={revision._id} className="rounded-lg border border-[var(--panel-line)] bg-background/30 px-3 py-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-medium text-foreground">Historical revision r{revision.revisionNumber}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">{revision.changeSummary}</div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline">{revision.status}</Badge>
+                            {revision.status === "PENDING_APPROVAL" ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={async () => {
+                                  try {
+                                    setGovernanceError(null);
+                                    setRevisingId(revision._id);
+                                    await approveWorkOrderRevision({ workOrderRevisionId: revision._id as Id<"workOrderRevisions">, approvedBy: "operator" });
+                                  } catch (err) {
+                                    setGovernanceError(err instanceof Error ? err.message : "Failed to approve revision");
+                                  } finally {
+                                    setRevisingId(null);
+                                  }
+                                }}
+                                disabled={revisingId === revision._id}
+                              >
+                                {revisingId === revision._id ? "Applying…" : "Approve & apply"}
+                              </Button>
+                            ) : null}
+                          </div>
+                        </div>
+                        <div className="mt-2 text-xs text-muted-foreground">Changed: {revision.changedFields.join(", ") || "—"}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">Impact: {summarizeRevisionEffects(revision)}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">Actor: {revision.approvedBy ?? revision.requestedBy ?? "—"} · {revision.effectiveAt ? new Date(revision.effectiveAt).toLocaleString() : new Date(revision.createdAt).toLocaleString()}</div>
+                      </div>
+                    )) : (
+                      <p className="text-sm text-muted-foreground">No historical revisions yet.</p>
+                    )}
+                  </div>
+                </Section>
+
+                <Section title="Reopen and replacement lineage">
+                  <div className="space-y-2 text-sm text-muted-foreground">
+                    <div>Prior accepted revision: <span className="text-foreground/85">{selected.governanceStatus?.latestAcceptedRevision ? `r${selected.governanceStatus.latestAcceptedRevision.revisionNumber}` : "—"}</span></div>
+                    <div>Reopen reason: <span className="text-foreground/85">{selected.reopenDecisions?.[0]?.reason ?? "—"}</span></div>
+                    <div>Source defect / issue: <span className="text-foreground/85">{selected.reopenDecisions?.[0]?.sourceIssueOrDefect ?? "—"}</span></div>
+                    <div>Invalidated evidence: <span className="text-foreground/85">{selected.reopenDecisions?.[0]?.invalidatedReceiptIds?.length ?? 0}</span></div>
+                    <div>Replacement WorkOrder: <span className="text-foreground/85">{selected.supersession?.replacementWorkOrderId ?? selected.workOrder.supersededByWorkOrderId ?? "—"}</span></div>
                   </div>
                 </Section>
 
@@ -694,6 +843,98 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
         }}
       />
 
+      <RequestRevisionDialog
+        open={revisionOpen}
+        workOrder={selected?.workOrder ?? null}
+        creating={creating}
+        onClose={() => setRevisionOpen(false)}
+        onCreate={async (payload) => {
+          if (!selected) return;
+          setCreating(true);
+          setGovernanceError(null);
+          try {
+            await requestWorkOrderRevision({
+              workOrderId: selected.workOrder._id,
+              idempotencyKey: `ui-revision:${selected.workOrder._id}:${Date.now()}`,
+              changeSummary: payload.changeSummary,
+              reason: payload.reason,
+              requestedBy: payload.requestedBy || undefined,
+              patch: {
+                desiredOutcome: payload.desiredOutcome || undefined,
+                workflowId: payload.workflowId || undefined,
+                repository: payload.repository || undefined,
+                riskLevel: payload.riskLevel as any,
+                requiredApprovals: payload.requiredApprovals,
+                acceptanceCriteria: criteriaFromText(payload.acceptanceCriteria, selected.workOrder.acceptanceCriteria as any),
+              },
+            });
+            setRevisionOpen(false);
+          } catch (err) {
+            setGovernanceError(err instanceof Error ? err.message : "Failed to request revision");
+          } finally {
+            setCreating(false);
+          }
+        }}
+      />
+
+      <ReopenWorkOrderDialog
+        open={reopenOpen}
+        workOrder={selected?.workOrder ?? null}
+        creating={creating}
+        onClose={() => setReopenOpen(false)}
+        onCreate={async (payload) => {
+          if (!selected) return;
+          setCreating(true);
+          setGovernanceError(null);
+          try {
+            await reopenWorkOrder({
+              workOrderId: selected.workOrder._id,
+              idempotencyKey: `ui-reopen:${selected.workOrder._id}:${Date.now()}`,
+              reason: payload.reason,
+              sourceIssueOrDefect: payload.sourceIssueOrDefect || undefined,
+              requestedBy: payload.requestedBy || undefined,
+              approvedBy: payload.approvedBy || undefined,
+              reopenScope: payload.reopenScope,
+              acceptanceCriteriaImpacted: payload.acceptanceCriteriaImpacted,
+              newRequiredActions: payload.newRequiredActions,
+            });
+            setReopenOpen(false);
+          } catch (err) {
+            setGovernanceError(err instanceof Error ? err.message : "Failed to reopen WorkOrder");
+          } finally {
+            setCreating(false);
+          }
+        }}
+      />
+
+      <SupersedeWorkOrderDialog
+        open={supersedeOpen}
+        workOrders={workOrders ?? []}
+        currentWorkOrderId={selected?.workOrder._id ?? null}
+        creating={creating}
+        onClose={() => setSupersedeOpen(false)}
+        onCreate={async (payload) => {
+          if (!selected) return;
+          setCreating(true);
+          setGovernanceError(null);
+          try {
+            await supersedeWorkOrder({
+              workOrderId: selected.workOrder._id,
+              replacementWorkOrderId: payload.replacementWorkOrderId as Id<"workOrders">,
+              idempotencyKey: `ui-supersede:${selected.workOrder._id}:${payload.replacementWorkOrderId}`,
+              reason: payload.reason,
+              actorType: "HUMAN",
+              actorId: payload.actorId || undefined,
+            });
+            setSupersedeOpen(false);
+          } catch (err) {
+            setGovernanceError(err instanceof Error ? err.message : "Failed to supersede WorkOrder");
+          } finally {
+            setCreating(false);
+          }
+        }}
+      />
+
       <ExecutionRunInspector
         open={!!inspectorRunId}
         workflowRunId={inspectorRunId}
@@ -934,6 +1175,224 @@ function RecordVerificationReceiptDialog({
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button onClick={() => onCreate({ acceptanceCriterionId, workflowRunId, verificationMethod, commandOrCheck, result, evidenceLocation, artifactReference, verifier, status, exceptionOrWaiver, waiverApprovalDecisionId })} disabled={creating || !acceptanceCriterionId || !workflowRunId}>{creating ? "Recording…" : "Record receipt"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function RequestRevisionDialog({
+  open,
+  workOrder,
+  creating,
+  onClose,
+  onCreate,
+}: {
+  open: boolean;
+  workOrder: any;
+  creating: boolean;
+  onClose: () => void;
+  onCreate: (payload: {
+    changeSummary: string;
+    reason: string;
+    requestedBy: string;
+    desiredOutcome: string;
+    workflowId: string;
+    repository: string;
+    riskLevel: string;
+    requiredApprovals: string[];
+    acceptanceCriteria: string;
+  }) => Promise<void>;
+}) {
+  const [changeSummary, setChangeSummary] = useState("Clarify or revise WorkOrder scope");
+  const [reason, setReason] = useState("");
+  const [requestedBy, setRequestedBy] = useState("operator");
+  const [desiredOutcome, setDesiredOutcome] = useState("");
+  const [workflowId, setWorkflowId] = useState("");
+  const [repository, setRepository] = useState("");
+  const [riskLevel, setRiskLevel] = useState("MEDIUM");
+  const [requiredApprovalsText, setRequiredApprovalsText] = useState("");
+  const [acceptanceCriteria, setAcceptanceCriteria] = useState("");
+
+  useEffect(() => {
+    if (!open || !workOrder) return;
+    setDesiredOutcome(workOrder.desiredOutcome ?? "");
+    setWorkflowId(workOrder.workflowId ?? "");
+    setRepository(workOrder.repository ?? "");
+    setRiskLevel(workOrder.riskLevel ?? "MEDIUM");
+    setRequiredApprovalsText((workOrder.requiredApprovals ?? []).join("\n"));
+    setAcceptanceCriteria((workOrder.acceptanceCriteria ?? []).map((criterion: any) => criterion.title).join("\n"));
+  }, [open, workOrder]);
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent className="sm:max-w-[760px]">
+        <DialogHeader>
+          <DialogTitle>Request WorkOrder revision</DialogTitle>
+          <DialogDescription>Version a controlled revision. Accepted work stays immutable until a revision is explicitly applied.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-3">
+            <div className="space-y-1.5"><Label>Change summary</Label><Input value={changeSummary} onChange={(event) => setChangeSummary(event.target.value)} /></div>
+            <div className="space-y-1.5"><Label>Reason</Label><Textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={4} placeholder="Why does this revision need to happen?" /></div>
+            <div className="space-y-1.5"><Label>Requested by</Label><Input value={requestedBy} onChange={(event) => setRequestedBy(event.target.value)} /></div>
+            <div className="space-y-1.5"><Label>Desired outcome</Label><Textarea value={desiredOutcome} onChange={(event) => setDesiredOutcome(event.target.value)} rows={4} /></div>
+          </div>
+          <div className="space-y-3">
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-1.5"><Label>Workflow</Label><Input value={workflowId} onChange={(event) => setWorkflowId(event.target.value)} /></div>
+              <div className="space-y-1.5"><Label>Repository</Label><Input value={repository} onChange={(event) => setRepository(event.target.value)} /></div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Risk level</Label>
+              <Select value={riskLevel} onValueChange={setRiskLevel}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{["LOW", "MEDIUM", "HIGH", "CRITICAL"].map((option) => <SelectItem key={option} value={option}>{option}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5"><Label>Required approvals</Label><Textarea value={requiredApprovalsText} onChange={(event) => setRequiredApprovalsText(event.target.value)} rows={3} placeholder="One per line" /></div>
+            <div className="space-y-1.5"><Label>Acceptance criteria</Label><Textarea value={acceptanceCriteria} onChange={(event) => setAcceptanceCriteria(event.target.value)} rows={5} placeholder="One criterion per line" /></div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button onClick={() => onCreate({
+            changeSummary,
+            reason,
+            requestedBy,
+            desiredOutcome,
+            workflowId,
+            repository,
+            riskLevel,
+            requiredApprovals: requiredApprovalsText.split("\n").map((line) => line.trim()).filter(Boolean),
+            acceptanceCriteria,
+          })} disabled={creating || !changeSummary.trim() || !reason.trim()}>{creating ? "Saving…" : "Request revision"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ReopenWorkOrderDialog({
+  open,
+  workOrder,
+  creating,
+  onClose,
+  onCreate,
+}: {
+  open: boolean;
+  workOrder: any;
+  creating: boolean;
+  onClose: () => void;
+  onCreate: (payload: {
+    reason: string;
+    sourceIssueOrDefect: string;
+    requestedBy: string;
+    approvedBy: string;
+    reopenScope: string;
+    acceptanceCriteriaImpacted: string[];
+    newRequiredActions: string[];
+  }) => Promise<void>;
+}) {
+  const [reason, setReason] = useState("");
+  const [sourceIssueOrDefect, setSourceIssueOrDefect] = useState("");
+  const [requestedBy, setRequestedBy] = useState("operator");
+  const [approvedBy, setApprovedBy] = useState("operator");
+  const [reopenScope, setReopenScope] = useState("full-workorder");
+  const [acceptanceCriteriaImpactedText, setAcceptanceCriteriaImpactedText] = useState("");
+  const [newRequiredActionsText, setNewRequiredActionsText] = useState("Review defect\nRecord replacement evidence\nRedispatch if implementation must change");
+
+  useEffect(() => {
+    if (!open || !workOrder) return;
+    setAcceptanceCriteriaImpactedText((workOrder.acceptanceCriteria ?? []).map((criterion: any) => criterion.id).join("\n"));
+  }, [open, workOrder]);
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent className="sm:max-w-[720px]">
+        <DialogHeader>
+          <DialogTitle>Reopen WorkOrder</DialogTitle>
+          <DialogDescription>Preserve prior evidence and explicitly mark what became invalid and what must happen next.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5"><Label>Reason</Label><Textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={3} placeholder="Defect discovered, evidence invalidated, reviewer requested correction…" /></div>
+          <div className="space-y-1.5"><Label>Source issue or defect</Label><Input value={sourceIssueOrDefect} onChange={(event) => setSourceIssueOrDefect(event.target.value)} placeholder="Issue / defect / incident reference" /></div>
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="space-y-1.5"><Label>Requested by</Label><Input value={requestedBy} onChange={(event) => setRequestedBy(event.target.value)} /></div>
+            <div className="space-y-1.5"><Label>Approved by</Label><Input value={approvedBy} onChange={(event) => setApprovedBy(event.target.value)} /></div>
+            <div className="space-y-1.5"><Label>Reopen scope</Label><Input value={reopenScope} onChange={(event) => setReopenScope(event.target.value)} /></div>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-1.5"><Label>Impacted criteria IDs</Label><Textarea value={acceptanceCriteriaImpactedText} onChange={(event) => setAcceptanceCriteriaImpactedText(event.target.value)} rows={4} /></div>
+            <div className="space-y-1.5"><Label>New required actions</Label><Textarea value={newRequiredActionsText} onChange={(event) => setNewRequiredActionsText(event.target.value)} rows={4} /></div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button onClick={() => onCreate({
+            reason,
+            sourceIssueOrDefect,
+            requestedBy,
+            approvedBy,
+            reopenScope,
+            acceptanceCriteriaImpacted: acceptanceCriteriaImpactedText.split("\n").map((line) => line.trim()).filter(Boolean),
+            newRequiredActions: newRequiredActionsText.split("\n").map((line) => line.trim()).filter(Boolean),
+          })} disabled={creating || !reason.trim()}>{creating ? "Reopening…" : "Reopen WorkOrder"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function SupersedeWorkOrderDialog({
+  open,
+  workOrders,
+  currentWorkOrderId,
+  creating,
+  onClose,
+  onCreate,
+}: {
+  open: boolean;
+  workOrders: any[];
+  currentWorkOrderId: string | null;
+  creating: boolean;
+  onClose: () => void;
+  onCreate: (payload: { replacementWorkOrderId: string; reason: string; actorId: string }) => Promise<void>;
+}) {
+  const [replacementWorkOrderId, setReplacementWorkOrderId] = useState("");
+  const [reason, setReason] = useState("");
+  const [actorId, setActorId] = useState("operator");
+
+  const options = (workOrders ?? []).filter((item) => item._id !== currentWorkOrderId);
+
+  useEffect(() => {
+    if (!open) return;
+    setReplacementWorkOrderId(options[0]?._id ?? "");
+  }, [open, currentWorkOrderId]);
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent className="sm:max-w-[620px]">
+        <DialogHeader>
+          <DialogTitle>Supersede WorkOrder</DialogTitle>
+          <DialogDescription>Link this WorkOrder to its authoritative replacement without losing unresolved obligations or evidence history.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label>Replacement WorkOrder</Label>
+            <Select value={replacementWorkOrderId} onValueChange={setReplacementWorkOrderId}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {options.map((option) => <SelectItem key={option._id} value={option._id}>{option.title}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5"><Label>Reason</Label><Textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={3} /></div>
+          <div className="space-y-1.5"><Label>Actor</Label><Input value={actorId} onChange={(event) => setActorId(event.target.value)} /></div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button onClick={() => onCreate({ replacementWorkOrderId, reason, actorId })} disabled={creating || !replacementWorkOrderId || !reason.trim()}>{creating ? "Superseding…" : "Supersede WorkOrder"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -11,6 +11,17 @@ import {
   receiptStatusToCriterionStatus,
   requiredApprovalTypes,
 } from "./lib/workOrderGovernance";
+import {
+  approvalExpiresAt,
+  buildRevisionSnapshot,
+  DEFAULT_GOVERNANCE_POLICY,
+  evaluateRevisionImpact,
+  isExpiringSoon,
+  nextStateAfterRevision,
+  runMatchesCurrentRevision,
+  snapshotRevisionFields,
+  verificationValidUntil,
+} from "./lib/workOrderRevision";
 
 function generateRunId(): string {
   return Math.random().toString(36).substring(2, 10);
@@ -39,10 +50,18 @@ async function logWorkOrderEvent(
       | "APPROVAL_REVISION_REQUESTED"
       | "APPROVAL_EXPIRED"
       | "APPROVAL_SUPERSEDED"
+      | "APPROVAL_REVOKED"
+      | "REVISION_REQUESTED"
+      | "REVISION_APPROVED"
+      | "REVISION_REJECTED"
+      | "REVISION_APPLIED"
+      | "WORK_ORDER_REOPENED"
+      | "WORK_ORDER_SUPERSEDED"
       | "VERIFICATION_RECORDED"
       | "VERIFICATION_FAILED"
       | "VERIFICATION_WAIVED"
       | "VERIFICATION_STALE"
+      | "GOVERNANCE_RECORDS_EXPIRED"
       | "WORK_ORDER_ACCEPTED";
     fromState?: string;
     toState?: string;
@@ -93,8 +112,10 @@ const workOrderState = v.union(
   v.literal("BLOCKED"),
   v.literal("AWAITING_APPROVAL"),
   v.literal("AWAITING_VERIFICATION"),
+  v.literal("REOPENED"),
   v.literal("DONE"),
-  v.literal("CANCELED")
+  v.literal("CANCELED"),
+  v.literal("SUPERSEDED")
 );
 
 const verificationStatus = v.union(
@@ -111,7 +132,9 @@ const approvalStatus = v.union(
   v.literal("APPROVED"),
   v.literal("REJECTED"),
   v.literal("CONDITIONAL"),
-  v.literal("REVISION_REQUESTED")
+  v.literal("REVISION_REQUESTED"),
+  v.literal("EXPIRED"),
+  v.literal("REVOKED")
 );
 
 const approvalDecisionStatus = v.union(
@@ -121,6 +144,14 @@ const approvalDecisionStatus = v.union(
   v.literal("REJECTED"),
   v.literal("REVISION_REQUESTED"),
   v.literal("EXPIRED"),
+  v.literal("SUPERSEDED"),
+  v.literal("REVOKED")
+);
+
+const workOrderRevisionStatus = v.union(
+  v.literal("APPLIED"),
+  v.literal("PENDING_APPROVAL"),
+  v.literal("REJECTED"),
   v.literal("SUPERSEDED")
 );
 
@@ -163,6 +194,34 @@ const sourceOfTruthRef = v.object({
   label: v.string(),
   location: v.string(),
 });
+
+const revisionPatch = v.object({
+  title: v.optional(v.string()),
+  desiredOutcome: v.optional(v.string()),
+  context: v.optional(v.string()),
+  workflowId: v.optional(v.string()),
+  repository: v.optional(v.string()),
+  branchStrategy: v.optional(v.string()),
+  priority: v.optional(v.union(v.literal(1), v.literal(2), v.literal(3), v.literal(4))),
+  riskLevel: v.optional(workOrderRisk),
+  requestedBy: v.optional(v.string()),
+  assignedAgent: v.optional(v.string()),
+  assignedSquad: v.optional(v.string()),
+  acceptanceCriteria: v.optional(v.array(acceptanceCriterion)),
+  constraints: v.optional(v.array(v.string())),
+  dependencies: v.optional(v.array(v.string())),
+  sourceOfTruthRefs: v.optional(v.array(sourceOfTruthRef)),
+  requiredApprovals: v.optional(v.array(v.string())),
+  metadata: v.optional(v.any()),
+});
+
+function summarizeGovernanceEffects(revision: any) {
+  if (revision.requiresFullReopen) return "full reopen";
+  if (revision.requiresReapproval && revision.requiresReverification) return "reapproval and reverification";
+  if (revision.requiresReapproval) return "reapproval";
+  if (revision.requiresReverification) return "reverification";
+  return "no governance reset";
+}
 
 function decisionToStatus(decision: "APPROVE" | "APPROVE_WITH_CONDITIONS" | "REJECT" | "REQUEST_REVISION") {
   switch (decision) {
@@ -208,9 +267,166 @@ async function latestExecutionRunForWorkOrder(ctx: any, workOrderId: any) {
     .first();
 }
 
+async function listRevisionsForWorkOrder(ctx: any, workOrderId: any) {
+  return await ctx.db
+    .query("workOrderRevisions")
+    .withIndex("by_work_order", (q: any) => q.eq("workOrderId", workOrderId))
+    .order("desc")
+    .collect();
+}
+
+async function listReopenDecisionsForWorkOrder(ctx: any, workOrderId: any) {
+  return await ctx.db
+    .query("reopenDecisions")
+    .withIndex("by_work_order", (q: any) => q.eq("workOrderId", workOrderId))
+    .order("desc")
+    .collect();
+}
+
+async function latestSupersessionForWorkOrder(ctx: any, workOrderId: any) {
+  return await ctx.db
+    .query("workOrderSupersessions")
+    .withIndex("by_original", (q: any) => q.eq("originalWorkOrderId", workOrderId))
+    .order("desc")
+    .first();
+}
+
+async function resolveGovernancePolicy(ctx: any, workOrder: any) {
+  if (workOrder.governancePolicyId) {
+    const direct = await ctx.db.get(workOrder.governancePolicyId);
+    if (direct) return direct;
+  }
+  if (workOrder.projectId) {
+    const projectPolicy = await ctx.db
+      .query("governancePolicies")
+      .withIndex("by_project_active", (q: any) => q.eq("projectId", workOrder.projectId).eq("active", true))
+      .first();
+    if (projectPolicy) return projectPolicy;
+  }
+  return {
+    _id: undefined,
+    name: "Default software-factory policy",
+    scope: "GLOBAL",
+    active: true,
+    ...DEFAULT_GOVERNANCE_POLICY,
+  };
+}
+
+async function revokeApprovalDecision(ctx: any, args: { approval: any; revisionId?: any; reason: string; actorId?: string; workOrder: any }) {
+  if (!["APPROVED", "CONDITIONAL"].includes(args.approval.status)) return false;
+  await ctx.db.patch(args.approval._id, {
+    status: "REVOKED",
+    revokedAt: Date.now(),
+    invalidatedByRevisionId: args.revisionId,
+    reason: args.reason,
+  });
+  await logWorkOrderEvent(ctx, {
+    tenantId: args.workOrder.tenantId,
+    projectId: args.workOrder.projectId,
+    workOrderId: args.workOrder._id,
+    workflowRunId: args.approval.workflowRunId,
+    eventType: "APPROVAL_REVOKED",
+    actorType: "SYSTEM",
+    actorId: args.actorId,
+    summary: `Approval ${args.approval.approvalType} revoked`,
+    metadata: { approvalDecisionId: args.approval._id, reason: args.reason, revisionId: args.revisionId },
+  });
+  return true;
+}
+
+async function staleVerificationReceipt(ctx: any, args: { receipt: any; workOrder: any; reason: string; revisionId?: any; reopenDecisionId?: any }) {
+  if (args.receipt.status === "STALE") return false;
+  await ctx.db.patch(args.receipt._id, {
+    status: "STALE",
+    invalidatedAt: Date.now(),
+    invalidatedByRevisionId: args.revisionId,
+    invalidatedByReopenDecisionId: args.reopenDecisionId,
+    invalidationReason: args.reason,
+  });
+  await logWorkOrderEvent(ctx, {
+    tenantId: args.workOrder.tenantId,
+    projectId: args.workOrder.projectId,
+    workOrderId: args.workOrder._id,
+    workflowRunId: args.receipt.workflowRunId,
+    eventType: "VERIFICATION_STALE",
+    actorType: "SYSTEM",
+    summary: `Verification receipt for ${args.receipt.acceptanceCriterionId} became stale`,
+    metadata: {
+      verificationReceiptId: args.receipt._id,
+      acceptanceCriterionId: args.receipt.acceptanceCriterionId,
+      reason: args.reason,
+      revisionId: args.revisionId,
+      reopenDecisionId: args.reopenDecisionId,
+    },
+  });
+  return true;
+}
+
+async function expireGovernanceRecordsForWorkOrder(ctx: any, workOrder: any) {
+  const now = Date.now();
+  const [approvals, receipts] = await Promise.all([
+    listApprovalDecisionsForWorkOrder(ctx, workOrder._id),
+    listVerificationReceiptsForWorkOrder(ctx, workOrder._id),
+  ]);
+
+  let expiredApprovals = 0;
+  let staleReceipts = 0;
+
+  for (const approval of approvals) {
+    if (["APPROVED", "CONDITIONAL"].includes(approval.status) && approval.expiresAt && approval.expiresAt <= now) {
+      await ctx.db.patch(approval._id, {
+        status: "EXPIRED",
+        expiredAt: now,
+      });
+      expiredApprovals += 1;
+      await logWorkOrderEvent(ctx, {
+        tenantId: workOrder.tenantId,
+        projectId: workOrder.projectId,
+        workOrderId: workOrder._id,
+        workflowRunId: approval.workflowRunId,
+        eventType: "APPROVAL_EXPIRED",
+        actorType: "SYSTEM",
+        summary: `Approval ${approval.approvalType} expired`,
+        metadata: { approvalDecisionId: approval._id },
+      });
+    }
+  }
+
+  for (const receipt of receipts) {
+    if (["PASSED", "WAIVED"].includes(receipt.status) && receipt.validUntil && receipt.validUntil <= now) {
+      const changed = await staleVerificationReceipt(ctx, {
+        receipt,
+        workOrder,
+        reason: "evidence-expired",
+      });
+      if (changed) staleReceipts += 1;
+    }
+  }
+
+  if (expiredApprovals > 0 || staleReceipts > 0) {
+    await logWorkOrderEvent(ctx, {
+      tenantId: workOrder.tenantId,
+      projectId: workOrder.projectId,
+      workOrderId: workOrder._id,
+      eventType: "GOVERNANCE_RECORDS_EXPIRED",
+      actorType: "SYSTEM",
+      summary: `Expired ${expiredApprovals} approvals and invalidated ${staleReceipts} receipts`,
+      metadata: { expiredApprovals, staleReceipts },
+    });
+  }
+
+  return { expiredApprovals, staleReceipts };
+}
+
 function describeAcceptanceReadiness(workOrder: any, acceptance: ReturnType<typeof evaluateAcceptance>) {
   if (acceptance.missingApprovalTypes.length > 0) {
     return `Awaiting approvals: ${acceptance.missingApprovalTypes.join(", ")}`;
+  }
+  if (acceptance.expiredApprovalTypes.length > 0) {
+    return `Expired approvals: ${acceptance.expiredApprovalTypes.join(", ")}`;
+  }
+  if (acceptance.revokedApprovalTypes.length > 0) {
+    return `Revoked approvals: ${acceptance.revokedApprovalTypes.join(", ")}`;
   }
   if (acceptance.failedCriteriaIds.length > 0) {
     return `Verification failed for ${acceptance.failedCriteriaIds.join(", ")}`;
@@ -234,6 +450,11 @@ async function refreshWorkOrderGovernance(ctx: any, workOrderId: any) {
   const workOrder = await ctx.db.get(workOrderId);
   if (!workOrder) throw new Error("WorkOrder not found");
 
+  await expireGovernanceRecordsForWorkOrder(ctx, workOrder);
+
+  const refreshedWorkOrder = await ctx.db.get(workOrderId);
+  if (!refreshedWorkOrder) throw new Error("WorkOrder not found");
+
   const [approvalDecisions, verificationReceipts, latestRun] = await Promise.all([
     listApprovalDecisionsForWorkOrder(ctx, workOrderId),
     listVerificationReceiptsForWorkOrder(ctx, workOrderId),
@@ -241,45 +462,58 @@ async function refreshWorkOrderGovernance(ctx: any, workOrderId: any) {
   ]);
 
   const latestReceipts = latestReceiptByCriterion(verificationReceipts);
-  const acceptanceCriteria = workOrder.acceptanceCriteria.map((criterion: any) => ({
+  const acceptanceCriteria = refreshedWorkOrder.acceptanceCriteria.map((criterion: any) => ({
     ...criterion,
-    status: receiptStatusToCriterionStatus(latestReceipts.get(criterion.id)?.status ?? "PENDING"),
+    status: receiptStatusToCriterionStatus(
+      latestReceipts.get(criterion.id)?.status ?? "PENDING",
+      latestReceipts.get(criterion.id)?.validUntil,
+      Date.now(),
+    ),
   }));
 
   const computedVerificationStatus = deriveVerificationStatus(acceptanceCriteria);
   const computedApprovalStatus = deriveApprovalStatus({
-    riskLevel: workOrder.riskLevel as any,
-    requiredApprovals: workOrder.requiredApprovals,
+    riskLevel: refreshedWorkOrder.riskLevel as any,
+    requiredApprovals: refreshedWorkOrder.requiredApprovals,
     approvals: approvalDecisions,
+    now: Date.now(),
   });
   const acceptance = evaluateAcceptance({
-    riskLevel: workOrder.riskLevel as any,
-    requiredApprovals: workOrder.requiredApprovals,
+    riskLevel: refreshedWorkOrder.riskLevel as any,
+    requiredApprovals: refreshedWorkOrder.requiredApprovals,
     approvalDecisions,
     acceptanceCriteria,
     verificationReceipts,
+    now: Date.now(),
   });
 
-  let nextState = workOrder.state;
-  if (workOrder.state !== "DONE" && workOrder.state !== "CANCELED") {
-    if (latestRun) {
+  let nextState = refreshedWorkOrder.state;
+  if (!["DONE", "CANCELED", "SUPERSEDED", "REOPENED"].includes(refreshedWorkOrder.state)) {
+    if (
+      refreshedWorkOrder.state === "BLOCKED"
+      && latestRun
+      && ACTIVE_RUN_STATUSES.includes(latestRun.status as any)
+      && !runMatchesCurrentRevision(latestRun.workOrderRevisionNumber, refreshedWorkOrder.currentRevisionNumber)
+    ) {
+      nextState = "BLOCKED";
+    } else if (latestRun) {
       nextState = nextStateForRunStatus({
-        currentState: workOrder.state as any,
+        currentState: refreshedWorkOrder.state as any,
         runStatus: latestRun.status as any,
         verificationStatus: computedVerificationStatus as any,
         approvalStatus: computedApprovalStatus as any,
       });
     } else if (computedApprovalStatus === "PENDING" || computedApprovalStatus === "REVISION_REQUESTED") {
       nextState = "AWAITING_APPROVAL";
-    } else if (workOrder.state === "AWAITING_APPROVAL") {
+    } else if (refreshedWorkOrder.state === "AWAITING_APPROVAL") {
       nextState = "READY";
     }
   }
 
   const blockingIssue = latestRun?.status === "FAILED"
-    ? latestRun.failureReason ?? workOrder.blockingIssue
+    ? latestRun.failureReason ?? refreshedWorkOrder.blockingIssue
     : acceptance.blockingReasons[0];
-  const requiredHumanAction = describeAcceptanceReadiness(workOrder, acceptance);
+  const requiredHumanAction = describeAcceptanceReadiness(refreshedWorkOrder, acceptance);
 
   await ctx.db.patch(workOrderId, {
     acceptanceCriteria,
@@ -315,16 +549,10 @@ async function markReceiptsStaleForWorkOrder(ctx: any, workOrder: any, workflowR
   const receipts = await listVerificationReceiptsForWorkOrder(ctx, workOrder._id);
   for (const receipt of receipts) {
     if (receipt.workflowRunId === workflowRunId || receipt.status === "STALE") continue;
-    await ctx.db.patch(receipt._id, { status: "STALE" });
-    await logWorkOrderEvent(ctx, {
-      tenantId: workOrder.tenantId,
-      projectId: workOrder.projectId,
-      workOrderId: workOrder._id,
-      workflowRunId: receipt.workflowRunId,
-      eventType: "VERIFICATION_STALE",
-      actorType: "SYSTEM",
-      summary: `Verification receipt for ${receipt.acceptanceCriterionId} became stale after newer execution`,
-      metadata: { verificationReceiptId: receipt._id, acceptanceCriterionId: receipt.acceptanceCriterionId },
+    await staleVerificationReceipt(ctx, {
+      receipt,
+      workOrder,
+      reason: "new-execution-run",
     });
   }
 }
@@ -334,6 +562,7 @@ function summarizeRun(run: any) {
     _id: run._id,
     runId: run.runId,
     workflowId: run.workflowId,
+    workOrderRevisionNumber: run.workOrderRevisionNumber,
     status: run.status,
     runtime: run.runtime,
     model: run.model,
@@ -362,6 +591,203 @@ async function loadExecutionSummaries(ctx: any, workOrderIds: string[]) {
   );
 
   return summaries;
+}
+
+function buildGovernanceStatus(args: {
+  workOrder: any;
+  revisions: any[];
+  approvalDecisions: any[];
+  verificationReceipts: any[];
+  policy: any;
+  acceptance: ReturnType<typeof evaluateAcceptance>;
+}) {
+  const now = Date.now();
+  const expiredApprovals = args.approvalDecisions.filter((approval: any) => approval.status === "EXPIRED" || (approval.expiresAt && approval.expiresAt <= now && ["APPROVED", "CONDITIONAL"].includes(approval.status)));
+  const expiringApprovals = args.approvalDecisions.filter((approval: any) => ["APPROVED", "CONDITIONAL"].includes(approval.status) && isExpiringSoon(approval.expiresAt, args.policy.approvalExpiringSoonHours, now));
+  const staleReceipts = args.verificationReceipts.filter((receipt: any) => receipt.status === "STALE" || (receipt.validUntil && receipt.validUntil <= now && ["PASSED", "WAIVED"].includes(receipt.status)));
+  const expiringReceipts = args.verificationReceipts.filter((receipt: any) => ["PASSED", "WAIVED"].includes(receipt.status) && isExpiringSoon(receipt.validUntil, args.policy.evidenceExpiringSoonHours, now));
+  const latestAcceptedRevision = args.workOrder.acceptedRevisionNumber
+    ? args.revisions.find((revision: any) => revision.revisionNumber === args.workOrder.acceptedRevisionNumber) ?? null
+    : null;
+
+  return {
+    currentRevisionNumber: args.workOrder.currentRevisionNumber ?? 1,
+    currentRevisionId: args.workOrder.currentRevisionId,
+    acceptedRevisionNumber: args.workOrder.acceptedRevisionNumber,
+    latestAcceptedRevision,
+    expiringApprovals,
+    expiredApprovals,
+    staleReceipts,
+    expiringReceipts,
+    requiredReapproval: args.acceptance.missingApprovalTypes.length > 0 || args.acceptance.expiredApprovalTypes.length > 0 || args.acceptance.revokedApprovalTypes.length > 0,
+    requiredReverification: args.acceptance.missingCriteriaIds.length > 0 || args.acceptance.staleCriteriaIds.length > 0 || args.acceptance.failedCriteriaIds.length > 0,
+    blockingReasons: args.acceptance.blockingReasons,
+  };
+}
+
+async function createPendingApprovalForRevision(ctx: any, args: {
+  workOrder: any;
+  workflowRunId?: any;
+  approvalType: string;
+  requestedBy?: string;
+  revisionNumber: number;
+  policy: any;
+}) {
+  const existingPending = await ctx.db
+    .query("approvalDecisions")
+    .withIndex("by_work_order", (q: any) => q.eq("workOrderId", args.workOrder._id))
+    .collect();
+
+  const duplicate = existingPending.find((approval: any) => approval.approvalType === args.approvalType && approval.status === "PENDING" && approval.workOrderRevisionNumber === args.revisionNumber);
+  if (duplicate) return duplicate;
+
+  const now = Date.now();
+  const approvalDecisionId = await ctx.db.insert("approvalDecisions", {
+    tenantId: args.workOrder.tenantId,
+    projectId: args.workOrder.projectId,
+    workOrderId: args.workOrder._id,
+    workflowRunId: args.workflowRunId,
+    approvalType: args.approvalType,
+    requestedAction: `Approve revision ${args.revisionNumber}`,
+    riskLevel: args.workOrder.riskLevel,
+    requestedBy: args.requestedBy,
+    status: "PENDING",
+    workOrderRevisionNumber: args.revisionNumber,
+    expiresAt: approvalExpiresAt(args.workOrder.riskLevel, args.policy, now),
+    createdAt: now,
+    metadata: { source: "revision-application" },
+  });
+
+  await logWorkOrderEvent(ctx, {
+    tenantId: args.workOrder.tenantId,
+    projectId: args.workOrder.projectId,
+    workOrderId: args.workOrder._id,
+    eventType: "APPROVAL_REQUESTED",
+    actorType: "SYSTEM",
+    actorId: args.requestedBy,
+    summary: `Approval requested: ${args.approvalType} for revision ${args.revisionNumber}`,
+    metadata: { approvalDecisionId, approvalType: args.approvalType, revisionNumber: args.revisionNumber },
+  });
+
+  return await ctx.db.get(approvalDecisionId);
+}
+
+async function applyRevisionToWorkOrder(ctx: any, args: {
+  workOrder: any;
+  revision: any;
+  approvedBy?: string;
+}) {
+  const workOrder = await ctx.db.get(args.workOrder._id);
+  if (!workOrder) throw new Error("WorkOrder not found");
+
+  const [allRuns, approvals, receipts, policy] = await Promise.all([
+    ctx.db.query("workflowRuns").withIndex("by_work_order", (q: any) => q.eq("workOrderId", workOrder._id)).collect(),
+    listApprovalDecisionsForWorkOrder(ctx, workOrder._id),
+    listVerificationReceiptsForWorkOrder(ctx, workOrder._id),
+    resolveGovernancePolicy(ctx, workOrder),
+  ]);
+
+  const activeRun = allRuns.find((run: any) => ACTIVE_RUN_STATUSES.includes(run.status));
+
+  for (const receipt of receipts) {
+    if (!args.revision.requiresReverification) continue;
+    if (receipt.status === "STALE") continue;
+    if (!args.revision.impactedVerificationReceiptIds.includes(receipt._id)) continue;
+    await staleVerificationReceipt(ctx, {
+      receipt,
+      workOrder,
+      reason: `revision-${args.revision.revisionNumber}`,
+      revisionId: args.revision._id,
+    });
+  }
+
+  for (const approval of approvals) {
+    if (!args.revision.requiresReapproval) continue;
+    if (!args.revision.impactedApprovals.includes(approval.approvalType)) continue;
+    await revokeApprovalDecision(ctx, {
+      approval,
+      revisionId: args.revision._id,
+      reason: `Revision ${args.revision.revisionNumber} invalidated prior approval`,
+      actorId: args.approvedBy,
+      workOrder,
+    });
+  }
+
+  const nextSnapshot = args.revision.nextSnapshot;
+  const nextRequiredApprovals = [...new Set([...(nextSnapshot.requiredApprovals ?? []), ...(args.revision.requiresReapproval ? args.revision.impactedApprovals : [])])];
+  const nextState = nextStateAfterRevision({
+    currentState: workOrder.state,
+    hasActiveRun: !!activeRun,
+    requiresReapproval: args.revision.requiresReapproval,
+    requiresReverification: args.revision.requiresReverification,
+    requiresFullReopen: args.revision.requiresFullReopen,
+  });
+
+  await ctx.db.patch(workOrder._id, {
+    title: nextSnapshot.title,
+    desiredOutcome: nextSnapshot.desiredOutcome,
+    context: nextSnapshot.context,
+    workflowId: nextSnapshot.workflowId,
+    repository: nextSnapshot.repository,
+    branchStrategy: nextSnapshot.branchStrategy,
+    priority: nextSnapshot.priority,
+    riskLevel: nextSnapshot.riskLevel,
+    requestedBy: nextSnapshot.requestedBy,
+    assignedAgent: nextSnapshot.assignedAgent,
+    assignedSquad: nextSnapshot.assignedSquad,
+    acceptanceCriteria: nextSnapshot.acceptanceCriteria.map((criterion: any) => ({ ...criterion, status: "PENDING" })),
+    constraints: nextSnapshot.constraints,
+    dependencies: nextSnapshot.dependencies,
+    sourceOfTruthRefs: nextSnapshot.sourceOfTruthRefs,
+    requiredApprovals: nextRequiredApprovals,
+    metadata: nextSnapshot.metadata,
+    state: nextState,
+    currentRevisionNumber: args.revision.revisionNumber,
+    currentRevisionId: args.revision._id,
+    acceptedRevisionNumber: undefined,
+    currentExecutionRunId: activeRun && nextState !== "REOPENED" ? activeRun._id : undefined,
+    blockingIssue: args.revision.reason,
+    requiredHumanAction: `Revision ${args.revision.revisionNumber} applied — ${summarizeGovernanceEffects(args.revision)} required before acceptance.`,
+    updatedAt: Date.now(),
+  });
+
+  await ctx.db.patch(args.revision._id, {
+    status: "APPLIED",
+    approvedBy: args.approvedBy,
+    effectiveAt: Date.now(),
+  });
+
+  if (args.revision.requiresReapproval) {
+    for (const approvalType of args.revision.impactedApprovals) {
+      await createPendingApprovalForRevision(ctx, {
+        workOrder: { ...workOrder, riskLevel: nextSnapshot.riskLevel },
+        approvalType,
+        requestedBy: args.approvedBy,
+        revisionNumber: args.revision.revisionNumber,
+        policy,
+      });
+    }
+  }
+
+  await logWorkOrderEvent(ctx, {
+    tenantId: workOrder.tenantId,
+    projectId: workOrder.projectId,
+    workOrderId: workOrder._id,
+    eventType: "REVISION_APPLIED",
+    fromState: workOrder.state,
+    toState: nextState,
+    actorType: "HUMAN",
+    actorId: args.approvedBy,
+    summary: `Applied revision ${args.revision.revisionNumber}`,
+    metadata: {
+      revisionId: args.revision._id,
+      changedFields: args.revision.changedFields,
+      materiality: args.revision.materiality,
+    },
+  });
+
+  await refreshWorkOrderGovernance(ctx, workOrder._id);
+  return await ctx.db.get(workOrder._id);
 }
 
 export const list = query({
@@ -418,7 +844,7 @@ export const get = query({
     const workOrder = await ctx.db.get(args.workOrderId);
     if (!workOrder) return null;
 
-    const [executionRuns, events, approvalDecisions, verificationReceipts] = await Promise.all([
+    const [executionRuns, events, approvalDecisions, verificationReceipts, revisions, reopenDecisions, supersession, policy] = await Promise.all([
       ctx.db
         .query("workflowRuns")
         .withIndex("by_work_order", (q) => q.eq("workOrderId", args.workOrderId))
@@ -431,6 +857,10 @@ export const get = query({
         .collect(),
       listApprovalDecisionsForWorkOrder(ctx, args.workOrderId),
       listVerificationReceiptsForWorkOrder(ctx, args.workOrderId),
+      listRevisionsForWorkOrder(ctx, args.workOrderId),
+      listReopenDecisionsForWorkOrder(ctx, args.workOrderId),
+      latestSupersessionForWorkOrder(ctx, args.workOrderId),
+      resolveGovernancePolicy(ctx, workOrder),
     ]);
 
     const legacyTask = workOrder.legacyTaskId ? await ctx.db.get(workOrder.legacyTaskId) : null;
@@ -441,7 +871,9 @@ export const get = query({
       approvalDecisions,
       acceptanceCriteria: workOrder.acceptanceCriteria as any,
       verificationReceipts,
+      now: Date.now(),
     });
+    const governanceStatus = buildGovernanceStatus({ workOrder, revisions, approvalDecisions, verificationReceipts, policy, acceptance });
 
     return {
       workOrder,
@@ -451,8 +883,75 @@ export const get = query({
       events,
       approvalDecisions,
       verificationReceipts,
+       revisions,
+       reopenDecisions,
+       supersession,
+       governancePolicy: policy,
+       governanceStatus,
       acceptanceSummary: acceptance,
     };
+  },
+});
+
+export const revisionHistory = query({
+  args: { workOrderId: v.id("workOrders") },
+  handler: async (ctx, args) => {
+    return await listRevisionsForWorkOrder(ctx, args.workOrderId);
+  },
+});
+
+export const governanceValidity = query({
+  args: { workOrderId: v.id("workOrders") },
+  handler: async (ctx, args) => {
+    const workOrder = await ctx.db.get(args.workOrderId);
+    if (!workOrder) return null;
+    const [approvalDecisions, verificationReceipts, revisions, policy] = await Promise.all([
+      listApprovalDecisionsForWorkOrder(ctx, args.workOrderId),
+      listVerificationReceiptsForWorkOrder(ctx, args.workOrderId),
+      listRevisionsForWorkOrder(ctx, args.workOrderId),
+      resolveGovernancePolicy(ctx, workOrder),
+    ]);
+    const acceptance = evaluateAcceptance({
+      riskLevel: workOrder.riskLevel as any,
+      requiredApprovals: workOrder.requiredApprovals,
+      approvalDecisions,
+      acceptanceCriteria: workOrder.acceptanceCriteria as any,
+      verificationReceipts,
+      now: Date.now(),
+    });
+    return buildGovernanceStatus({ workOrder, revisions, approvalDecisions, verificationReceipts, policy, acceptance });
+  },
+});
+
+export const listExpiredApprovals = query({
+  args: {
+    projectId: v.optional(v.id("projects")),
+    workOrderId: v.optional(v.id("workOrders")),
+  },
+  handler: async (ctx, args) => {
+    const approvals = args.workOrderId
+      ? await listApprovalDecisionsForWorkOrder(ctx, args.workOrderId)
+      : await ctx.db.query("approvalDecisions").order("desc").take(500);
+    return approvals.filter((approval: any) => (
+      (!args.projectId || approval.projectId === args.projectId)
+      && (approval.status === "EXPIRED" || (approval.expiresAt && approval.expiresAt <= Date.now() && ["APPROVED", "CONDITIONAL"].includes(approval.status)))
+    ));
+  },
+});
+
+export const listStaleEvidence = query({
+  args: {
+    projectId: v.optional(v.id("projects")),
+    workOrderId: v.optional(v.id("workOrders")),
+  },
+  handler: async (ctx, args) => {
+    const receipts = args.workOrderId
+      ? await listVerificationReceiptsForWorkOrder(ctx, args.workOrderId)
+      : await ctx.db.query("verificationReceipts").order("desc").take(500);
+    return receipts.filter((receipt: any) => (
+      (!args.projectId || receipt.projectId === args.projectId)
+      && (receipt.status === "STALE" || (receipt.validUntil && receipt.validUntil <= Date.now() && ["PASSED", "WAIVED"].includes(receipt.status)))
+    ));
   },
 });
 
@@ -525,10 +1024,56 @@ export const create = mutation({
       approvalStatus: args.approvalStatus ?? ((args.requiredApprovals?.length ?? 0) > 0 ? "PENDING" : "NOT_REQUIRED"),
       blockingIssue: args.blockingIssue,
       requiredHumanAction: args.requiredHumanAction,
+      currentRevisionNumber: 1,
+      acceptedRevisionNumber: undefined,
       createdAt: now,
       updatedAt: now,
       metadata: args.metadata,
     });
+
+    const initialSnapshot = snapshotRevisionFields({
+      ...args,
+      priority: args.priority ?? 3,
+      riskLevel: args.riskLevel ?? "MEDIUM",
+      acceptanceCriteria: finalCriteria,
+      metadata: args.metadata,
+    });
+    const initialRevisionId = await ctx.db.insert("workOrderRevisions", {
+      tenantId: project?.tenantId,
+      projectId: args.projectId,
+      workOrderId,
+      idempotencyKey: args.idempotencyKey ? `${args.idempotencyKey}:revision:1` : undefined,
+      revisionNumber: 1,
+      previousRevisionId: undefined,
+      status: "APPLIED",
+      changedFields: [
+        "title",
+        "desiredOutcome",
+        "workflowId",
+        "repository",
+        "riskLevel",
+        "acceptanceCriteria",
+      ],
+      changeSummary: "Initial work order created",
+      reason: "Initial creation",
+      requestedBy: args.requestedBy,
+      approvedBy: args.requestedBy,
+      createdAt: now,
+      effectiveAt: now,
+      riskReassessment: "UNCHANGED",
+      materiality: "NO_ACTION",
+      requiresReapproval: false,
+      requiresReverification: false,
+      requiresFullReopen: false,
+      impactedAcceptanceCriteria: [],
+      impactedApprovals: [],
+      impactedVerificationReceiptIds: [],
+      requestedChanges: initialSnapshot,
+      previousSnapshot: initialSnapshot,
+      nextSnapshot: initialSnapshot,
+      metadata: { initial: true },
+    });
+    await ctx.db.patch(workOrderId, { currentRevisionId: initialRevisionId });
 
     await refreshWorkOrderGovernance(ctx, workOrderId);
     const workOrder = await ctx.db.get(workOrderId);
@@ -587,8 +1132,15 @@ export const dispatch = mutation({
     if (!workOrder) {
       throw new Error("WorkOrder not found");
     }
+    if (workOrder.state === "SUPERSEDED") {
+      throw new Error("Superseded WorkOrders cannot be dispatched");
+    }
 
-    const resolvedWorkflowId = args.workflowId ?? workOrder.workflowId;
+    await expireGovernanceRecordsForWorkOrder(ctx, workOrder);
+    const refreshedWorkOrder = await ctx.db.get(args.workOrderId);
+    if (!refreshedWorkOrder) throw new Error("WorkOrder not found");
+
+    const resolvedWorkflowId = args.workflowId ?? refreshedWorkOrder.workflowId;
     if (!resolvedWorkflowId) {
       throw new Error("WorkOrder cannot be dispatched without a workflowId");
     }
@@ -608,10 +1160,10 @@ export const dispatch = mutation({
       .collect();
 
     const dispatchable = validateDispatchable({
-      state: workOrder.state,
-      riskLevel: workOrder.riskLevel,
-      approvalStatus: workOrder.approvalStatus,
-      requiredApprovals: workOrder.requiredApprovals,
+      state: refreshedWorkOrder.state,
+      riskLevel: refreshedWorkOrder.riskLevel,
+      approvalStatus: refreshedWorkOrder.approvalStatus,
+      requiredApprovals: refreshedWorkOrder.requiredApprovals,
       hasWorkflowId: !!resolvedWorkflowId,
       activeRunStatuses: existingRuns.map((run) => run.status as any),
     });
@@ -632,11 +1184,11 @@ export const dispatch = mutation({
     }));
 
     await logWorkOrderEvent(ctx, {
-      tenantId: workOrder.tenantId,
-      projectId: workOrder.projectId,
-      workOrderId: workOrder._id,
+      tenantId: refreshedWorkOrder.tenantId,
+      projectId: refreshedWorkOrder.projectId,
+      workOrderId: refreshedWorkOrder._id,
       eventType: "DISPATCH_REQUESTED",
-      fromState: workOrder.state,
+      fromState: refreshedWorkOrder.state,
       toState: "DISPATCHED",
       actorType: args.actorType,
       actorId: args.actorId,
@@ -648,18 +1200,20 @@ export const dispatch = mutation({
     const now = Date.now();
     const runId = generateRunId();
     const runDocId = await ctx.db.insert("workflowRuns", {
-      tenantId: workOrder.tenantId,
+      tenantId: refreshedWorkOrder.tenantId,
       runId,
       workflowId: resolvedWorkflowId,
-      projectId: workOrder.projectId,
-      workOrderId: workOrder._id,
-      parentTaskId: workOrder.legacyTaskId,
+      projectId: refreshedWorkOrder.projectId,
+      workOrderId: refreshedWorkOrder._id,
+      workOrderRevisionNumber: refreshedWorkOrder.currentRevisionNumber ?? 1,
+      workOrderRevisionId: refreshedWorkOrder.currentRevisionId,
+      parentTaskId: refreshedWorkOrder.legacyTaskId,
       status: "PENDING",
       currentStepIndex: 0,
       totalSteps: workflow.steps.length,
       steps,
-      context: { workOrderId: workOrder._id, source: "workOrders.dispatch" },
-      initialInput: workOrder.desiredOutcome,
+      context: { workOrderId: refreshedWorkOrder._id, source: "workOrders.dispatch", revisionNumber: refreshedWorkOrder.currentRevisionNumber ?? 1 },
+      initialInput: refreshedWorkOrder.desiredOutcome,
       runtime: args.runtime,
       model: args.model,
       worktree: args.worktree,
@@ -679,9 +1233,9 @@ export const dispatch = mutation({
       metadata: { runtime: args.runtime, model: args.model, worktree: args.worktree },
     });
 
-    await markReceiptsStaleForWorkOrder(ctx, workOrder, runDocId);
+    await markReceiptsStaleForWorkOrder(ctx, refreshedWorkOrder, runDocId);
 
-    await ctx.db.patch(workOrder._id, {
+    await ctx.db.patch(refreshedWorkOrder._id, {
       workflowId: resolvedWorkflowId,
       state: "DISPATCHED",
       currentExecutionRunId: runDocId,
@@ -691,24 +1245,24 @@ export const dispatch = mutation({
     });
 
     await ctx.db.insert("activities", {
-      tenantId: workOrder.tenantId,
-      projectId: workOrder.projectId,
+      tenantId: refreshedWorkOrder.tenantId,
+      projectId: refreshedWorkOrder.projectId,
       actorType: args.actorType,
       actorId: args.actorId,
       action: "WORK_ORDER_DISPATCHED",
-      description: `Dispatched work order ${workOrder.title} via ${resolvedWorkflowId}`,
+      description: `Dispatched work order ${refreshedWorkOrder.title} via ${resolvedWorkflowId}`,
       targetType: "WORK_ORDER",
-      targetId: workOrder._id,
+      targetId: refreshedWorkOrder._id,
       metadata: { workflowRunId: runDocId, runId },
     });
 
     await logWorkOrderEvent(ctx, {
-      tenantId: workOrder.tenantId,
-      projectId: workOrder.projectId,
-      workOrderId: workOrder._id,
+      tenantId: refreshedWorkOrder.tenantId,
+      projectId: refreshedWorkOrder.projectId,
+      workOrderId: refreshedWorkOrder._id,
       workflowRunId: runDocId,
       eventType: "DISPATCHED",
-      fromState: workOrder.state,
+      fromState: refreshedWorkOrder.state,
       toState: "DISPATCHED",
       actorType: args.actorType,
       actorId: args.actorId,
@@ -717,7 +1271,7 @@ export const dispatch = mutation({
       metadata: { runId, runtime: args.runtime, model: args.model, worktree: args.worktree },
     });
 
-    await refreshWorkOrderGovernance(ctx, workOrder._id);
+    await refreshWorkOrderGovernance(ctx, refreshedWorkOrder._id);
 
     const run = await ctx.db.get(runDocId);
     return { created: true, run };
@@ -896,6 +1450,7 @@ export const requestApprovalDecision = mutation({
     requestedAction: v.string(),
     riskLevel: v.optional(workOrderRisk),
     requestedBy: v.optional(v.string()),
+    expiresAt: v.optional(v.number()),
     metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
@@ -909,6 +1464,7 @@ export const requestApprovalDecision = mutation({
 
     const workOrder = await ctx.db.get(args.workOrderId);
     if (!workOrder) throw new Error("WorkOrder not found");
+    const policy = await resolveGovernancePolicy(ctx, workOrder);
 
     if (args.workflowRunId) {
       const run = await ctx.db.get(args.workflowRunId);
@@ -928,6 +1484,8 @@ export const requestApprovalDecision = mutation({
       riskLevel: args.riskLevel ?? workOrder.riskLevel,
       requestedBy: args.requestedBy,
       status: "PENDING",
+      workOrderRevisionNumber: workOrder.currentRevisionNumber ?? 1,
+      expiresAt: args.expiresAt ?? approvalExpiresAt((args.riskLevel ?? workOrder.riskLevel) as any, policy, now),
       createdAt: now,
       metadata: args.metadata,
     });
@@ -978,6 +1536,10 @@ export const decideApprovalDecision = mutation({
   handler: async (ctx, args) => {
     const approvalDecision = await ctx.db.get(args.approvalDecisionId);
     if (!approvalDecision) throw new Error("ApprovalDecision not found");
+    if (approvalDecision.expiresAt && approvalDecision.expiresAt <= Date.now()) {
+      await ctx.db.patch(args.approvalDecisionId, { status: "EXPIRED", expiredAt: Date.now() });
+      throw new Error("ApprovalDecision has expired");
+    }
     if (approvalDecision.status !== "PENDING") {
       throw new Error(`ApprovalDecision cannot transition from ${approvalDecision.status}`);
     }
@@ -1070,6 +1632,7 @@ export const recordVerificationReceipt = mutation({
     status: verificationReceiptStatus,
     exceptionOrWaiver: v.optional(v.string()),
     waiverApprovalDecisionId: v.optional(v.id("approvalDecisions")),
+    validUntil: v.optional(v.number()),
     metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
@@ -1086,6 +1649,7 @@ export const recordVerificationReceipt = mutation({
       ctx.db.get(args.workflowRunId),
     ]);
     if (!workOrder) throw new Error("WorkOrder not found");
+    const policy = await resolveGovernancePolicy(ctx, workOrder);
     if (!run || run.workOrderId !== workOrder._id) throw new Error("Workflow run does not belong to this WorkOrder");
     if (!workOrder.acceptanceCriteria.some((criterion: any) => criterion.id === args.acceptanceCriterionId)) {
       throw new Error(`Unknown acceptance criterion: ${args.acceptanceCriterionId}`);
@@ -1115,16 +1679,10 @@ export const recordVerificationReceipt = mutation({
       .collect();
 
     for (const receipt of priorReceipts.filter((item: any) => item.status !== "STALE")) {
-      await ctx.db.patch(receipt._id, { status: "STALE" });
-      await logWorkOrderEvent(ctx, {
-        tenantId: workOrder.tenantId,
-        projectId: workOrder.projectId,
-        workOrderId: workOrder._id,
-        workflowRunId: receipt.workflowRunId,
-        eventType: "VERIFICATION_STALE",
-        actorType: "SYSTEM",
-        summary: `Verification receipt for ${args.acceptanceCriterionId} superseded`,
-        metadata: { verificationReceiptId: receipt._id, acceptanceCriterionId: args.acceptanceCriterionId },
+      await staleVerificationReceipt(ctx, {
+        receipt,
+        workOrder,
+        reason: `superseded-by-receipt:${args.acceptanceCriterionId}`,
       });
     }
 
@@ -1145,6 +1703,8 @@ export const recordVerificationReceipt = mutation({
       status: args.status,
       exceptionOrWaiver: args.exceptionOrWaiver,
       waiverApprovalDecisionId: args.waiverApprovalDecisionId,
+      workOrderRevisionNumber: workOrder.currentRevisionNumber ?? 1,
+      validUntil: args.validUntil ?? verificationValidUntil(policy),
       recordedAt: Date.now(),
       metadata: args.metadata,
     });
@@ -1216,6 +1776,7 @@ export const accept = mutation({
       approvalDecisions,
       acceptanceCriteria: workOrder.acceptanceCriteria as any,
       verificationReceipts,
+      now: Date.now(),
     });
     if (!acceptance.eligible) {
       throw new Error(`WorkOrder cannot be accepted (${acceptance.blockingReasons.join("; ")})`);
@@ -1223,6 +1784,7 @@ export const accept = mutation({
 
     await ctx.db.patch(workOrder._id, {
       state: "DONE",
+      acceptedRevisionNumber: workOrder.currentRevisionNumber ?? 1,
       currentExecutionRunId: undefined,
       blockingIssue: undefined,
       requiredHumanAction: undefined,
@@ -1244,6 +1806,358 @@ export const accept = mutation({
     });
 
     return { accepted: true, workOrder: await ctx.db.get(workOrder._id) };
+  },
+});
+
+export const requestWorkOrderRevision = mutation({
+  args: {
+    workOrderId: v.id("workOrders"),
+    idempotencyKey: v.string(),
+    patch: revisionPatch,
+    changeSummary: v.string(),
+    reason: v.string(),
+    requestedBy: v.optional(v.string()),
+    impactedAcceptanceCriteria: v.optional(v.array(v.string())),
+    impactedApprovalTypes: v.optional(v.array(v.string())),
+    metadata: v.optional(v.any()),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("workOrderRevisions")
+      .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.idempotencyKey))
+      .first();
+    if (existing) return { revision: existing, created: false };
+
+    const workOrder = await ctx.db.get(args.workOrderId);
+    if (!workOrder) throw new Error("WorkOrder not found");
+    if (["SUPERSEDED", "CANCELED"].includes(workOrder.state)) {
+      throw new Error(`WorkOrder cannot be revised from ${workOrder.state}`);
+    }
+
+    const policy = await resolveGovernancePolicy(ctx, workOrder);
+    const currentSnapshot = snapshotRevisionFields(workOrder);
+    const nextSnapshot = buildRevisionSnapshot({ current: currentSnapshot, patch: args.patch as any });
+    const impact = evaluateRevisionImpact({
+      current: currentSnapshot,
+      next: nextSnapshot,
+      currentState: workOrder.state,
+      policy,
+    });
+    if (impact.changedFields.length === 0) {
+      throw new Error("Revision request must change at least one tracked field");
+    }
+
+    const receipts = await listVerificationReceiptsForWorkOrder(ctx, workOrder._id);
+    const impactedReceiptIds = impact.requiresReverification
+      ? receipts
+          .filter((receipt: any) => receipt.status !== "STALE" && (impact.invalidateAllReceipts || impact.impactedAcceptanceCriteria.includes(receipt.acceptanceCriterionId)))
+          .map((receipt: any) => receipt._id)
+      : [];
+
+    const revisions = await listRevisionsForWorkOrder(ctx, workOrder._id);
+    const previousRevisionId = revisions[0]?._id;
+    const revisionNumber = (workOrder.currentRevisionNumber ?? 1) + 1;
+    const revisionId = await ctx.db.insert("workOrderRevisions", {
+      tenantId: workOrder.tenantId,
+      projectId: workOrder.projectId,
+      workOrderId: workOrder._id,
+      idempotencyKey: args.idempotencyKey,
+      revisionNumber,
+      previousRevisionId,
+      status: impact.materiality === "NO_ACTION" ? "APPLIED" : "PENDING_APPROVAL",
+      changedFields: impact.changedFields,
+      changeSummary: args.changeSummary,
+      reason: args.reason,
+      requestedBy: args.requestedBy,
+      approvedBy: impact.materiality === "NO_ACTION" ? args.requestedBy : undefined,
+      createdAt: Date.now(),
+      effectiveAt: impact.materiality === "NO_ACTION" ? Date.now() : undefined,
+      riskReassessment: impact.riskReassessment,
+      materiality: impact.materiality,
+      requiresReapproval: impact.requiresReapproval,
+      requiresReverification: impact.requiresReverification,
+      requiresFullReopen: impact.requiresFullReopen,
+      impactedAcceptanceCriteria: args.impactedAcceptanceCriteria ?? impact.impactedAcceptanceCriteria,
+      impactedApprovals: args.impactedApprovalTypes ?? impact.impactedApprovalTypes,
+      impactedVerificationReceiptIds: impactedReceiptIds,
+      requestedChanges: args.patch,
+      previousSnapshot: currentSnapshot,
+      nextSnapshot: nextSnapshot,
+      metadata: args.metadata,
+    });
+
+    await logWorkOrderEvent(ctx, {
+      tenantId: workOrder.tenantId,
+      projectId: workOrder.projectId,
+      workOrderId: workOrder._id,
+      eventType: "REVISION_REQUESTED",
+      actorType: "HUMAN",
+      actorId: args.requestedBy,
+      summary: `Revision ${revisionNumber} requested`,
+      idempotencyKey: `${args.idempotencyKey}:event`,
+      metadata: { revisionId, changedFields: impact.changedFields, materiality: impact.materiality },
+    });
+
+    if (impact.materiality === "NO_ACTION") {
+      await applyRevisionToWorkOrder(ctx, {
+        workOrder,
+        revision: await ctx.db.get(revisionId),
+        approvedBy: args.requestedBy,
+      });
+    }
+
+    return { revision: await ctx.db.get(revisionId), created: true };
+  },
+});
+
+export const approveWorkOrderRevision = mutation({
+  args: {
+    workOrderRevisionId: v.id("workOrderRevisions"),
+    approvedBy: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const revision = await ctx.db.get(args.workOrderRevisionId);
+    if (!revision) throw new Error("WorkOrderRevision not found");
+    if (revision.status !== "PENDING_APPROVAL") {
+      throw new Error(`WorkOrderRevision cannot be approved from ${revision.status}`);
+    }
+    const workOrder = await ctx.db.get(revision.workOrderId);
+    if (!workOrder) throw new Error("WorkOrder not found");
+
+    await logWorkOrderEvent(ctx, {
+      tenantId: workOrder.tenantId,
+      projectId: workOrder.projectId,
+      workOrderId: workOrder._id,
+      eventType: "REVISION_APPROVED",
+      actorType: "HUMAN",
+      actorId: args.approvedBy,
+      summary: `Revision ${revision.revisionNumber} approved`,
+      metadata: { revisionId: revision._id },
+    });
+
+    const updatedWorkOrder = await applyRevisionToWorkOrder(ctx, { workOrder, revision, approvedBy: args.approvedBy });
+    return { revision: await ctx.db.get(revision._id), workOrder: updatedWorkOrder };
+  },
+});
+
+export const reopenWorkOrder = mutation({
+  args: {
+    workOrderId: v.id("workOrders"),
+    idempotencyKey: v.string(),
+    reason: v.string(),
+    sourceIssueOrDefect: v.optional(v.string()),
+    requestedBy: v.optional(v.string()),
+    approvedBy: v.optional(v.string()),
+    reopenScope: v.string(),
+    acceptanceCriteriaImpacted: v.optional(v.array(v.string())),
+    invalidatedReceiptIds: v.optional(v.array(v.id("verificationReceipts"))),
+    invalidatedApprovalIds: v.optional(v.array(v.id("approvalDecisions"))),
+    newRequiredActions: v.optional(v.array(v.string())),
+    metadata: v.optional(v.any()),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("reopenDecisions")
+      .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.idempotencyKey))
+      .first();
+    if (existing) return { reopenDecision: existing, created: false };
+
+    const workOrder = await ctx.db.get(args.workOrderId);
+    if (!workOrder) throw new Error("WorkOrder not found");
+    if (["SUPERSEDED", "CANCELED"].includes(workOrder.state)) {
+      throw new Error(`WorkOrder cannot be reopened from ${workOrder.state}`);
+    }
+
+    const [approvals, receipts, runs] = await Promise.all([
+      listApprovalDecisionsForWorkOrder(ctx, workOrder._id),
+      listVerificationReceiptsForWorkOrder(ctx, workOrder._id),
+      ctx.db.query("workflowRuns").withIndex("by_work_order", (q) => q.eq("workOrderId", workOrder._id)).collect(),
+    ]);
+    if (runs.some((run: any) => ACTIVE_RUN_STATUSES.includes(run.status))) {
+      throw new Error("WorkOrder cannot be reopened while an execution run is active");
+    }
+
+    const impactedCriteria = args.acceptanceCriteriaImpacted ?? workOrder.acceptanceCriteria.map((criterion: any) => criterion.id);
+    const invalidatedReceipts = (args.invalidatedReceiptIds?.length
+      ? receipts.filter((receipt: any) => args.invalidatedReceiptIds?.includes(receipt._id))
+      : receipts.filter((receipt: any) => impactedCriteria.includes(receipt.acceptanceCriterionId) && receipt.status !== "STALE"));
+    const invalidatedApprovals = (args.invalidatedApprovalIds?.length
+      ? approvals.filter((approval: any) => args.invalidatedApprovalIds?.includes(approval._id))
+      : approvals.filter((approval: any) => ["APPROVED", "CONDITIONAL"].includes(approval.status)));
+
+    const reopenDecisionId = await ctx.db.insert("reopenDecisions", {
+      tenantId: workOrder.tenantId,
+      projectId: workOrder.projectId,
+      workOrderId: workOrder._id,
+      idempotencyKey: args.idempotencyKey,
+      reason: args.reason,
+      sourceIssueOrDefect: args.sourceIssueOrDefect,
+      requestedBy: args.requestedBy,
+      approvedBy: args.approvedBy,
+      reopenScope: args.reopenScope,
+      acceptanceCriteriaImpacted: impactedCriteria,
+      invalidatedReceiptIds: invalidatedReceipts.map((receipt: any) => receipt._id),
+      invalidatedApprovalIds: invalidatedApprovals.map((approval: any) => approval._id),
+      newRequiredActions: args.newRequiredActions ?? ["Review reopen decision", "Record replacement evidence", "Redispatch if implementation changed"],
+      createdAt: Date.now(),
+      effectiveAt: Date.now(),
+      metadata: args.metadata,
+    });
+
+    for (const receipt of invalidatedReceipts) {
+      await staleVerificationReceipt(ctx, {
+        receipt,
+        workOrder,
+        reason: `reopened:${args.reason}`,
+        reopenDecisionId,
+      });
+    }
+    for (const approval of invalidatedApprovals) {
+      await revokeApprovalDecision(ctx, {
+        approval,
+        reason: `Reopened work order: ${args.reason}`,
+        actorId: args.approvedBy,
+        workOrder,
+      });
+    }
+
+    await ctx.db.patch(workOrder._id, {
+      state: "REOPENED",
+      acceptedRevisionNumber: undefined,
+      currentExecutionRunId: undefined,
+      blockingIssue: args.reason,
+      requiredHumanAction: (args.newRequiredActions ?? ["Resolve reopen findings and redispatch work"]).join("; "),
+      updatedAt: Date.now(),
+    });
+
+    await logWorkOrderEvent(ctx, {
+      tenantId: workOrder.tenantId,
+      projectId: workOrder.projectId,
+      workOrderId: workOrder._id,
+      eventType: "WORK_ORDER_REOPENED",
+      fromState: workOrder.state,
+      toState: "REOPENED",
+      actorType: "HUMAN",
+      actorId: args.approvedBy ?? args.requestedBy,
+      summary: `Work order reopened: ${args.reason}`,
+      idempotencyKey: `${args.idempotencyKey}:event`,
+      metadata: { reopenDecisionId, sourceIssueOrDefect: args.sourceIssueOrDefect },
+    });
+
+    await refreshWorkOrderGovernance(ctx, workOrder._id);
+    return { reopenDecision: await ctx.db.get(reopenDecisionId), workOrder: await ctx.db.get(workOrder._id), created: true };
+  },
+});
+
+export const supersedeWorkOrder = mutation({
+  args: {
+    workOrderId: v.id("workOrders"),
+    replacementWorkOrderId: v.id("workOrders"),
+    idempotencyKey: v.string(),
+    reason: v.string(),
+    actorType: v.union(v.literal("HUMAN"), v.literal("SYSTEM"), v.literal("AGENT")),
+    actorId: v.optional(v.string()),
+    metadata: v.optional(v.any()),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("workOrderSupersessions")
+      .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.idempotencyKey))
+      .first();
+    if (existing) return { supersession: existing, created: false };
+
+    const [original, replacement] = await Promise.all([
+      ctx.db.get(args.workOrderId),
+      ctx.db.get(args.replacementWorkOrderId),
+    ]);
+    if (!original || !replacement) throw new Error("WorkOrder or replacement WorkOrder not found");
+    if (original._id === replacement._id) throw new Error("Replacement WorkOrder must be different");
+    if (original.state === "SUPERSEDED") throw new Error("WorkOrder is already superseded");
+
+    const [approvals, receipts] = await Promise.all([
+      listApprovalDecisionsForWorkOrder(ctx, original._id),
+      listVerificationReceiptsForWorkOrder(ctx, original._id),
+    ]);
+    const acceptance = evaluateAcceptance({
+      riskLevel: original.riskLevel as any,
+      requiredApprovals: original.requiredApprovals,
+      approvalDecisions: approvals,
+      acceptanceCriteria: original.acceptanceCriteria as any,
+      verificationReceipts: receipts,
+      now: Date.now(),
+    });
+
+    const supersessionId = await ctx.db.insert("workOrderSupersessions", {
+      tenantId: original.tenantId,
+      projectId: original.projectId,
+      originalWorkOrderId: original._id,
+      replacementWorkOrderId: replacement._id,
+      idempotencyKey: args.idempotencyKey,
+      reason: args.reason,
+      actorType: args.actorType,
+      actorId: args.actorId,
+      unresolvedAcceptanceCriteria: [...new Set([...acceptance.missingCriteriaIds, ...acceptance.failedCriteriaIds, ...acceptance.staleCriteriaIds])],
+      unresolvedApprovalTypes: [...new Set([...acceptance.missingApprovalTypes, ...acceptance.expiredApprovalTypes, ...acceptance.revokedApprovalTypes])],
+      unresolvedVerificationReceiptIds: receipts.filter((receipt: any) => receipt.status !== "PASSED" && receipt.status !== "WAIVED").map((receipt: any) => receipt._id),
+      createdAt: Date.now(),
+      metadata: args.metadata,
+    });
+
+    await ctx.db.patch(original._id, {
+      state: "SUPERSEDED",
+      supersededByWorkOrderId: replacement._id,
+      currentExecutionRunId: undefined,
+      blockingIssue: args.reason,
+      requiredHumanAction: `Superseded by ${replacement.title}`,
+      updatedAt: Date.now(),
+    });
+    await ctx.db.patch(replacement._id, {
+      supersedesWorkOrderId: original._id,
+      updatedAt: Date.now(),
+    });
+
+    await logWorkOrderEvent(ctx, {
+      tenantId: original.tenantId,
+      projectId: original.projectId,
+      workOrderId: original._id,
+      eventType: "WORK_ORDER_SUPERSEDED",
+      fromState: original.state,
+      toState: "SUPERSEDED",
+      actorType: args.actorType,
+      actorId: args.actorId,
+      summary: `Superseded by ${replacement.title}`,
+      idempotencyKey: `${args.idempotencyKey}:event`,
+      metadata: { supersessionId, replacementWorkOrderId: replacement._id, reason: args.reason },
+    });
+
+    return { supersession: await ctx.db.get(supersessionId), created: true };
+  },
+});
+
+export const expireGovernanceRecords = mutation({
+  args: {
+    workOrderId: v.optional(v.id("workOrders")),
+    projectId: v.optional(v.id("projects")),
+  },
+  handler: async (ctx, args) => {
+    const workOrders = args.workOrderId
+      ? [await ctx.db.get(args.workOrderId)].filter(Boolean)
+      : args.projectId
+        ? await ctx.db.query("workOrders").withIndex("by_project", (q) => q.eq("projectId", args.projectId!)).take(500)
+        : await ctx.db.query("workOrders").take(500);
+
+    let expiredApprovals = 0;
+    let staleReceipts = 0;
+    for (const workOrder of workOrders as any[]) {
+      const result = await expireGovernanceRecordsForWorkOrder(ctx, workOrder);
+      expiredApprovals += result.expiredApprovals;
+      staleReceipts += result.staleReceipts;
+      if (result.expiredApprovals > 0 || result.staleReceipts > 0) {
+        await refreshWorkOrderGovernance(ctx, workOrder._id);
+      }
+    }
+
+    return { expiredApprovals, staleReceipts, workOrdersTouched: workOrders.length };
   },
 });
 
@@ -1369,10 +2283,43 @@ export const seedDemo = mutation({
         approvalStatus: order.approvalStatus,
         blockingIssue: order.blockingIssue,
         requiredHumanAction: order.requiredHumanAction,
+        currentRevisionNumber: 1,
         createdAt: now - index * 60_000,
         updatedAt: now - index * 45_000,
         metadata: { seedTag: "software-factory-demo" },
       });
+
+      const initialSnapshot = snapshotRevisionFields({
+        ...order,
+        metadata: { seedTag: "software-factory-demo" },
+      });
+      const initialRevisionId = await ctx.db.insert("workOrderRevisions", {
+        tenantId: firstProject?.tenantId,
+        projectId: firstProject?._id,
+        workOrderId,
+        revisionNumber: 1,
+        status: "APPLIED",
+        changedFields: ["title", "desiredOutcome", "workflowId", "repository", "riskLevel", "acceptanceCriteria"],
+        changeSummary: "Initial seed revision",
+        reason: "Seed demo data",
+        requestedBy: order.requestedBy,
+        approvedBy: order.requestedBy,
+        createdAt: now - index * 60_000,
+        effectiveAt: now - index * 60_000,
+        riskReassessment: "UNCHANGED",
+        materiality: "NO_ACTION",
+        requiresReapproval: false,
+        requiresReverification: false,
+        requiresFullReopen: false,
+        impactedAcceptanceCriteria: [],
+        impactedApprovals: [],
+        impactedVerificationReceiptIds: [],
+        requestedChanges: initialSnapshot,
+        previousSnapshot: initialSnapshot,
+        nextSnapshot: initialSnapshot,
+        metadata: { seedTag: "software-factory-demo", initial: true },
+      });
+      await ctx.db.patch(workOrderId, { currentRevisionId: initialRevisionId });
 
       inserted.push({ _id: workOrderId, title: order.title });
 
@@ -1382,6 +2329,8 @@ export const seedDemo = mutation({
         workflowId: index === 2 ? "bug-fix" : "feature-dev",
         projectId: firstProject?._id,
         workOrderId,
+        workOrderRevisionNumber: 1,
+        workOrderRevisionId: initialRevisionId,
         status: index === 0 ? "RUNNING" : index === 1 ? "PENDING" : "FAILED",
         currentStepIndex: index === 0 ? 2 : index === 1 ? 0 : 1,
         totalSteps: 4,

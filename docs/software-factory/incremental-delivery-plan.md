@@ -80,6 +80,22 @@ Implement:
 7. orchestration endpoints for recording structured run events and artifacts
 8. run-inspector tests and full verification
 
+## Fifth thin vertical slice
+
+Implement:
+
+**WorkOrder revision, reopen, supersede, and governance-expiry lifecycle**
+
+### Scope
+
+1. immutable `workOrderRevisions` history with revision approval/application
+2. explicit `REOPENED` lifecycle with auditable reopen decisions
+3. first-class supersession linkage between replaced and replacement WorkOrders
+4. approval expiry and verification receipt expiry handling
+5. authoritative governance-expiry sweep command
+6. CLI, orchestration, and UI lifecycle controls sharing server-owned commands
+7. lifecycle/governance tests plus live end-to-end evidence
+
 ## Why this slice first
 
 Because it establishes the correct domain boundary without requiring a platform rewrite:

@@ -8,7 +8,9 @@ export type WorkOrderApprovalStatus =
   | "APPROVED"
   | "REJECTED"
   | "CONDITIONAL"
-  | "REVISION_REQUESTED";
+  | "REVISION_REQUESTED"
+  | "EXPIRED"
+  | "REVOKED";
 
 export type ApprovalDecisionStatus =
   | "PENDING"
@@ -17,7 +19,8 @@ export type ApprovalDecisionStatus =
   | "REJECTED"
   | "REVISION_REQUESTED"
   | "EXPIRED"
-  | "SUPERSEDED";
+  | "SUPERSEDED"
+  | "REVOKED";
 
 export type VerificationReceiptStatus = "PENDING" | "PASSED" | "FAILED" | "WAIVED" | "STALE";
 
@@ -29,6 +32,7 @@ export interface ApprovalDecisionLike {
   requestedAction?: string;
   _creationTime?: number;
   createdAt?: number;
+  expiresAt?: number;
 }
 
 export interface VerificationReceiptLike {
@@ -37,6 +41,7 @@ export interface VerificationReceiptLike {
   waiverApprovalDecisionId?: string;
   _creationTime?: number;
   recordedAt?: number;
+  validUntil?: number;
 }
 
 function timestampOf(row: { _creationTime?: number; createdAt?: number; recordedAt?: number }) {
@@ -52,8 +57,20 @@ export function requiredApprovalTypes(args: {
   return ["HIGH", "CRITICAL"].includes(args.riskLevel) ? ["RISK_REVIEW"] : [];
 }
 
+export function isApprovalExpired(approval: Pick<ApprovalDecisionLike, "status" | "expiresAt"> | undefined, now = Date.now()) {
+  if (!approval) return false;
+  if (approval.status === "EXPIRED") return true;
+  return (approval.status === "APPROVED" || approval.status === "CONDITIONAL") && !!approval.expiresAt && approval.expiresAt <= now;
+}
+
 export function approvalStatusSatisfiesRequirement(status: WorkOrderApprovalStatus | ApprovalDecisionStatus) {
   return status === "APPROVED" || status === "CONDITIONAL";
+}
+
+export function isApprovalUsable(approval: ApprovalDecisionLike | undefined, now = Date.now()) {
+  if (!approval) return false;
+  if (!approvalStatusSatisfiesRequirement(approval.status)) return false;
+  return !isApprovalExpired(approval, now);
 }
 
 export function deriveVerificationStatus(
@@ -67,7 +84,8 @@ export function deriveVerificationStatus(
   return "PENDING";
 }
 
-export function receiptStatusToCriterionStatus(status: VerificationReceiptStatus): WorkOrderCriterionStatus {
+export function receiptStatusToCriterionStatus(status: VerificationReceiptStatus, validUntil?: number, now = Date.now()): WorkOrderCriterionStatus {
+  if (validUntil && validUntil <= now && (status === "PASSED" || status === "WAIVED")) return "STALE";
   switch (status) {
     case "PASSED":
       return "PASS";
@@ -102,18 +120,29 @@ export function deriveApprovalStatus(args: {
   riskLevel: WorkOrderRiskLevel;
   requiredApprovals?: string[];
   approvals: ApprovalDecisionLike[];
+  now?: number;
 }): WorkOrderApprovalStatus {
   const requiredTypes = requiredApprovalTypes(args);
   if (requiredTypes.length === 0) return "NOT_REQUIRED";
 
   const latest = latestApprovalByType(args.approvals);
   let sawConditional = false;
+  let sawExpired = false;
+  let sawRevoked = false;
 
   for (const approvalType of requiredTypes) {
     const record = latest.get(approvalType);
     if (!record) return "PENDING";
     if (record.status === "REJECTED") return "REJECTED";
     if (record.status === "REVISION_REQUESTED") return "REVISION_REQUESTED";
+    if (record.status === "REVOKED") {
+      sawRevoked = true;
+      continue;
+    }
+    if (isApprovalExpired(record, args.now)) {
+      sawExpired = true;
+      continue;
+    }
     if (record.status === "CONDITIONAL") {
       sawConditional = true;
       continue;
@@ -121,6 +150,8 @@ export function deriveApprovalStatus(args: {
     if (record.status !== "APPROVED") return "PENDING";
   }
 
+  if (sawRevoked) return "REVOKED";
+  if (sawExpired) return "EXPIRED";
   return sawConditional ? "CONDITIONAL" : "APPROVED";
 }
 
@@ -130,6 +161,7 @@ export function evaluateAcceptance(args: {
   approvalDecisions: ApprovalDecisionLike[];
   acceptanceCriteria: Array<{ id: string; title: string; status: WorkOrderCriterionStatus }>;
   verificationReceipts: VerificationReceiptLike[];
+  now?: number;
 }) {
   const latestApprovals = latestApprovalByType(args.approvalDecisions);
   const latestReceipts = latestReceiptByCriterion(args.verificationReceipts);
@@ -138,9 +170,13 @@ export function evaluateAcceptance(args: {
     riskLevel: args.riskLevel,
     requiredApprovals: args.requiredApprovals,
     approvals: args.approvalDecisions,
+    now: args.now,
   });
 
-  const missingApprovalTypes = requiredTypes.filter((type) => !approvalStatusSatisfiesRequirement(latestApprovals.get(type)?.status ?? "PENDING"));
+  const missingApprovalTypes = requiredTypes.filter((type) => !isApprovalUsable(latestApprovals.get(type), args.now));
+  const expiredApprovalTypes = requiredTypes.filter((type) => isApprovalExpired(latestApprovals.get(type), args.now));
+  const revokedApprovalTypes = requiredTypes.filter((type) => latestApprovals.get(type)?.status === "REVOKED");
+
   const missingCriteriaIds: string[] = [];
   const failedCriteriaIds: string[] = [];
   const staleCriteriaIds: string[] = [];
@@ -153,17 +189,20 @@ export function evaluateAcceptance(args: {
       missingCriteriaIds.push(criterion.id);
       continue;
     }
-    if (receipt.status === "FAILED") failedCriteriaIds.push(criterion.id);
-    if (receipt.status === "STALE") staleCriteriaIds.push(criterion.id);
-    if (receipt.status === "WAIVED") {
+    const criterionStatus = receiptStatusToCriterionStatus(receipt.status, receipt.validUntil, args.now);
+    if (criterionStatus === "FAIL") failedCriteriaIds.push(criterion.id);
+    if (criterionStatus === "STALE") staleCriteriaIds.push(criterion.id);
+    if (criterionStatus === "WAIVED") {
       waivedCriteriaIds.push(criterion.id);
       if (!receipt.waiverApprovalDecisionId) waiverWithoutApprovalCriteriaIds.push(criterion.id);
     }
-    if (receipt.status === "PENDING") missingCriteriaIds.push(criterion.id);
+    if (criterionStatus === "PENDING") missingCriteriaIds.push(criterion.id);
   }
 
   const blockingReasons: string[] = [];
   if (missingApprovalTypes.length > 0) blockingReasons.push(`Missing approvals: ${missingApprovalTypes.join(", ")}`);
+  if (expiredApprovalTypes.length > 0) blockingReasons.push(`Expired approvals: ${expiredApprovalTypes.join(", ")}`);
+  if (revokedApprovalTypes.length > 0) blockingReasons.push(`Revoked approvals: ${revokedApprovalTypes.join(", ")}`);
   if (failedCriteriaIds.length > 0) blockingReasons.push(`Failed criteria: ${failedCriteriaIds.join(", ")}`);
   if (staleCriteriaIds.length > 0) blockingReasons.push(`Stale criteria: ${staleCriteriaIds.join(", ")}`);
   if (missingCriteriaIds.length > 0) blockingReasons.push(`Missing receipts: ${missingCriteriaIds.join(", ")}`);
@@ -172,6 +211,8 @@ export function evaluateAcceptance(args: {
   return {
     approvalStatus,
     missingApprovalTypes,
+    expiredApprovalTypes,
+    revokedApprovalTypes,
     missingCriteriaIds,
     failedCriteriaIds,
     staleCriteriaIds,

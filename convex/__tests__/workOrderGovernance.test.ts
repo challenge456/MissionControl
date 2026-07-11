@@ -14,6 +14,7 @@ const approvals = (rows: Partial<ApprovalDecisionLike>[]): ApprovalDecisionLike[
     status: row.status ?? "PENDING",
     _creationTime: row._creationTime ?? index + 1,
     requestedAction: row.requestedAction,
+    expiresAt: row.expiresAt,
   }));
 
 const receipts = (rows: Partial<VerificationReceiptLike>[]): VerificationReceiptLike[] =>
@@ -22,6 +23,7 @@ const receipts = (rows: Partial<VerificationReceiptLike>[]): VerificationReceipt
     status: row.status ?? "PENDING",
     waiverApprovalDecisionId: row.waiverApprovalDecisionId,
     _creationTime: row._creationTime ?? index + 1,
+    validUntil: row.validUntil,
   }));
 
 describe("work order governance helpers", () => {
@@ -41,6 +43,17 @@ describe("work order governance helpers", () => {
         approvals: approvals([{ approvalType: "SECURITY", status: "REVISION_REQUESTED" }]),
       })
     ).toBe("REVISION_REQUESTED");
+  });
+
+  it("marks approval status expired when a valid approval ages out", () => {
+    expect(
+      deriveApprovalStatus({
+        riskLevel: "HIGH",
+        requiredApprovals: [],
+        approvals: approvals([{ approvalType: "RISK_REVIEW", status: "APPROVED", expiresAt: 1 }]),
+        now: 2,
+      })
+    ).toBe("EXPIRED");
   });
 
   it("blocks acceptance when a receipt is missing", () => {
@@ -67,6 +80,34 @@ describe("work order governance helpers", () => {
 
     expect(result.eligible).toBe(false);
     expect(result.failedCriteriaIds).toEqual(["ac-1"]);
+  });
+
+  it("blocks acceptance when approval expired", () => {
+    const result = evaluateAcceptance({
+      riskLevel: "HIGH",
+      requiredApprovals: [],
+      approvalDecisions: approvals([{ approvalType: "RISK_REVIEW", status: "APPROVED", expiresAt: 1 }]),
+      acceptanceCriteria: [{ id: "ac-1", title: "Build passes", status: "PASS" }],
+      verificationReceipts: receipts([{ acceptanceCriterionId: "ac-1", status: "PASSED" }]),
+      now: 2,
+    });
+
+    expect(result.eligible).toBe(false);
+    expect(result.expiredApprovalTypes).toEqual(["RISK_REVIEW"]);
+  });
+
+  it("blocks acceptance when evidence expired", () => {
+    const result = evaluateAcceptance({
+      riskLevel: "LOW",
+      requiredApprovals: [],
+      approvalDecisions: [],
+      acceptanceCriteria: [{ id: "ac-1", title: "Build passes", status: "PASS" }],
+      verificationReceipts: receipts([{ acceptanceCriterionId: "ac-1", status: "PASSED", validUntil: 1 }]),
+      now: 2,
+    });
+
+    expect(result.eligible).toBe(false);
+    expect(result.staleCriteriaIds).toEqual(["ac-1"]);
   });
 
   it("requires waiver approval for waived criteria", () => {
