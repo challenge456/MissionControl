@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { BellRing } from "lucide-react";
 import type { MainView } from "../TopNav";
@@ -47,18 +47,28 @@ export function AppShellV2({
 }: AppShellV2Props): JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
+  // Guards the URL↔view sync against echo loops: when the URL drives a view
+  // change, the follow-up view→URL effect must not navigate back.
+  const syncingFromUrl = useRef(false);
 
-  // URL → view (back/forward navigation, deep links)
+  // URL → view (deep links, back/forward)
   useEffect(() => {
     const pathView = viewFromPath(location.pathname);
-    if (pathView && pathView !== activeView) onNavigate(pathView);
+    if (pathView && pathView !== activeView) {
+      syncingFromUrl.current = true;
+      onNavigate(pathView);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 
-  // view → URL
+  // view → URL (sidebar clicks, legacy in-app navigation)
   useEffect(() => {
+    if (syncingFromUrl.current) {
+      syncingFromUrl.current = false;
+      return;
+    }
     const expected = `${ROUTE_PREFIX}/${activeView}`;
-    if (location.pathname !== expected) navigate(expected, { replace: false });
+    if (location.pathname !== expected) navigate(expected);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeView]);
 
