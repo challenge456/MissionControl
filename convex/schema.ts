@@ -2965,4 +2965,23 @@ export default defineSchema({
   })
     .index("by_candidate", ["candidateId"])
     .index("by_roleSpec", ["roleSpecId"]),
+
+  // -------------------------------------------------------------------------
+  // FEATURE FLAGS
+  // -------------------------------------------------------------------------
+  // Runtime toggles gating incomplete Software Factory subsystems.
+  // Resolution precedence: project-scoped row > global row > registered
+  // default (convex/lib/flags.ts). Changes audited via `activities`.
+  featureFlags: defineTable({
+    key: v.string(),
+    enabled: v.boolean(),
+    description: v.optional(v.string()),
+    // Project-scoped override; row with no projectId is the global value
+    projectId: v.optional(v.id("projects")),
+    updatedBy: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_key", ["key"])
+    .index("by_project_key", ["projectId", "key"]),
 });
