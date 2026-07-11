@@ -93,6 +93,76 @@ interface ExecutionRun {
 }
 ```
 
+## 2a. Structured run timeline and artifacts
+
+```ts
+type RunEventType =
+  | "RUN_STARTED"
+  | "STEP_STARTED"
+  | "STEP_COMPLETED"
+  | "TOOL_CALLED"
+  | "COMMAND_EXECUTED"
+  | "FILE_CHANGED"
+  | "ARTIFACT_CREATED"
+  | "CHECKPOINT_CREATED"
+  | "RETRY_STARTED"
+  | "RETRY_COMPLETED"
+  | "HUMAN_INTERVENTION_REQUESTED"
+  | "RUN_PAUSED"
+  | "RUN_RESUMED"
+  | "RUN_FAILED"
+  | "RUN_COMPLETED";
+
+interface RunEvent {
+  _id: Id<"runEvents">;
+  workflowRunId: Id<"workflowRuns">;
+  workOrderId?: Id<"workOrders">;
+  sequenceNumber: number;
+  eventType: RunEventType;
+  workflowStep?: string;
+  status?: string;
+  actor?: string;
+  toolName?: string;
+  commandSummary?: string;
+  retryNumber?: number;
+  verificationReceiptId?: Id<"verificationReceipts">;
+  evidenceArtifactIds?: Id<"runArtifacts">[];
+  errorCategory?: string;
+  errorSummary?: string;
+  metadata?: any;
+}
+
+type RunArtifactType =
+  | "CODE_DIFF"
+  | "TEST_OUTPUT"
+  | "BUILD_OUTPUT"
+  | "LOG_BUNDLE"
+  | "SCREENSHOT"
+  | "GENERATED_DOCUMENT"
+  | "VERIFICATION_EVIDENCE"
+  | "PULL_REQUEST"
+  | "CHECKPOINT"
+  | "STRUCTURED_OUTPUT"
+  | "OTHER";
+
+interface RunArtifact {
+  _id: Id<"runArtifacts">;
+  workflowRunId: Id<"workflowRuns">;
+  workOrderId?: Id<"workOrders">;
+  artifactType: RunArtifactType;
+  name: string;
+  repositoryPath?: string;
+  externalLocation?: string;
+  verificationReceiptId?: Id<"verificationReceipts">;
+  acceptanceCriterionId?: string;
+  producingEventId?: Id<"runEvents">;
+  contentHash?: string;
+  producer?: string;
+  createdAt: number;
+  metadata?: any;
+}
+```
+
 ## 3. Compatibility mapping
 
 ### Legacy task → WorkOrder summary
@@ -272,6 +342,7 @@ interface VerificationReceipt {
   result?: string;
   evidenceLocation?: string;
   artifactReference?: string;
+  linkedRunArtifactIds?: Id<"runArtifacts">[];
   verifier?: string;
   status: VerificationReceiptStatus;
   exceptionOrWaiver?: string;
@@ -300,6 +371,26 @@ The command must reject acceptance unless:
 4. every acceptance criterion has a non-stale receipt
 5. no receipt is failed
 6. waived criteria carry an approved waiver decision
+
+## 8. Fourth-slice run inspector contract
+
+MissionControl exposes one authoritative inspector query over `workflowRuns` plus additive `runEvents` and `runArtifacts`.
+
+```ts
+type GetExecutionRunInspector = {
+  workflowRunId: Id<"workflowRuns">;
+  verificationReceiptId?: Id<"verificationReceipts">;
+  acceptanceCriterionId?: string;
+};
+```
+
+It returns:
+
+1. the canonical `workflowRun`
+2. ordered `runEvents`
+3. linked `runArtifacts`
+4. derived file-change and retry summaries
+5. focused evidence lineage for a receipt or acceptance criterion
 
 - `WORK_ORDER_CREATED`
 - `DISPATCH_REQUESTED`

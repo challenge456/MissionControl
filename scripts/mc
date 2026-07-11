@@ -45,6 +45,11 @@ COMMANDS:
                         Dispatch a WorkOrder through the governed server-side boundary
     accept <workOrderId>
                         Accept a WorkOrder once approvals and verification are satisfied
+    run-summary <runId> Show structured run summary
+    run-events <runDocId>
+                        List structured run events for an execution run
+    run-artifacts <runDocId>
+                        List structured run artifacts for an execution run
     tasks [status]      List tasks (default: INBOX)
     claim               Claim next available task
     logs [run-id]       Show logs for a run
@@ -57,6 +62,7 @@ EXAMPLES:
     mc run feature-dev "Add OAuth"      # Start workflow
     mc dispatch wd711... feature-dev    # Dispatch a WorkOrder
     mc accept wd711...                  # Accept a WorkOrder
+    mc run-summary abc12345             # Show run summary
     mc tasks INBOX                      # List inbox tasks
     mc claim                            # Claim next task
     mc logs run_abc123                  # Show run logs
@@ -249,6 +255,63 @@ EOF
     echo "$result"
 }
 
+cmd_run_summary() {
+    source_env
+    check_convex
+
+    local run_id="${1:-}"
+    if [[ -z "$run_id" ]]; then
+        log_error "Run ID required"
+        log_info "Usage: mc run-summary <runId>"
+        exit 1
+    fi
+
+    cd "$MC_DIR"
+    local run
+    run=$(npx convex run api.workflowRuns.get "{\"runId\":\"$run_id\"}" 2>/dev/null) || {
+        log_error "Failed to fetch run"
+        exit 1
+    }
+    local run_doc_id
+    run_doc_id=$(echo "$run" | jq -r '._id')
+    npx convex run api.workflowRuns.getInspector "{\"workflowRunId\":\"$run_doc_id\"}" 2>/dev/null || {
+        log_error "Failed to fetch run inspector"
+        exit 1
+    }
+}
+
+cmd_run_events() {
+    source_env
+    check_convex
+    local run_doc_id="${1:-}"
+    if [[ -z "$run_doc_id" ]]; then
+        log_error "Run document ID required"
+        log_info "Usage: mc run-events <workflowRunDocId>"
+        exit 1
+    fi
+    cd "$MC_DIR"
+    npx convex run api.workflowRuns.listEvents "{\"workflowRunId\":\"$run_doc_id\"}" 2>/dev/null || {
+        log_error "Failed to list run events"
+        exit 1
+    }
+}
+
+cmd_run_artifacts() {
+    source_env
+    check_convex
+    local run_doc_id="${1:-}"
+    if [[ -z "$run_doc_id" ]]; then
+        log_error "Run document ID required"
+        log_info "Usage: mc run-artifacts <workflowRunDocId>"
+        exit 1
+    fi
+    cd "$MC_DIR"
+    npx convex run api.workflowRuns.listArtifacts "{\"workflowRunId\":\"$run_doc_id\"}" 2>/dev/null || {
+        log_error "Failed to list run artifacts"
+        exit 1
+    }
+}
+
 # Command: tasks
 cmd_tasks() {
     source_env
@@ -338,6 +401,18 @@ case "${1:-help}" in
     accept)
         shift
         cmd_accept "$@"
+        ;;
+    run-summary)
+        shift
+        cmd_run_summary "$@"
+        ;;
+    run-events)
+        shift
+        cmd_run_events "$@"
+        ;;
+    run-artifacts)
+        shift
+        cmd_run_artifacts "$@"
         ;;
     tasks)
         shift

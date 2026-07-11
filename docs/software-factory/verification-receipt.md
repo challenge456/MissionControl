@@ -147,9 +147,8 @@ pnpm exec tsc --noEmit -p convex/tsconfig.json
 
 ## Known limitations
 
-1. WorkOrder detail currently embeds run summaries rather than a dedicated Run Inspector view.
-2. Existing portfolio/fleet control-plane surfaces remain placeholder-backed.
-3. `scripts/seed-workflows.ts` remains a pre-existing verification issue and was intentionally excluded from this slice; direct `workflows:upsert` was used as the workaround.
+1. Existing portfolio/fleet control-plane surfaces remain placeholder-backed.
+2. `scripts/seed-workflows.ts` remains a pre-existing verification issue and was intentionally excluded from this slice; direct `workflows:upsert` was used as the workaround.
 
 ## Third slice — ApprovalDecision and VerificationReceipt traceability
 
@@ -193,3 +192,37 @@ pnpm --filter @mission-control/orchestration-server build
   - `VERIFICATION_STALE`
   - `VERIFICATION_RECORDED`
   - `WORK_ORDER_ACCEPTED`
+
+## Fourth slice — Execution Run Inspector and Evidence Drill-Down
+
+| Criterion | Result | Evidence |
+| --- | --- | --- |
+| Structured run events are first-class and ordered | PASS | `convex/schema.ts`, `convex/workflowRuns.ts`, `convex/lib/runInspector.ts` |
+| Structured run artifacts are first-class and receipt-linkable | PASS | `convex/schema.ts`, `convex/workflowRuns.ts`, `convex/workOrders.ts` |
+| One authoritative run inspector query exists | PASS | `convex/workflowRuns.ts#getInspector` |
+| WorkOrder run links open a dedicated inspector | PASS | `apps/mission-control-ui/src/controlPlane/WorkOrdersView.tsx`, `apps/mission-control-ui/src/controlPlane/ExecutionRunInspector.tsx` |
+| Verification receipt links drill into focused evidence lineage | PASS | `apps/mission-control-ui/src/controlPlane/WorkOrdersView.tsx`, `apps/mission-control-ui/src/controlPlane/ExecutionRunInspector.tsx` |
+| CLI exposes run summary, events, and artifacts inspection | PASS | `scripts/mc` |
+| Orchestration server exposes authenticated run event/artifact APIs | PASS | `apps/orchestration-server/src/index.ts`, `apps/orchestration-server/src/convexCalls.ts` |
+| Run inspector helper/view-model logic is test-covered | PASS | `convex/__tests__/runInspector.test.ts`, `apps/mission-control-ui/src/controlPlane/runInspectorModel.test.ts` |
+
+### Additional checks executed
+
+```bash
+pnpm install --frozen-lockfile
+pnpm exec convex codegen --typecheck disable
+pnpm exec vitest run convex/__tests__/workOrderDispatch.test.ts convex/__tests__/workOrderGovernance.test.ts convex/__tests__/runInspector.test.ts apps/mission-control-ui/src/controlPlane/workOrdersModel.test.ts apps/mission-control-ui/src/controlPlane/runInspectorModel.test.ts
+pnpm --filter mission-control-ui typecheck
+pnpm --filter mission-control-ui build
+pnpm run ci:prepare
+pnpm --filter @mission-control/orchestration-server typecheck
+pnpm --filter @mission-control/orchestration-server build
+pnpm exec tsc --noEmit -p convex/tsconfig.json
+```
+
+### Result summary
+
+- Added `runEvents` and `runArtifacts` as additive execution-trace tables
+- Added receipt-linked evidence lineage on `verificationReceipts`
+- Added a dedicated `ExecutionRunInspector` reachable from linked runs and verification receipts
+- Added authenticated orchestration endpoints and CLI inspection commands for structured run traces

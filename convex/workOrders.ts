@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { deriveVerificationStatus, currentWorkflowStepLabel, totalWorkflowRetries } from "./lib/workOrders";
 import { ACTIVE_RUN_STATUSES, nextStateForRunStatus, validateDispatchable } from "./lib/workOrderDispatch";
 import {
@@ -666,6 +667,18 @@ export const dispatch = mutation({
       metadata: { dispatchIdempotencyKey: args.idempotencyKey },
     });
 
+    await ctx.runMutation(internal.workflowRuns.recordEventInternal, {
+      workflowRunId: runDocId,
+      eventType: "RUN_STARTED",
+      workflowStep: workflow.steps[0]?.id,
+      actor: args.actorId ?? args.actorType.toLowerCase(),
+      status: "PENDING",
+      startedAt: now,
+      commandSummary: `Dispatched ${resolvedWorkflowId}`,
+      idempotencyKey: `${args.idempotencyKey}:run-started`,
+      metadata: { runtime: args.runtime, model: args.model, worktree: args.worktree },
+    });
+
     await markReceiptsStaleForWorkOrder(ctx, workOrder, runDocId);
 
     await ctx.db.patch(workOrder._id, {
@@ -1052,6 +1065,7 @@ export const recordVerificationReceipt = mutation({
     result: v.optional(v.string()),
     evidenceLocation: v.optional(v.string()),
     artifactReference: v.optional(v.string()),
+    runArtifactIds: v.optional(v.array(v.id("runArtifacts"))),
     verifier: v.optional(v.string()),
     status: verificationReceiptStatus,
     exceptionOrWaiver: v.optional(v.string()),
@@ -1088,6 +1102,13 @@ export const recordVerificationReceipt = mutation({
       }
     }
 
+    for (const artifactId of args.runArtifactIds ?? []) {
+      const artifact = await ctx.db.get(artifactId);
+      if (!artifact || artifact.workflowRunId !== run._id || artifact.workOrderId !== workOrder._id) {
+        throw new Error("Linked artifact must belong to the same run and WorkOrder");
+      }
+    }
+
     const priorReceipts = await ctx.db
       .query("verificationReceipts")
       .withIndex("by_work_order_criterion", (q) => q.eq("workOrderId", workOrder._id).eq("acceptanceCriterionId", args.acceptanceCriterionId))
@@ -1119,6 +1140,7 @@ export const recordVerificationReceipt = mutation({
       result: args.result,
       evidenceLocation: args.evidenceLocation,
       artifactReference: args.artifactReference,
+      linkedRunArtifactIds: args.runArtifactIds,
       verifier: args.verifier,
       status: args.status,
       exceptionOrWaiver: args.exceptionOrWaiver,
@@ -1139,6 +1161,13 @@ export const recordVerificationReceipt = mutation({
       idempotencyKey: args.idempotencyKey ? `${args.idempotencyKey}:event` : undefined,
       metadata: { verificationReceiptId, status: args.status, evidenceLocation: args.evidenceLocation },
     });
+
+    for (const artifactId of args.runArtifactIds ?? []) {
+      await ctx.db.patch(artifactId, {
+        verificationReceiptId,
+        acceptanceCriterionId: args.acceptanceCriterionId,
+      });
+    }
 
     await refreshWorkOrderGovernance(ctx, workOrder._id);
     return { verificationReceipt: await ctx.db.get(verificationReceiptId), created: true };

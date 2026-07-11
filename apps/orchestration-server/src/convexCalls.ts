@@ -14,6 +14,12 @@ export const ConvexQueries = {
   gatewayConnection: {
     get: "gatewayConnection:get",
   },
+  workflowRuns: {
+    get: "workflowRuns:get",
+    getInspector: "workflowRuns:getInspector",
+    listEvents: "workflowRuns:listEvents",
+    listArtifacts: "workflowRuns:listArtifacts",
+  },
 } as const;
 
 export const ConvexMutations = {
@@ -26,6 +32,11 @@ export const ConvexMutations = {
     decideApprovalDecision: "workOrders:decideApprovalDecision",
     recordVerificationReceipt: "workOrders:recordVerificationReceipt",
     accept: "workOrders:accept",
+  },
+  workflowRuns: {
+    recordEvent: "workflowRuns:recordEvent",
+    createArtifact: "workflowRuns:createArtifact",
+    linkArtifactToVerificationReceipt: "workflowRuns:linkArtifactToVerificationReceipt",
   },
   taskRouter: {
     autoAssign: "taskRouter:autoAssign",

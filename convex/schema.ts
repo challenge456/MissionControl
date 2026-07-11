@@ -140,6 +140,38 @@ const verificationReceiptStatus = v.union(
   v.literal("STALE")
 );
 
+const runEventType = v.union(
+  v.literal("RUN_STARTED"),
+  v.literal("STEP_STARTED"),
+  v.literal("STEP_COMPLETED"),
+  v.literal("TOOL_CALLED"),
+  v.literal("COMMAND_EXECUTED"),
+  v.literal("FILE_CHANGED"),
+  v.literal("ARTIFACT_CREATED"),
+  v.literal("CHECKPOINT_CREATED"),
+  v.literal("RETRY_STARTED"),
+  v.literal("RETRY_COMPLETED"),
+  v.literal("HUMAN_INTERVENTION_REQUESTED"),
+  v.literal("RUN_PAUSED"),
+  v.literal("RUN_RESUMED"),
+  v.literal("RUN_FAILED"),
+  v.literal("RUN_COMPLETED")
+);
+
+const runArtifactType = v.union(
+  v.literal("CODE_DIFF"),
+  v.literal("TEST_OUTPUT"),
+  v.literal("BUILD_OUTPUT"),
+  v.literal("LOG_BUNDLE"),
+  v.literal("SCREENSHOT"),
+  v.literal("GENERATED_DOCUMENT"),
+  v.literal("VERIFICATION_EVIDENCE"),
+  v.literal("PULL_REQUEST"),
+  v.literal("CHECKPOINT"),
+  v.literal("STRUCTURED_OUTPUT"),
+  v.literal("OTHER")
+);
+
 const reviewType = v.union(
   v.literal("PRAISE"),
   v.literal("REFUTE"),
@@ -751,12 +783,70 @@ export default defineSchema({
     status: verificationReceiptStatus,
     exceptionOrWaiver: v.optional(v.string()),
     waiverApprovalDecisionId: v.optional(v.id("approvalDecisions")),
+    linkedRunArtifactIds: v.optional(v.array(v.id("runArtifacts"))),
     recordedAt: v.number(),
     metadata: v.optional(v.any()),
   })
     .index("by_work_order", ["workOrderId"])
     .index("by_work_order_criterion", ["workOrderId", "acceptanceCriterionId"])
     .index("by_run", ["workflowRunId"])
+    .index("by_idempotency", ["idempotencyKey"]),
+
+  runEvents: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.optional(v.id("projects")),
+    workOrderId: v.optional(v.id("workOrders")),
+    workflowRunId: v.id("workflowRuns"),
+    idempotencyKey: v.optional(v.string()),
+    eventType: runEventType,
+    workflowStep: v.optional(v.string()),
+    sequenceNumber: v.number(),
+    actor: v.optional(v.string()),
+    agentId: v.optional(v.id("agents")),
+    toolName: v.optional(v.string()),
+    commandSummary: v.optional(v.string()),
+    status: v.optional(v.string()),
+    startedAt: v.optional(v.number()),
+    endedAt: v.optional(v.number()),
+    durationMs: v.optional(v.number()),
+    retryNumber: v.optional(v.number()),
+    verificationReceiptId: v.optional(v.id("verificationReceipts")),
+    evidenceArtifactIds: v.optional(v.array(v.id("runArtifacts"))),
+    errorCategory: v.optional(v.string()),
+    errorSummary: v.optional(v.string()),
+    metadata: v.optional(v.any()),
+  })
+    .index("by_run", ["workflowRunId"])
+    .index("by_run_sequence", ["workflowRunId", "sequenceNumber"])
+    .index("by_work_order", ["workOrderId"])
+    .index("by_receipt", ["verificationReceiptId"])
+    .index("by_idempotency", ["idempotencyKey"]),
+
+  runArtifacts: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.optional(v.id("projects")),
+    workOrderId: v.optional(v.id("workOrders")),
+    workflowRunId: v.id("workflowRuns"),
+    idempotencyKey: v.optional(v.string()),
+    artifactType: runArtifactType,
+    name: v.string(),
+    description: v.optional(v.string()),
+    repositoryPath: v.optional(v.string()),
+    externalLocation: v.optional(v.string()),
+    contentHash: v.optional(v.string()),
+    producer: v.optional(v.string()),
+    verificationReceiptId: v.optional(v.id("verificationReceipts")),
+    acceptanceCriterionId: v.optional(v.string()),
+    producingEventId: v.optional(v.id("runEvents")),
+    retentionPolicy: v.optional(v.string()),
+    sensitivity: v.optional(v.string()),
+    createdAt: v.number(),
+    metadata: v.optional(v.any()),
+  })
+    .index("by_run", ["workflowRunId"])
+    .index("by_run_type", ["workflowRunId", "artifactType"])
+    .index("by_receipt", ["verificationReceiptId"])
+    .index("by_event", ["producingEventId"])
     .index("by_idempotency", ["idempotencyKey"]),
 
   // -------------------------------------------------------------------------
