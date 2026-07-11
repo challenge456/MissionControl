@@ -13,6 +13,8 @@ import { useToast } from "./Toast";
 import { useKeyboardShortcuts } from "./KeyboardShortcuts";
 import { useModalState } from "./hooks/useModalState";
 import { PrivacyProvider } from "./contexts/PrivacyContext";
+import { useFlag } from "./hooks/useFlag";
+import { AppShellV2 } from "./shellV2/AppShellV2";
 
 const DashboardOverview = lazy(() =>
   import("./DashboardOverview").then((module) => ({ default: module.DashboardOverview }))
@@ -716,6 +718,51 @@ export default function App() {
   }
 
   // ── Render ───────────────────────────────────────────────────────────────
+  const shellV2 = useFlag("ui.shell.v2");
+
+  if (shellV2) {
+    return (
+      <ProjectContext.Provider value={{ projectId, setProjectId, project }}>
+        <PrivacyProvider>
+          <AppShellV2
+            activeView={currentView}
+            onNavigate={setCurrentView}
+            workspaceSwitcher={<ProjectSwitcher />}
+            onOpenSearch={() => open("commandPalette")}
+            pendingApprovals={pendingApprovals?.length ?? 0}
+            onOpenApprovals={() => open("approvals")}
+          >
+            <Suspense fallback={<SectionLoadingState />}>{renderSection()}</Suspense>
+          </AppShellV2>
+          <Suspense fallback={null}>
+            <TaskDrawerTabs taskId={selectedTaskId} onClose={() => setSelectedTaskId(null)} />
+          </Suspense>
+          <Suspense fallback={null}>
+            <ModalLayer
+              projectId={projectId}
+              modals={modals}
+              open={open}
+              close={close}
+              selectedTaskId={selectedTaskId}
+              setSelectedTaskId={setSelectedTaskId}
+              sidebarSelectedAgentId={sidebarSelectedAgentId}
+              setSidebarSelectedAgentId={setSidebarSelectedAgentId}
+              sidebarWidth={sidebarWidth}
+              onNavigate={setCurrentView}
+              onConfirmPauseSquad={handleConfirmPauseSquad}
+              onResumeSquad={handleResumeSquad}
+              onToast={toast}
+              onNavigateToGateway={() => {
+                handleSectionChange("agents");
+                handleTabChange("gateway");
+              }}
+            />
+          </Suspense>
+        </PrivacyProvider>
+      </ProjectContext.Provider>
+    );
+  }
+
   return (
     <ProjectContext.Provider value={{ projectId, setProjectId, project }}>
       <PrivacyProvider>
