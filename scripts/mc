@@ -47,6 +47,8 @@ COMMANDS:
     assess              Competency Assessment (run | grade | compare | report)
     flags [set <key> <on|off>]   List or set feature flags
     skill lint [path]   Lint SKILL.md files against the skill standard
+    context <subcmd>    Manage context manifests (init | list | add | remove |
+                        lock | verify | diff | outdated)
     version             Show version
     help                Show this help
 
@@ -285,6 +287,12 @@ cmd_skill() {
     esac
 }
 
+# Command: context
+cmd_context() {
+    # Dist auto-build and all subcommand logic live in mc-context.mjs
+    node "$MC_DIR/scripts/mc-context.mjs" "$@"
+}
+
 cmd_version() {
     echo "Mission Control CLI v${VERSION}"
 }
@@ -328,6 +336,10 @@ case "${1:-help}" in
     skill)
         shift
         cmd_skill "$@"
+        ;;
+    context)
+        shift
+        cmd_context "$@"
         ;;
     version|--version|-v)
         cmd_version
