@@ -10,26 +10,14 @@ import {
 } from "@/components/ui/card";
 
 export interface NeonCardProps extends React.HTMLAttributes<HTMLDivElement> {
-  /** Optional top accent bar (neon green or cyan) */
+  /** Legacy prop, ignored in v2 — cards carry no decorative accent bar. */
   accent?: "green" | "cyan" | "none";
 }
 
+/** Legacy alias over the v2 card surface (bg-surface-1, hairline border). */
 const NeonCard = React.forwardRef<HTMLDivElement, NeonCardProps>(
-  ({ className, accent = "none", children, ...props }, ref) => (
-    <Card
-      ref={ref}
-      className={cn("relative overflow-hidden", className)}
-      {...props}
-    >
-      {accent !== "none" && (
-        <div
-          className={cn(
-            "absolute top-0 left-0 right-0 h-[2px]",
-            accent === "green" && "bg-[var(--neon-green)]/60",
-            accent === "cyan" && "bg-[var(--neon-cyan)]/60"
-          )}
-        />
-      )}
+  ({ className, accent: _accent = "none", children, ...props }, ref) => (
+    <Card ref={ref} className={cn(className)} {...props}>
       {children}
     </Card>
   )

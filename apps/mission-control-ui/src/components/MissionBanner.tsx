@@ -41,53 +41,52 @@ export function MissionBanner({ projectId, onEditClick, onReversePromptClick, br
   return (
     <Card className={cn("mb-6 overflow-hidden", className)}>
       <div className="relative">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(103,232,249,0.08),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(16,185,129,0.06),transparent_28%)]" />
         <div className="relative px-5 py-5">
           <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 items-start gap-3">
-              <div className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-cyan-400/20 bg-cyan-400/10 text-cyan-100 shadow-[var(--glow-cyan)]">
+              <div className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-line bg-surface-2 text-ink-secondary">
                 <Target className="h-4.5 w-4.5" strokeWidth={1.65} />
               </div>
               <div className="min-w-0">
-                <div className="mc-kicker">North star</div>
-                <div className="mt-1 text-sm font-semibold text-foreground">
+                <div className="text-[12.5px] font-medium text-ink-muted">North star</div>
+                <div className="mt-1 text-sm font-semibold text-ink">
                   {hasMission ? "Operator brief" : "Set the mission"}
                 </div>
               </div>
             </div>
             {hasMission && (
-              <div className="hidden rounded-full border border-cyan-300/20 bg-cyan-400/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-100/80 md:inline-flex">
+              <div className="hidden rounded-md border border-line bg-surface-2 px-2.5 py-1 text-[11px] font-medium text-ink-secondary md:inline-flex">
                 Strategic source of truth
               </div>
             )}
           </div>
 
           <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.55fr)]">
-            <div className="rounded-2xl border border-[var(--panel-line)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--shell-panel)_90%,transparent),color-mix(in_srgb,var(--background)_88%,transparent))] px-5 py-5">
+            <div className="rounded-xl border border-line bg-surface-2 px-5 py-5">
               {hasMission ? (
                 <>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  <div className="text-[12.5px] font-medium text-ink-muted">
                     Mission statement
                   </div>
-                  <p className="mt-3 max-w-3xl font-[family:var(--font-display)] text-[1.18rem] leading-8 text-foreground/94">
+                  <p className="mt-3 max-w-3xl text-[1.18rem] leading-8 text-ink">
                     {missionLead}
                   </p>
-                  <p className="mt-3 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+                  <p className="mt-3 max-w-3xl text-sm leading-relaxed text-ink-secondary">
                     {missionSupportPreview || compressedMission}
                   </p>
                 </>
               ) : (
-                <p className="text-sm leading-relaxed text-muted-foreground">
+                <p className="text-sm leading-relaxed text-ink-secondary">
                   Give the system a concise, operator-trustworthy mission so every agent workflow starts from the same intent.
                 </p>
               )}
             </div>
 
-            <div className="rounded-2xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-4">
+            <div className="rounded-xl border border-line bg-surface-2 px-4 py-4">
               <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                 Mission check
               </div>
-              <div className="mt-3 rounded-lg border border-[var(--panel-line)] bg-[color:var(--shell-panel-strong)] px-4 py-4">
+              <div className="mt-3 rounded-lg border border-line bg-surface-3 px-4 py-4">
                 <div className="text-sm font-semibold text-foreground">Would I ship a screen under this mission?</div>
                 <div className="mt-2 text-sm leading-relaxed text-muted-foreground">
                   Every new task, screen, and routing decision should still feel aligned with this statement. If not, the UI is drifting.
@@ -98,19 +97,19 @@ export function MissionBanner({ projectId, onEditClick, onReversePromptClick, br
 
           {brief && (
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
-              <div className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-3.5 py-3">
+              <div className="rounded-xl border border-line bg-surface-2 px-3.5 py-3">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                   {brief.stageEyebrow}
                 </div>
                 <div className="mt-1 text-sm font-semibold text-foreground">{brief.stageLabel}</div>
               </div>
-              <div className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-3.5 py-3">
+              <div className="rounded-xl border border-line bg-surface-2 px-3.5 py-3">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                   Next artifact
                 </div>
                 <div className="mt-1 text-sm font-semibold text-foreground">{brief.artifact}</div>
               </div>
-              <div className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-3.5 py-3">
+              <div className="rounded-xl border border-line bg-surface-2 px-3.5 py-3">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                   Operating rule
                 </div>

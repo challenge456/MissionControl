@@ -1,25 +1,31 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import {
+  CHART_CONTAINER_CLASS,
+  CHART_GRID_COLOR,
+  CHART_SERIES,
+  CHART_TICK_STYLE,
+} from "@/components/factory/chartTheme";
 
 /**
- * Wrapper for chart containers. Applies neon grid/axis-friendly background and spacing.
- * When using Recharts, wrap chart in this and pass NeonChartTheme.styles to axis/tooltip/legend.
+ * Legacy alias surface over factory/chartTheme. Export names are kept so
+ * existing call sites (DashboardOverview) compile; values map to the v2
+ * style-guide chart constants. New code should import factory/chartTheme.
  */
 export const NeonChartTheme = {
   /** CSS class for the chart container */
-  containerClass:
-    "rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)]/50 p-4",
-  /** Recharts-compatible style object for axes and text (use when integrating Recharts) */
+  containerClass: CHART_CONTAINER_CLASS,
+  /** Recharts-compatible style object for axes and text */
   styles: {
-    stroke: "var(--glass-border)",
-    fill: "var(--muted-foreground)",
-    fontSize: 11,
-    tickStroke: "var(--glass-border)",
-    gridStroke: "var(--glass-border)",
-    gridStrokeOpacity: 0.4,
+    stroke: CHART_GRID_COLOR,
+    fill: CHART_TICK_STYLE.fill,
+    fontSize: CHART_TICK_STYLE.fontSize,
+    tickStroke: CHART_GRID_COLOR,
+    gridStroke: CHART_GRID_COLOR,
+    gridStrokeOpacity: 1,
   },
-  /** Colors for gradient fills in order */
-  gradientColors: ["var(--neon-green)", "var(--neon-cyan)", "var(--neon-magenta)"],
+  /** Series colors in order (style-guide palette, max 4 series) */
+  gradientColors: [...CHART_SERIES],
 };
 
 export interface NeonChartContainerProps extends React.HTMLAttributes<HTMLDivElement> {}
