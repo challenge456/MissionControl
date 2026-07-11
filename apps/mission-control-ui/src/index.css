@@ -865,3 +865,42 @@ main {
   outline: none;
   box-shadow: var(--focus-ring);
 }
+
+/* ── Legacy-variable bridge inside the v2 shell ──────────────────────────
+   Until each page is redesigned (PRs 18–20), legacy views rendered inside
+   .shell-v2 inherit the neutral near-black system by remapping the old
+   theme variables. Kills the navy tint, glow, and glass without touching
+   individual views. */
+.shell-v2 {
+  --background: var(--background-app);
+  --foreground: var(--text-primary);
+  --card: var(--surface-primary);
+  --card-foreground: var(--text-primary);
+  --popover: var(--surface-elevated);
+  --popover-foreground: var(--text-primary);
+  --primary: var(--status-success);
+  --primary-foreground: #06170c;
+  --secondary: var(--surface-secondary);
+  --secondary-foreground: var(--text-secondary);
+  --muted: var(--surface-secondary);
+  --muted-foreground: var(--text-muted);
+  --accent: var(--surface-elevated);
+  --accent-foreground: var(--text-primary);
+  --destructive: var(--status-error);
+  --border: var(--border-subtle);
+  --input: var(--border-subtle);
+  --ring: var(--status-info);
+  --panel-line: var(--border-subtle);
+  --neon-green: var(--status-success);
+  --neon-cyan: var(--status-info);
+  --neon-magenta: var(--text-muted);
+  --glass-bg: var(--surface-primary);
+  --glass-border: var(--border-subtle);
+  --glow-green: none;
+  --glow-cyan: none;
+  --glow-focus: none;
+  --blur-panel: 0px;
+}
+.shell-v2 [class*="backdrop-blur"] {
+  backdrop-filter: none !important;
+}
