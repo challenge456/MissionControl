@@ -12,23 +12,31 @@ import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id, Doc } from "../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
+import { PageHeader } from "./components/factory/DetailLayout";
+import { MetricBlock, MetricRow } from "./components/factory/MetricBlock";
+import { StatusBadge, type StatusBadgeProps } from "./components/factory/badges";
 
 interface BudgetBurnDownProps {
   projectId: Id<"projects"> | null;
 }
 
 function getSpendClasses(ratio: number): { text: string; bg: string } {
-  if (ratio >= 1) return { text: "text-red-500", bg: "bg-red-500" };
-  if (ratio >= 0.8) return { text: "text-amber-500", bg: "bg-amber-500" };
-  if (ratio >= 0.5) return { text: "text-blue-500", bg: "bg-blue-500" };
-  return { text: "text-primary", bg: "bg-primary" };
+  if (ratio >= 1) return { text: "text-err", bg: "bg-err" };
+  if (ratio >= 0.8) return { text: "text-warn", bg: "bg-warn" };
+  return { text: "text-ok", bg: "bg-ok" };
 }
 
 function getStatusLabel(ratio: number): string {
-  if (ratio >= 1) return "EXCEEDED";
-  if (ratio >= 0.8) return "WARNING";
-  if (ratio >= 0.5) return "ON TRACK";
-  return "HEALTHY";
+  if (ratio >= 1) return "Exceeded";
+  if (ratio >= 0.8) return "Warning";
+  if (ratio >= 0.5) return "On track";
+  return "Healthy";
+}
+
+function getStatusTone(ratio: number): StatusBadgeProps["tone"] {
+  if (ratio >= 1) return "error";
+  if (ratio >= 0.8) return "warning";
+  return "success";
 }
 
 export function BudgetBurnDown({ projectId }: BudgetBurnDownProps) {
@@ -53,6 +61,7 @@ export function BudgetBurnDown({ projectId }: BudgetBurnDownProps) {
         remaining: Math.max(0, daily - spent),
         classes: getSpendClasses(ratio),
         statusLabel: getStatusLabel(ratio),
+        statusTone: getStatusTone(ratio),
       };
     });
 
@@ -75,8 +84,12 @@ export function BudgetBurnDown({ projectId }: BudgetBurnDownProps) {
 
   if (!budgetData) {
     return (
-      <div className="flex-1 overflow-auto p-6">
-        <div className="text-muted-foreground p-6">Loading budget data...</div>
+      <div className="flex-1 overflow-auto bg-app">
+        <PageHeader title="Budget burn-down" description="Daily budget consumption across all agents" />
+        <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-3 px-6 py-6">
+          <div className="h-4 w-48 animate-pulse rounded bg-surface-2" />
+          <div className="h-24 animate-pulse rounded-xl bg-surface-2" />
+        </div>
       </div>
     );
   }
@@ -84,112 +97,111 @@ export function BudgetBurnDown({ projectId }: BudgetBurnDownProps) {
   const totalClasses = getSpendClasses(budgetData.totalRatio);
 
   return (
-    <div className="flex-1 overflow-auto p-6">
-      {/* Header */}
-      <div className="mb-5">
-        <h2 className="text-foreground text-2xl font-bold">Budget Burn-Down</h2>
-        <p className="text-muted-foreground text-sm mt-1">Daily budget consumption across all agents</p>
-      </div>
-
-      {/* Aggregate Summary */}
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(130px,1fr))] gap-2.5 mb-5">
-        <SummaryCard label="Total Budget" value={`$${budgetData.totalBudget.toFixed(2)}`} colorClass="text-foreground" />
-        <SummaryCard label="Total Spent" value={`$${budgetData.totalSpent.toFixed(2)}`} colorClass={totalClasses.text} />
-        <SummaryCard label="Remaining" value={`$${Math.max(0, budgetData.totalBudget - budgetData.totalSpent).toFixed(2)}`} colorClass="text-primary" />
-        <SummaryCard label="Active Agents" value={String(budgetData.activeCount)} colorClass="text-blue-500" />
-        {budgetData.overBudgetCount > 0 && (
-          <SummaryCard label="Over Budget" value={String(budgetData.overBudgetCount)} colorClass="text-red-500" />
-        )}
-        {budgetData.warningCount > 0 && (
-          <SummaryCard label="Warning" value={String(budgetData.warningCount)} colorClass="text-amber-500" />
-        )}
-      </div>
-
-      {/* Aggregate Progress Bar */}
-      <div className="bg-card border border-border rounded-xl p-4 mb-5">
-        <div className="flex justify-between items-center mb-2">
-          <span className="text-foreground font-semibold">
-            Overall: {(budgetData.totalRatio * 100).toFixed(0)}% consumed
-          </span>
-          <span className="text-muted-foreground text-sm">
-            ${budgetData.totalSpent.toFixed(2)} / ${budgetData.totalBudget.toFixed(2)}
-          </span>
-        </div>
-        <div className="relative h-3 bg-background rounded-md overflow-hidden">
-          <div
-            className={cn("absolute top-0 left-0 h-full rounded-md transition-all duration-300", totalClasses.bg)}
-            style={{ width: `${Math.min(budgetData.totalRatio * 100, 100)}%` }}
+    <div className="flex-1 overflow-auto bg-app">
+      <PageHeader title="Budget burn-down" description="Daily budget consumption across all agents" />
+      <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-6 py-6">
+        {/* Aggregate Summary */}
+        <MetricRow className="xl:grid-cols-6">
+          <MetricBlock label="Total budget" value={`$${budgetData.totalBudget.toFixed(2)}`} />
+          <MetricBlock
+            label="Total spent"
+            value={
+              <span className={totalClasses.text}>${budgetData.totalSpent.toFixed(2)}</span>
+            }
           />
-          <div className="absolute top-0 bottom-0 w-0.5 bg-amber-500/50" style={{ left: "80%" }} />
-        </div>
-      </div>
+          <MetricBlock
+            label="Remaining"
+            value={`$${Math.max(0, budgetData.totalBudget - budgetData.totalSpent).toFixed(2)}`}
+          />
+          <MetricBlock label="Active agents" value={budgetData.activeCount} />
+          {budgetData.overBudgetCount > 0 && (
+            <MetricBlock
+              label="Over budget"
+              value={budgetData.overBudgetCount}
+              adornment={<StatusBadge tone="error">Exceeded</StatusBadge>}
+            />
+          )}
+          {budgetData.warningCount > 0 && (
+            <MetricBlock
+              label="Warning"
+              value={budgetData.warningCount}
+              adornment={<StatusBadge tone="warning">80%+</StatusBadge>}
+            />
+          )}
+        </MetricRow>
 
-      {/* Per-Agent Breakdown */}
-      <div className="flex flex-col gap-2.5">
-        {budgetData.agents.map((agent) => (
-          <div key={agent.id} className="bg-card border border-border rounded-lg px-4 py-3">
-            <div className="flex justify-between items-center mb-2 flex-wrap gap-1.5">
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-foreground">{agent.name}</span>
-                <span className="px-1.5 py-0.5 bg-background border border-border rounded text-[0.7rem] text-muted-foreground">
-                  {agent.role}
-                </span>
-                <span className={cn(
-                  "w-2 h-2 rounded-full inline-block",
-                  agent.status === "ACTIVE" ? "bg-primary"
-                    : agent.status === "PAUSED" ? "bg-amber-500"
-                    : "bg-slate-500"
-                )} />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className={cn("text-xs font-semibold", agent.classes.text)}>
-                  {agent.statusLabel}
-                </span>
-                <span className="text-muted-foreground text-sm">
-                  ${agent.spendToday.toFixed(2)} / ${agent.budgetDaily.toFixed(2)}
-                </span>
-              </div>
-            </div>
-            <div className="relative h-1.5 bg-background rounded-sm overflow-hidden">
-              <div
-                className={cn("absolute top-0 left-0 h-full rounded-sm transition-all duration-300", agent.classes.bg)}
-                style={{ width: `${Math.min(agent.ratio * 100, 100)}%` }}
-              />
-            </div>
-            <div className="flex justify-between mt-1.5">
-              <span className="text-muted-foreground text-xs">
-                Remaining: ${agent.remaining.toFixed(2)}
-              </span>
-              <span className="text-muted-foreground text-xs">
-                {(agent.ratio * 100).toFixed(0)}% used
-              </span>
-            </div>
+        {/* Aggregate Progress Bar */}
+        <div className="rounded-xl border border-line bg-surface-1 p-4">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-[13px] font-semibold text-ink">
+              Overall: {(budgetData.totalRatio * 100).toFixed(0)}% consumed
+            </span>
+            <span className="font-mono text-[12.5px] text-ink-muted">
+              ${budgetData.totalSpent.toFixed(2)} / ${budgetData.totalBudget.toFixed(2)}
+            </span>
           </div>
-        ))}
-      </div>
-
-      {budgetData.agents.length === 0 && (
-        <div className="text-center py-10 px-5 bg-card rounded-xl border border-border">
-          <p className="text-muted-foreground">No agents found. Budget tracking will appear once agents are registered.</p>
+          <div className="relative h-2 overflow-hidden rounded-full bg-surface-2">
+            <div
+              className={cn("absolute left-0 top-0 h-full rounded-full transition-[width] duration-200", totalClasses.bg)}
+              style={{ width: `${Math.min(budgetData.totalRatio * 100, 100)}%` }}
+            />
+            <div className="absolute inset-y-0 w-px bg-line-strong" style={{ left: "80%" }} />
+          </div>
         </div>
-      )}
-    </div>
-  );
-}
 
-function SummaryCard({
-  label,
-  value,
-  colorClass,
-}: {
-  label: string;
-  value: string;
-  colorClass: string;
-}) {
-  return (
-    <div className="px-3.5 py-3 bg-card border border-border rounded-lg">
-      <span className="text-[0.7rem] text-muted-foreground block">{label}</span>
-      <span className={cn("text-xl font-bold", colorClass)}>{value}</span>
+        {/* Per-Agent Breakdown */}
+        <div className="flex flex-col gap-2.5">
+          {budgetData.agents.map((agent) => (
+            <div key={agent.id} className="rounded-xl border border-line bg-surface-1 px-4 py-3">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-[13px] font-semibold text-ink">{agent.name}</span>
+                  <span className="text-[11.5px] text-ink-muted">{agent.role}</span>
+                  <span
+                    className={cn(
+                      "inline-block h-1.5 w-1.5 rounded-full",
+                      agent.status === "ACTIVE"
+                        ? "bg-ok"
+                        : agent.status === "PAUSED"
+                          ? "bg-warn"
+                          : "bg-ink-muted"
+                    )}
+                    aria-hidden
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <StatusBadge tone={agent.statusTone}>{agent.statusLabel}</StatusBadge>
+                  <span className="font-mono text-[12.5px] text-ink-muted">
+                    ${agent.spendToday.toFixed(2)} / ${agent.budgetDaily.toFixed(2)}
+                  </span>
+                </div>
+              </div>
+              <div className="relative h-1.5 overflow-hidden rounded-full bg-surface-2">
+                <div
+                  className={cn("absolute left-0 top-0 h-full rounded-full transition-[width] duration-200", agent.classes.bg)}
+                  style={{ width: `${Math.min(agent.ratio * 100, 100)}%` }}
+                />
+              </div>
+              <div className="mt-1.5 flex justify-between">
+                <span className="text-[12px] text-ink-muted">
+                  Remaining: ${agent.remaining.toFixed(2)}
+                </span>
+                <span className="text-[12px] text-ink-muted">
+                  {(agent.ratio * 100).toFixed(0)}% used
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {budgetData.agents.length === 0 && (
+          <div className="rounded-xl border border-line bg-surface-1 px-5 py-10 text-center">
+            <p className="text-[13px] text-ink-muted">
+              No agents found. Budget tracking will appear once agents are registered.
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

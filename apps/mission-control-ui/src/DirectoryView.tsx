@@ -12,6 +12,7 @@ import type { Id } from "../../../convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { PageHeader } from "./components/PageHeader";
+import { StatusBadge, type StatusBadgeProps } from "./components/factory/badges";
 import { useToast } from "./Toast";
 import { cn } from "@/lib/utils";
 import {
@@ -26,23 +27,23 @@ import {
 
 const VERSION_LIFECYCLE = ["DRAFT", "TESTING", "CANDIDATE", "APPROVED", "DEPRECATED", "RETIRED"] as const;
 
-const VERSION_STATUS_STYLES: Record<string, string> = {
-  DRAFT: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
-  TESTING: "bg-amber-500/15 text-amber-400 border-amber-500/30",
-  CANDIDATE: "bg-blue-500/15 text-blue-400 border-blue-500/30",
-  APPROVED: "bg-primary/15 text-primary border-primary/30",
-  DEPRECATED: "bg-slate-500/15 text-slate-400 border-slate-500/30",
-  RETIRED: "bg-red-500/15 text-red-400 border-red-500/30",
+const VERSION_STATUS_TONE: Record<string, StatusBadgeProps["tone"]> = {
+  DRAFT: "neutral",
+  TESTING: "warning",
+  CANDIDATE: "info",
+  APPROVED: "success",
+  DEPRECATED: "neutral",
+  RETIRED: "error",
 };
 
-const INSTANCE_STATUS_STYLES: Record<string, string> = {
-  PROVISIONING: "bg-amber-500/15 text-amber-400 border-amber-500/30",
-  ACTIVE: "bg-primary/15 text-primary border-primary/30",
-  PAUSED: "bg-slate-500/15 text-slate-400 border-slate-500/30",
-  READONLY: "bg-blue-500/15 text-blue-400 border-blue-500/30",
-  DRAINING: "bg-amber-500/15 text-amber-400 border-amber-500/30",
-  QUARANTINED: "bg-red-500/15 text-red-400 border-red-500/30",
-  RETIRED: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
+const INSTANCE_STATUS_TONE: Record<string, StatusBadgeProps["tone"]> = {
+  PROVISIONING: "warning",
+  ACTIVE: "success",
+  PAUSED: "neutral",
+  READONLY: "info",
+  DRAINING: "warning",
+  QUARANTINED: "error",
+  RETIRED: "neutral",
 };
 
 function fmtTime(ts?: number) {
@@ -61,7 +62,7 @@ function CopyButton({ value, label }: { value: string; label?: string }) {
           () => toast("Copy failed", true)
         );
       }}
-      className="inline-flex items-center gap-1 rounded border border-border bg-muted/50 px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+      className="inline-flex items-center gap-1 rounded-md border border-line bg-surface-2 px-1.5 py-0.5 text-[11px] font-mono text-ink-muted hover:text-ink hover:border-line-strong transition-colors duration-150"
       title="Copy"
     >
       <Copy className="h-2.5 w-2.5" />
@@ -235,12 +236,13 @@ export function DirectoryView({ projectId }: { projectId: Id<"projects"> | null 
         }
       />
 
-      <div className="px-6 pb-4 flex flex-wrap items-center gap-3">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Tenant</span>
+      <div className="mx-auto max-w-[1200px] px-6 py-6 flex flex-col gap-6">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-[11.5px] font-medium uppercase tracking-[0.06em] text-ink-muted">Tenant</span>
         <select
           value={selectedTenantId ?? ""}
           onChange={(e) => setSelectedTenantId((e.target.value || null) as Id<"tenants"> | null)}
-          className="rounded-md border border-input bg-background px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="h-9 rounded-lg border border-line bg-surface-1 px-3 text-[13.5px] text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <option value="">Select tenant</option>
           {(tenants ?? []).map((t) => (
@@ -249,18 +251,18 @@ export function DirectoryView({ projectId }: { projectId: Id<"projects"> | null 
         </select>
         {environments && environments.length > 0 && (
           <>
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground ml-2">Environments</span>
-            <span className="text-xs text-muted-foreground">
+            <span className="text-[11.5px] font-medium uppercase tracking-[0.06em] text-ink-muted ml-2">Environments</span>
+            <span className="text-[12.5px] text-ink-secondary">
               {(environments ?? []).map((e) => e.name).join(", ")}
             </span>
           </>
         )}
       </div>
 
-      <div className="px-6 pb-6 grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Template list (master) */}
         <Card className="p-4 lg:col-span-1">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+          <div className="text-[15px] font-semibold text-ink mb-3">
             Template list
           </div>
           <div className="space-y-1 max-h-[400px] overflow-y-auto">
@@ -273,18 +275,18 @@ export function DirectoryView({ projectId }: { projectId: Id<"projects"> | null 
                   key={template._id}
                   onClick={() => setSelectedTemplateId(template._id)}
                   className={cn(
-                    "w-full rounded-lg border px-3 py-2.5 text-left transition-colors",
+                    "w-full rounded-lg border px-3 py-2.5 text-left transition-colors duration-150",
                     isSelected
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border bg-muted/20 hover:bg-muted/40 text-foreground"
+                      ? "border-line-strong bg-surface-2 text-ink"
+                      : "border-line text-ink-secondary hover:bg-surface-2 hover:text-ink"
                   )}
                 >
                   <div className="flex items-center gap-2">
-                    <Layers className="h-3.5 w-3.5 shrink-0" />
-                    <span className="font-medium truncate">{template.name}</span>
+                    <Layers size={14} strokeWidth={1.7} className="shrink-0" aria-hidden />
+                    <span className="font-medium truncate text-[13.5px]">{template.name}</span>
                   </div>
                   {(versionCount !== null || instCount !== null) && (
-                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                    <div className="text-[11.5px] text-ink-muted mt-0.5">
                       {versionCount != null && `${versionCount} version${versionCount !== 1 ? "s" : ""}`}
                       {versionCount != null && instCount != null && instCount > 0 && " · "}
                       {instCount != null && instCount > 0 && `${instCount} instance${instCount !== 1 ? "s" : ""}`}
@@ -294,7 +296,7 @@ export function DirectoryView({ projectId }: { projectId: Id<"projects"> | null 
               );
             })}
             {(templates ?? []).length === 0 && (
-              <div className="rounded-lg border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
+              <div className="rounded-lg border border-dashed border-line p-4 text-center text-[13.5px] text-ink-muted">
                 No templates. Use Dev Tools below to seed demo data.
               </div>
             )}
@@ -306,7 +308,7 @@ export function DirectoryView({ projectId }: { projectId: Id<"projects"> | null 
           {selectedTemplateId ? (
             <>
               <Card className="p-4">
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                <div className="text-[15px] font-semibold text-ink mb-3">
                   Version lineage
                 </div>
                 {/* Lifecycle step indicator */}
@@ -314,7 +316,7 @@ export function DirectoryView({ projectId }: { projectId: Id<"projects"> | null 
                   {VERSION_LIFECYCLE.map((step) => (
                     <span
                       key={step}
-                      className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/60"
+                      className="text-[11px] font-medium text-ink-muted"
                     >
                       {step}
                       {step !== "RETIRED" && <ChevronRight className="inline h-2.5 w-2.5 ml-0.5 align-middle" />}
@@ -330,35 +332,30 @@ export function DirectoryView({ projectId }: { projectId: Id<"projects"> | null 
                         key={version._id}
                         className={cn(
                           "rounded-lg border p-3",
-                          isApproved ? "border-primary/30 bg-primary/5" : "border-border bg-muted/20"
+                          isApproved ? "border-line-strong bg-surface-2" : "border-line"
                         )}
                       >
                         <div className="flex items-center justify-between gap-2 flex-wrap">
                           <div className="flex items-center gap-2">
-                            <span className="font-semibold text-foreground">v{version.version}</span>
-                            <span
-                              className={cn(
-                                "rounded border px-1.5 py-0.5 text-[10px] font-semibold",
-                                VERSION_STATUS_STYLES[version.status] ?? "bg-muted text-muted-foreground border-border"
-                              )}
-                            >
+                            <span className="font-semibold text-ink font-mono text-[13px]">v{version.version}</span>
+                            <StatusBadge tone={VERSION_STATUS_TONE[version.status] ?? "neutral"}>
                               {version.status}
-                            </span>
+                            </StatusBadge>
                             {isApproved && (
-                              <span className="text-[10px] text-primary font-medium">current</span>
+                              <span className="text-[11.5px] text-ink-secondary font-medium">current</span>
                             )}
                           </div>
                           <CopyButton value={version.genomeHash} label={`${version.genomeHash.slice(0, 12)}…`} />
                         </div>
-                        <div className="text-[10px] text-muted-foreground mt-1.5 font-mono">
+                        <div className="text-[11.5px] text-ink-muted mt-1.5 font-mono">
                           genome: {version.genomeHash.slice(0, 12)}…
                         </div>
                         {version.notes && (
-                          <p className="text-xs text-muted-foreground/80 mt-1.5">{version.notes}</p>
+                          <p className="text-[12.5px] text-ink-secondary mt-1.5">{version.notes}</p>
                         )}
                         {instList.length > 0 && (
-                          <div className="mt-3 pt-3 border-t border-border">
-                            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                          <div className="mt-3 pt-3 border-t border-line">
+                            <div className="text-[11.5px] font-medium uppercase tracking-[0.06em] text-ink-muted mb-2">
                               Instances ({instList.length})
                             </div>
                             <div className="space-y-1.5">
@@ -367,23 +364,21 @@ export function DirectoryView({ projectId }: { projectId: Id<"projects"> | null 
                                 return (
                                   <div
                                     key={inst._id}
-                                    className="flex items-center justify-between gap-2 rounded border border-border/50 bg-background/50 px-2.5 py-1.5 text-xs"
+                                    className="flex items-center justify-between gap-2 rounded-lg border border-line bg-surface-1 px-2.5 py-1.5 text-[12.5px]"
                                   >
                                     <div className="flex items-center gap-2 min-w-0">
-                                      <Server className="h-3 w-3 text-muted-foreground shrink-0" />
-                                      <span className="truncate">{inst.name}</span>
+                                      <Server size={12} strokeWidth={1.7} className="text-ink-muted shrink-0" aria-hidden />
+                                      <span className="truncate text-ink">{inst.name}</span>
                                       {env && (
-                                        <span className="text-[10px] text-muted-foreground shrink-0">{env.name}</span>
+                                        <span className="text-[11.5px] text-ink-muted shrink-0">{env.name}</span>
                                       )}
                                     </div>
-                                    <span
-                                      className={cn(
-                                        "rounded border px-1.5 py-0.5 text-[10px] font-semibold shrink-0",
-                                        INSTANCE_STATUS_STYLES[inst.status] ?? "bg-muted text-muted-foreground border-border"
-                                      )}
+                                    <StatusBadge
+                                      tone={INSTANCE_STATUS_TONE[inst.status] ?? "neutral"}
+                                      className="shrink-0"
                                     >
                                       {inst.status}
-                                    </span>
+                                    </StatusBadge>
                                   </div>
                                 );
                               })}
@@ -395,34 +390,34 @@ export function DirectoryView({ projectId }: { projectId: Id<"projects"> | null 
                   })}
                 </div>
                 {(versions ?? []).length === 0 && (
-                  <div className="rounded-lg border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
+                  <div className="rounded-lg border border-dashed border-line p-4 text-center text-[13.5px] text-ink-muted">
                     No versions for this template.
                   </div>
                 )}
               </Card>
             </>
           ) : (
-            <Card className="p-8 text-center text-muted-foreground">
-              <Layers className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">Select a template to view version lineage and instances.</p>
+            <Card className="p-8 text-center text-ink-muted">
+              <Layers size={28} strokeWidth={1.6} className="mx-auto mb-2" aria-hidden />
+              <p className="text-[13.5px]">Select a template to view version lineage and instances.</p>
             </Card>
           )}
         </div>
       </div>
 
       {/* Dev Tools (collapsed) */}
-      <div className="px-6 pb-6">
+      <div>
         <button
           type="button"
           onClick={() => setDevToolsOpen((o) => !o)}
-          className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+          className="flex items-center gap-2 text-[11.5px] font-medium uppercase tracking-[0.06em] text-ink-muted hover:text-ink transition-colors duration-150"
         >
           {devToolsOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
           Dev Tools
         </button>
         {devToolsOpen && (
           <Card className="mt-2 p-4">
-            <p className="text-[11px] text-muted-foreground mb-3">
+            <p className="text-[12.5px] text-ink-secondary mb-3">
               Seed demo data and backfill legacy agent refs into ARM instance/version fields.
             </p>
             <div className="flex flex-wrap gap-2 mb-3">
@@ -437,7 +432,7 @@ export function DirectoryView({ projectId }: { projectId: Id<"projects"> | null 
               </Button>
             </div>
             {migrationHealth && (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px]">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11.5px] text-ink-muted">
                 <div>Missing task refs: {migrationHealth.missingInstanceRefs?.tasks ?? 0}</div>
                 <div>Missing run refs: {migrationHealth.missingInstanceRefs?.runs ?? 0}</div>
                 <div>Missing toolCall refs: {migrationHealth.missingInstanceRefs?.toolCalls ?? 0}</div>
@@ -446,6 +441,7 @@ export function DirectoryView({ projectId }: { projectId: Id<"projects"> | null 
             )}
           </Card>
         )}
+      </div>
       </div>
     </main>
   );

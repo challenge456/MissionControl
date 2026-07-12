@@ -1,31 +1,29 @@
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ExternalLink, FileText, CreditCard } from "lucide-react";
+import { ExternalLink, FileText, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { MetricBlock, MetricRow } from "./components/factory/MetricBlock";
+import { CHART_SERIES } from "./components/factory/chartTheme";
 
 interface CostAnalyticsProps {
   projectId: Id<"projects"> | null;
   onClose: () => void;
 }
 
+const CARD_CLASS = "rounded-xl border border-line bg-surface-1 p-4";
+
 export function CostAnalytics({ projectId, onClose }: CostAnalyticsProps) {
   const runs = useQuery(
     api.runs.listRecent,
     { limit: 1000 }
   );
-  
+
   const agents = useQuery(
     api.agents.listAll,
     projectId ? { projectId } : {}
   );
-  
+
   const tasks = useQuery(
     api.tasks.listAll,
     projectId ? { projectId } : {}
@@ -33,9 +31,9 @@ export function CostAnalytics({ projectId, onClose }: CostAnalyticsProps) {
 
   if (!runs || !agents || !tasks) {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white dark:bg-card rounded-lg p-6">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+        <div className="rounded-xl border border-line bg-surface-1 p-6">
+          <div className="h-8 w-40 animate-pulse rounded bg-surface-2" />
         </div>
       </div>
     );
@@ -47,17 +45,17 @@ export function CostAnalytics({ projectId, onClose }: CostAnalyticsProps) {
   const todayCost = runs
     .filter((r) => r.startedAt >= todayStart)
     .reduce((sum, r) => sum + r.costUsd, 0);
-  
+
   const last7Days = Date.now() - 7 * 24 * 60 * 60 * 1000;
   const last7DaysCost = runs
     .filter((r) => r.startedAt >= last7Days)
     .reduce((sum, r) => sum + r.costUsd, 0);
-  
+
   const last30Days = Date.now() - 30 * 24 * 60 * 60 * 1000;
   const last30DaysCost = runs
     .filter((r) => r.startedAt >= last30Days)
     .reduce((sum, r) => sum + r.costUsd, 0);
-  
+
   // Cost by agent
   const costByAgent = agents.map((agent) => {
     const agentRuns = runs.filter((r) => r.agentId === agent._id);
@@ -65,7 +63,7 @@ export function CostAnalytics({ projectId, onClose }: CostAnalyticsProps) {
     const runCount = agentRuns.length;
     return { agent, cost, runCount };
   }).sort((a, b) => b.cost - a.cost);
-  
+
   // Cost by task
   const costByTask = tasks.map((task) => {
     return {
@@ -75,7 +73,7 @@ export function CostAnalytics({ projectId, onClose }: CostAnalyticsProps) {
       remaining: task.budgetRemaining || 0,
     };
   }).sort((a, b) => b.cost - a.cost);
-  
+
   // Cost by model
   const costByModel: Record<string, { cost: number; runs: number }> = {};
   for (const run of runs) {
@@ -88,7 +86,7 @@ export function CostAnalytics({ projectId, onClose }: CostAnalyticsProps) {
   const modelStats = Object.entries(costByModel)
     .map(([model, stats]) => ({ model, ...stats }))
     .sort((a, b) => b.cost - a.cost);
-  
+
   // Daily cost trend (last 7 days)
   const dailyCosts: Record<string, number> = {};
   for (const run of runs) {
@@ -100,7 +98,7 @@ export function CostAnalytics({ projectId, onClose }: CostAnalyticsProps) {
   const costTrend = Object.entries(dailyCosts)
     .map(([date, cost]) => ({ date, cost }))
     .sort((a, b) => a.date.localeCompare(b.date));
-  
+
   const maxDailyCost = Math.max(...Object.values(dailyCosts), 1);
 
   // Provider billing dashboards (manual auth only — see docs/COSTS.md). Grouped for clarity.
@@ -134,237 +132,192 @@ export function CostAnalytics({ projectId, onClose }: CostAnalyticsProps) {
   ];
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-      <div className="bg-card border border-border rounded-xl shadow-xl max-w-7xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="flex max-h-[90vh] w-full max-w-7xl flex-col overflow-hidden rounded-xl border border-line bg-surface-1">
         {/* Header */}
-        <div className="p-6 border-b border-border shrink-0">
+        <div className="shrink-0 border-b border-line p-6">
           <div className="flex items-center justify-between">
             <div>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div>
-                      <h2 className="text-2xl font-bold text-foreground">
-                        Cost Analytics
-                      </h2>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {runs.length} runs · ${totalCost.toFixed(2)} total
-                      </p>
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="max-w-[260px]">
-                    Cost from agent runs. Savings vs. paying list price without run-level optimizations.
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              <h2 className="text-[19px] font-semibold text-ink">Cost analytics</h2>
+              <p
+                className="mt-1 text-[13px] text-ink-secondary"
+                title="Cost from agent runs. Savings vs. paying list price without run-level optimizations."
+              >
+                {runs.length} runs · ${totalCost.toFixed(2)} total
+              </p>
             </div>
             <button
               onClick={onClose}
-              className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              className="rounded-md p-1.5 text-ink-muted transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
               aria-label="Close"
             >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              <X size={16} strokeWidth={1.75} />
             </button>
           </div>
         </div>
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6">
-          {/* Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <Card className="p-4">
-              <div className="text-sm font-medium text-muted-foreground">Today</div>
-              <div className="text-2xl font-bold text-foreground mt-1 tabular-nums">
-                ${todayCost.toFixed(2)}
-              </div>
-            </Card>
-            <Card className="p-4">
-              <div className="text-sm font-medium text-muted-foreground">Last 7 Days</div>
-              <div className="text-2xl font-bold text-foreground mt-1 tabular-nums">
-                ${last7DaysCost.toFixed(2)}
-              </div>
-            </Card>
-            <Card className="p-4">
-              <div className="text-sm font-medium text-muted-foreground">Last 30 Days</div>
-              <div className="text-2xl font-bold text-primary mt-1 tabular-nums">
-                ${last30DaysCost.toFixed(2)}
-              </div>
-            </Card>
-            <Card className="p-4">
-              <div className="text-sm font-medium text-muted-foreground">All Time</div>
-              <div className="text-2xl font-bold text-foreground mt-1 tabular-nums">
-                ${totalCost.toFixed(2)}
-              </div>
-            </Card>
+          {/* Summary */}
+          <MetricRow className="mb-6">
+            <MetricBlock label="Today" value={`$${todayCost.toFixed(2)}`} />
+            <MetricBlock label="Last 7 days" value={`$${last7DaysCost.toFixed(2)}`} />
+            <MetricBlock label="Last 30 days" value={`$${last30DaysCost.toFixed(2)}`} />
+            <MetricBlock label="All time" value={`$${totalCost.toFixed(2)}`} />
+          </MetricRow>
+
+          {/* Provider billing — grouped vendor dashboards */}
+          <div className={cn(CARD_CLASS, "mb-6 p-5")}>
+            <h3 className="text-[15px] font-semibold text-ink">Provider billing</h3>
+            <p className="mt-1 text-[12.5px] text-ink-muted">
+              Vendor dashboards require manual sign-in. Review regularly and update{" "}
+              <code className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-ink-secondary">docs/COSTS.md</code>{" "}
+              with current spending.
+            </p>
+            <div className="mt-4 grid grid-cols-1 gap-6 md:grid-cols-3">
+              {providerBillingGroups.map(({ label, links }) => (
+                <div key={label}>
+                  <div className="mb-2 text-[11.5px] font-medium uppercase tracking-[0.06em] text-ink-muted">
+                    {label}
+                  </div>
+                  <ul>
+                    {links.map(({ name, url }) => (
+                      <li key={name}>
+                        <a
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="group flex items-center justify-between gap-2 rounded-md px-3 py-2 text-[13px] text-ink-secondary transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+                        >
+                          <span>{name}</span>
+                          <ExternalLink
+                            size={14}
+                            strokeWidth={1.75}
+                            className="shrink-0 text-ink-muted transition-colors duration-150 group-hover:text-ink-secondary"
+                          />
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+            <p className="mt-4 flex items-center gap-1.5 border-t border-line pt-4 text-[12px] text-ink-muted">
+              <FileText size={14} strokeWidth={1.75} className="shrink-0" />
+              Full checklist and spending table:{" "}
+              <code className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-ink-secondary">docs/COSTS.md</code>
+            </p>
           </div>
 
-          {/* Provider billing — first-class card, grouped vendors */}
-          <Card className="mb-6">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <CreditCard className="h-4 w-4 text-primary" />
-                Provider billing
-              </CardTitle>
-              <CardDescription>
-                Vendor dashboards require manual sign-in. Review regularly and update{" "}
-                <code className="text-[11px] bg-muted/80 px-1.5 py-0.5 rounded">docs/COSTS.md</code> with current spending.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {providerBillingGroups.map(({ label, links }) => (
-                  <div key={label}>
-                    <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                      {label}
-                    </div>
-                    <ul className="space-y-1">
-                      {links.map(({ name, url }) => (
-                        <li key={name}>
-                          <a
-                            href={url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center justify-between gap-2 rounded-md py-2 px-3 text-sm text-foreground hover:bg-accent transition-colors group"
-                          >
-                            <span>{name}</span>
-                            <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-primary transition-colors" />
-                          </a>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-              <p className="text-xs text-muted-foreground mt-4 pt-4 border-t border-border flex items-center gap-1.5">
-                <FileText className="h-3.5 w-3.5 shrink-0" />
-                Full checklist and spending table: <code className="bg-muted/80 px-1.5 py-0.5 rounded">docs/COSTS.md</code>
-              </p>
-            </CardContent>
-          </Card>
-
           {/* Daily Trend Chart */}
-          <Card className="p-4 mb-6">
-            <h3 className="text-sm font-semibold text-foreground mb-4">
+          <div className={cn(CARD_CLASS, "mb-6")}>
+            <h3 className="mb-4 text-[15px] font-semibold text-ink">
               Daily cost trend (last 7 days)
             </h3>
             <div className="space-y-2">
               {costTrend.map(({ date, cost }) => (
                 <div key={date} className="flex items-center gap-3">
-                  <div className="text-xs text-muted-foreground w-24 shrink-0">
+                  <div className="w-24 shrink-0 text-[12px] text-ink-muted">
                     {new Date(date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                   </div>
-                  <div className="flex-1 bg-muted/50 rounded-full h-6 relative overflow-hidden">
+                  <div className="relative h-6 flex-1 overflow-hidden rounded-md bg-surface-2">
                     <div
-                      className="bg-primary/80 h-6 rounded-full transition-all min-w-[2px]"
-                      style={{ width: `${(cost / maxDailyCost) * 100}%` }}
+                      className="h-6 min-w-[2px] rounded-md"
+                      style={{
+                        width: `${(cost / maxDailyCost) * 100}%`,
+                        backgroundColor: CHART_SERIES[0],
+                      }}
                     />
-                    <div className="absolute inset-0 flex items-center px-2 text-xs font-medium text-foreground">
+                    <div className="absolute inset-0 flex items-center px-2 font-mono text-[12px] font-medium text-ink">
                       ${cost.toFixed(2)}
                     </div>
                   </div>
                 </div>
               ))}
             </div>
-          </Card>
+          </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             {/* Cost by Agent */}
-            <Card className="p-4">
-              <h3 className="text-sm font-semibold text-foreground mb-4">
-                Cost by agent
-              </h3>
+            <div className={CARD_CLASS}>
+              <h3 className="mb-4 text-[15px] font-semibold text-ink">Cost by agent</h3>
               <div className="space-y-2">
                 {costByAgent.slice(0, 10).map(({ agent, cost, runCount }) => (
                   <div key={agent._id} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span>{agent.emoji || "🤖"}</span>
-                      <span className="text-sm text-foreground truncate">
-                        {agent.name}
-                      </span>
-                      <span className="text-xs text-muted-foreground shrink-0">
-                        ({runCount} runs)
-                      </span>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="truncate text-[13px] text-ink">{agent.name}</span>
+                      <span className="shrink-0 text-[12px] text-ink-muted">({runCount} runs)</span>
                     </div>
-                    <span className="text-sm font-medium text-foreground tabular-nums shrink-0 ml-2">
+                    <span className="ml-2 shrink-0 font-mono text-[13px] font-medium tabular-nums text-ink">
                       ${cost.toFixed(2)}
                     </span>
                   </div>
                 ))}
               </div>
-            </Card>
+            </div>
 
             {/* Cost by Model */}
-            <Card className="p-4">
-              <h3 className="text-sm font-semibold text-foreground mb-4">
-                Cost by model
-              </h3>
+            <div className={CARD_CLASS}>
+              <h3 className="mb-4 text-[15px] font-semibold text-ink">Cost by model</h3>
               <div className="space-y-2">
                 {modelStats.map(({ model, cost, runs }) => (
                   <div key={model} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-sm text-foreground truncate">
-                        {model}
-                      </span>
-                      <span className="text-xs text-muted-foreground shrink-0">
-                        ({runs} runs)
-                      </span>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="truncate font-mono text-[12.5px] text-ink">{model}</span>
+                      <span className="shrink-0 text-[12px] text-ink-muted">({runs} runs)</span>
                     </div>
-                    <span className="text-sm font-medium text-foreground tabular-nums shrink-0 ml-2">
+                    <span className="ml-2 shrink-0 font-mono text-[13px] font-medium tabular-nums text-ink">
                       ${cost.toFixed(2)}
                     </span>
                   </div>
                 ))}
               </div>
-            </Card>
+            </div>
 
-            {/* Most Expensive Tasks — fix contrast */}
-            <Card className="p-4 lg:col-span-2">
-              <h3 className="text-sm font-semibold text-foreground mb-4">
-                Most expensive tasks
-              </h3>
+            {/* Most Expensive Tasks */}
+            <div className={cn(CARD_CLASS, "lg:col-span-2")}>
+              <h3 className="mb-4 text-[15px] font-semibold text-ink">Most expensive tasks</h3>
               <div className="space-y-3">
                 {costByTask.slice(0, 10).map(({ task, cost, budget, remaining }) => (
                   <div key={task._id} className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-foreground truncate">
-                        {task.title}
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-0.5">
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[13px] font-medium text-ink">{task.title}</div>
+                      <div className="mt-0.5 text-[12px] text-ink-muted">
                         {task.type} · Priority {task.priority}
                       </div>
                       {budget > 0 && (
                         <div className="mt-2">
-                          <div className="w-full bg-muted/50 rounded-full h-1.5 overflow-hidden">
+                          <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
                             <div
-                              className={`h-1.5 rounded-full ${
+                              className={cn(
+                                "h-1.5 rounded-full",
                                 remaining < 0
-                                  ? "bg-destructive"
+                                  ? "bg-err"
                                   : remaining < budget * 0.2
-                                  ? "bg-amber-500"
-                                  : "bg-primary"
-                              }`}
+                                    ? "bg-warn"
+                                    : "bg-ok"
+                              )}
                               style={{ width: `${Math.min((cost / budget) * 100, 100)}%` }}
                             />
                           </div>
-                          <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                          <div className="mt-1 flex justify-between text-[12px] text-ink-muted">
                             <span>${cost.toFixed(2)}</span>
                             <span>${budget.toFixed(2)} budget</span>
                           </div>
                         </div>
                       )}
                     </div>
-                    <div className="text-right shrink-0">
-                      <div className="text-sm font-semibold text-foreground tabular-nums">
+                    <div className="shrink-0 text-right">
+                      <div className="font-mono text-[13px] font-semibold tabular-nums text-ink">
                         ${cost.toFixed(2)}
                       </div>
                       {budget > 0 && (
-                        <div className={`text-xs mt-0.5 ${
-                          remaining < 0
-                            ? "text-destructive"
-                            : "text-muted-foreground"
-                        }`}>
+                        <div
+                          className={cn(
+                            "mt-0.5 text-[12px]",
+                            remaining < 0 ? "text-err" : "text-ink-muted"
+                          )}
+                        >
                           {remaining < 0 ? "Over" : `${remaining.toFixed(2)} left`}
                         </div>
                       )}
@@ -372,7 +325,7 @@ export function CostAnalytics({ projectId, onClose }: CostAnalyticsProps) {
                   </div>
                 ))}
               </div>
-            </Card>
+            </div>
           </div>
         </div>
       </div>

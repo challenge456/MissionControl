@@ -20,21 +20,21 @@ export function GherkinStudioView(_props: GherkinStudioViewProps) {
   const parse = useAction((api as any).gherkin.parse);
 
   return (
-    <main className="flex-1 overflow-auto p-6 space-y-4">
+    <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-6 py-6">
       <header>
-        <h2 className="text-lg font-semibold">Gherkin Studio</h2>
-        <p className="text-sm text-muted-foreground">Generate and parse BDD features from recorded events.</p>
+        <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-ink">Gherkin Studio</h1>
+        <p className="mt-1.5 text-[14px] text-ink-secondary">Generate and parse BDD features from recorded events.</p>
       </header>
 
-      <section className="rounded-lg border border-border p-4 space-y-3">
+      <section className="flex flex-col gap-3 rounded-xl border border-line bg-surface-1 p-5">
         <input
-          className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+          className="h-9 w-full rounded-lg border border-line bg-surface-1 px-3 text-[13.5px] text-ink placeholder:text-ink-muted"
           value={scenarioName}
           onChange={(e) => setScenarioName(e.target.value)}
           placeholder="Scenario name"
         />
         <textarea
-          className="min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-xs"
+          className="min-h-[120px] w-full rounded-lg border border-line bg-surface-1 px-3 py-2 font-mono text-[12px] text-ink placeholder:text-ink-muted"
           value={eventsJson}
           onChange={(e) => setEventsJson(e.target.value)}
         />
@@ -60,22 +60,22 @@ export function GherkinStudioView(_props: GherkinStudioViewProps) {
       </section>
 
       {gherkinText && (
-        <section className="rounded-lg border border-border p-4 space-y-2">
-          <h3 className="font-medium">Generated Feature</h3>
-          <pre className="rounded-md bg-muted/40 p-3 text-xs overflow-auto">{gherkinText}</pre>
+        <section className="flex flex-col gap-3 rounded-xl border border-line bg-surface-1 p-5">
+          <h2 className="text-[15px] font-semibold text-ink">Generated Feature</h2>
+          <pre className="overflow-x-auto rounded-lg bg-surface-2 p-3 font-mono text-[12px] leading-relaxed text-ink-secondary">{gherkinText}</pre>
         </section>
       )}
 
       {parsed.length > 0 && (
-        <section className="rounded-lg border border-border p-4 space-y-2">
-          <h3 className="font-medium">Parsed Steps</h3>
-          <ul className="list-disc pl-5 text-sm space-y-1">
+        <section className="flex flex-col gap-3 rounded-xl border border-line bg-surface-1 p-5">
+          <h2 className="text-[15px] font-semibold text-ink">Parsed Steps</h2>
+          <ul className="flex list-disc flex-col gap-1 pl-5 text-[13.5px] text-ink-secondary">
             {parsed.map((step, index) => (
               <li key={`${step}-${index}`}>{step}</li>
             ))}
           </ul>
         </section>
       )}
-    </main>
+    </div>
   );
 }

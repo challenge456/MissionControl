@@ -6,20 +6,13 @@ import { cn } from "@/lib/utils";
 import { PageHeader } from "./components/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { MetricBlock } from "@/components/factory/MetricBlock";
 import { Calendar, RefreshCw } from "lucide-react";
 
 interface CalendarViewProps {
   projectId: Id<"projects"> | null;
 }
-
-const taskTypeBorderClass: Record<string, string> = {
-  CONTENT: "border-l-blue-500",
-  SOCIAL: "border-l-amber-500",
-  EMAIL_MARKETING: "border-l-primary",
-  CUSTOMER_RESEARCH: "border-l-yellow-500",
-  SEO_RESEARCH: "border-l-blue-500",
-  ENGINEERING: "border-l-red-500",
-};
 
 type ViewMode = "week" | "today";
 
@@ -48,7 +41,7 @@ export function CalendarView({ projectId }: CalendarViewProps) {
   const tasksByDay = groupTasksByDay(scheduledTasks, weekDays);
 
   return (
-    <main className="mc-page">
+    <main className="flex-1 overflow-auto bg-app">
       <PageHeader
         title="Calendar"
         description={
@@ -59,71 +52,81 @@ export function CalendarView({ projectId }: CalendarViewProps) {
         eyebrow="Operations"
         actions={
           <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant={viewMode === "week" ? "default" : "outline"}
-              onClick={() => setViewMode("week")}
-              className="h-8 text-xs"
-            >
-              Week
-            </Button>
-            <Button
-              size="sm"
-              variant={viewMode === "today" ? "default" : "outline"}
-              onClick={() => setViewMode("today")}
-              className="h-8 text-xs"
-            >
-              Today
-            </Button>
+            <div className="flex gap-1 rounded-lg border border-line p-0.5">
+              <button
+                onClick={() => setViewMode("week")}
+                className={cn(
+                  "rounded-md px-3 py-1 text-xs font-medium transition-colors duration-150",
+                  viewMode === "week" ? "bg-surface-2 text-ink" : "text-ink-secondary hover:text-ink"
+                )}
+              >
+                Week
+              </button>
+              <button
+                onClick={() => setViewMode("today")}
+                className={cn(
+                  "rounded-md px-3 py-1 text-xs font-medium transition-colors duration-150",
+                  viewMode === "today" ? "bg-surface-2 text-ink" : "text-ink-secondary hover:text-ink"
+                )}
+              >
+                Today
+              </button>
+            </div>
             <Button size="sm" variant="ghost" className="h-8 w-8 p-0" aria-label="Refresh">
-              <RefreshCw className="h-3.5 w-3.5" />
+              <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.7} />
             </Button>
           </div>
         }
       />
 
-      <div className="mc-page-body mc-page-stack">
+      <div className="px-6 py-6 flex flex-col gap-6">
       <div className="grid gap-4 md:grid-cols-4">
         <Card className="p-4">
-          <div className="mc-kicker">Scheduled</div>
-          <div className="mt-2 text-3xl font-semibold text-foreground">{scheduledTasks.length}</div>
-          <div className="mt-1 text-xs text-muted-foreground">Tasks visible on the calendar</div>
+          <MetricBlock
+            label="Scheduled"
+            value={scheduledTasks.length}
+            detail="Tasks visible on the calendar"
+          />
         </Card>
         <Card className="p-4">
-          <div className="mc-kicker">Recurring</div>
-          <div className="mt-2 text-3xl font-semibold text-cyan-100">{recurringTasks.length}</div>
-          <div className="mt-1 text-xs text-muted-foreground">Routines still repeating without manual re-entry</div>
+          <MetricBlock
+            label="Recurring"
+            value={recurringTasks.length}
+            detail="Routines still repeating without manual re-entry"
+          />
         </Card>
         <Card className="p-4">
-          <div className="mc-kicker">Today</div>
-          <div className="mt-2 text-3xl font-semibold text-amber-100">{tasksByDay[today.getDay()]?.length ?? 0}</div>
-          <div className="mt-1 text-xs text-muted-foreground">Tasks currently landing on today&apos;s schedule</div>
+          <MetricBlock
+            label="Today"
+            value={tasksByDay[today.getDay()]?.length ?? 0}
+            detail="Tasks currently landing on today's schedule"
+          />
         </Card>
         <Card className="p-4">
-          <div className="mc-kicker">View</div>
-          <div className="mt-2 text-3xl font-semibold text-foreground capitalize">{viewMode}</div>
-          <div className="mt-1 text-xs text-muted-foreground">Switch between a weekly scan and a focused today view</div>
+          <MetricBlock
+            label="View"
+            value={<span className="capitalize">{viewMode}</span>}
+            detail="Switch between a weekly scan and a focused today view"
+          />
         </Card>
       </div>
 
       {scheduledTasks.length === 0 && (
-        <Card className="rounded-xl border border-dashed border-border bg-muted/20 p-12 text-center">
-          <Calendar className="h-12 w-12 mx-auto text-muted-foreground/40 mb-4" />
-          <h3 className="text-sm font-semibold text-foreground mb-1">No scheduled tasks</h3>
-          <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-            Add a due date or recurrence to tasks from the task drawer to see them here. Great for standups, reviews, and recurring agent routines.
-          </p>
-        </Card>
+        <EmptyState
+          icon={Calendar}
+          title="No scheduled tasks"
+          description="Add a due date or recurrence to tasks from the task drawer to see them here. Great for standups, reviews, and recurring agent routines."
+        />
       )}
 
       {scheduledTasks.length > 0 && recurringTasks.length > 0 && (
-        <div className="mb-8">
-          <h2 className="text-xl font-semibold text-foreground mt-0 mb-3">Always running</h2>
+        <div>
+          <h2 className="text-[19px] font-semibold text-ink mt-0 mb-3">Always running</h2>
           <div className="flex gap-3 flex-wrap">
             {recurringTasks.map((task) => (
-              <div key={task._id} className="py-3 px-4 bg-card border border-border rounded-lg">
-                <div className="text-sm font-medium text-foreground mb-1">{task.title}</div>
-                <div className="text-xs text-muted-foreground">
+              <div key={task._id} className="py-3 px-4 bg-surface-1 border border-line rounded-xl transition-colors duration-150 hover:border-line-strong">
+                <div className="text-[13.5px] font-medium text-ink mb-1">{task.title}</div>
+                <div className="text-[12.5px] text-ink-muted">
                   Every {formatRecurrence(task.recurrence)}
                 </div>
               </div>
@@ -141,15 +144,15 @@ export function CalendarView({ projectId }: CalendarViewProps) {
               <div
                 key={day.toISOString()}
                 className={cn(
-                  "bg-card border border-border rounded-lg overflow-hidden",
-                  isToday && "border-primary ring-2 ring-primary/25"
+                  "bg-surface-1 border rounded-xl overflow-hidden",
+                  isToday ? "border-line-strong" : "border-line"
                 )}
               >
-                <div className="p-3 border-b border-border text-center">
-                  <div className="text-sm font-semibold text-foreground mb-0.5">
+                <div className="p-3 border-b border-line text-center">
+                  <div className="text-[13.5px] font-semibold text-ink mb-0.5">
                     {day.toLocaleDateString("en-US", { weekday: "short" })}
                   </div>
-                  <div className="text-xs text-muted-foreground">
+                  <div className="text-[12.5px] text-ink-muted">
                     {day.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                   </div>
                 </div>
@@ -165,8 +168,8 @@ export function CalendarView({ projectId }: CalendarViewProps) {
       )}
 
       {scheduledTasks.length > 0 && viewMode === "today" && (
-        <div className="max-w-[800px] mx-auto">
-          <h2 className="text-2xl font-semibold text-foreground mt-0 mb-6">
+        <div className="max-w-[800px] mx-auto w-full">
+          <h2 className="text-[19px] font-semibold text-ink mt-0 mb-6">
             {today.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
           </h2>
           <div className="flex flex-col gap-3">
@@ -197,15 +200,14 @@ function TaskCard({ task, large }: TaskCardProps) {
   return (
     <div
       className={cn(
-        "py-2 px-3 bg-muted border border-border border-l-[3px] rounded-md cursor-pointer transition-all duration-200",
-        large && "py-3 px-4",
-        taskTypeBorderClass[task.type] ?? "border-l-blue-500"
+        "py-2 px-3 bg-surface-2 border border-line rounded-lg cursor-pointer transition-colors duration-150 hover:border-line-strong",
+        large && "py-3 px-4"
       )}
     >
-      <div className="text-xs text-muted-foreground mb-1">{time}</div>
-      <div className="text-sm font-medium text-foreground leading-snug">{task.title}</div>
+      <div className="text-[12.5px] text-ink-muted mb-1">{time} · {task.type}</div>
+      <div className="text-[13.5px] font-medium text-ink leading-snug">{task.title}</div>
       {task.description && large && (
-        <div className="text-xs text-muted-foreground mt-1.5 leading-snug">{task.description}</div>
+        <div className="text-[12.5px] text-ink-muted mt-1.5 leading-snug">{task.description}</div>
       )}
     </div>
   );

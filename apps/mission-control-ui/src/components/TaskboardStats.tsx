@@ -40,21 +40,21 @@ export function TaskboardStats({ projectId, className }: TaskboardStatsProps) {
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center gap-4 px-4 py-2 border-b border-border bg-muted/30",
+        "flex flex-wrap items-center gap-4 px-4 py-2 border-b border-line bg-surface-1 text-[12.5px]",
         className
       )}
     >
-      <span className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
-        {thisWeek} This week
+      <span className="text-ink-secondary">
+        <span className="font-medium text-ink">{thisWeek}</span> This week
       </span>
-      <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
-        {inProgress} In progress
+      <span className="text-ink-secondary">
+        <span className="font-medium text-ink">{inProgress}</span> In progress
       </span>
-      <span className="text-sm font-medium text-foreground">
-        {total} Total
+      <span className="text-ink-secondary">
+        <span className="font-medium text-ink">{total}</span> Total
       </span>
-      <span className="text-sm font-medium text-violet-600 dark:text-violet-400">
-        {completionPct}% Completion
+      <span className="text-ink-secondary">
+        <span className="font-medium text-ink">{completionPct}%</span> Completion
       </span>
     </div>
   );

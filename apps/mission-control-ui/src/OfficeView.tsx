@@ -1,13 +1,13 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
-import { motion, AnimatePresence } from "framer-motion";
 import type { Id, Doc } from "../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "./components/PageHeader";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { StatusBadge } from "./components/factory/badges";
+import { MetricBlock } from "./components/factory/MetricBlock";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Building2, RotateCcw } from "lucide-react";
 
@@ -21,18 +21,18 @@ function getStatusConfig(status: AgentStatusType, hasTask: boolean) {
   switch (status) {
     case "ACTIVE":
       return hasTask
-        ? { twText: "text-primary", twBg: "bg-primary", twBorder: "border-primary", twBgFaint: "bg-primary/15", label: "Working", glow: true, pulse: true }
-        : { twText: "text-blue-400", twBg: "bg-blue-500", twBorder: "border-blue-500", twBgFaint: "bg-blue-500/20", label: "Idle", glow: false, pulse: false };
+        ? { twText: "text-ok", twBg: "bg-ok", label: "Working" }
+        : { twText: "text-info-accent", twBg: "bg-info-accent", label: "Idle" };
     case "PAUSED":
-      return { twText: "text-amber-400", twBg: "bg-amber-500", twBorder: "border-amber-500", twBgFaint: "bg-amber-500/20", label: "Paused", glow: false, pulse: false };
+      return { twText: "text-warn", twBg: "bg-warn", label: "Paused" };
     case "DRAINED":
-      return { twText: "text-amber-400", twBg: "bg-amber-500", twBorder: "border-amber-500", twBgFaint: "bg-amber-500/20", label: "Draining", glow: false, pulse: false };
+      return { twText: "text-warn", twBg: "bg-warn", label: "Draining" };
     case "QUARANTINED":
-      return { twText: "text-red-400", twBg: "bg-red-500", twBorder: "border-red-500", twBgFaint: "bg-red-500/20", label: "Quarantined", glow: true, pulse: true };
+      return { twText: "text-err", twBg: "bg-err", label: "Quarantined" };
     case "OFFLINE":
-      return { twText: "text-muted-foreground", twBg: "bg-muted-foreground", twBorder: "border-muted-foreground", twBgFaint: "bg-muted-foreground/20", label: "Offline", glow: false, pulse: false };
+      return { twText: "text-ink-muted", twBg: "bg-ink-muted", label: "Offline" };
     default:
-      return { twText: "text-muted-foreground", twBg: "bg-muted-foreground", twBorder: "border-muted-foreground", twBgFaint: "bg-muted-foreground/20", label: status, glow: false, pulse: false };
+      return { twText: "text-ink-muted", twBg: "bg-ink-muted", label: status };
   }
 }
 
@@ -60,13 +60,13 @@ function formatElapsed(startedAt: number): string {
 function getRoleBadge(role: string) {
   switch (role) {
     case "LEAD":
-      return { twBg: "bg-blue-500/15", twText: "text-blue-400", label: "Lead" };
+      return { label: "Lead" };
     case "SPECIALIST":
-      return { twBg: "bg-blue-500/15", twText: "text-blue-400", label: "Specialist" };
+      return { label: "Specialist" };
     case "INTERN":
-      return { twBg: "bg-cyan-500/15", twText: "text-cyan-400", label: "Intern" };
+      return { label: "Intern" };
     default:
-      return { twBg: "bg-muted", twText: "text-muted-foreground", label: role };
+      return { label: role };
   }
 }
 
@@ -130,30 +130,26 @@ export function OfficeView({ projectId }: OfficeViewProps) {
 
   if (!agents) {
     return (
-      <main className="mc-page">
-        <div className="mc-page-body">
-          <div className="h-[640px] rounded-2xl border border-[var(--panel-line)] skeleton-shimmer" />
+      <main className="relative flex-1 overflow-auto bg-app">
+        <div className="mx-auto w-full max-w-[1200px] px-6 py-6">
+          <div className="h-[640px] animate-pulse rounded-xl border border-line bg-surface-2" />
         </div>
       </main>
     );
   }
 
   return (
-    <main className="mc-page">
+    <main className="relative flex-1 overflow-auto bg-app">
       <PageHeader
         title="Office"
         description="Live workstation view for agent posture, task attachment, budget burn, and heartbeat quality."
         eyebrow="Comms"
-        icon={<Building2 className="h-4.5 w-4.5" strokeWidth={1.7} />}
-        status={
-          <Badge variant="outline" className="border-cyan-300/20 text-cyan-100">
-            {stats.total} agents
-          </Badge>
-        }
+        icon={<Building2 size={16} strokeWidth={1.7} />}
+        status={<StatusBadge tone="neutral">{stats.total} agents</StatusBadge>}
         actions={
           stats.quarantined > 0 ? (
             <Button
-              variant="neon-cyan"
+              variant="default"
               size="sm"
               onClick={async () => {
                 setResetting(true);
@@ -175,27 +171,35 @@ export function OfficeView({ projectId }: OfficeViewProps) {
         }
       />
 
-      <div className="mc-page-body mc-page-stack">
+      <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-6 py-6">
         <div className="grid gap-4 md:grid-cols-4">
           <Card className="p-4">
-            <div className="mc-kicker">Working</div>
-            <div className="mt-2 text-3xl font-semibold text-cyan-100">{stats.working}</div>
-            <div className="mt-1 text-xs text-muted-foreground">Agents with an active task and healthy execution posture</div>
+            <MetricBlock
+              label="Working"
+              value={stats.working}
+              detail="Agents with an active task and healthy execution posture"
+            />
           </Card>
           <Card className="p-4">
-            <div className="mc-kicker">Idle</div>
-            <div className="mt-2 text-3xl font-semibold text-foreground">{stats.idle}</div>
-            <div className="mt-1 text-xs text-muted-foreground">Active agents that are waiting on new assignment</div>
+            <MetricBlock
+              label="Idle"
+              value={stats.idle}
+              detail="Active agents that are waiting on new assignment"
+            />
           </Card>
           <Card className="p-4">
-            <div className="mc-kicker">Paused / offline</div>
-            <div className="mt-2 text-3xl font-semibold text-amber-100">{stats.paused + stats.offline}</div>
-            <div className="mt-1 text-xs text-muted-foreground">Agents not expected to produce work right now</div>
+            <MetricBlock
+              label="Paused / offline"
+              value={stats.paused + stats.offline}
+              detail="Agents not expected to produce work right now"
+            />
           </Card>
           <Card className="p-4">
-            <div className="mc-kicker">Quarantined</div>
-            <div className="mt-2 text-3xl font-semibold text-red-300">{stats.quarantined}</div>
-            <div className="mt-1 text-xs text-muted-foreground">Agents that need explicit recovery before they can rejoin execution</div>
+            <MetricBlock
+              label="Quarantined"
+              value={stats.quarantined}
+              detail="Agents that need explicit recovery before they can rejoin execution"
+            />
           </Card>
         </div>
 
@@ -204,10 +208,10 @@ export function OfficeView({ projectId }: OfficeViewProps) {
             <StatChip
               label={`All (${stats.total})`}
               value={stats.total}
-              colorClass="text-muted-foreground"
-              dotClass="bg-muted-foreground"
-              activeBorderClass="border-muted-foreground"
-              activeBgClass="bg-muted-foreground/15"
+              colorClass="text-ink-muted"
+              dotClass="bg-ink-muted"
+              activeBorderClass="border-line-strong"
+              activeBgClass="bg-surface-2"
               active={filterStatus === "ALL"}
               onClick={() => setFilterStatus("ALL")}
               hideValue
@@ -215,30 +219,30 @@ export function OfficeView({ projectId }: OfficeViewProps) {
             <StatChip
               label="Working"
               value={stats.working}
-              colorClass="text-primary"
-              dotClass="bg-primary"
-              activeBorderClass="border-primary"
-              activeBgClass="bg-primary/15"
+              colorClass="text-ok"
+              dotClass="bg-ok"
+              activeBorderClass="border-line-strong"
+              activeBgClass="bg-surface-2"
               active={filterStatus === "ACTIVE"}
               onClick={() => setFilterStatus(filterStatus === "ACTIVE" ? "ALL" : "ACTIVE")}
             />
             <StatChip
               label="Paused"
               value={stats.paused}
-              colorClass="text-amber-400"
-              dotClass="bg-amber-500"
-              activeBorderClass="border-amber-500"
-              activeBgClass="bg-amber-500/15"
+              colorClass="text-warn"
+              dotClass="bg-warn"
+              activeBorderClass="border-line-strong"
+              activeBgClass="bg-surface-2"
               active={filterStatus === "PAUSED"}
               onClick={() => setFilterStatus(filterStatus === "PAUSED" ? "ALL" : "PAUSED")}
             />
             <StatChip
               label="Offline"
               value={stats.offline}
-              colorClass="text-muted-foreground"
-              dotClass="bg-muted-foreground"
-              activeBorderClass="border-muted-foreground"
-              activeBgClass="bg-muted-foreground/15"
+              colorClass="text-ink-muted"
+              dotClass="bg-ink-muted"
+              activeBorderClass="border-line-strong"
+              activeBgClass="bg-surface-2"
               active={filterStatus === "OFFLINE"}
               onClick={() => setFilterStatus(filterStatus === "OFFLINE" ? "ALL" : "OFFLINE")}
             />
@@ -246,10 +250,10 @@ export function OfficeView({ projectId }: OfficeViewProps) {
               <StatChip
                 label="Quarantined"
                 value={stats.quarantined}
-                colorClass="text-red-400"
-                dotClass="bg-red-500"
-                activeBorderClass="border-red-500"
-                activeBgClass="bg-red-500/15"
+                colorClass="text-err"
+                dotClass="bg-err"
+                activeBorderClass="border-line-strong"
+                activeBgClass="bg-surface-2"
                 active={filterStatus === "QUARANTINED"}
                 onClick={() => setFilterStatus(filterStatus === "QUARANTINED" ? "ALL" : "QUARANTINED")}
               />
@@ -259,25 +263,16 @@ export function OfficeView({ projectId }: OfficeViewProps) {
 
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
           <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
-            <AnimatePresence mode="popLayout">
-              {filteredAgents.map(({ agent, currentTask }) => (
-                <motion.div
-                  key={agent._id}
-                  layout
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  transition={{ duration: 0.25 }}
-                >
-                  <AgentCard
-                    agent={agent}
-                    currentTask={currentTask}
-                    isSelected={agent._id === selectedAgent}
-                    onSelect={() => setSelectedAgent(selectedAgent === agent._id ? null : agent._id)}
-                  />
-                </motion.div>
-              ))}
-            </AnimatePresence>
+            {filteredAgents.map(({ agent, currentTask }) => (
+              <div key={agent._id}>
+                <AgentCard
+                  agent={agent}
+                  currentTask={currentTask}
+                  isSelected={agent._id === selectedAgent}
+                  onSelect={() => setSelectedAgent(selectedAgent === agent._id ? null : agent._id)}
+                />
+              </div>
+            ))}
 
             {filteredAgents.length === 0 ? (
               <div className="col-span-full">
@@ -291,12 +286,12 @@ export function OfficeView({ projectId }: OfficeViewProps) {
           </div>
 
           <Card className="p-5">
-            <div className="mc-kicker">Operator guidance</div>
-            <div className="mt-2 space-y-3 text-sm leading-relaxed text-muted-foreground">
-              <div className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-4">
+            <h3 className="text-[15px] font-semibold text-ink">Operator guidance</h3>
+            <div className="mt-3 space-y-3 text-[13.5px] leading-relaxed text-ink-secondary">
+              <div className="rounded-lg border border-line bg-surface-2 px-4 py-4">
                 Working and healthy are not the same thing. Use the heartbeat and error posture together before trusting an active agent.
               </div>
-              <div className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-4">
+              <div className="rounded-lg border border-line bg-surface-2 px-4 py-4">
                 Quarantined agents should be treated as a system-design problem first, not just an agent-level problem.
               </div>
             </div>
@@ -305,15 +300,13 @@ export function OfficeView({ projectId }: OfficeViewProps) {
       </div>
 
       {/* Detail Panel */}
-      <AnimatePresence>
-        {selectedAgent && (
-          <AgentDetailPanel
-            agentId={selectedAgent}
-            projectId={projectId}
-            onClose={() => setSelectedAgent(null)}
-          />
-        )}
-      </AnimatePresence>
+      {selectedAgent && (
+        <AgentDetailPanel
+          agentId={selectedAgent}
+          projectId={projectId}
+          onClose={() => setSelectedAgent(null)}
+        />
+      )}
     </main>
   );
 }
@@ -347,18 +340,18 @@ function StatChip({
     <button
       onClick={onClick}
       className={cn(
-        "flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-inherit transition-all text-foreground",
+        "flex items-center gap-2 px-3 py-1.5 rounded-lg text-[12.5px] transition-colors duration-150",
         active
-          ? cn("border-[1.5px]", activeBorderClass, activeBgClass)
-          : "border border-border bg-card",
+          ? cn("border text-ink", activeBorderClass, activeBgClass)
+          : "border border-line bg-surface-1 text-ink-secondary hover:border-line-strong hover:text-ink",
         onClick ? "cursor-pointer" : "cursor-default"
       )}
     >
       {!hideValue && (
         <span className={cn("w-2 h-2 rounded-full shrink-0", dotClass)} />
       )}
-      {!hideValue && <span className="font-semibold">{value}</span>}
-      <span className={active ? "text-foreground" : "text-muted-foreground"}>{label}</span>
+      {!hideValue && <span className="font-semibold tabular-nums">{value}</span>}
+      <span className={active ? "text-ink" : "text-ink-secondary"}>{label}</span>
     </button>
   );
 }
@@ -382,36 +375,22 @@ function AgentCard({ agent, currentTask, isSelected, onSelect }: AgentCardProps)
   const isWorking = agent.status === "ACTIVE" && !!currentTask;
 
   return (
-    <motion.button
+    <button
       onClick={onSelect}
-      whileHover={{ y: -3, transition: { duration: 0.15 } }}
-      whileTap={{ scale: 0.98 }}
       className={cn(
-        "w-full text-left bg-card border rounded-xl p-4 cursor-pointer font-inherit flex flex-col gap-3 transition-[border-color,box-shadow]",
+        "w-full text-left bg-surface-1 border rounded-xl p-4 cursor-pointer flex flex-col gap-3 transition-colors duration-150",
         isSelected
-          ? "border-primary shadow-[0_0_0_1px_hsl(var(--primary)),0_4px_20px_hsl(var(--primary)/0.12)]"
-          : isWorking
-            ? "border-primary/30 shadow-[0_0_20px_rgba(16,185,129,0.07),0_2px_8px_rgba(0,0,0,0.25)] border-l-[3px] border-l-primary"
-            : "border-border shadow-[0_2px_8px_rgba(0,0,0,0.2)]"
+          ? "border-line-strong bg-surface-2"
+          : "border-line hover:border-line-strong"
       )}
     >
       {/* Top Row: Avatar + Name + Status */}
       <div className="flex items-center gap-3">
-        {/* Avatar with status ring */}
+        {/* Avatar with status dot */}
         <div className="relative">
-          {statusConfig.pulse && (
-            <motion.div
-              animate={{ scale: [1, 1.5], opacity: [0.5, 0] }}
-              transition={{ repeat: Infinity, duration: 1.8, ease: "easeOut" }}
-              className={cn("absolute -inset-[3px] rounded-full border-2", statusConfig.twBorder)}
-            />
-          )}
           <div
             className={cn(
-              "w-11 h-11 rounded-full border-2 flex items-center justify-center font-bold relative z-[1]",
-              statusConfig.twBgFaint,
-              statusConfig.twBorder,
-              statusConfig.twText,
+              "w-11 h-11 rounded-full border border-line bg-surface-2 text-ink flex items-center justify-center font-semibold",
               agent.emoji ? "text-xl" : "text-lg"
             )}
           >
@@ -419,7 +398,7 @@ function AgentCard({ agent, currentTask, isSelected, onSelect }: AgentCardProps)
           </div>
           <div
             className={cn(
-              "absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-card z-[2]",
+              "absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-surface-1",
               statusConfig.twBg
             )}
           />
@@ -427,18 +406,10 @@ function AgentCard({ agent, currentTask, isSelected, onSelect }: AgentCardProps)
 
         {/* Name + Role */}
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-bold text-foreground leading-tight">{agent.name}</div>
+          <div className="text-[13.5px] font-semibold text-ink leading-tight">{agent.name}</div>
           <div className="flex items-center gap-1.5 mt-0.5">
-            <span
-              className={cn(
-                "px-1.5 py-px rounded-lg text-[0.65rem] font-semibold tracking-wide",
-                roleBadge.twBg,
-                roleBadge.twText
-              )}
-            >
-              {roleBadge.label}
-            </span>
-            <span className={cn("text-[0.7rem] font-semibold", statusConfig.twText)}>
+            <StatusBadge tone="neutral">{roleBadge.label}</StatusBadge>
+            <span className="text-[11.5px] text-ink-secondary">
               {statusConfig.label}
             </span>
           </div>
@@ -448,71 +419,48 @@ function AgentCard({ agent, currentTask, isSelected, onSelect }: AgentCardProps)
       {/* Current Task / Activity */}
       <div className="min-h-[36px]">
         {isWorking && currentTask ? (
-          <div className="flex items-start gap-2 p-2 px-2.5 rounded-lg bg-primary/5 border border-primary/10">
-            <div className="flex gap-[3px] pt-1 shrink-0">
-              <motion.span
-                animate={{ opacity: [0.3, 1, 0.3] }}
-                transition={{ repeat: Infinity, duration: 1.2, delay: 0 }}
-                className="w-1 h-1 rounded-full bg-primary"
-              />
-              <motion.span
-                animate={{ opacity: [0.3, 1, 0.3] }}
-                transition={{ repeat: Infinity, duration: 1.2, delay: 0.2 }}
-                className="w-1 h-1 rounded-full bg-primary"
-              />
-              <motion.span
-                animate={{ opacity: [0.3, 1, 0.3] }}
-                transition={{ repeat: Infinity, duration: 1.2, delay: 0.4 }}
-                className="w-1 h-1 rounded-full bg-primary"
-              />
-            </div>
+          <div className="flex items-start gap-2 p-2 px-2.5 rounded-lg bg-surface-2 border border-line">
+            <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-ok shrink-0" aria-hidden />
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between">
-                <div className="text-[0.65rem] text-primary font-semibold uppercase tracking-wider mb-0.5">Working on</div>
+                <div className="text-[11.5px] text-ink-muted mb-0.5">Working on</div>
                 {currentTask.startedAt && (
-                  <div className="text-[0.65rem] text-muted-foreground">
+                  <div className="text-[11.5px] text-ink-muted">
                     {formatElapsed(currentTask.startedAt)}
                   </div>
                 )}
               </div>
-              <div className="text-[0.78rem] text-foreground font-medium overflow-hidden text-ellipsis whitespace-nowrap">{currentTask.title}</div>
-              <div className="mt-1 rounded-sm h-0.5 bg-primary/10 overflow-hidden">
-                <motion.div
-                  animate={{ x: ["-100%", "200%"] }}
-                  transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
-                  className="w-2/5 h-full bg-primary/25 rounded-sm"
-                />
-              </div>
+              <div className="text-[12.5px] text-ink font-medium overflow-hidden text-ellipsis whitespace-nowrap">{currentTask.title}</div>
             </div>
           </div>
         ) : agent.status === "ACTIVE" ? (
-          <div className="flex items-center gap-1.5 p-2 px-2.5 rounded-lg bg-muted-foreground/5">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted-foreground">
+          <div className="flex items-center gap-1.5 p-2 px-2.5 rounded-lg bg-surface-2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" className="text-ink-muted">
               <circle cx="12" cy="12" r="10" />
               <path d="M12 6v6l4 2" />
             </svg>
-            <span className="text-muted-foreground text-xs">
+            <span className="text-ink-muted text-[12.5px]">
               Waiting for assignment
             </span>
           </div>
         ) : agent.status === "QUARANTINED" ? (
-          <div className="flex items-center gap-1.5 p-2 px-2.5 rounded-lg bg-red-500/5">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-red-400">
+          <div className="flex items-center gap-1.5 p-2 px-2.5 rounded-lg bg-err-soft">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" className="text-err">
               <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
               <line x1="12" y1="9" x2="12" y2="13" />
               <line x1="12" y1="17" x2="12.01" y2="17" />
             </svg>
-            <span className="text-red-400 text-xs">
+            <span className="text-err text-[12.5px]">
               {agent.lastError || "Unresponsive"}
             </span>
           </div>
         ) : (
-          <div className="flex items-center gap-1.5 p-2 px-2.5 rounded-lg bg-muted-foreground/5">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted-foreground">
+          <div className="flex items-center gap-1.5 p-2 px-2.5 rounded-lg bg-surface-2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" className="text-ink-muted">
               <rect x="6" y="4" width="4" height="16" rx="1" />
               <rect x="14" y="4" width="4" height="16" rx="1" />
             </svg>
-            <span className="text-muted-foreground text-xs">
+            <span className="text-ink-muted text-[12.5px]">
               {agent.status === "PAUSED" ? "Paused" : "Offline"}
             </span>
           </div>
@@ -524,23 +472,21 @@ function AgentCard({ agent, currentTask, isSelected, onSelect }: AgentCardProps)
         {/* Budget bar */}
         <div>
           <div className="flex justify-between mb-0.5">
-            <span className="text-muted-foreground text-[0.65rem]">Budget</span>
-            <span className="text-muted-foreground text-[0.65rem] font-medium">
+            <span className="text-ink-muted text-[11.5px]">Budget</span>
+            <span className="text-ink-muted text-[11.5px] font-medium">
               ${agent.spendToday.toFixed(2)} / ${agent.budgetDaily.toFixed(2)}
             </span>
           </div>
-          <div className="w-full h-1 rounded-sm bg-muted-foreground/20 overflow-hidden">
-            <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: `${Math.min(budgetPct, 100)}%` }}
-              transition={{ duration: 0.6, ease: "easeOut" }}
+          <div className="w-full h-1 rounded-sm bg-surface-3 overflow-hidden">
+            <div
+              style={{ width: `${Math.min(budgetPct, 100)}%` }}
               className={cn(
-                "h-1 rounded-sm transition-[width] duration-600 ease-out",
+                "h-1 rounded-sm transition-[width] duration-150 ease-out",
                 budgetPct > 90
-                  ? "bg-red-500"
+                  ? "bg-err"
                   : budgetPct > 70
-                    ? "bg-amber-500"
-                    : "bg-primary"
+                    ? "bg-warn"
+                    : "bg-ok"
               )}
             />
           </div>
@@ -554,22 +500,22 @@ function AgentCard({ agent, currentTask, isSelected, onSelect }: AgentCardProps)
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            strokeWidth="2"
-            className={heartbeat.healthy ? "text-primary" : "text-red-400"}
+            strokeWidth="1.75"
+            className={heartbeat.healthy ? "text-ok" : "text-err"}
           >
             <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
           </svg>
           <span
             className={cn(
-              "text-[0.65rem]",
-              heartbeat.healthy ? "text-muted-foreground" : "text-red-400"
+              "text-[11.5px]",
+              heartbeat.healthy ? "text-ink-muted" : "text-err"
             )}
           >
             {heartbeat.text}
           </span>
         </div>
       </div>
-    </motion.button>
+    </button>
   );
 }
 
@@ -608,49 +554,25 @@ function AgentDetailPanel({
   return (
     <>
       {/* Backdrop */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
+      <div
         onClick={onClose}
         className="fixed inset-0 bg-black/45 z-[999]"
       />
       {/* Panel */}
-      <motion.div
-        initial={{ x: 420 }}
-        animate={{ x: 0 }}
-        exit={{ x: 420 }}
-        transition={{ type: "spring", damping: 28, stiffness: 300 }}
-        className="fixed top-0 right-0 bottom-0 w-[400px] max-w-[90vw] bg-background border-l border-border z-[1000] flex flex-col overflow-hidden"
-      >
+      <div className="fixed top-0 right-0 bottom-0 w-[400px] max-w-[90vw] bg-surface-1 border-l border-line z-[1000] flex flex-col overflow-hidden">
         {/* Panel header */}
-        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-border shrink-0">
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-line shrink-0">
           <div className="flex items-center gap-3">
-            <div
-              className={cn(
-                "w-12 h-12 rounded-full border-2 flex items-center justify-center text-xl font-bold",
-                statusConfig.twBgFaint,
-                statusConfig.twBorder,
-                statusConfig.twText
-              )}
-            >
+            <div className="w-12 h-12 rounded-full border border-line bg-surface-2 text-ink flex items-center justify-center text-xl font-semibold">
               {agent.emoji || agent.name.charAt(0).toUpperCase()}
             </div>
             <div>
-              <h2 className="m-0 text-xl font-bold text-foreground">
+              <h2 className="m-0 text-[19px] font-semibold text-ink">
                 {agent.name}
               </h2>
               <div className="flex items-center gap-2 mt-0.5">
-                <span
-                  className={cn(
-                    "px-2 py-px rounded-lg text-[0.7rem] font-semibold",
-                    roleBadge.twBg,
-                    roleBadge.twText
-                  )}
-                >
-                  {roleBadge.label}
-                </span>
-                <span className={cn("flex items-center gap-1 text-xs font-semibold", statusConfig.twText)}>
+                <StatusBadge tone="neutral">{roleBadge.label}</StatusBadge>
+                <span className="flex items-center gap-1 text-[11.5px] text-ink-secondary">
                   <span className={cn("w-[7px] h-[7px] rounded-full", statusConfig.twBg)} />
                   {statusConfig.label}
                 </span>
@@ -659,7 +581,7 @@ function AgentDetailPanel({
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-lg border-none bg-transparent text-muted-foreground cursor-pointer flex items-center justify-center transition-colors hover:bg-muted"
+            className="w-8 h-8 rounded-lg border-none bg-transparent text-ink-muted cursor-pointer flex items-center justify-center transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
             aria-label="Close"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -674,15 +596,13 @@ function AgentDetailPanel({
           {/* Current Task */}
           {currentTask && (
             <div>
-              <div className="text-[0.7rem] font-bold text-muted-foreground uppercase tracking-wider mb-2">Current Task</div>
-              <div className="p-2.5 px-3 rounded-lg bg-card border border-border">
-                <div className="text-sm font-semibold text-foreground mb-1">
+              <div className="text-[11.5px] font-medium uppercase tracking-[0.06em] text-ink-muted mb-2">Current Task</div>
+              <div className="p-2.5 px-3 rounded-lg bg-surface-2 border border-line">
+                <div className="text-[13.5px] font-semibold text-ink mb-1">
                   {currentTask.title}
                 </div>
-                <div className="text-xs text-muted-foreground flex items-center gap-2">
-                  <span className="px-1.5 py-px rounded bg-primary/15 text-primary text-[0.65rem] font-semibold">
-                    {currentTask.status}
-                  </span>
+                <div className="text-[12.5px] text-ink-muted flex items-center gap-2">
+                  <StatusBadge tone="info">{currentTask.status}</StatusBadge>
                   <span>{currentTask.type}</span>
                   {currentTask.estimatedCost != null && (
                     <span>~${currentTask.estimatedCost.toFixed(2)}</span>
@@ -694,17 +614,17 @@ function AgentDetailPanel({
 
           {/* Details Grid */}
           <div>
-            <div className="text-[0.7rem] font-bold text-muted-foreground uppercase tracking-wider mb-2">Details</div>
+            <div className="text-[11.5px] font-medium uppercase tracking-[0.06em] text-ink-muted mb-2">Details</div>
             <div className="flex flex-col">
               <DetailRow label="Workspace" value={agent.workspacePath} />
               <DetailRow
                 label="Heartbeat"
                 value={heartbeat.text}
-                valueClass={heartbeat.healthy ? "text-primary" : "text-red-400"}
+                valueClass={heartbeat.healthy ? "text-ok" : "text-err"}
               />
               <DetailRow label="Error Streak" value={String(agent.errorStreak)} />
               {agent.lastError && (
-                <DetailRow label="Last Error" value={agent.lastError} valueClass="text-red-400" />
+                <DetailRow label="Last Error" value={agent.lastError} valueClass="text-err" />
               )}
               <DetailRow
                 label="Can Spawn"
@@ -721,30 +641,30 @@ function AgentDetailPanel({
 
           {/* Budget */}
           <div>
-            <div className="text-[0.7rem] font-bold text-muted-foreground uppercase tracking-wider mb-2">Budget</div>
-            <div className="p-2.5 px-3 rounded-lg bg-card border border-border">
+            <div className="text-[11.5px] font-medium uppercase tracking-[0.06em] text-ink-muted mb-2">Budget</div>
+            <div className="p-2.5 px-3 rounded-lg bg-surface-2 border border-line">
               <div className="flex justify-between mb-1.5">
-                <span className="text-sm text-muted-foreground">
+                <span className="text-[13.5px] text-ink-muted">
                   Daily Spend
                 </span>
-                <span className="text-sm font-semibold text-foreground">
+                <span className="text-[13.5px] font-semibold text-ink">
                   ${agent.spendToday.toFixed(2)} / ${agent.budgetDaily.toFixed(2)}
                 </span>
               </div>
-              <div className="w-full h-1.5 rounded-sm bg-muted-foreground/20 overflow-hidden">
+              <div className="w-full h-1.5 rounded-sm bg-surface-3 overflow-hidden">
                 <div
                   className={cn(
-                    "h-1.5 rounded-sm transition-[width] duration-600 ease-out",
+                    "h-1.5 rounded-sm transition-[width] duration-150 ease-out",
                     budgetPct > 90
-                      ? "bg-red-500"
+                      ? "bg-err"
                       : budgetPct > 70
-                        ? "bg-amber-500"
-                        : "bg-primary"
+                        ? "bg-warn"
+                        : "bg-ok"
                   )}
                   style={{ width: `${Math.min(budgetPct, 100)}%` }}
                 />
               </div>
-              <div className="flex justify-between mt-2 text-[0.7rem] text-muted-foreground">
+              <div className="flex justify-between mt-2 text-[11.5px] text-ink-muted">
                 <span>Per-run limit: ${agent.budgetPerRun.toFixed(2)}</span>
                 <span>{budgetPct.toFixed(0)}% used</span>
               </div>
@@ -754,26 +674,26 @@ function AgentDetailPanel({
           {/* Assigned Tasks */}
           {assignedTasks && assignedTasks.length > 0 && (
             <div>
-              <div className="text-[0.7rem] font-bold text-muted-foreground uppercase tracking-wider mb-2">
+              <div className="text-[11.5px] font-medium uppercase tracking-[0.06em] text-ink-muted mb-2">
                 Assigned Tasks ({assignedTasks.length})
               </div>
               <div className="flex flex-col gap-1.5">
                 {assignedTasks.slice(0, 8).map((t) => (
-                  <div key={t._id} className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-card border border-border">
+                  <div key={t._id} className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-surface-2 border border-line">
                     <span
                       className={cn(
                         "w-1.5 h-1.5 rounded-full shrink-0",
                         t.status === "IN_PROGRESS"
-                          ? "bg-primary"
+                          ? "bg-ok"
                           : t.status === "BLOCKED"
-                            ? "bg-red-500"
-                            : "bg-blue-500"
+                            ? "bg-err"
+                            : "bg-info-accent"
                       )}
                     />
-                    <span className="flex-1 text-xs text-foreground overflow-hidden text-ellipsis whitespace-nowrap">
+                    <span className="flex-1 text-[12.5px] text-ink overflow-hidden text-ellipsis whitespace-nowrap">
                       {t.title}
                     </span>
-                    <span className="text-[0.65rem] text-muted-foreground shrink-0">
+                    <span className="text-[11.5px] text-ink-muted shrink-0">
                       {t.status}
                     </span>
                   </div>
@@ -782,7 +702,7 @@ function AgentDetailPanel({
             </div>
           )}
         </div>
-      </motion.div>
+      </div>
     </>
   );
 }
@@ -801,12 +721,12 @@ function DetailRow({
   valueClass?: string;
 }) {
   return (
-    <div className="flex justify-between items-center py-[7px] border-b border-border">
-      <span className="text-xs text-muted-foreground">{label}</span>
+    <div className="flex justify-between items-center py-[7px] border-b border-line">
+      <span className="text-[12.5px] text-ink-muted">{label}</span>
       <span
         className={cn(
-          "text-xs font-medium text-right max-w-[60%] overflow-hidden text-ellipsis whitespace-nowrap",
-          valueClass ?? "text-foreground"
+          "text-[12.5px] font-medium text-right max-w-[60%] overflow-hidden text-ellipsis whitespace-nowrap",
+          valueClass ?? "text-ink"
         )}
       >
         {value}

@@ -5,10 +5,11 @@ import type { Doc, Id } from "../../../convex/_generated/dataModel";
 import { getOrchestrationBaseUrl } from "@/lib/orchestrationUrl";
 import { useToast } from "./Toast";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { PageHeader } from "./components/PageHeader";
+import { StatusBadge, type StatusBadgeProps } from "./components/factory/badges";
+import { MetricBlock } from "./components/factory/MetricBlock";
 import {
   Dialog,
   DialogContent,
@@ -36,12 +37,12 @@ import {
 } from "lucide-react";
 import { AgentSettingsPanel } from "./AgentSettingsPanel";
 
-const STATUS_CONFIG: Record<string, { label: string; className: string; dotClass: string }> = {
-  ACTIVE: { label: "Active", className: "bg-primary/15 text-primary/70 dark:text-primary border-primary/30", dotClass: "bg-primary" },
-  PAUSED: { label: "Paused", className: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30", dotClass: "bg-amber-400" },
-  DRAINED: { label: "Drained", className: "bg-slate-500/15 text-slate-600 dark:text-slate-400 border-slate-500/30", dotClass: "bg-slate-400" },
-  QUARANTINED: { label: "Quarantined", className: "bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30", dotClass: "bg-red-400" },
-  OFFLINE: { label: "Offline", className: "bg-zinc-500/15 text-zinc-600 dark:text-zinc-400 border-zinc-500/30", dotClass: "bg-zinc-400" },
+const STATUS_CONFIG: Record<string, { label: string; tone: StatusBadgeProps["tone"]; dotClass: string }> = {
+  ACTIVE: { label: "Active", tone: "success", dotClass: "bg-ok" },
+  PAUSED: { label: "Paused", tone: "warning", dotClass: "bg-warn" },
+  DRAINED: { label: "Drained", tone: "neutral", dotClass: "bg-ink-muted" },
+  QUARANTINED: { label: "Quarantined", tone: "error", dotClass: "bg-err" },
+  OFFLINE: { label: "Offline", tone: "neutral", dotClass: "bg-ink-muted" },
 };
 
 const STATUS_FILTER_OPTIONS = ["ACTIVE", "PAUSED", "QUARANTINED", "OFFLINE"] as const;
@@ -53,6 +54,12 @@ function formatRelativeTime(ts: number): string {
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
   return `${Math.floor(diff / 86_400_000)}d ago`;
 }
+
+const FILTER_CHIP_BASE =
+  "inline-flex items-center gap-1.5 rounded-lg border px-3 h-8 text-xs font-medium transition-colors duration-150";
+const FILTER_CHIP_ACTIVE = "border-line-strong bg-surface-2 text-ink";
+const FILTER_CHIP_INACTIVE =
+  "border-line text-ink-secondary hover:border-line-strong hover:text-ink";
 
 export function AgentRegistryView({
   projectId,
@@ -130,8 +137,8 @@ export function AgentRegistryView({
   if (!agents || !tasks) {
     return (
       <main className="flex-1 overflow-auto p-6">
-        <div className="h-6 w-40 rounded skeleton-shimmer mb-2" />
-        <div className="h-4 w-56 rounded skeleton-shimmer" />
+        <div className="h-6 w-40 rounded animate-pulse bg-surface-2 mb-2" />
+        <div className="h-4 w-56 rounded animate-pulse bg-surface-2" />
       </main>
     );
   }
@@ -189,22 +196,20 @@ export function AgentRegistryView({
   };
 
   return (
-    <main className="mc-page">
+    <main className="flex-1 overflow-auto">
       <PageHeader
         title="Agent Registry"
         description={`${agents.length} agents · ${activeCount} active`}
         eyebrow="Agents"
         status={
           gatewayConfigured ? (
-            <Badge variant="outline" className="text-[10px] border-primary/40 text-primary/90">
-              Gateway connected
-            </Badge>
+            <StatusBadge tone="success">Gateway connected</StatusBadge>
           ) : undefined
         }
         actions={
           <div className="flex items-center gap-2">
             {onOpenCreateAgent && (
-              <Button size="sm" variant="neon" onClick={onOpenCreateAgent}>
+              <Button size="sm" onClick={onOpenCreateAgent}>
                 <Plus className="h-3.5 w-3.5 mr-1.5" />
                 Create agent
               </Button>
@@ -223,27 +228,35 @@ export function AgentRegistryView({
         onImported={() => toast("Agent imported")}
       />
 
-      <div className="mc-page-body mc-page-stack">
+      <div className="mx-auto max-w-[1200px] px-6 py-6 flex flex-col gap-6">
       <div className="grid gap-4 md:grid-cols-4">
         <Card className="p-4">
-          <div className="mc-kicker">Active</div>
-          <div className="mt-2 text-3xl font-semibold text-cyan-100">{activeCount}</div>
-          <div className="mt-1 text-xs text-muted-foreground">Agents currently trusted to take live work</div>
+          <MetricBlock
+            label="Active"
+            value={activeCount}
+            detail="Agents currently trusted to take live work"
+          />
         </Card>
         <Card className="p-4">
-          <div className="mc-kicker">Paused</div>
-          <div className="mt-2 text-3xl font-semibold text-amber-100">{pausedCount}</div>
-          <div className="mt-1 text-xs text-muted-foreground">Agents intentionally held out of the queue</div>
+          <MetricBlock
+            label="Paused"
+            value={pausedCount}
+            detail="Agents intentionally held out of the queue"
+          />
         </Card>
         <Card className="p-4">
-          <div className="mc-kicker">Quarantined</div>
-          <div className="mt-2 text-3xl font-semibold text-rose-200">{quarantinedCount}</div>
-          <div className="mt-1 text-xs text-muted-foreground">Agents requiring intervention before reuse</div>
+          <MetricBlock
+            label="Quarantined"
+            value={quarantinedCount}
+            detail="Agents requiring intervention before reuse"
+          />
         </Card>
         <Card className="p-4">
-          <div className="mc-kicker">Assigned tasks</div>
-          <div className="mt-2 text-3xl font-semibold text-foreground">{assignedCount}</div>
-          <div className="mt-1 text-xs text-muted-foreground">Tasks currently routed to one or more agents</div>
+          <MetricBlock
+            label="Assigned tasks"
+            value={assignedCount}
+            detail="Tasks currently routed to one or more agents"
+          />
         </Card>
       </div>
 
@@ -253,65 +266,55 @@ export function AgentRegistryView({
           type="button"
           onClick={() => setStatusFilter("ALL")}
           className={cn(
-            "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
-            statusFilter === "ALL"
-              ? "bg-primary/10 text-primary border-primary/30"
-              : "bg-muted/40 text-muted-foreground border-border hover:bg-muted/60"
+            FILTER_CHIP_BASE,
+            statusFilter === "ALL" ? FILTER_CHIP_ACTIVE : FILTER_CHIP_INACTIVE
           )}
         >
-          <Bot className="h-3 w-3" />
+          <Bot size={13} strokeWidth={1.7} aria-hidden />
           All {agents.length}
         </button>
         <button
           type="button"
           onClick={() => setStatusFilter("ACTIVE")}
           className={cn(
-            "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
-            statusFilter === "ACTIVE"
-              ? "bg-primary/15 text-primary/70 dark:text-primary border-primary/30"
-              : "bg-muted/40 text-muted-foreground border-border hover:bg-muted/60"
+            FILTER_CHIP_BASE,
+            statusFilter === "ACTIVE" ? FILTER_CHIP_ACTIVE : FILTER_CHIP_INACTIVE
           )}
         >
-          <span className={cn("h-1.5 w-1.5 rounded-full bg-primary", activeCount > 0 && "animate-pulse")} />
+          <span className="h-1.5 w-1.5 rounded-full bg-ok" />
           Active {activeCount}
         </button>
         <button
           type="button"
           onClick={() => setStatusFilter("PAUSED")}
           className={cn(
-            "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
-            statusFilter === "PAUSED"
-              ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30"
-              : "bg-muted/40 text-muted-foreground border-border hover:bg-muted/60"
+            FILTER_CHIP_BASE,
+            statusFilter === "PAUSED" ? FILTER_CHIP_ACTIVE : FILTER_CHIP_INACTIVE
           )}
         >
-          <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+          <span className="h-1.5 w-1.5 rounded-full bg-warn" />
           Paused {pausedCount}
         </button>
         <button
           type="button"
           onClick={() => setStatusFilter("QUARANTINED")}
           className={cn(
-            "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
-            statusFilter === "QUARANTINED"
-              ? "bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30"
-              : "bg-muted/40 text-muted-foreground border-border hover:bg-muted/60"
+            FILTER_CHIP_BASE,
+            statusFilter === "QUARANTINED" ? FILTER_CHIP_ACTIVE : FILTER_CHIP_INACTIVE
           )}
         >
-          <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
+          <span className="h-1.5 w-1.5 rounded-full bg-err" />
           Quarantined {quarantinedCount}
         </button>
         <button
           type="button"
           onClick={() => setStatusFilter("OFFLINE")}
           className={cn(
-            "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
-            statusFilter === "OFFLINE"
-              ? "bg-zinc-500/15 text-zinc-600 dark:text-zinc-400 border-zinc-500/30"
-              : "bg-muted/40 text-muted-foreground border-border hover:bg-muted/60"
+            FILTER_CHIP_BASE,
+            statusFilter === "OFFLINE" ? FILTER_CHIP_ACTIVE : FILTER_CHIP_INACTIVE
           )}
         >
-          <span className="h-1.5 w-1.5 rounded-full bg-zinc-400" />
+          <span className="h-1.5 w-1.5 rounded-full bg-ink-muted" />
           Offline {offlineCount}
         </button>
       </div>
@@ -324,7 +327,7 @@ export function AgentRegistryView({
         </Button>
         <Button
           size="sm"
-          className="h-7 text-xs bg-primary hover:bg-primary/85 text-white"
+          className="h-7 text-xs"
           onClick={async () => {
             try {
               const r = await resumeAll({ projectId: projectId ?? undefined, reason: "Operator resume", userId: "operator" });
@@ -358,13 +361,14 @@ export function AgentRegistryView({
       {/* Search + filters */}
       <div>
         <div className="relative max-w-xs">
-          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Search size={14} strokeWidth={1.7} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-muted" aria-hidden />
           <input
             type="text"
             placeholder="Search by name or role..."
+            aria-label="Search agents by name or role"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-md border border-input bg-background py-1.5 pl-8 pr-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="w-full h-9 rounded-lg border border-line bg-surface-1 pl-8 pr-3 text-[13.5px] text-ink placeholder:text-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
         </div>
       </div>
@@ -380,38 +384,36 @@ export function AgentRegistryView({
           const currentTask = agent.currentTaskId ? tasks.find((t) => t._id === agent.currentTaskId) : null;
 
           return (
-            <Card key={agent._id} className="p-4 hover:shadow-md transition-shadow flex flex-col">
+            <Card key={agent._id} className="p-4 flex flex-col">
               <div className="flex items-center justify-between gap-2 mb-3">
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="h-9 w-9 rounded-lg bg-muted border border-border flex items-center justify-center text-lg shrink-0">
-                    {agent.emoji || "🤖"}
+                  <div className="h-9 w-9 rounded-lg bg-surface-2 border border-line flex items-center justify-center text-lg shrink-0">
+                    {agent.emoji || agent.name.charAt(0).toUpperCase()}
                   </div>
                   <div className="min-w-0">
-                    <p className="font-semibold text-foreground leading-tight truncate">{agent.name}</p>
-                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{agent.role}</p>
+                    <p className="font-semibold text-ink leading-tight truncate text-[13.5px]">{agent.name}</p>
+                    <p className="text-[11.5px] text-ink-muted">{agent.role}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <span className={cn("h-2 w-2 rounded-full", cfg.dotClass, agent.status === "ACTIVE" && "animate-pulse")} />
-                  <Badge variant="outline" className={cn("text-[10px] font-semibold px-2 py-0", cfg.className)}>
-                    {cfg.label}
-                  </Badge>
+                  <span className={cn("h-2 w-2 rounded-full", cfg.dotClass)} />
+                  <StatusBadge tone={cfg.tone}>{cfg.label}</StatusBadge>
                 </div>
               </div>
 
               {/* Budget bar */}
               <div className="mb-3">
-                <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1">
+                <div className="flex items-center justify-between text-[11.5px] text-ink-muted mb-1">
                   <span>Budget</span>
-                  <span className={cn("font-medium tabular-nums", remaining < 1 ? "text-red-500" : "text-foreground/80")}>
+                  <span className={cn("font-mono font-medium tabular-nums", remaining < 1 ? "text-err" : "text-ink-secondary")}>
                     ${agent.spendToday.toFixed(2)} / ${agent.budgetDaily.toFixed(2)}
                   </span>
                 </div>
-                <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                <div className="h-1.5 w-full rounded-full bg-surface-2 overflow-hidden">
                   <div
                     className={cn(
-                      "h-full rounded-full transition-all duration-300",
-                      budgetPct >= 90 ? "bg-red-500" : budgetPct >= 70 ? "bg-amber-500" : "bg-primary"
+                      "h-full rounded-full transition-[width] duration-300",
+                      budgetPct >= 90 ? "bg-err" : budgetPct >= 70 ? "bg-warn" : "bg-ok"
                     )}
                     style={{ width: `${budgetPct}%` }}
                   />
@@ -419,22 +421,23 @@ export function AgentRegistryView({
               </div>
 
               {currentTask && (
-                <p className="text-xs text-muted-foreground truncate mb-1" title={currentTask.title}>
+                <p className="text-[12.5px] text-ink-secondary truncate mb-1" title={currentTask.title}>
                   Task: {currentTask.title}
                 </p>
               )}
-              <p className="text-[10px] text-muted-foreground/70 flex items-center gap-1 mb-3">
-                <Clock className="h-2.5 w-2.5" />
+              <p className="text-[11.5px] text-ink-muted flex items-center gap-1 mb-3">
+                <Clock size={11} strokeWidth={1.7} aria-hidden />
                 Last heartbeat {lastHB}
               </p>
 
-              <div className="flex flex-wrap gap-1.5 pt-3 border-t border-border mt-auto">
+              <div className="flex flex-wrap gap-1.5 pt-3 border-t border-line mt-auto">
                 <Button
                   size="sm"
                   variant="ghost"
                   className="h-7 text-xs px-2 mr-auto"
                   onClick={() => setSettingsAgent(agent)}
                   title="Agent settings"
+                  aria-label={`Settings for ${agent.name}`}
                 >
                   <Settings className="h-3 w-3" />
                 </Button>
@@ -456,10 +459,10 @@ export function AgentRegistryView({
                 ))}
                 <Button
                   size="sm"
-                  variant="outline"
+                  variant="destructive"
                   disabled={agent.status === "QUARANTINED"}
                   onClick={() => setStatus(agent, "QUARANTINED", "Operator quarantined agent")}
-                  className="h-7 text-xs px-2 border-red-500/40 text-red-600 hover:bg-red-500/10 dark:text-red-400"
+                  className="h-7 text-xs px-2"
                 >
                   <AlertTriangle className="h-3 w-3 mr-0.5" />
                   Quarantine
@@ -472,7 +475,7 @@ export function AgentRegistryView({
 
       {filteredAgents.length === 0 && (
         <div className="text-center py-12">
-          <p className="text-muted-foreground text-sm mb-4">
+          <p className="text-ink-muted text-[13.5px] mb-4">
             {agents.length === 0 ? "No agents registered yet." : "No agents match the current filters."}
           </p>
           {agents.length === 0 && (

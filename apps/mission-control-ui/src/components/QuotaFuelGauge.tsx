@@ -7,7 +7,6 @@ import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -41,10 +40,44 @@ function formatCountdown(resetAt: number): string {
   return `Resets in ${m}m`;
 }
 
-function gaugeColor(pct: number): string {
-  if (pct >= 80) return "var(--destructive)";
-  if (pct >= 60) return "var(--color-status-needs-approval)";
-  return "var(--primary)";
+function gaugeTextClass(pct: number): string {
+  if (pct >= 80) return "text-err";
+  if (pct >= 60) return "text-warn";
+  return "text-ok";
+}
+
+function gaugeBarClass(pct: number): string {
+  if (pct >= 80) return "bg-err";
+  if (pct >= 60) return "bg-warn";
+  return "bg-ok";
+}
+
+/** Flat quota bar with threshold ticks at 60% and 80%. */
+function QuotaBar({ value }: { value: number }): JSX.Element {
+  const pct = Math.max(0, Math.min(100, value));
+  return (
+    <div
+      className="relative h-2 w-full overflow-hidden rounded-full bg-surface-2"
+      role="progressbar"
+      aria-valuenow={Math.round(pct)}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-label="LLM quota used"
+    >
+      <div
+        className={cn("h-full rounded-full transition-[width] duration-200", gaugeBarClass(pct))}
+        style={{ width: `${pct}%` }}
+      />
+      {[60, 80].map((tick) => (
+        <span
+          key={tick}
+          className="absolute inset-y-0 w-px bg-line-strong"
+          style={{ left: `${tick}%` }}
+          aria-hidden
+        />
+      ))}
+    </div>
+  );
 }
 
 interface QuotaFuelGaugeProps {
@@ -95,19 +128,18 @@ export function QuotaFuelGauge({ compact = false, className }: QuotaFuelGaugePro
 
   if (compact) {
     const pct = snapshot?.usagePct ?? 0;
-    const color = gaugeColor(pct);
     return (
       <>
         <button
           type="button"
           onClick={() => setUpdateOpen(true)}
           className={cn(
-            "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs border border-border/60 hover:bg-accent/50 transition-colors",
+            "flex items-center gap-1.5 rounded-md border border-line px-2 py-1 text-xs text-ink-secondary transition-colors duration-150 hover:border-line-strong hover:text-ink",
             className
           )}
           title={snapshot ? `Quota ${pct.toFixed(0)}% · ${formatCountdown(snapshot.resetAt)}` : "Update quota"}
         >
-          <Gauge className="h-3.5 w-3.5" style={{ color }} />
+          <Gauge className={cn("h-3.5 w-3.5", snapshot ? gaugeTextClass(pct) : "text-ink-muted")} strokeWidth={1.75} />
           <span className="font-medium tabular-nums">{snapshot ? `${pct.toFixed(0)}%` : "—"}</span>
         </button>
         <UpdateQuotaDialog
@@ -132,10 +164,10 @@ export function QuotaFuelGauge({ compact = false, className }: QuotaFuelGaugePro
   }
 
   return (
-    <Card className={cn("p-4", className)}>
-      <div className="flex items-center justify-between gap-2 mb-3">
-        <span className="text-sm font-medium text-foreground flex items-center gap-2">
-          <Gauge className="h-4 w-4 text-muted-foreground" />
+    <div className={cn("rounded-xl border border-line bg-surface-1 p-4", className)}>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <span className="flex items-center gap-2 text-[15px] font-semibold text-ink">
+          <Gauge className="h-4 w-4 text-ink-muted" strokeWidth={1.75} />
           LLM quota
         </span>
         <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setUpdateOpen(true)}>
@@ -145,31 +177,31 @@ export function QuotaFuelGauge({ compact = false, className }: QuotaFuelGaugePro
       </div>
 
       {!snapshot ? (
-        <div className="text-sm text-muted-foreground py-4 text-center">
+        <div className="py-4 text-center text-[13px] text-ink-muted">
           No quota data. Click Update and enter usage from your provider dashboard.
         </div>
       ) : (
         <>
-          <div className="flex items-center gap-4">
-            <ArcGauge value={snapshot.usagePct} className="h-20 w-20 shrink-0" />
-            <div className="min-w-0 flex-1 space-y-1">
-              <p className="text-2xl font-semibold tabular-nums" style={{ color: gaugeColor(snapshot.usagePct) }}>
-                {snapshot.usagePct.toFixed(1)}%
-              </p>
-              <p className="text-xs text-muted-foreground">{formatCountdown(snapshot.resetAt)}</p>
-              {projected && (
-                <p className="text-xs text-muted-foreground">
-                  Burn rate: ~{projected.pctPerDay >= 0 ? projected.pctPerDay.toFixed(1) : "0"}% per day
-                  {projected.projectedAtReset < 100 && (
-                    <> · Projected {projected.projectedAtReset.toFixed(0)}% at reset</>
-                  )}
-                </p>
-              )}
-            </div>
+          <div className="flex items-baseline justify-between gap-3">
+            <p className={cn("text-[20px] font-semibold leading-none tabular-nums", gaugeTextClass(snapshot.usagePct))}>
+              {snapshot.usagePct.toFixed(1)}%
+            </p>
+            <p className="text-[12px] text-ink-muted">{formatCountdown(snapshot.resetAt)}</p>
           </div>
+          <div className="mt-2.5">
+            <QuotaBar value={snapshot.usagePct} />
+          </div>
+          {projected && (
+            <p className="mt-2 text-[12px] text-ink-muted">
+              Burn rate: ~{projected.pctPerDay >= 0 ? projected.pctPerDay.toFixed(1) : "0"}% per day
+              {projected.projectedAtReset < 100 && (
+                <> · Projected {projected.projectedAtReset.toFixed(0)}% at reset</>
+              )}
+            </p>
+          )}
           {snapshot.usagePct < 60 && (
-            <div className="mt-3 flex items-center gap-2 text-xs text-[var(--primary)]">
-              <Zap className="h-3.5 w-3.5" />
+            <div className="mt-3 flex items-center gap-2 text-[12px] text-ink-secondary">
+              <Zap className="h-3.5 w-3.5 text-ok" strokeWidth={1.75} />
               Available for background work — scheduler can run low-priority jobs.
             </div>
           )}
@@ -193,38 +225,7 @@ export function QuotaFuelGauge({ compact = false, className }: QuotaFuelGaugePro
         setTokensLimit={setUpdateTokensLimit}
         onSave={handleUpdate}
       />
-    </Card>
-  );
-}
-
-function ArcGauge({ value, className }: { value: number; className?: string }) {
-  const pct = Math.max(0, Math.min(100, value));
-  const color = gaugeColor(pct);
-  const radius = 36;
-  const stroke = 6;
-  const circumference = Math.PI * radius;
-  const dash = (pct / 100) * circumference;
-
-  return (
-    <svg viewBox="0 0 80 44" className={cn("overflow-visible", className)} aria-hidden>
-      <path
-        d={`M ${80 - radius} 44 A ${radius} ${radius} 0 0 1 ${radius} 44`}
-        fill="none"
-        stroke="var(--muted)"
-        strokeWidth={stroke}
-        strokeLinecap="round"
-      />
-      <path
-        d={`M ${80 - radius} 44 A ${radius} ${radius} 0 0 1 ${radius} 44`}
-        fill="none"
-        stroke={color}
-        strokeWidth={stroke}
-        strokeLinecap="round"
-        strokeDasharray={`${dash} ${circumference}`}
-        strokeDashoffset={0}
-        style={{ transition: "stroke-dasharray 0.3s ease" }}
-      />
-    </svg>
+    </div>
   );
 }
 

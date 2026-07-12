@@ -12,6 +12,7 @@ import type { Id } from "../../../convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { PageHeader } from "./components/PageHeader";
+import { StatusBadge } from "./components/factory/badges";
 import {
   Dialog,
   DialogContent,
@@ -21,13 +22,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "./Toast";
-import { cn } from "@/lib/utils";
 import { Rocket, RotateCcw, Server } from "lucide-react";
 
 function fmtTime(ts?: number) {
   if (!ts) return "—";
   return new Date(ts).toLocaleString();
 }
+
+const SELECT_CLASS =
+  "h-9 rounded-lg border border-line bg-surface-1 px-3 text-[13.5px] text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 export function DeploymentsView({ projectId }: { projectId: Id<"projects"> | null }) {
   const { toast } = useToast();
@@ -136,23 +139,24 @@ export function DeploymentsView({ projectId }: { projectId: Id<"projects"> | nul
         description="Promote approved versions through environments. Activate and rollback from the board."
       />
 
-      <div className="px-6 pb-4 flex flex-wrap items-center gap-3">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Tenant</span>
+      <div className="mx-auto max-w-[1200px] px-6 py-6 flex flex-col gap-6">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-[11.5px] font-medium uppercase tracking-[0.06em] text-ink-muted">Tenant</span>
         <select
           value={selectedTenantId ?? ""}
           onChange={(e) => setSelectedTenantId((e.target.value || null) as Id<"tenants"> | null)}
-          className="rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+          className={SELECT_CLASS}
         >
           <option value="">Select tenant</option>
           {(tenants ?? []).map((t) => (
             <option key={t._id} value={t._id}>{t.name}</option>
           ))}
         </select>
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground ml-2">Template</span>
+        <span className="text-[11.5px] font-medium uppercase tracking-[0.06em] text-ink-muted ml-2">Template</span>
         <select
           value={selectedTemplateId ?? ""}
           onChange={(e) => setSelectedTemplateId((e.target.value || null) as Id<"agentTemplates"> | null)}
-          className="rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+          className={SELECT_CLASS}
         >
           <option value="">Select template</option>
           {(templates ?? []).map((t) => (
@@ -162,11 +166,11 @@ export function DeploymentsView({ projectId }: { projectId: Id<"projects"> | nul
       </div>
 
       {!selectedTemplateId ? (
-        <div className="px-6 pb-6 text-center py-12 text-muted-foreground text-sm">
+        <div className="text-center py-12 text-ink-muted text-[13.5px]">
           Select a tenant and template to view the deployment board.
         </div>
       ) : (
-        <div className="px-6 pb-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {(environments ?? []).map((env) => {
             const active = activeByEnv.get(env._id);
             const pendingList = pendingByEnv.get(env._id) ?? [];
@@ -176,31 +180,29 @@ export function DeploymentsView({ projectId }: { projectId: Id<"projects"> | nul
             return (
               <Card key={env._id} className="p-4 flex flex-col">
                 <div className="flex items-center gap-2 mb-4">
-                  <Server className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-semibold text-foreground uppercase tracking-wider">{env.name}</span>
-                  <span className="text-[10px] text-muted-foreground">({env.type})</span>
+                  <Server size={15} strokeWidth={1.7} className="text-ink-muted" aria-hidden />
+                  <span className="font-semibold text-ink text-[15px]">{env.name}</span>
+                  <span className="text-[11.5px] text-ink-muted">({env.type})</span>
                 </div>
 
                 {active ? (
                   <>
-                    <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 mb-3">
+                    <div className="rounded-lg border border-line bg-surface-2 p-3 mb-3">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-lg font-bold text-foreground">v{targetVersion?.version ?? "?"}</span>
-                        <span className="rounded border border-primary/30 bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary/70 dark:text-primary">
-                          ACTIVE
-                        </span>
+                        <span className="text-[18px] font-semibold font-mono text-ink">v{targetVersion?.version ?? "?"}</span>
+                        <StatusBadge tone="success">ACTIVE</StatusBadge>
                       </div>
                       {previousVersion && (
-                        <div className="text-[10px] text-muted-foreground">was v{previousVersion.version}</div>
+                        <div className="text-[11.5px] text-ink-muted font-mono">was v{previousVersion.version}</div>
                       )}
-                      <div className="text-[10px] text-muted-foreground/70 mt-1">
+                      <div className="text-[11.5px] text-ink-muted mt-1">
                         Activated {fmtTime(active.activatedAt)}
                       </div>
                     </div>
                     <Button
                       size="sm"
                       variant="outline"
-                      className="h-7 text-xs border-amber-500/40 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10"
+                      className="h-7 text-xs"
                       disabled={!active.previousVersionId}
                       onClick={() => setRollbackDeploymentId(active._id)}
                     >
@@ -209,13 +211,13 @@ export function DeploymentsView({ projectId }: { projectId: Id<"projects"> | nul
                     </Button>
                   </>
                 ) : (
-                  <div className="rounded-lg border border-dashed border-border bg-muted/20 p-3 mb-3 text-center text-sm text-muted-foreground">
+                  <div className="rounded-lg border border-dashed border-line p-3 mb-3 text-center text-[13.5px] text-ink-muted">
                     No active deployment
                   </div>
                 )}
 
                 {pendingList.length > 0 && (
-                  <div className="text-[10px] text-muted-foreground mb-2">
+                  <div className="text-[11.5px] text-ink-muted mb-2">
                     {pendingList.length} pending
                   </div>
                 )}
@@ -236,10 +238,11 @@ export function DeploymentsView({ projectId }: { projectId: Id<"projects"> | nul
       )}
 
       {(environments ?? []).length === 0 && selectedTenantId && (
-        <div className="px-6 pb-6 text-center py-12 text-muted-foreground text-sm">
+        <div className="text-center py-12 text-ink-muted text-[13.5px]">
           No environments for this tenant.
         </div>
       )}
+      </div>
 
       {/* Deploy modal */}
       <Dialog open={!!deployEnvId} onOpenChange={(open) => !open && setDeployEnvId(null)}>
@@ -251,11 +254,11 @@ export function DeploymentsView({ projectId }: { projectId: Id<"projects"> | nul
             </DialogDescription>
           </DialogHeader>
           <div className="py-2">
-            <label className="block text-sm font-medium mb-2">Version</label>
+            <label className="block text-[13px] font-medium text-ink-secondary mb-2">Version</label>
             <select
               value={deployVersionId ?? ""}
               onChange={(e) => setDeployVersionId((e.target.value || null) as Id<"agentVersions"> | null)}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              className={`w-full ${SELECT_CLASS}`}
             >
               <option value="">Select version</option>
               {(versions ?? []).map((v) => (

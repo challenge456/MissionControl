@@ -18,24 +18,25 @@ export function CodeGenView({ projectId }: CodeGenViewProps) {
   const applyAndPr = useAction((api as any).codegen.applyAndPR);
 
   return (
-    <main className="flex-1 overflow-auto p-6 space-y-4">
+    <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-6 py-6">
       <header>
-        <h2 className="text-lg font-semibold">CodeGen Agent</h2>
-        <p className="text-sm text-muted-foreground">Generate diffs from prompts and produce PR metadata for approval workflows.</p>
+        <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-ink">CodeGen Agent</h1>
+        <p className="mt-1.5 text-[14px] text-ink-secondary">Generate diffs from prompts and produce PR metadata for approval workflows.</p>
       </header>
 
-      <section className="rounded-lg border border-border p-4 space-y-3">
+      <section className="flex flex-col gap-3 rounded-xl border border-line bg-surface-1 p-5">
         <input
-          className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+          className="h-9 w-full rounded-lg border border-line bg-surface-1 px-3 font-mono text-[12.5px] text-ink placeholder:text-ink-muted"
           value={filePath}
           onChange={(e) => setFilePath(e.target.value)}
         />
         <textarea
-          className="min-h-[110px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          className="min-h-[110px] w-full rounded-lg border border-line bg-surface-1 px-3 py-2 text-[13.5px] text-ink placeholder:text-ink-muted"
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
         />
         <Button
+          className="self-start"
           onClick={() =>
             requestPatch({
               projectId: projectId ?? undefined,
@@ -49,15 +50,15 @@ export function CodeGenView({ projectId }: CodeGenViewProps) {
         </Button>
       </section>
 
-      <section className="rounded-lg border border-border p-4 space-y-2">
-        <h3 className="font-medium">Requests</h3>
-        <div className="space-y-2">
+      <section className="flex flex-col gap-3 rounded-xl border border-line bg-surface-1 p-5">
+        <h2 className="text-[15px] font-semibold text-ink">Requests</h2>
+        <div className="flex flex-col gap-2">
           {(requests ?? []).map((row: any) => (
-            <div key={row._id} className="rounded-md border border-border/60 p-3 space-y-2">
+            <div key={row._id} className="flex flex-col gap-2 rounded-lg border border-line p-3">
               <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-medium">{row.filePath}</div>
-                  <div className="text-xs text-muted-foreground">{row.status} · {row.requestId}</div>
+                <div className="min-w-0">
+                  <div className="font-mono text-[13px] font-medium text-ink">{row.filePath}</div>
+                  <div className="text-[12.5px] text-ink-muted">{row.status} · <span className="font-mono">{row.requestId}</span></div>
                 </div>
                 <div className="flex gap-2">
                   <Button size="sm" variant="outline" onClick={() => generateDiff({ id: row._id })}>
@@ -68,9 +69,16 @@ export function CodeGenView({ projectId }: CodeGenViewProps) {
                   </Button>
                 </div>
               </div>
-              {row.diff && <pre className="rounded bg-muted/40 p-2 text-xs overflow-auto">{row.diff}</pre>}
+              {row.diff && (
+                <pre className="overflow-x-auto rounded-lg bg-surface-2 p-2 font-mono text-[12px] leading-relaxed text-ink-secondary">{row.diff}</pre>
+              )}
               {row.prUrl && (
-                <a className="text-xs text-primary underline" href={row.prUrl} target="_blank" rel="noreferrer">
+                <a
+                  className="text-[12.5px] text-ink underline underline-offset-4 hover:text-ink-secondary"
+                  href={row.prUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   {row.prUrl}
                 </a>
               )}
@@ -78,6 +86,6 @@ export function CodeGenView({ projectId }: CodeGenViewProps) {
           ))}
         </div>
       </section>
-    </main>
+    </div>
   );
 }

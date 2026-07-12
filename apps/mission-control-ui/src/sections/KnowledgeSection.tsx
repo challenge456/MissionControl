@@ -25,7 +25,7 @@ export function KnowledgeSection({ currentView, projectId, onTaskSelect }: Knowl
   if (currentView === "memory") return <MemoryView projectId={projectId} />;
   if (currentView === "search") {
     return (
-      <main className="mc-page">
+      <main className="relative flex-1 overflow-auto bg-app">
         <PageHeader
           title="Search"
           description="Find tasks, agents, and context across Mission Control. Results open in the Mission Queue."
@@ -36,9 +36,9 @@ export function KnowledgeSection({ currentView, projectId, onTaskSelect }: Knowl
             </Badge>
           }
         />
-        <div className="mc-page-body mc-page-stack">
+        <div className="mx-auto flex max-w-[1200px] flex-col gap-6 px-6 py-6">
           <Card className="p-5">
-            <div className="mc-kicker">Operator search</div>
+            <div className="text-[12.5px] font-medium text-ink-secondary">Operator search</div>
             <div className="mt-2 flex flex-wrap items-start justify-between gap-4">
               <div className="max-w-3xl">
                 <div className="text-sm font-semibold text-foreground">Search tasks, agents, and project context from one place.</div>

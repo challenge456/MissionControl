@@ -5,6 +5,7 @@ import type { MainView } from "./TopNav";
 import { PageHeader } from "./components/PageHeader";
 import { Card } from "./components/ui/card";
 import { Button } from "./components/ui/button";
+import { MetricBlock } from "./components/factory/MetricBlock";
 import { Calendar, Clock, ListTodo } from "lucide-react";
 
 /** Static list derived from convex/crons.ts for read-only display */
@@ -52,11 +53,11 @@ export function ScheduleView({ projectId, onNavigate, onTaskSelect }: ScheduleVi
     .slice(0, 15);
 
   return (
-    <main className="mc-page">
+    <main className="flex-1 overflow-auto bg-app">
       <PageHeader
         title="Schedule"
         description="What's running and when. Upcoming tasks, scheduled jobs, and Convex crons in one place."
-        icon={<Calendar className="h-4 w-4" />}
+        icon={<Calendar className="h-4 w-4" strokeWidth={1.7} />}
         eyebrow="Operations"
         actions={
           <div className="flex gap-2">
@@ -74,49 +75,57 @@ export function ScheduleView({ projectId, onNavigate, onTaskSelect }: ScheduleVi
           </div>
         }
       />
-      <div className="mc-page-body mc-page-stack">
+      <div className="mx-auto max-w-[1200px] px-6 py-6 flex flex-col gap-6">
         <div className="grid gap-4 md:grid-cols-4">
           <Card className="p-4">
-            <div className="mc-kicker">Upcoming tasks</div>
-            <div className="mt-2 text-3xl font-semibold text-foreground">{upcomingTasks.length}</div>
-            <div className="mt-1 text-xs text-muted-foreground">Scheduled work in the next seven days</div>
+            <MetricBlock
+              label="Upcoming tasks"
+              value={upcomingTasks.length}
+              detail="Scheduled work in the next seven days"
+            />
           </Card>
           <Card className="p-4">
-            <div className="mc-kicker">Scheduled jobs</div>
-            <div className="mt-2 text-3xl font-semibold text-cyan-100">{jobsList.length}</div>
-            <div className="mt-1 text-xs text-muted-foreground">Jobs with persisted next-run timestamps</div>
+            <MetricBlock
+              label="Scheduled jobs"
+              value={jobsList.length}
+              detail="Jobs with persisted next-run timestamps"
+            />
           </Card>
           <Card className="p-4">
-            <div className="mc-kicker">Recurring tasks</div>
-            <div className="mt-2 text-3xl font-semibold text-amber-100">{scheduledTasks.filter((task) => task.recurrence).length}</div>
-            <div className="mt-1 text-xs text-muted-foreground">Operator routines and repeating agent work</div>
+            <MetricBlock
+              label="Recurring tasks"
+              value={scheduledTasks.filter((task) => task.recurrence).length}
+              detail="Operator routines and repeating agent work"
+            />
           </Card>
           <Card className="p-4">
-            <div className="mc-kicker">Convex crons</div>
-            <div className="mt-2 text-3xl font-semibold text-foreground">{CONVEX_CRONS.length}</div>
-            <div className="mt-1 text-xs text-muted-foreground">Background jobs defined in code</div>
+            <MetricBlock
+              label="Convex crons"
+              value={CONVEX_CRONS.length}
+              detail="Background jobs defined in code"
+            />
           </Card>
         </div>
 
         {/* Upcoming tasks */}
         <Card className="p-4">
-          <h3 className="text-sm font-semibold text-foreground flex items-center gap-2 mb-3">
-            <ListTodo className="h-4 w-4 text-muted-foreground" />
+          <h3 className="text-[15px] font-semibold text-ink flex items-center gap-2 mb-3">
+            <ListTodo size={16} strokeWidth={1.6} className="text-ink-muted" />
             Upcoming tasks (next 7 days)
           </h3>
           {upcomingTasks.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No tasks scheduled in the next 7 days.</p>
+            <p className="text-[13.5px] text-ink-muted">No tasks scheduled in the next 7 days.</p>
           ) : (
             <ul className="space-y-2">
               {upcomingTasks.map((t) => (
                 <li key={t._id}>
                   <button
                     type="button"
-                    className="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-muted/50 border border-transparent hover:border-border transition-colors"
+                    className="w-full text-left px-3 py-2 rounded-lg text-[13.5px] hover:bg-surface-2 border border-transparent hover:border-line transition-colors duration-150"
                     onClick={() => onTaskSelect?.(t._id)}
                   >
-                    <span className="font-medium text-foreground">{t.title}</span>
-                    <span className="text-muted-foreground ml-2">
+                    <span className="font-medium text-ink">{t.title}</span>
+                    <span className="text-ink-muted ml-2">
                       {t.scheduledFor
                         ? new Date(t.scheduledFor).toLocaleString(undefined, {
                             weekday: "short",
@@ -141,18 +150,18 @@ export function ScheduleView({ projectId, onNavigate, onTaskSelect }: ScheduleVi
 
         {/* Next scheduled job runs */}
         <Card className="p-4">
-          <h3 className="text-sm font-semibold text-foreground flex items-center gap-2 mb-3">
-            <Clock className="h-4 w-4 text-muted-foreground" />
+          <h3 className="text-[15px] font-semibold text-ink flex items-center gap-2 mb-3">
+            <Clock size={16} strokeWidth={1.6} className="text-ink-muted" />
             Next scheduled job runs
           </h3>
           {nextJobs.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No upcoming job runs.</p>
+            <p className="text-[13.5px] text-ink-muted">No upcoming job runs.</p>
           ) : (
             <ul className="space-y-2">
               {nextJobs.map((j) => (
-                <li key={j._id} className="flex items-center justify-between text-sm py-1.5 border-b border-border last:border-0">
-                  <span className="font-medium text-foreground">{j.name}</span>
-                  <span className="text-muted-foreground text-xs">
+                <li key={j._id} className="flex items-center justify-between text-[13.5px] py-1.5 border-b border-line last:border-0">
+                  <span className="font-medium text-ink">{j.name}</span>
+                  <span className="text-ink-muted text-xs">
                     {j.nextRun
                       ? new Date(j.nextRun).toLocaleString(undefined, {
                           month: "short",
@@ -175,18 +184,18 @@ export function ScheduleView({ projectId, onNavigate, onTaskSelect }: ScheduleVi
 
         {/* Convex crons (read-only) */}
         <Card className="p-4">
-          <h3 className="text-sm font-semibold text-foreground flex items-center gap-2 mb-3">
-            <Clock className="h-4 w-4 text-muted-foreground" />
+          <h3 className="text-[15px] font-semibold text-ink flex items-center gap-2 mb-3">
+            <Clock size={16} strokeWidth={1.6} className="text-ink-muted" />
             Convex cron jobs
           </h3>
-          <p className="text-xs text-muted-foreground mb-3">
+          <p className="text-[12.5px] text-ink-muted mb-3">
             Background jobs from crons.ts. Read-only; edit in code.
           </p>
           <ul className="space-y-2">
             {CONVEX_CRONS.map((cron, i) => (
-              <li key={i} className="flex items-center justify-between text-sm py-1.5 border-b border-border last:border-0">
-                <span className="font-mono text-foreground">{cron.name}</span>
-                <span className="text-muted-foreground text-xs">{cron.interval}</span>
+              <li key={i} className="flex items-center justify-between text-[13.5px] py-1.5 border-b border-line last:border-0">
+                <span className="font-mono text-ink">{cron.name}</span>
+                <span className="text-ink-muted text-xs">{cron.interval}</span>
               </li>
             ))}
           </ul>

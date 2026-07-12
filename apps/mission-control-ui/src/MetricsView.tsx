@@ -24,21 +24,21 @@ export function MetricsView({ projectId }: MetricsViewProps) {
   });
 
   return (
-    <main className="flex-1 overflow-auto p-6 space-y-4">
+    <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-6 py-6">
       <header>
-        <h2 className="text-lg font-semibold">Metrics</h2>
-        <p className="text-sm text-muted-foreground">Capture time-series metrics and inspect aggregate stats for quality and execution observability.</p>
+        <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-ink">Metrics</h1>
+        <p className="mt-1.5 text-[14px] text-ink-secondary">Capture time-series metrics and inspect aggregate stats for quality and execution observability.</p>
       </header>
 
-      <section className="rounded-lg border border-border p-4 space-y-3">
+      <section className="flex flex-col gap-3 rounded-xl border border-line bg-surface-1 p-5">
         <div className="flex gap-2">
           <input
-            className="h-9 flex-1 rounded-md border border-input bg-background px-3 text-sm"
+            className="h-9 flex-1 rounded-lg border border-line bg-surface-1 px-3 font-mono text-[12.5px] text-ink placeholder:text-ink-muted"
             value={metricName}
             onChange={(e) => setMetricName(e.target.value)}
           />
           <input
-            className="h-9 w-36 rounded-md border border-input bg-background px-3 text-sm"
+            className="h-9 w-36 rounded-lg border border-line bg-surface-1 px-3 font-mono text-[12.5px] text-ink placeholder:text-ink-muted"
             value={value}
             onChange={(e) => setValue(e.target.value)}
           />
@@ -58,18 +58,21 @@ export function MetricsView({ projectId }: MetricsViewProps) {
         </div>
       </section>
 
-      <section className="rounded-lg border border-border p-4 space-y-2">
-        <h3 className="font-medium">Aggregate</h3>
-        <div className="text-sm text-muted-foreground">
+      <section className="flex flex-col gap-3 rounded-xl border border-line bg-surface-1 p-5">
+        <h2 className="text-[15px] font-semibold text-ink">Aggregate</h2>
+        <div className="font-mono text-[12.5px] text-ink-secondary">
           count {aggregate?.count ?? 0} · min {aggregate?.min ?? 0} · avg {(aggregate?.avg ?? 0).toFixed?.(2) ?? 0} · p95 {aggregate?.p95 ?? 0} · p99 {aggregate?.p99 ?? 0}
         </div>
       </section>
 
-      <section className="rounded-lg border border-border p-4 space-y-2">
-        <h3 className="font-medium">Recent Points</h3>
-        <div className="space-y-1">
+      <section className="flex flex-col gap-3 rounded-xl border border-line bg-surface-1 p-5">
+        <h2 className="text-[15px] font-semibold text-ink">Recent Points</h2>
+        <div className="flex flex-col">
           {(series ?? []).slice(0, 20).map((point: any) => (
-            <div key={point._id} className="flex items-center justify-between text-xs border-b border-border/40 py-1">
+            <div
+              key={point._id}
+              className="flex items-center justify-between border-b border-line py-1.5 font-mono text-[12px] text-ink-secondary last:border-b-0"
+            >
               <span>{new Date(point.timestamp).toLocaleTimeString()}</span>
               <span>{point.metricName}</span>
               <span>{point.value}</span>
@@ -77,6 +80,6 @@ export function MetricsView({ projectId }: MetricsViewProps) {
           ))}
         </div>
       </section>
-    </main>
+    </div>
   );
 }

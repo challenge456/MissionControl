@@ -9,7 +9,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/factory/badges";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,7 +36,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Settings2, Plus, Trash2, Loader2, Database } from "lucide-react";
+import { Plus, Trash2, Loader2, Database } from "lucide-react";
 
 const PRESETS = [
   { value: "PRE_RELEASE", label: "Pre-Release" },
@@ -131,14 +131,13 @@ export function QcRulesetsView({ projectId }: QcRulesetsViewProps) {
   };
 
   return (
-    <div className="flex-1 overflow-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Settings2 className="h-6 w-6 text-primary" />
+    <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-6 py-6">
+      <div className="flex items-start justify-between gap-6">
+        <div className="min-w-0">
+          <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-ink">
             Rulesets
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="mt-1.5 text-[14px] text-ink-secondary">
             Manage QC rulesets and presets
           </p>
         </div>
@@ -169,42 +168,43 @@ export function QcRulesetsView({ projectId }: QcRulesetsViewProps) {
           <TableBody>
             {!rulesets ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
+                <TableCell colSpan={6} className="text-center text-ink-muted">
                   Loading…
                 </TableCell>
               </TableRow>
             ) : rulesets.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
+                <TableCell colSpan={6} className="text-center text-ink-muted">
                   No rulesets. Seed defaults or create one.
                 </TableCell>
               </TableRow>
             ) : (
               rulesets.map((r) => (
                 <TableRow key={r._id}>
-                  <TableCell className="font-medium">{r.name}</TableCell>
+                  <TableCell className="font-medium text-ink">{r.name}</TableCell>
                   <TableCell>
-                    <Badge variant="secondary">{r.preset ?? "CUSTOM"}</Badge>
+                    <StatusBadge tone="neutral">{r.preset ?? "CUSTOM"}</StatusBadge>
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
+                  <TableCell className="text-[13px] text-ink-secondary">
                     {r.coverageThresholds.unit}% / {r.coverageThresholds.integration}% /{" "}
                     {r.coverageThresholds.e2e}%
                   </TableCell>
-                  <TableCell className="text-sm">{r.gateDefinitions.length}</TableCell>
+                  <TableCell className="text-[13px] text-ink-secondary">{r.gateDefinitions.length}</TableCell>
                   <TableCell>
-                    <Badge variant={r.active ? "default" : "secondary"}>
+                    <StatusBadge tone={r.active ? "success" : "neutral"}>
                       {r.active ? "Active" : "Inactive"}
-                    </Badge>
+                    </StatusBadge>
                   </TableCell>
                   <TableCell>
                     {!r.isBuiltIn && (
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="text-destructive"
+                        className="text-err"
+                        aria-label="Delete ruleset"
                         onClick={() => handleRemove(r._id)}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-4 w-4" strokeWidth={1.75} />
                       </Button>
                     )}
                   </TableCell>
@@ -289,7 +289,7 @@ export function QcRulesetsView({ projectId }: QcRulesetsViewProps) {
             <div className="space-y-2">
               <Label>Security paths (one per line)</Label>
               <textarea
-                className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+                className="min-h-[80px] w-full rounded-lg border border-line bg-surface-1 px-3 py-2 font-mono text-[12.5px] text-ink placeholder:text-ink-muted"
                 value={securityPathsStr}
                 onChange={(e) => setSecurityPathsStr(e.target.value)}
                 placeholder="auth/**"

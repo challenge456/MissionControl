@@ -2,6 +2,7 @@ import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
+import { StatusBadge, type StatusBadgeProps } from "./components/factory/badges";
 import {
   Tooltip,
   TooltipContent,
@@ -15,18 +16,12 @@ interface AgentDashboardProps {
   onSelectAgent?: (agentId: Id<"agents">) => void;
 }
 
-const statusClassMap: Record<string, string> = {
-  ACTIVE: "bg-primary/15 text-primary",
-  PAUSED: "bg-yellow-500/15 text-yellow-500",
-  OFFLINE: "bg-slate-500/15 text-muted-foreground",
-  DRAINED: "bg-slate-500/15 text-muted-foreground",
-  QUARANTINED: "bg-red-500/15 text-red-500",
-};
-
-const roleClassMap: Record<string, string> = {
-  INTERN: "bg-blue-500/15 text-blue-500",
-  SPECIALIST: "bg-blue-500/15 text-blue-400",
-  LEAD: "bg-orange-500/15 text-orange-500",
+const STATUS_TONE: Record<string, StatusBadgeProps["tone"]> = {
+  ACTIVE: "success",
+  PAUSED: "warning",
+  OFFLINE: "neutral",
+  DRAINED: "neutral",
+  QUARANTINED: "error",
 };
 
 export function AgentDashboard({ projectId, onClose, onSelectAgent }: AgentDashboardProps) {
@@ -48,8 +43,8 @@ export function AgentDashboard({ projectId, onClose, onSelectAgent }: AgentDashb
   if (!agents || !tasks || !runs) {
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
-        <div className="bg-card rounded-lg p-6">
-          <div className="w-8 h-8 rounded-full border-2 border-border border-t-primary animate-spin" />
+        <div className="bg-surface-1 border border-line rounded-xl p-6">
+          <div className="w-8 h-8 rounded-full border-2 border-line border-t-ink animate-spin" />
         </div>
       </div>
     );
@@ -87,17 +82,17 @@ export function AgentDashboard({ projectId, onClose, onSelectAgent }: AgentDashb
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
-      <div className="bg-card rounded-lg shadow-2xl max-w-[80rem] w-full max-h-[90vh] overflow-hidden flex flex-col">
+      <div className="bg-surface-1 border border-line rounded-xl max-w-[80rem] w-full max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="p-6 border-b border-border">
+        <div className="p-6 border-b border-line">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-2xl font-bold text-foreground m-0">Agent Performance Dashboard</h2>
-              <p className="text-sm text-muted-foreground mt-1 mb-0">
+              <h2 className="text-[19px] font-semibold text-ink m-0">Agent Performance Dashboard</h2>
+              <p className="text-[13.5px] text-ink-secondary mt-1 mb-0">
                 {agents.length} agents · {runs.length} runs · ${agentMetrics.reduce((sum, m) => sum + m.totalCost, 0).toFixed(2)} total cost
               </p>
             </div>
-            <button onClick={onClose} className="bg-transparent border-none text-muted-foreground hover:text-foreground cursor-pointer p-1" aria-label="Close agent dashboard">
+            <button onClick={onClose} className="bg-transparent border-none text-ink-muted hover:text-ink transition-colors duration-150 cursor-pointer p-1" aria-label="Close agent dashboard">
               <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
@@ -126,26 +121,26 @@ export function AgentDashboard({ projectId, onClose, onSelectAgent }: AgentDashb
                             }
                           : undefined}
                       className={cn(
-                        "bg-background rounded-lg p-4 border border-border",
-                        onSelectAgent && "cursor-pointer hover:border-primary/50 hover:bg-muted/30 transition-colors"
+                        "bg-surface-2 rounded-xl p-4 border border-line",
+                        onSelectAgent && "cursor-pointer hover:border-line-strong transition-colors duration-150"
                       )}
                       aria-label={onSelectAgent ? `Agent ${agent.name}. Click to open details.` : undefined}
                     >
                       {/* Agent Header */}
                       <div className="flex items-start justify-between mb-4">
                         <div className="flex items-center gap-2">
-                          <span className="text-2xl">{agent.emoji || "🤖"}</span>
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line bg-surface-1 text-lg">
+                            {agent.emoji || agent.name.charAt(0).toUpperCase()}
+                          </span>
                           <div>
-                            <h3 className="font-semibold text-foreground m-0 text-base" title={agent._id}>
+                            <h3 className="font-semibold text-ink m-0 text-[15px]" title={agent._id}>
                               {agent.name}
                             </h3>
                       <div className="flex items-center gap-2 mt-1">
-                        <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", roleClassMap[agent.role])}>
-                          {agent.role}
-                        </span>
-                        <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", statusClassMap[agent.status])}>
+                        <StatusBadge tone="neutral">{agent.role}</StatusBadge>
+                        <StatusBadge tone={STATUS_TONE[agent.status] ?? "neutral"}>
                           {agent.status}
-                        </span>
+                        </StatusBadge>
                       </div>
                     </div>
                   </div>
@@ -154,38 +149,38 @@ export function AgentDashboard({ projectId, onClose, onSelectAgent }: AgentDashb
                 {/* Metrics Grid */}
                 <div className="grid grid-cols-2 gap-3 mb-4">
                   <div>
-                    <div className="text-xs text-muted-foreground mb-0.5">Tasks</div>
-                    <div className="text-lg font-semibold text-foreground">
+                    <div className="text-[12.5px] text-ink-muted mb-0.5">Tasks</div>
+                    <div className="text-[17px] font-semibold font-mono text-ink">
                       {metrics.completedTasks}/{metrics.totalTasks}
                     </div>
-                    <div className="text-xs text-muted-foreground">
+                    <div className="text-[12.5px] text-ink-muted">
                       {metrics.inProgressTasks} in progress
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs text-muted-foreground mb-0.5">Runs</div>
-                    <div className="text-lg font-semibold text-foreground">{metrics.totalRuns}</div>
-                    <div className="text-xs text-muted-foreground">
+                    <div className="text-[12.5px] text-ink-muted mb-0.5">Runs</div>
+                    <div className="text-[17px] font-semibold font-mono text-ink">{metrics.totalRuns}</div>
+                    <div className="text-[12.5px] text-ink-muted">
                       {(metrics.successRate != null && !Number.isNaN(metrics.successRate)
                         ? metrics.successRate.toFixed(0)
                         : "—")}% success
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs text-muted-foreground mb-0.5">Total Cost</div>
-                    <div className="text-lg font-semibold text-foreground">
+                    <div className="text-[12.5px] text-ink-muted mb-0.5">Total Cost</div>
+                    <div className="text-[17px] font-semibold font-mono text-ink">
                       ${metrics.totalCost.toFixed(2)}
                     </div>
-                    <div className="text-xs text-muted-foreground">
+                    <div className="text-[12.5px] text-ink-muted">
                       ${metrics.avgCostPerRun.toFixed(3)}/run
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs text-muted-foreground mb-0.5">Today&apos;s Spend</div>
-                    <div className="text-lg font-semibold text-foreground">
+                    <div className="text-[12.5px] text-ink-muted mb-0.5">Today&apos;s Spend</div>
+                    <div className="text-[17px] font-semibold font-mono text-ink">
                       ${metrics.spendToday.toFixed(2)}
                     </div>
-                    <div className="text-xs text-muted-foreground">
+                    <div className="text-[12.5px] text-ink-muted">
                       ${metrics.budgetRemaining.toFixed(2)} left
                     </div>
                   </div>
@@ -193,28 +188,28 @@ export function AgentDashboard({ projectId, onClose, onSelectAgent }: AgentDashb
 
                 {/* Budget Bar */}
                 <div>
-                  <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                  <div className="flex items-center justify-between text-[12.5px] text-ink-muted mb-1">
                     <span>Budget Utilization</span>
-                    <span>
+                    <span className="font-mono">
                       {(metrics.utilization != null && !Number.isNaN(metrics.utilization)
                         ? metrics.utilization.toFixed(0)
                         : "—")}%
                     </span>
                   </div>
-                  <div className="w-full bg-border rounded-full h-2 overflow-hidden">
+                  <div className="w-full bg-surface-1 border border-line rounded-full h-2 overflow-hidden">
                     <div
                       className={cn(
-                        "h-2 rounded-full transition-[width] duration-300",
+                        "h-full rounded-full transition-[width] duration-300",
                         (metrics.utilization ?? 0) >= 90
-                          ? "bg-red-500"
+                          ? "bg-err"
                           : (metrics.utilization ?? 0) >= 70
-                            ? "bg-yellow-500"
-                            : "bg-primary"
+                            ? "bg-warn"
+                            : "bg-ok"
                       )}
                       style={{ width: `${Math.min(metrics.utilization ?? 0, 100)}%` }}
                     />
                   </div>
-                  <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
+                  <div className="flex items-center justify-between text-[12.5px] font-mono text-ink-muted mt-1">
                     <span>${metrics.spendToday.toFixed(2)}</span>
                     <span>${metrics.budgetDaily.toFixed(2)}</span>
                   </div>
@@ -222,13 +217,13 @@ export function AgentDashboard({ projectId, onClose, onSelectAgent }: AgentDashb
 
                 {/* Task Types */}
                 {agent.allowedTaskTypes && agent.allowedTaskTypes.length > 0 && (
-                  <div className="mt-4 pt-4 border-t border-border">
-                    <div className="text-xs text-muted-foreground mb-0.5">Allowed Task Types</div>
+                  <div className="mt-4 pt-4 border-t border-line">
+                    <div className="text-[12.5px] text-ink-muted mb-0.5">Allowed Task Types</div>
                     <div className="flex flex-wrap gap-1 mt-1.5">
                       {agent.allowedTaskTypes.map((type) => (
-                        <span key={type} className="text-xs px-2 py-0.5 bg-secondary text-muted-foreground rounded-md">
+                        <StatusBadge key={type} tone="neutral">
                           {type}
-                        </span>
+                        </StatusBadge>
                       ))}
                     </div>
                   </div>
@@ -237,8 +232,8 @@ export function AgentDashboard({ projectId, onClose, onSelectAgent }: AgentDashb
                   </TooltipTrigger>
                   <TooltipContent side="top" className="max-w-[280px]">
                     <div className="font-medium">{agent.name}</div>
-                    <div className="text-[0.65rem] text-muted-foreground break-all">{agent._id}</div>
-                    {onSelectAgent && <div className="text-[0.65rem] mt-0.5">Click to open agent details</div>}
+                    <div className="text-[11.5px] font-mono text-ink-muted break-all">{agent._id}</div>
+                    {onSelectAgent && <div className="text-[11.5px] mt-0.5">Click to open agent details</div>}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>

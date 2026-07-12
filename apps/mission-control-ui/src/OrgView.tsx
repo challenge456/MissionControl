@@ -4,7 +4,7 @@ import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge, type StatusBadgeProps } from "./components/factory/badges";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import {
@@ -25,7 +25,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { EmptyState } from "@/components/ui/empty-state";
 import { CreateAgentModal, type CreateAgentForm } from "@/CreateAgentModal";
 import { PageHeader } from "./components/PageHeader";
-import { Users, X, ChevronDown, Plus } from "lucide-react";
+import { Users, X, ChevronDown, Plus, FileText } from "lucide-react";
 
 interface OrgViewProps {
   projectId: Id<"projects"> | null;
@@ -58,25 +58,25 @@ function countNodesByType(nodes: any[], type: OrgNodeType): number {
 }
 
 const AGENT_STATUS_CLASSES: Record<string, string> = {
-  ACTIVE: "text-primary",
-  PAUSED: "text-amber-500",
-  DRAINED: "text-muted-foreground",
-  QUARANTINED: "text-red-500",
-  OFFLINE: "text-muted-foreground",
+  ACTIVE: "text-ok",
+  PAUSED: "text-warn",
+  DRAINED: "text-ink-muted",
+  QUARANTINED: "text-err",
+  OFFLINE: "text-ink-muted",
 };
 
-const AGENT_STATUS_BG: Record<string, string> = {
-  ACTIVE: "bg-primary/10 text-primary",
-  PAUSED: "bg-amber-500/10 text-amber-500",
-  DRAINED: "bg-muted text-muted-foreground",
-  QUARANTINED: "bg-red-500/10 text-red-500",
-  OFFLINE: "bg-muted text-muted-foreground",
+const AGENT_STATUS_TONES: Record<string, StatusBadgeProps["tone"]> = {
+  ACTIVE: "success",
+  PAUSED: "warning",
+  DRAINED: "neutral",
+  QUARANTINED: "error",
+  OFFLINE: "neutral",
 };
 
 const ROLE_COLORS: Record<string, string> = {
-  LEAD: "bg-blue-500",
-  SPECIALIST: "bg-primary",
-  INTERN: "bg-teal-500",
+  LEAD: "bg-info-soft",
+  SPECIALIST: "bg-ok-soft",
+  INTERN: "bg-surface-2",
 };
 
 export function OrgView({ projectId }: OrgViewProps) {
@@ -306,9 +306,9 @@ export function OrgView({ projectId }: OrgViewProps) {
 
   if (!hierarchy) {
     return (
-      <main className="mc-page">
-        <div className="mc-page-body">
-          <div className="h-[640px] rounded-2xl border border-[var(--panel-line)] skeleton-shimmer" />
+      <main className="flex-1 overflow-auto bg-app">
+        <div className="mx-auto max-w-[1440px] px-6 py-6">
+          <div className="h-[640px] animate-pulse rounded-xl border border-line bg-surface-2" />
         </div>
       </main>
     );
@@ -316,14 +316,14 @@ export function OrgView({ projectId }: OrgViewProps) {
 
   if (hierarchy.length === 0) {
     return (
-      <main className="mc-page">
+      <main className="flex-1 overflow-auto bg-app">
         <PageHeader
           title="Org Chart"
           description="Human and agent structure for the current project, including ownership, role posture, and organizational relationships."
           eyebrow="Comms"
-          icon={<Users className="h-4.5 w-4.5" strokeWidth={1.7} />}
+          icon={<Users size={16} strokeWidth={1.7} />}
         />
-        <div className="mc-page-body">
+        <div className="mx-auto max-w-[1440px] px-6 py-6">
           <EmptyState
             icon={Users}
             title="No org chart yet"
@@ -369,63 +369,63 @@ export function OrgView({ projectId }: OrgViewProps) {
   const drawerOpen = selectedNode !== null;
 
   return (
-    <main className="mc-page">
+    <main className="flex-1 overflow-auto bg-app">
       <PageHeader
         title="Org Chart"
         description="Human and agent reporting structure for the operating system behind this project."
         eyebrow="Comms"
-        icon={<Users className="h-4.5 w-4.5" strokeWidth={1.7} />}
+        icon={<Users size={16} strokeWidth={1.7} />}
         status={
-          <Badge variant="outline" className="border-cyan-300/20 text-cyan-100">
+          <StatusBadge tone="neutral">
             {totalHumans + apiAgents + localModels} nodes
-          </Badge>
+          </StatusBadge>
         }
         actions={
-          <Button onClick={() => handleOpenCreate()} variant="neon-cyan" size="sm">
+          <Button onClick={() => handleOpenCreate()} size="sm">
             <Plus className="h-4 w-4 mr-2" />
             Add agent
           </Button>
         }
       />
 
-      <div className="mc-page-body mc-page-stack">
+      <div className="mx-auto flex max-w-[1440px] flex-col gap-6 px-6 py-6">
         <div className="grid gap-4 md:grid-cols-4">
           <Card className="p-4">
-            <div className="mc-kicker">Humans</div>
-            <div className="mt-2 text-3xl font-semibold text-foreground">{totalHumans}</div>
-            <div className="mt-1 text-xs text-muted-foreground">Human operators represented in the current hierarchy</div>
+            <div className="text-[12.5px] font-medium text-ink-secondary">Humans</div>
+            <div className="mt-1.5 text-[20px] font-semibold leading-none text-ink">{totalHumans}</div>
+            <div className="mt-1.5 text-[12px] text-ink-muted">Human operators represented in the current hierarchy</div>
           </Card>
           <Card className="p-4">
-            <div className="mc-kicker">API agents</div>
-            <div className="mt-2 text-3xl font-semibold text-cyan-100">{apiAgents}</div>
-            <div className="mt-1 text-xs text-muted-foreground">Hosted or provider-backed agents in the current org structure</div>
+            <div className="text-[12.5px] font-medium text-ink-secondary">API agents</div>
+            <div className="mt-1.5 text-[20px] font-semibold leading-none text-ink">{apiAgents}</div>
+            <div className="mt-1.5 text-[12px] text-ink-muted">Hosted or provider-backed agents in the current org structure</div>
           </Card>
           <Card className="p-4">
-            <div className="mc-kicker">Local models</div>
-            <div className="mt-2 text-3xl font-semibold text-foreground">{localModels}</div>
-            <div className="mt-1 text-xs text-muted-foreground">Intern-class or local runtime workers in the hierarchy</div>
+            <div className="text-[12.5px] font-medium text-ink-secondary">Local models</div>
+            <div className="mt-1.5 text-[20px] font-semibold leading-none text-ink">{localModels}</div>
+            <div className="mt-1.5 text-[12px] text-ink-muted">Intern-class or local runtime workers in the hierarchy</div>
           </Card>
           <Card className="p-4">
-            <div className="mc-kicker">Daily budget</div>
-            <div className="mt-2 text-3xl font-semibold text-emerald-200">${totalBudget.toFixed(0)}</div>
-            <div className="mt-1 text-xs text-muted-foreground">Combined budget exposure across agents in this view</div>
+            <div className="text-[12.5px] font-medium text-ink-secondary">Daily budget</div>
+            <div className="mt-1.5 font-mono text-[20px] font-semibold leading-none text-ink">${totalBudget.toFixed(0)}</div>
+            <div className="mt-1.5 text-[12px] text-ink-muted">Combined budget exposure across agents in this view</div>
           </Card>
         </div>
 
         {missionData?.missionStatement ? (
           <Card className="p-5">
-            <div className="mc-kicker">Operator brief</div>
-            <p className="mt-2 max-w-4xl text-sm italic leading-relaxed text-muted-foreground">
+            <div className="text-[12.5px] font-medium text-ink-secondary">Operator brief</div>
+            <p className="mt-2 max-w-4xl text-[13.5px] leading-relaxed text-ink-secondary">
               &ldquo;{missionData.missionStatement}&rdquo;
             </p>
           </Card>
         ) : null}
 
         {actionError ? (
-          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300" role="alert">
+          <div className="rounded-xl border border-transparent bg-err-soft px-4 py-3 text-[13px] text-err" role="alert">
             <div className="flex items-center justify-between gap-3">
               <span>{actionError}</span>
-              <button onClick={() => setActionError(null)} className="text-red-300 hover:text-red-200" aria-label="Dismiss error">
+              <button onClick={() => setActionError(null)} className="text-err transition-opacity duration-150 hover:opacity-80" aria-label="Dismiss error">
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -488,10 +488,10 @@ export function OrgView({ projectId }: OrgViewProps) {
 
 function MetricPill({ icon, value, label }: { icon: string; value: string | number; label: string }) {
   return (
-    <div className="flex items-center gap-2 px-4 py-3 rounded-lg border border-border bg-card">
-      <span className="text-xl">{icon}</span>
-      <span className="text-xl font-semibold text-foreground">{value}</span>
-      <span className="text-sm text-muted-foreground">{label}</span>
+    <div className="flex items-center gap-2 px-4 py-3 rounded-lg border border-line bg-surface-1">
+      <span className="text-[15px]">{icon}</span>
+      <span className="text-[15px] font-semibold text-ink">{value}</span>
+      <span className="text-[12.5px] text-ink-muted">{label}</span>
     </div>
   );
 }
@@ -544,15 +544,15 @@ function OrgDetailDrawer({
     return (
       <aside
         ref={panelRef}
-        className="fixed top-0 left-0 bottom-0 w-[480px] bg-card border-r border-border flex flex-col z-[100] shadow-xl"
+        className="fixed top-0 left-0 bottom-0 w-[480px] bg-surface-3 border-r border-line flex flex-col z-[100] shadow-[var(--shadow-elevation-2)]"
         role="dialog"
         aria-modal="true"
         aria-label="Loading details"
         tabIndex={-1}
       >
-        <div className="flex items-start justify-between px-6 py-5 border-b border-border">
-          <span className="text-muted-foreground">Loading...</span>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground" aria-label="Close detail drawer">
+        <div className="flex items-start justify-between px-6 py-5 border-b border-line">
+          <span className="text-[13.5px] text-ink-muted">Loading...</span>
+          <button onClick={onClose} className="text-ink-muted transition-colors duration-150 hover:text-ink" aria-label="Close detail drawer">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -560,46 +560,42 @@ function OrgDetailDrawer({
     );
   }
 
-  const avatarColor = isAgent
-    ? detail.role === "LEAD" ? "bg-blue-500" : detail.role === "SPECIALIST" ? "bg-primary" : "bg-teal-500"
-    : "bg-blue-500";
+  const avatarColor = "border border-line bg-surface-2";
 
   return (
     <aside
       ref={panelRef}
-      className="fixed top-0 left-0 bottom-0 w-[480px] bg-card border-r border-border flex flex-col z-[100] shadow-xl"
+      className="fixed top-0 left-0 bottom-0 w-[480px] bg-surface-3 border-r border-line flex flex-col z-[100] shadow-[var(--shadow-elevation-2)]"
       role="dialog"
       aria-modal="true"
       aria-label={`${detail.name} details`}
       tabIndex={-1}
     >
       {/* Header */}
-      <div className="flex items-start justify-between px-6 py-5 border-b border-border gap-3">
+      <div className="flex items-start justify-between px-6 py-5 border-b border-line gap-3">
         <div className="flex items-center gap-3 flex-1 min-w-0">
-          <div className={cn("w-12 h-12 rounded-full flex items-center justify-center text-white text-2xl font-semibold shrink-0", avatarColor)}>
-            {isAgent ? detail.emoji || "🤖" : detail.avatar || "👤"}
+          <div className={cn("w-12 h-12 rounded-full flex items-center justify-center text-ink text-xl font-semibold shrink-0", avatarColor)}>
+            {isAgent
+              ? detail.emoji || detail.name?.charAt(0)?.toUpperCase()
+              : detail.avatar || detail.name?.charAt(0)?.toUpperCase()}
           </div>
           <div className="min-w-0">
-            <h2 className="text-lg font-semibold text-foreground truncate">{detail.name}</h2>
+            <h2 className="text-[15px] font-semibold text-ink truncate">{detail.name}</h2>
             <div className="flex gap-2 items-center mt-1">
               {isAgent ? (
                 <>
-                  <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-500 border-blue-500/20">
-                    {detail.role}
-                  </Badge>
-                  <Badge variant="outline" className={cn("text-xs", AGENT_STATUS_BG[detail.status] || "bg-muted text-muted-foreground")}>
+                  <StatusBadge tone="neutral">{detail.role}</StatusBadge>
+                  <StatusBadge tone={AGENT_STATUS_TONES[detail.status] ?? "neutral"}>
                     {detail.status}
-                  </Badge>
+                  </StatusBadge>
                 </>
               ) : (
-                <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-500 border-blue-500/20">
-                  {detail.role}
-                </Badge>
+                <StatusBadge tone="neutral">{detail.role}</StatusBadge>
               )}
             </div>
           </div>
         </div>
-        <button onClick={onClose} className="text-muted-foreground hover:text-foreground shrink-0" aria-label="Close detail drawer">
+        <button onClick={onClose} className="text-ink-muted transition-colors duration-150 hover:text-ink shrink-0" aria-label="Close detail drawer">
           <X className="h-5 w-5" />
         </button>
       </div>
@@ -627,7 +623,7 @@ function OrgDetailDrawer({
       </ScrollArea>
 
       {/* Footer */}
-      <div className="px-6 py-4 border-t border-border flex gap-3 shrink-0">
+      <div className="px-6 py-4 border-t border-line flex gap-3 shrink-0">
         {isEditing ? (
           <>
             <Button onClick={onSave}>Save Changes</Button>
@@ -718,24 +714,24 @@ function AgentDetailContent({
       <DetailSection title="Configuration">
         {agent.allowedTaskTypes && agent.allowedTaskTypes.length > 0 && (
           <div className="mb-3">
-            <div className="text-xs text-muted-foreground mb-1.5">Allowed Task Types</div>
+            <div className="text-[12.5px] text-ink-muted mb-1.5">Allowed Task Types</div>
             <div className="flex flex-wrap gap-1.5">
               {agent.allowedTaskTypes.map((t: string) => (
-                <Badge key={t} variant="outline" className="text-xs bg-blue-500/10 text-blue-500 border-blue-500/20">
+                <StatusBadge key={t} tone="neutral">
                   {t}
-                </Badge>
+                </StatusBadge>
               ))}
             </div>
           </div>
         )}
         {agent.allowedTools && agent.allowedTools.length > 0 && (
           <div className="mb-3">
-            <div className="text-xs text-muted-foreground mb-1.5">Allowed Tools</div>
+            <div className="text-[12.5px] text-ink-muted mb-1.5">Allowed Tools</div>
             <div className="flex flex-wrap gap-1.5">
               {agent.allowedTools.map((t: string) => (
-                <Badge key={t} variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">
+                <StatusBadge key={t} tone="neutral">
                   {t}
-                </Badge>
+                </StatusBadge>
               ))}
             </div>
           </div>
@@ -760,8 +756,8 @@ function AgentDetailContent({
               const spent = agent.spendToday ?? 0;
               const remaining = daily - spent;
               const ratio = daily > 0 ? spent / daily : 0;
-              const ratioClass = ratio > 0.9 ? "text-red-500" : ratio > 0.7 ? "text-amber-500" : "text-primary";
-              const barColor = ratio > 0.9 ? "bg-red-500" : ratio > 0.7 ? "bg-amber-500" : "bg-primary";
+              const ratioClass = ratio > 0.9 ? "text-err" : ratio > 0.7 ? "text-warn" : "text-ok";
+              const barColor = ratio > 0.9 ? "bg-err" : ratio > 0.7 ? "bg-warn" : "bg-ok";
               return (
                 <>
                   <DetailRow label="Daily Budget" value={`$${daily.toFixed(2)}`} />
@@ -769,7 +765,7 @@ function AgentDetailContent({
                   <DetailRow label="Spent Today" value={`$${spent.toFixed(2)}`} />
                   <DetailRow label="Remaining" value={`$${remaining.toFixed(2)}`} valueClassName={ratioClass} />
                   <div className="mt-2">
-                    <div className="w-full h-1 bg-muted rounded-full overflow-hidden">
+                    <div className="w-full h-1 bg-surface-2 rounded-full overflow-hidden">
                       <div
                         className={cn("h-full rounded-full transition-[width] duration-300", barColor)}
                         style={{ width: `${Math.min(100, ratio * 100)}%` }}
@@ -789,12 +785,12 @@ function AgentDetailContent({
         <DetailRow
           label="Error Streak"
           value={String(agent.errorStreak)}
-          valueClassName={agent.errorStreak > 0 ? "text-red-500" : undefined}
+          valueClassName={agent.errorStreak > 0 ? "text-err" : undefined}
         />
         {agent.lastError && (
           <div className="mt-2">
-            <div className="text-xs text-muted-foreground mb-1">Last Error</div>
-            <div className="px-3 py-2 rounded-md bg-red-500/10 border border-red-500/20 text-xs text-red-400 font-mono break-all">
+            <div className="text-[12.5px] text-ink-muted mb-1">Last Error</div>
+            <div className="px-3 py-2 rounded-lg bg-err-soft border border-transparent text-[12px] text-err font-mono break-all">
               {agent.lastError}
             </div>
           </div>
@@ -805,23 +801,23 @@ function AgentDetailContent({
         {isEditing ? (
           <EditField label="" value={editForm.notes} onChange={(v) => onUpdateField("notes", v)} multiline placeholder="Add notes about this agent..." />
         ) : (
-          <p className={cn("text-sm", meta.notes ? "text-foreground" : "text-muted-foreground")}>
+          <p className={cn("text-[13.5px]", meta.notes ? "text-ink" : "text-ink-muted")}>
             {meta.notes || "No notes yet."}
           </p>
         )}
       </DetailSection>
 
       <DetailSection title="Documents & Memory">
-        <AgentDocumentCard title="SOUL.md" icon="🧠" description={agent.soulVersionHash ? `Version: ${agent.soulVersionHash.slice(0, 12)}...` : "No soul file linked yet"} location={agent.workspacePath ? `${agent.workspacePath}/SOUL.md` : undefined} content={null} expanded={expandedDocs["soul"] || false} onToggle={() => toggleDoc("soul")} empty={!agent.soulVersionHash} />
-        <AgentDocumentCard title="WORKING.md" icon="📝" description={workingMd ? `Updated ${timeAgo(workingMd.updatedAt)}` : "No working document yet"} content={workingMd?.content || null} expanded={expandedDocs["working"] || false} onToggle={() => toggleDoc("working")} empty={!workingMd} />
-        <AgentDocumentCard title="Daily Note" icon="📅" description={dailyNote ? `Updated ${timeAgo(dailyNote.updatedAt)}` : "No daily note yet"} content={dailyNote?.content || null} expanded={expandedDocs["daily"] || false} onToggle={() => toggleDoc("daily")} empty={!dailyNote} />
-        <AgentDocumentCard title="Session Memory" icon="💭" description={sessionMemory ? `Updated ${timeAgo(sessionMemory.updatedAt)}` : "No session memory yet"} content={sessionMemory?.content || null} expanded={expandedDocs["session"] || false} onToggle={() => toggleDoc("session")} empty={!sessionMemory} />
-        <AgentDocumentCard title="Persona Config" icon="🎭" description={`agents/${agent.name?.toLowerCase()}.yaml`} location={`agents/${agent.name?.toLowerCase()}.yaml`} content={null} expanded={expandedDocs["persona"] || false} onToggle={() => toggleDoc("persona")} empty={false} />
+        <AgentDocumentCard title="SOUL.md" description={agent.soulVersionHash ? `Version: ${agent.soulVersionHash.slice(0, 12)}...` : "No soul file linked yet"} location={agent.workspacePath ? `${agent.workspacePath}/SOUL.md` : undefined} content={null} expanded={expandedDocs["soul"] || false} onToggle={() => toggleDoc("soul")} empty={!agent.soulVersionHash} />
+        <AgentDocumentCard title="WORKING.md" description={workingMd ? `Updated ${timeAgo(workingMd.updatedAt)}` : "No working document yet"} content={workingMd?.content || null} expanded={expandedDocs["working"] || false} onToggle={() => toggleDoc("working")} empty={!workingMd} />
+        <AgentDocumentCard title="Daily Note" description={dailyNote ? `Updated ${timeAgo(dailyNote.updatedAt)}` : "No daily note yet"} content={dailyNote?.content || null} expanded={expandedDocs["daily"] || false} onToggle={() => toggleDoc("daily")} empty={!dailyNote} />
+        <AgentDocumentCard title="Session Memory" description={sessionMemory ? `Updated ${timeAgo(sessionMemory.updatedAt)}` : "No session memory yet"} content={sessionMemory?.content || null} expanded={expandedDocs["session"] || false} onToggle={() => toggleDoc("session")} empty={!sessionMemory} />
+        <AgentDocumentCard title="Persona Config" description={`agents/${agent.name?.toLowerCase()}.yaml`} location={`agents/${agent.name?.toLowerCase()}.yaml`} content={null} expanded={expandedDocs["persona"] || false} onToggle={() => toggleDoc("persona")} empty={false} />
       </DetailSection>
 
       {meta.systemPrompt && (
         <DetailSection title="System Prompt">
-          <pre className="text-xs font-mono text-muted-foreground bg-muted/50 p-3 rounded-md max-h-[200px] overflow-auto whitespace-pre-wrap leading-relaxed">
+          <pre className="text-[12px] font-mono text-ink-secondary bg-surface-2 p-3 rounded-lg max-h-[200px] overflow-auto whitespace-pre-wrap leading-relaxed">
             {meta.systemPrompt}
           </pre>
         </DetailSection>
@@ -836,7 +832,6 @@ function AgentDetailContent({
 
 function AgentDocumentCard({
   title,
-  icon,
   description,
   location,
   content,
@@ -845,7 +840,6 @@ function AgentDocumentCard({
   empty,
 }: {
   title: string;
-  icon: string;
   description: string;
   location?: string;
   content: string | null;
@@ -856,39 +850,35 @@ function AgentDocumentCard({
   const hasContent = content && content.length > 0;
 
   return (
-    <div className={cn("rounded-lg border mb-2 overflow-hidden transition-colors", empty ? "bg-muted/30 border-border" : "bg-blue-500/5 border-blue-500/10")}>
+    <div className="rounded-lg border border-line bg-surface-2 mb-2 overflow-hidden transition-colors duration-150">
       <div
         onClick={hasContent ? onToggle : undefined}
         className={cn("flex items-center gap-2.5 px-3 py-2.5 select-none", hasContent && "cursor-pointer")}
       >
-        <span className="text-lg">{icon}</span>
+        <FileText size={15} strokeWidth={1.7} className={empty ? "text-ink-muted" : "text-ink-secondary"} aria-hidden />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
-            <span className={cn("text-sm font-semibold", empty ? "text-muted-foreground" : "text-foreground")}>
+            <span className={cn("text-[13px] font-semibold", empty ? "text-ink-muted" : "text-ink")}>
               {title}
             </span>
-            {!empty && (
-              <Badge variant="outline" className="text-[11px] px-1.5 py-0 bg-primary/10 text-primary border-primary/20">
-                active
-              </Badge>
-            )}
+            {!empty && <StatusBadge tone="success">active</StatusBadge>}
           </div>
-          <div className="text-xs text-muted-foreground mt-0.5 truncate">{description}</div>
+          <div className="text-[12px] text-ink-muted mt-0.5 truncate">{description}</div>
         </div>
         {hasContent && (
-          <ChevronDown className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform duration-200", expanded && "rotate-180")} />
+          <ChevronDown className={cn("h-3.5 w-3.5 text-ink-muted transition-transform duration-200", expanded && "rotate-180")} />
         )}
       </div>
 
       {location && (
-        <div className="px-3 pb-2 text-[11px] font-mono text-muted-foreground truncate">
-          📂 {location}
+        <div className="px-3 pb-2 text-[11px] font-mono text-ink-muted truncate">
+          {location}
         </div>
       )}
 
       {expanded && hasContent && (
-        <div className="border-t border-border p-3 max-h-[300px] overflow-auto">
-          <pre className="text-xs font-mono text-muted-foreground whitespace-pre-wrap break-words m-0 leading-relaxed">
+        <div className="border-t border-line p-3 max-h-[300px] overflow-auto">
+          <pre className="text-[12px] font-mono text-ink-secondary whitespace-pre-wrap break-words m-0 leading-relaxed">
             {content}
           </pre>
         </div>
@@ -954,12 +944,12 @@ function HumanDetailContent({
       <DetailSection title="Organization">
         {member.responsibilities && member.responsibilities.length > 0 && (
           <div className="mb-3">
-            <div className="text-xs text-muted-foreground mb-1.5">Responsibilities</div>
+            <div className="text-[12.5px] text-ink-muted mb-1.5">Responsibilities</div>
             <div className="flex flex-wrap gap-1.5">
               {member.responsibilities.map((r: string, i: number) => (
-                <Badge key={i} variant="outline" className="text-xs bg-blue-500/10 text-blue-500 border-blue-500/20">
+                <StatusBadge key={i} tone="neutral">
                   {r}
-                </Badge>
+                </StatusBadge>
               ))}
             </div>
           </div>
@@ -970,7 +960,7 @@ function HumanDetailContent({
         {isEditing ? (
           <EditField label="" value={editForm.notes} onChange={(v) => onUpdateField("notes", v)} multiline placeholder="Add notes about this team member..." />
         ) : (
-          <p className={cn("text-sm", meta.notes ? "text-foreground" : "text-muted-foreground")}>
+          <p className={cn("text-[13.5px]", meta.notes ? "text-ink" : "text-ink-muted")}>
             {meta.notes || "No notes yet."}
           </p>
         )}
@@ -985,8 +975,8 @@ function HumanDetailContent({
 
 function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="pt-5 pb-1 border-b border-border">
-      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">{title}</h3>
+    <div className="pt-5 pb-1 border-b border-line">
+      <h3 className="text-[11.5px] font-semibold text-ink-muted uppercase tracking-[0.06em] mb-3">{title}</h3>
       {children}
     </div>
   );
@@ -1005,8 +995,8 @@ function DetailRow({
 }) {
   return (
     <div className="flex justify-between items-start mb-2.5 gap-3">
-      <span className="text-xs text-muted-foreground shrink-0">{label}</span>
-      <span className={cn("text-sm text-foreground text-right break-all max-w-[60%]", mono && "font-mono text-xs", valueClassName)}>
+      <span className="text-[12.5px] text-ink-muted shrink-0">{label}</span>
+      <span className={cn("text-[13.5px] text-ink text-right break-all max-w-[60%]", mono && "font-mono text-[12px]", valueClassName)}>
         {value}
       </span>
     </div>
@@ -1030,13 +1020,13 @@ function EditField({
 }) {
   return (
     <div className="mb-3">
-      {label && <label className="block text-xs text-muted-foreground mb-1">{label}</label>}
+      {label && <label className="block text-[12.5px] text-ink-secondary mb-1">{label}</label>}
       {multiline ? (
         <textarea
           value={value || ""}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
-          className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm text-foreground outline-none resize-y font-[inherit] focus:ring-1 focus:ring-ring"
+          className="w-full px-3 py-2 bg-surface-1 border border-line rounded-lg text-[13.5px] text-ink placeholder:text-ink-muted outline-none resize-y font-[inherit] focus-visible:border-line-strong"
           rows={3}
         />
       ) : (
@@ -1065,59 +1055,37 @@ function UnifiedOrgNode({ node, selectedId, onSelect }: UnifiedOrgNodeProps) {
   const isSelected = node.id === selectedId;
   const hasChildren = node.children && node.children.length > 0;
 
-  let avatarColor = "bg-blue-500";
-  let borderAccent = "border-blue-500";
-  let ringAccent = "ring-blue-500/25";
-
-  if (node.type === "human") {
-    avatarColor = "bg-blue-500";
-    borderAccent = "border-blue-500";
-    ringAccent = "ring-blue-500/25";
-  } else if (node.type === "agent") {
-    if (node.agentRole === "LEAD") {
-      avatarColor = "bg-blue-500";
-      borderAccent = "border-blue-500";
-      ringAccent = "ring-blue-500/25";
-    } else if (node.agentRole === "SPECIALIST") {
-      avatarColor = "bg-primary";
-      borderAccent = "border-primary";
-      ringAccent = "ring-primary/25";
-    } else {
-      avatarColor = "bg-teal-500";
-      borderAccent = "border-teal-500";
-      ringAccent = "ring-teal-500/25";
-    }
-  }
-
   return (
     <div className="flex flex-col items-center">
       <button
         onClick={() => onSelect(node.id)}
         className={cn(
-          "w-80 p-4 bg-card border-2 rounded-lg cursor-pointer transition-all text-left hover:border-muted-foreground/50",
-          isSelected ? cn(borderAccent, "ring-2", ringAccent) : "border-border"
+          "w-80 p-4 bg-surface-1 border rounded-xl cursor-pointer transition-colors duration-150 text-left hover:border-line-strong",
+          isSelected ? "border-info-accent" : "border-line"
         )}
         aria-label={`${node.name}, ${node.role}`}
       >
         <div className="flex items-center gap-3 mb-3">
-          <div className={cn("w-12 h-12 rounded-full flex items-center justify-center text-white text-2xl font-semibold shrink-0", avatarColor)}>
-            {node.type === "human" ? node.avatar || "👤" : node.emoji || "🤖"}
+          <div className="w-11 h-11 rounded-full flex items-center justify-center border border-line bg-surface-2 text-ink text-lg font-semibold shrink-0">
+            {node.type === "human"
+              ? node.avatar || node.name?.charAt(0)?.toUpperCase()
+              : node.emoji || node.name?.charAt(0)?.toUpperCase()}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-base font-semibold text-foreground truncate">{node.name}</div>
-            <div className="text-sm text-muted-foreground truncate">
+            <div className="text-[15px] font-semibold text-ink truncate">{node.name}</div>
+            <div className="text-[12.5px] text-ink-muted truncate">
               {node.type === "human" ? node.role : `${node.agentRole} Agent`}
             </div>
           </div>
           {node.active && (
-            <div className="w-2.5 h-2.5 rounded-full bg-primary shrink-0" aria-label="Active" />
+            <div className="h-2 w-2 rounded-full bg-ok shrink-0" aria-label="Active" />
           )}
         </div>
 
         {node.type === "human" && node.responsibilities && node.responsibilities.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-2">
             {node.responsibilities.slice(0, 4).map((resp: string, i: number) => (
-              <span key={i} className="px-2.5 py-1.5 bg-muted border border-border rounded-md text-xs text-muted-foreground">
+              <span key={i} className="px-2 py-1 bg-surface-2 border border-line rounded-md text-[11.5px] text-ink-secondary">
                 {resp}
               </span>
             ))}
@@ -1127,11 +1095,11 @@ function UnifiedOrgNode({ node, selectedId, onSelect }: UnifiedOrgNodeProps) {
         {node.type === "agent" && (
           <>
             {node.model && (
-              <div className="mt-2 pt-3 border-t border-border">
-                <div className="text-sm font-medium text-foreground mb-1">{node.model}</div>
+              <div className="mt-2 pt-3 border-t border-line">
+                <div className="text-[13px] font-medium text-ink mb-1">{node.model}</div>
                 {node.budgetPerRun !== undefined && (
-                  <div className="text-xs text-muted-foreground mt-0.5">
-                    💸 ${node.budgetPerRun.toFixed(0)} / ${(node.budgetPerRun / 1000000).toFixed(2)} per 1M tokens
+                  <div className="text-[12px] text-ink-muted mt-0.5">
+                    ${node.budgetPerRun.toFixed(0)} / ${(node.budgetPerRun / 1000000).toFixed(2)} per 1M tokens
                   </div>
                 )}
               </div>
@@ -1139,27 +1107,27 @@ function UnifiedOrgNode({ node, selectedId, onSelect }: UnifiedOrgNodeProps) {
             {node.allowedTaskTypes && node.allowedTaskTypes.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mt-3">
                 {node.allowedTaskTypes.slice(0, 4).map((cap: string, i: number) => (
-                  <Badge key={i} variant="outline" className="text-[11px] bg-blue-500/10 text-blue-500 border-blue-500/20">
+                  <StatusBadge key={i} tone="neutral">
                     {cap}
-                  </Badge>
+                  </StatusBadge>
                 ))}
                 {node.allowedTaskTypes.length > 4 && (
-                  <Badge variant="outline" className="text-[11px] bg-blue-500/10 text-blue-500 border-blue-500/20">
+                  <StatusBadge tone="neutral">
                     +{node.allowedTaskTypes.length - 4}
-                  </Badge>
+                  </StatusBadge>
                 )}
               </div>
             )}
             {node.budgetDaily !== undefined && (
-              <div className="mt-3 pt-3 border-t border-border">
-                <div className="text-xs text-muted-foreground mb-1.5">
+              <div className="mt-3 pt-3 border-t border-line">
+                <div className="text-[12px] text-ink-muted mb-1.5">
                   Budget: ${node.spendToday?.toFixed(2) || 0} / ${node.budgetDaily.toFixed(0)}
                 </div>
-                <div className="w-full h-1 bg-muted rounded-full overflow-hidden">
+                <div className="w-full h-1 bg-surface-2 rounded-full overflow-hidden">
                   <div
                     className={cn(
                       "h-full rounded-full transition-[width] duration-300",
-                      (node.spendToday || 0) / node.budgetDaily > 0.9 ? "bg-amber-500" : "bg-primary"
+                      (node.spendToday || 0) / node.budgetDaily > 0.9 ? "bg-warn" : "bg-ok"
                     )}
                     style={{ width: `${Math.min(100, ((node.spendToday || 0) / node.budgetDaily) * 100)}%` }}
                   />
@@ -1172,7 +1140,7 @@ function UnifiedOrgNode({ node, selectedId, onSelect }: UnifiedOrgNodeProps) {
 
       {hasChildren && (
         <div className="flex flex-col items-center mt-6">
-          <div className="w-0.5 h-10 bg-border" />
+          <div className="w-px h-10 bg-line" />
           <div className="flex gap-10 flex-wrap justify-center max-w-[1200px]">
             {node.children.map((child: any) => (
               <UnifiedOrgNode key={child.id} node={child} selectedId={selectedId} onSelect={onSelect} />

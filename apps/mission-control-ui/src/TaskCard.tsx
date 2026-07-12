@@ -1,7 +1,9 @@
 import type { Doc } from "../../../convex/_generated/dataModel";
-import { motion } from "framer-motion";
 import { useState } from "react";
+import { Pencil } from "lucide-react";
 import { QuickEditModal } from "./QuickEditModal";
+import { StatusChip } from "@/components/StatusChip";
+import { PriorityChip } from "@/components/PriorityChip";
 import { cn } from "@/lib/utils";
 
 interface TaskCardProps {
@@ -12,62 +14,27 @@ interface TaskCardProps {
   onUpdate?: () => void;
 }
 
-const PRIORITY_CLASSES: Record<number, { card: string }> = {
-  1: { card: "bg-orange-900 border-orange-600" },
-  2: { card: "bg-orange-900 border-orange-500" },
-  3: { card: "bg-card border-slate-600" },
-  4: { card: "bg-background border-slate-700" },
-};
-
-const STATUS_BADGE_CLASSES: Record<string, string> = {
-  INBOX: "bg-gray-500",
-  ASSIGNED: "bg-blue-500",
-  IN_PROGRESS: "bg-amber-500",
-  REVIEW: "bg-blue-500",
-  NEEDS_APPROVAL: "bg-red-500",
-  BLOCKED: "bg-red-600",
-  FAILED: "bg-red-700",
-  DONE: "bg-primary",
-  CANCELED: "bg-slate-500",
-};
-
 export function TaskCard({ task, agents, onClick, isDragging, onUpdate }: TaskCardProps) {
   const [showQuickEdit, setShowQuickEdit] = useState(false);
   const assignedAgent = agents?.find(a => task.assigneeIds?.includes(a._id));
-  
-  const priorityClass = PRIORITY_CLASSES[task.priority as number] || PRIORITY_CLASSES[3];
-  
+
   return (
     <>
-      <motion.div
-        layout
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -20 }}
-        whileHover={{ scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
+      <div
         onClick={onClick}
         onDoubleClick={(e) => {
           e.stopPropagation();
           setShowQuickEdit(true);
         }}
         className={cn(
-          "border rounded-lg p-3 mb-2 cursor-pointer transition-all",
-          priorityClass.card,
+          "rounded-xl border border-line bg-surface-1 p-3 mb-2 cursor-pointer transition-colors duration-150 hover:border-line-strong",
           isDragging && "opacity-50"
         )}
     >
       <div className="flex justify-between mb-2">
         <div className="flex gap-1.5 items-center">
-          <span className={cn(
-            "text-[11px] px-1.5 py-0.5 rounded text-white font-semibold",
-            STATUS_BADGE_CLASSES[task.status] || "bg-slate-500"
-          )}>
-            {task.status}
-          </span>
-          <span className="text-[11px] px-1.5 py-0.5 rounded bg-accent text-muted-foreground">
-            P{task.priority}
-          </span>
+          <StatusChip status={task.status} />
+          <PriorityChip priority={task.priority as number} />
         </div>
         <div className="flex gap-1 items-center">
           <button
@@ -75,23 +42,24 @@ export function TaskCard({ task, agents, onClick, isDragging, onUpdate }: TaskCa
               e.stopPropagation();
               setShowQuickEdit(true);
             }}
-            className="bg-transparent border-none text-muted-foreground text-sm cursor-pointer px-1 py-0.5 hover:text-foreground transition-colors"
+            className="bg-transparent border-none text-ink-muted cursor-pointer px-1 py-0.5 hover:text-ink transition-colors duration-150"
             title="Edit task (or double-click card)"
+            aria-label="Edit task"
           >
-            ✏️
+            <Pencil size={14} strokeWidth={1.6} aria-hidden />
           </button>
-          <span className="text-[10px] text-muted-foreground font-mono">
+          <span className="text-[11.5px] text-ink-muted font-mono">
             {task.identifier ?? task._id.slice(-6)}
           </span>
         </div>
       </div>
 
-      <div className="text-sm font-medium text-foreground mb-2 leading-snug">
+      <div className="text-[13.5px] font-medium text-ink mb-2 leading-snug">
         {task.title}
       </div>
 
       {task.description && (
-        <div className="text-xs text-muted-foreground mb-2 overflow-hidden line-clamp-2">
+        <div className="text-[12.5px] text-ink-muted mb-2 overflow-hidden line-clamp-2">
           {task.description}
         </div>
       )}
@@ -99,12 +67,12 @@ export function TaskCard({ task, agents, onClick, isDragging, onUpdate }: TaskCa
       {task.dueAt != null && (
         <div
           className={cn(
-            "text-[11px] mb-2",
+            "text-[11.5px] mb-2",
             task.dueAt < Date.now()
-              ? "text-destructive font-medium"
+              ? "text-err font-medium"
               : task.dueAt < Date.now() + 86400000 * 2
-                ? "text-amber-500"
-                : "text-muted-foreground"
+                ? "text-warn"
+                : "text-ink-muted"
           )}
         >
           Due {new Date(task.dueAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: task.dueAt > Date.now() + 86400000 * 365 ? "numeric" : undefined })}
@@ -114,23 +82,23 @@ export function TaskCard({ task, agents, onClick, isDragging, onUpdate }: TaskCa
 
       <div className="flex justify-between items-center">
         <div className="flex gap-1.5 items-center">
-          <span className="text-[11px] text-muted-foreground">
+          <span className="text-[11.5px] text-ink-muted">
             {task.type}
           </span>
           {task.actualCost > 0 && (
-            <span className="text-[11px] text-primary">
+            <span className="text-[11.5px] text-ink-secondary">
               ${task.actualCost.toFixed(2)}
             </span>
           )}
         </div>
         {assignedAgent && (
-          <div className="text-[11px] px-2 py-0.5 rounded-full bg-accent text-foreground">
-            {assignedAgent.emoji || "🤖"} {assignedAgent.name}
+          <div className="text-[11.5px] px-2 py-0.5 rounded-md border border-line bg-surface-2 text-ink-secondary">
+            {assignedAgent.emoji ? `${assignedAgent.emoji} ` : ""}{assignedAgent.name}
           </div>
         )}
       </div>
-    </motion.div>
-    
+    </div>
+
     {showQuickEdit && (
       <QuickEditModal
         task={task}

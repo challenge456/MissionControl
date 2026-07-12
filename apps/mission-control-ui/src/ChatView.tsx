@@ -5,13 +5,24 @@ import type { Id, Doc } from "../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "./components/PageHeader";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { StatusBadge, type StatusBadgeProps } from "./components/factory/badges";
+import { MetricBlock } from "./components/factory/MetricBlock";
+import { EmptyState } from "./components/ui/empty-state";
 import { MessageSquare, Send, Sparkles, X, Bot, User, Wrench, Reply, Loader2, Paperclip } from "lucide-react";
 
 interface ChatViewProps {
   projectId: Id<"projects"> | null;
 }
+
+const TASK_STATUS_TONE: Record<string, StatusBadgeProps["tone"]> = {
+  DONE: "success",
+  IN_PROGRESS: "info",
+  REVIEW: "info",
+  NEEDS_APPROVAL: "warning",
+  BLOCKED: "warning",
+  FAILED: "error",
+};
 
 export function ChatView({ projectId }: ChatViewProps) {
   const tasks = useQuery(api.tasks.list, { projectId: projectId ?? undefined });
@@ -41,9 +52,9 @@ export function ChatView({ projectId }: ChatViewProps) {
 
   if (!tasks) {
     return (
-      <main className="mc-page">
-        <div className="mc-page-body">
-          <div className="h-[620px] rounded-2xl border border-[var(--panel-line)] skeleton-shimmer" />
+      <main className="flex-1 overflow-auto bg-app">
+        <div className="mx-auto max-w-[1200px] px-6 py-6">
+          <div className="h-[620px] animate-pulse rounded-xl border border-line bg-surface-2" />
         </div>
       </main>
     );
@@ -51,88 +62,90 @@ export function ChatView({ projectId }: ChatViewProps) {
 
   if (availableTasks.length === 0) {
     return (
-      <main className="mc-page">
+      <main className="flex-1 overflow-auto bg-app">
         <PageHeader
           title="Chat"
           description="Task threads and agent conversations. Create a task from the Mission Queue to start."
-          icon={<MessageSquare className="h-4.5 w-4.5" strokeWidth={1.7} />}
+          icon={<MessageSquare size={16} strokeWidth={1.7} />}
         />
-        <div className="mc-page-body">
-          <Card className="flex min-h-[560px] flex-col items-center justify-center p-12 text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-400/10 text-cyan-100 shadow-[var(--glow-cyan)]">
-              <Sparkles className="h-6 w-6" />
-            </div>
-            <div className="mt-5 text-2xl font-semibold text-foreground">No task threads yet</div>
-            <div className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
-              Create a task from the Mission Queue in Operations to start a thread and collaborate with agents in a traceable, reviewable way.
-            </div>
-          </Card>
+        <div className="mx-auto max-w-[1200px] px-6 py-6">
+          <EmptyState
+            icon={MessageSquare}
+            title="No task threads yet"
+            description="Create a task from the Mission Queue in Operations to start a thread and collaborate with agents in a traceable, reviewable way."
+            className="min-h-[560px]"
+          />
         </div>
       </main>
     );
   }
 
   return (
-    <main className="mc-page flex flex-col">
+    <main className="flex min-h-0 flex-1 flex-col overflow-auto bg-app">
       <PageHeader
         title="Chat"
         description={`${availableTasks.length} task threads · Pick one to view or continue the conversation`}
-        icon={<MessageSquare className="h-4.5 w-4.5" strokeWidth={1.7} />}
+        icon={<MessageSquare size={16} strokeWidth={1.7} />}
         status={
-          <Badge variant="outline" className="border-cyan-300/20 text-cyan-100">
-            {availableTasks.length} threads
-          </Badge>
+          <StatusBadge tone="neutral">{availableTasks.length} threads</StatusBadge>
         }
       />
-      <div className="mc-page-body mc-page-stack flex flex-1 min-h-0">
+      <div className="mx-auto flex w-full max-w-[1200px] flex-1 min-h-0 flex-col gap-6 px-6 py-6">
         <div className="grid gap-4 md:grid-cols-4">
           <Card className="p-4">
-            <div className="mc-kicker">Open threads</div>
-            <div className="mt-2 text-3xl font-semibold text-foreground">{availableTasks.length}</div>
-            <div className="mt-1 text-xs text-muted-foreground">Operator-visible conversations across the mission queue</div>
+            <MetricBlock
+              label="Open threads"
+              value={availableTasks.length}
+              detail="Operator-visible conversations across the mission queue"
+            />
           </Card>
           <Card className="p-4">
-            <div className="mc-kicker">Active lanes</div>
-            <div className="mt-2 text-3xl font-semibold text-cyan-100">{activeThreads}</div>
-            <div className="mt-1 text-xs text-muted-foreground">Threads tied to active work or review states</div>
+            <MetricBlock
+              label="Active lanes"
+              value={activeThreads}
+              detail="Threads tied to active work or review states"
+            />
           </Card>
           <Card className="p-4">
-            <div className="mc-kicker">Inbox pressure</div>
-            <div className="mt-2 text-3xl font-semibold text-amber-100">{inboxThreads}</div>
-            <div className="mt-1 text-xs text-muted-foreground">New work still waiting for assignment or first response</div>
+            <MetricBlock
+              label="Inbox pressure"
+              value={inboxThreads}
+              detail="New work still waiting for assignment or first response"
+            />
           </Card>
           <Card className="p-4">
-            <div className="mc-kicker">Blocked threads</div>
-            <div className="mt-2 text-3xl font-semibold text-rose-200">{blockedThreads}</div>
-            <div className="mt-1 text-xs text-muted-foreground">Conversations attached to work that cannot move forward yet</div>
+            <MetricBlock
+              label="Blocked threads"
+              value={blockedThreads}
+              detail="Conversations attached to work that cannot move forward yet"
+            />
           </Card>
         </div>
 
         <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[340px_minmax(0,1fr)_300px]">
           <Card className="flex min-h-0 flex-col overflow-hidden">
-            <div className="border-b border-[var(--panel-line)] px-5 py-4">
+            <div className="border-b border-line px-5 py-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="mc-kicker">Thread registry</div>
-                  <div className="mt-1 text-sm font-semibold text-foreground">Open task conversations</div>
+                  <div className="text-[15px] font-semibold text-ink">Thread registry</div>
+                  <div className="mt-0.5 text-[12.5px] text-ink-muted">Open task conversations</div>
                 </div>
-                <Badge variant="outline" className="border-cyan-300/20 text-cyan-100">
-                  {availableTasks.length}
-                </Badge>
+                <StatusBadge tone="neutral">{availableTasks.length}</StatusBadge>
               </div>
             </div>
-            <div className="relative border-b border-[var(--panel-line)] p-3">
+            <div className="relative border-b border-line p-3">
               <input
                 type="text"
                 placeholder="Search task threads..."
-                className="w-full rounded-lg border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-3 py-2.5 pr-9 text-sm text-foreground"
+                aria-label="Search task threads"
+                className="h-9 w-full rounded-lg border border-line bg-surface-1 px-3 pr-9 text-[13.5px] text-ink placeholder:text-ink-muted"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
               {searchQuery && (
                   <button
                     onClick={() => setSearchQuery("")}
-                    className="absolute right-5 top-1/2 -translate-y-1/2 border-none bg-transparent p-1 text-base text-muted-foreground"
+                    className="absolute right-5 top-1/2 -translate-y-1/2 border-none bg-transparent p-1 text-ink-muted transition-colors duration-150 hover:text-ink"
                     aria-label="Clear search"
                   >
                     <X className="h-4 w-4" />
@@ -149,9 +162,9 @@ export function ChatView({ projectId }: ChatViewProps) {
                 />
               ))}
               {filteredTasks.length === 0 && searchQuery && (
-                <div className="rounded-lg border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-8 text-center">
-                  <div className="mb-1 text-sm text-muted-foreground">No tasks found</div>
-                  <div className="text-xs text-muted-foreground/70">Try a different search</div>
+                <div className="rounded-lg border border-line bg-surface-2 px-4 py-8 text-center">
+                  <div className="mb-1 text-[13.5px] text-ink-secondary">No tasks found</div>
+                  <div className="text-[12.5px] text-ink-muted">Try a different search</div>
                 </div>
               )}
             </div>
@@ -162,9 +175,9 @@ export function ChatView({ projectId }: ChatViewProps) {
               <ThreadView taskId={selectedTaskId} />
             ) : (
               <div className="flex flex-1 flex-col items-center justify-center p-12 text-center">
-                <div className="mb-4 text-6xl">💬</div>
-                <div className="mb-2 text-2xl font-semibold text-foreground">Select a thread</div>
-                <div className="text-base text-muted-foreground">
+                <MessageSquare className="mb-4 h-7 w-7 text-ink-muted" strokeWidth={1.6} />
+                <div className="mb-2 text-[15px] font-semibold text-ink">Select a thread</div>
+                <div className="text-[13.5px] text-ink-secondary">
                   Choose a task from the registry to view its conversation.
                 </div>
               </div>
@@ -172,35 +185,33 @@ export function ChatView({ projectId }: ChatViewProps) {
           </Card>
 
           <Card className="flex min-h-0 flex-col overflow-hidden">
-            <div className="border-b border-[var(--panel-line)] px-5 py-4">
-              <div className="mc-kicker">Operator cues</div>
-              <div className="mt-1 text-sm font-semibold text-foreground">
+            <div className="border-b border-line px-5 py-4">
+              <div className="text-[15px] font-semibold text-ink">Operator cues</div>
+              <div className="mt-0.5 text-[12.5px] text-ink-muted">
                 {selectedTask ? "Selected thread posture" : "How to use this surface well"}
               </div>
             </div>
             <div className="flex-1 space-y-3 overflow-auto px-4 py-4">
               {selectedTask ? (
                 <>
-                  <div className="rounded-lg border border-[var(--panel-line)] bg-[color:var(--shell-panel)] p-4">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-cyan-200/70">Thread context</div>
-                    <div className="mt-2 text-sm font-semibold text-foreground">{selectedTask.title}</div>
+                  <div className="rounded-lg border border-line bg-surface-2 p-4">
+                    <div className="text-[12.5px] font-medium text-ink-secondary">Thread context</div>
+                    <div className="mt-2 text-[13.5px] font-semibold text-ink">{selectedTask.title}</div>
                     <div className="mt-2 flex flex-wrap gap-2">
-                      <Badge variant="outline" className="border-cyan-300/20 text-cyan-100">{selectedTask.status}</Badge>
-                      <Badge variant="outline" className="border-[var(--panel-line)] text-muted-foreground">
-                        Priority {selectedTask.priority}
-                      </Badge>
-                      <Badge variant="outline" className="border-[var(--panel-line)] text-muted-foreground">
-                        {selectedTask.type}
-                      </Badge>
+                      <StatusBadge tone={TASK_STATUS_TONE[selectedTask.status] ?? "neutral"}>
+                        {selectedTask.status}
+                      </StatusBadge>
+                      <StatusBadge tone="neutral">Priority {selectedTask.priority}</StatusBadge>
+                      <StatusBadge tone="neutral">{selectedTask.type}</StatusBadge>
                     </div>
-                    <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                    <p className="mt-3 text-[12.5px] leading-relaxed text-ink-secondary">
                       {selectedTask.description?.trim() || "No task description is attached yet. Add operator framing so agents know what matters and what is out of scope."}
                     </p>
                   </div>
 
-                  <div className="rounded-xl border border-[var(--panel-line)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--shell-panel)_92%,transparent),color-mix(in_srgb,var(--background)_88%,transparent))] p-4">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-200/70">Response discipline</div>
-                    <div className="mt-2 space-y-2 text-xs leading-relaxed text-muted-foreground">
+                  <div className="rounded-lg border border-line bg-surface-2 p-4">
+                    <div className="text-[12.5px] font-medium text-ink-secondary">Response discipline</div>
+                    <div className="mt-2 space-y-2 text-[12.5px] leading-relaxed text-ink-secondary">
                       <p>Lead with the decision or blocker first. Agents should not have to infer the action from a paragraph.</p>
                       <p>Use mentions only when routing matters. Thread noise makes later review harder.</p>
                       <p>Keep approval asks explicit: what changed, what is blocked, what decision is needed.</p>
@@ -209,15 +220,15 @@ export function ChatView({ projectId }: ChatViewProps) {
                 </>
               ) : (
                 <div className="space-y-3">
-                  <div className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] p-4">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-200/70">Start with the queue</div>
-                    <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                  <div className="rounded-lg border border-line bg-surface-2 p-4">
+                    <div className="text-[12.5px] font-medium text-ink-secondary">Start with the queue</div>
+                    <p className="mt-2 text-[12.5px] leading-relaxed text-ink-secondary">
                       Use this page for ongoing task dialogue, not brainstorming. Every thread should map back to real work that can be reviewed later.
                     </p>
                   </div>
-                  <div className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] p-4">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-200/70">Good thread hygiene</div>
-                    <ul className="mt-2 space-y-2 text-xs leading-relaxed text-muted-foreground">
+                  <div className="rounded-lg border border-line bg-surface-2 p-4">
+                    <div className="text-[12.5px] font-medium text-ink-secondary">Good thread hygiene</div>
+                    <ul className="mt-2 space-y-2 text-[12.5px] leading-relaxed text-ink-secondary">
                       <li>State the desired outcome before asking for implementation.</li>
                       <li>Move blockers into approvals or operations instead of letting them linger in chat.</li>
                       <li>Keep one conversation per task so audit trails stay trustworthy.</li>
@@ -249,30 +260,28 @@ function ThreadItem({ task, isSelected, onSelect }: ThreadItemProps) {
       type="button"
       onClick={onSelect}
       className={cn(
-        "mb-2 w-full cursor-pointer rounded-xl border p-3.5 text-left transition-all",
+        "mb-2 w-full cursor-pointer rounded-xl border p-3.5 text-left transition-colors duration-150",
         isSelected
-          ? "border-cyan-300/20 bg-cyan-400/10 shadow-[var(--glow-cyan)]"
-          : "border-[var(--panel-line)] bg-[color:var(--shell-panel)] hover:border-[var(--panel-line-strong)] hover:bg-cyan-400/6"
+          ? "border-line-strong bg-surface-2"
+          : "border-line bg-surface-1 hover:border-line-strong hover:bg-surface-2"
       )}
       aria-label={`Thread: ${task.title}`}
     >
       <div className="mb-1.5 flex items-center justify-between">
-        <div className="flex-1 truncate text-sm font-semibold text-foreground">
+        <div className="flex-1 truncate text-[13.5px] font-semibold text-ink">
           {task.title}
         </div>
         <div className="flex items-center gap-1.5">
           {hasMessages && (
-            <div className="min-w-4.5 rounded-xl bg-primary px-1.5 py-0.5 text-center text-[0.7rem] font-semibold text-white">
-              {messageCount}
-            </div>
+            <StatusBadge tone="neutral">{messageCount}</StatusBadge>
           )}
-          <div className="rounded-full border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          <StatusBadge tone={TASK_STATUS_TONE[task.status] ?? "neutral"}>
             {task.status}
-          </div>
+          </StatusBadge>
         </div>
       </div>
       {task.description && (
-        <div className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+        <div className="line-clamp-2 text-[12.5px] leading-relaxed text-ink-secondary">
           {task.description}
         </div>
       )}
@@ -324,7 +333,7 @@ function ThreadView({ taskId }: ThreadViewProps) {
 
   if (!messages || !task) {
     return (
-      <div className="flex flex-1 items-center justify-center text-muted-foreground">
+      <div className="flex flex-1 items-center justify-center text-[13.5px] text-ink-muted">
         Loading messages...
       </div>
     );
@@ -378,18 +387,15 @@ function ThreadView({ taskId }: ThreadViewProps) {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="border-b border-[var(--panel-line)] px-6 py-5">
+      <div className="border-b border-line px-6 py-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <div className="mc-kicker">Thread detail</div>
-            <h2 className="mt-2 text-2xl font-semibold text-foreground">{task.title}</h2>
+            <h2 className="text-[19px] font-semibold text-ink">{task.title}</h2>
             <div className="mt-3 flex flex-wrap gap-2">
-              <Badge variant="outline" className="border-cyan-300/20 text-cyan-100">
+              <StatusBadge tone={TASK_STATUS_TONE[task.status] ?? "neutral"}>
                 {task.status}
-              </Badge>
-              <Badge variant="outline" className="border-[var(--panel-line)] text-muted-foreground">
-                {task.type}
-              </Badge>
+              </StatusBadge>
+              <StatusBadge tone="neutral">{task.type}</StatusBadge>
             </div>
           </div>
           <Button variant="outline" size="sm">
@@ -401,13 +407,12 @@ function ThreadView({ taskId }: ThreadViewProps) {
 
       <div className="flex flex-1 flex-col gap-4 overflow-auto p-6" ref={messageListRef}>
         {messages.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] p-12 text-center">
-            <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-xl border border-cyan-300/16 bg-cyan-400/8 text-cyan-100 shadow-[var(--glow-cyan)]">
-              <MessageSquare className="h-6 w-6" />
-            </div>
-            <div className="mb-1 text-lg font-semibold text-foreground">No messages yet</div>
-            <div className="text-sm text-muted-foreground">Start the conversation with a clear operator instruction.</div>
-          </div>
+          <EmptyState
+            icon={MessageSquare}
+            title="No messages yet"
+            description="Start the conversation with a clear operator instruction."
+            className="flex-1 bg-surface-2"
+          />
         ) : (
           messages.map((message) => (
             <Message
@@ -419,14 +424,14 @@ function ThreadView({ taskId }: ThreadViewProps) {
         )}
       </div>
 
-      <div className="relative border-t border-[var(--panel-line)]">
+      <div className="relative border-t border-line">
         {replyTo && (
-          <div className="flex items-center justify-between border-b border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-2">
+          <div className="flex items-center justify-between border-b border-line bg-surface-2 px-4 py-2">
             <div className="flex flex-1 flex-col gap-0.5">
-              <span className="text-xs font-semibold text-primary">
+              <span className="text-[12.5px] font-medium text-ink">
                 Replying to {replyTo.authorType}:
               </span>
-              <span className="truncate text-xs text-muted-foreground">
+              <span className="truncate text-[12.5px] text-ink-muted">
                 {replyTo.content.length > 50
                   ? replyTo.content.slice(0, 50) + "..."
                   : replyTo.content}
@@ -434,7 +439,7 @@ function ThreadView({ taskId }: ThreadViewProps) {
             </div>
             <button
               onClick={() => setReplyTo(null)}
-              className="border-none bg-transparent p-1 text-base text-muted-foreground"
+              className="border-none bg-transparent p-1 text-ink-muted transition-colors duration-150 hover:text-ink"
               aria-label="Cancel reply"
             >
               <X className="h-4 w-4" />
@@ -443,18 +448,18 @@ function ThreadView({ taskId }: ThreadViewProps) {
         )}
 
         {showMentions && filteredAgents.length > 0 && (
-          <div className="absolute bottom-full left-6 right-6 z-10 max-h-[200px] overflow-auto rounded-xl border border-[var(--panel-line)] bg-[color:var(--panel-elevated-bg)] shadow-[var(--card-shadow)]">
+          <div className="absolute bottom-full left-6 right-6 z-10 max-h-[200px] overflow-auto rounded-xl border border-line bg-surface-3 shadow-[var(--shadow-elevation-2)]">
             {filteredAgents.slice(0, 5).map((agent) => (
               <button
                 key={agent._id}
                 onClick={() => handleMentionSelect(agent.name)}
-                className="flex w-full items-center gap-2 border-b border-[var(--panel-line)] bg-transparent px-3 py-2.5 text-left transition-colors hover:bg-cyan-400/6"
+                className="flex w-full items-center gap-2 border-b border-line bg-transparent px-3 py-2.5 text-left transition-colors duration-150 last:border-b-0 hover:bg-surface-2"
               >
-                <span className="flex h-8 w-8 items-center justify-center rounded-full border border-cyan-300/16 bg-cyan-400/8 text-cyan-100">
-                  <Bot className="h-4 w-4" />
+                <span className="flex h-8 w-8 items-center justify-center rounded-full border border-line bg-surface-2 text-ink-secondary">
+                  <Bot className="h-4 w-4" strokeWidth={1.75} />
                 </span>
-                <span className="flex-1 text-sm font-semibold text-foreground">{agent.name}</span>
-                <span className="text-xs text-muted-foreground">{agent.role}</span>
+                <span className="flex-1 text-[13.5px] font-medium text-ink">{agent.name}</span>
+                <span className="text-[12.5px] text-ink-muted">{agent.role}</span>
               </button>
             ))}
           </div>
@@ -464,7 +469,7 @@ function ThreadView({ taskId }: ThreadViewProps) {
           <textarea
             ref={inputRef}
             placeholder="Type a message... (Press Enter to send, Shift+Enter for new line, @ to mention)"
-            className="min-h-[48px] max-h-[120px] flex-1 resize-none rounded-lg border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-3 font-[inherit] text-sm text-foreground"
+            className="min-h-[48px] max-h-[120px] flex-1 resize-none rounded-lg border border-line bg-surface-1 px-3 py-3 font-[inherit] text-[13.5px] text-ink placeholder:text-ink-muted"
             value={messageText}
             onChange={(e) => setMessageText(e.target.value)}
             onKeyPress={handleKeyPress}
@@ -472,9 +477,7 @@ function ThreadView({ taskId }: ThreadViewProps) {
             rows={1}
           />
           <Button
-            variant="neon-cyan"
-            size="lg"
-            className={cn("min-w-[52px] px-4", (isSending || !messageText.trim()) && "cursor-not-allowed opacity-50")}
+            className="min-w-[52px] px-4"
             onClick={handleSendMessage}
             disabled={isSending || !messageText.trim()}
             aria-label="Send message"
@@ -503,7 +506,7 @@ function Message({ message, onReply }: MessageProps) {
     return parts.map((part, i) => {
       if (part.startsWith("@")) {
         return (
-          <span key={i} className="rounded-sm bg-primary/20 px-1 py-0.5 font-semibold text-primary">
+          <span key={i} className="rounded-sm bg-info-soft px-1 py-0.5 font-medium text-info-accent">
             {part}
           </span>
         );
@@ -515,31 +518,29 @@ function Message({ message, onReply }: MessageProps) {
   return (
     <div
       className={cn(
-        "rounded-xl border px-4 py-3.5",
-        isAgent && "border-cyan-300/20 bg-cyan-400/6",
-        isSystem && "border-emerald-300/20 bg-emerald-400/6",
-        !isAgent && !isSystem && "border-[var(--panel-line)] bg-[color:var(--shell-panel)]"
+        "rounded-xl border border-line px-4 py-3.5",
+        isAgent || isSystem ? "bg-surface-2" : "bg-surface-3"
       )}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}
     >
       <div className="mb-2 flex items-center justify-between">
-        <div className="flex items-center gap-1 text-sm font-semibold text-foreground">
-          <AuthorIcon className="h-4 w-4 text-cyan-100" /> {message.authorType}
+        <div className="flex items-center gap-1 text-[13.5px] font-semibold text-ink">
+          <AuthorIcon className="h-4 w-4 text-ink-muted" strokeWidth={1.75} /> {message.authorType}
           {message.authorUserId && (
-            <span className="text-xs font-normal text-muted-foreground/70">
+            <span className="text-[12.5px] font-normal text-ink-muted">
               {" "}({message.authorUserId})
             </span>
           )}
         </div>
         <div className="flex items-center gap-2">
-          <div className="text-xs text-muted-foreground/70">
+          <div className="text-[12.5px] text-ink-muted">
             {new Date(message._creationTime).toLocaleTimeString()}
           </div>
           {showActions && (
             <button
               onClick={onReply}
-              className="border-none bg-transparent p-1 text-base opacity-70 transition-opacity hover:opacity-100"
+              className="border-none bg-transparent p-1 text-ink-muted transition-colors duration-150 hover:text-ink"
               aria-label="Reply to message"
             >
               <Reply className="h-4 w-4" />
@@ -549,7 +550,7 @@ function Message({ message, onReply }: MessageProps) {
       </div>
 
       {message.replyToId && (
-        <div className="mb-1.5 text-xs italic text-primary">
+        <div className="mb-1.5 text-[12.5px] text-ink-muted">
           <span className="inline-flex items-center gap-1">
             <Reply className="h-3.5 w-3.5" />
             Reply to previous message
@@ -557,18 +558,18 @@ function Message({ message, onReply }: MessageProps) {
         </div>
       )}
 
-      <div className="mb-1.5 text-sm leading-relaxed text-foreground">
+      <div className="mb-1.5 text-[13.5px] leading-relaxed text-ink">
         {formatContent(message.content)}
       </div>
 
       {message.type && (
-        <div className="text-xs italic text-muted-foreground">{message.type}</div>
+        <div className="text-[12.5px] text-ink-muted">{message.type}</div>
       )}
 
       {message.artifacts && message.artifacts.length > 0 && (
         <div className="mt-2 flex flex-col gap-1">
           {message.artifacts.map((artifact, i) => (
-            <div key={i} className="rounded bg-muted px-2 py-1 text-xs text-muted-foreground">
+            <div key={i} className="rounded-md border border-line bg-surface-1 px-2 py-1 text-[12px] text-ink-secondary">
               <span className="inline-flex items-center gap-1">
                 <Paperclip className="h-3.5 w-3.5" />
                 {artifact.name} ({artifact.type})

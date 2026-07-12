@@ -425,10 +425,10 @@ function SectionLoadingState() {
   return (
     <main className="flex flex-1 overflow-hidden">
       <div className="flex flex-1 flex-col gap-4 p-6">
-        <div className="h-16 rounded-2xl border border-[var(--panel-line)] skeleton-shimmer" />
+        <div className="h-16 rounded-2xl border border-[var(--panel-line)] animate-pulse bg-surface-2" />
         <div className="grid flex-1 gap-4 lg:grid-cols-3">
-          <div className="rounded-2xl border border-[var(--panel-line)] skeleton-shimmer" />
-          <div className="rounded-2xl border border-[var(--panel-line)] skeleton-shimmer lg:col-span-2" />
+          <div className="rounded-2xl border border-[var(--panel-line)] animate-pulse bg-surface-2" />
+          <div className="rounded-2xl border border-[var(--panel-line)] animate-pulse bg-surface-2 lg:col-span-2" />
         </div>
       </div>
     </main>
@@ -766,7 +766,7 @@ export default function App() {
   return (
     <ProjectContext.Provider value={{ projectId, setProjectId, project }}>
       <PrivacyProvider>
-      <div className="flex h-screen flex-col bg-background text-foreground neon-app-bg">
+      <div className="flex h-screen flex-col bg-background text-foreground">
         <AppTopBar
           projectSwitcher={<ProjectSwitcher />}
           searchBar={

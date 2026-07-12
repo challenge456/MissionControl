@@ -6,10 +6,12 @@ import { cn } from "@/lib/utils";
 import {
   Play, Pause, Plus, Shield, RefreshCw, Terminal, AlertTriangle,
   CheckCircle2, Sparkles, XCircle, Zap, Activity, Users, ClipboardList,
-  Radio, ChevronRight, Send, Clock, TrendingUp, BarChart3, Loader2,
+  Radio, ChevronRight, Send, Clock, TrendingUp, BarChart3, Loader2, Bot,
   type LucideIcon,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { PageHeader } from "./components/PageHeader";
+import { RiskBadge, type RiskLevel } from "./components/factory/badges";
 import { useToast } from "./Toast";
 
 interface CommandPanelProps {
@@ -31,22 +33,22 @@ interface QuickAction {
 }
 
 const QUICK_ACTIONS: QuickAction[] = [
-  { id: "reverse-prompt",  label: "Reverse Prompt",     description: "AI suggests tasks to advance your mission",  icon: Sparkles,      accent: "text-primary",       variant: "default"  },
-  { id: "pause-all",       label: "Pause All Agents",   description: "Immediately halt all active agents",         icon: Pause,         accent: "text-amber-500",     variant: "warning"  },
-  { id: "resume-all",      label: "Resume All Agents",  description: "Resume all paused agents",                   icon: Play,          accent: "text-primary",   variant: "success"  },
-  { id: "run-standup",     label: "Run Standup",        description: "Generate squad standup report",              icon: RefreshCw,     accent: "text-primary",       variant: "default"  },
-  { id: "approve-all",     label: "Bulk Approve",       description: "Approve all pending low-risk items",         icon: CheckCircle2,  accent: "text-primary",   variant: "success"  },
-  { id: "broadcast",       label: "Broadcast",          description: "Send directive to all active agents",        icon: Radio,         accent: "text-primary",       variant: "info"     },
-  { id: "health-check",    label: "Health Check",       description: "Run system diagnostics across all services", icon: Activity,      accent: "text-sky-400",       variant: "info"     },
-  { id: "emergency-stop",  label: "Emergency Stop",     description: "Kill switch — quarantine all agents",        icon: AlertTriangle, accent: "text-destructive",   variant: "danger"   },
+  { id: "reverse-prompt",  label: "Reverse Prompt",     description: "AI suggests tasks to advance your mission",  icon: Sparkles,      accent: "text-ink-secondary", variant: "default"  },
+  { id: "pause-all",       label: "Pause All Agents",   description: "Immediately halt all active agents",         icon: Pause,         accent: "text-warn",          variant: "warning"  },
+  { id: "resume-all",      label: "Resume All Agents",  description: "Resume all paused agents",                   icon: Play,          accent: "text-ok",            variant: "success"  },
+  { id: "run-standup",     label: "Run Standup",        description: "Generate squad standup report",              icon: RefreshCw,     accent: "text-ink-secondary", variant: "default"  },
+  { id: "approve-all",     label: "Bulk Approve",       description: "Approve all pending low-risk items",         icon: CheckCircle2,  accent: "text-ok",            variant: "success"  },
+  { id: "broadcast",       label: "Broadcast",          description: "Send directive to all active agents",        icon: Radio,         accent: "text-ink-secondary", variant: "info"     },
+  { id: "health-check",    label: "Health Check",       description: "Run system diagnostics across all services", icon: Activity,      accent: "text-ink-secondary", variant: "info"     },
+  { id: "emergency-stop",  label: "Emergency Stop",     description: "Kill switch — quarantine all agents",        icon: AlertTriangle, accent: "text-err",           variant: "danger"   },
 ];
 
 const variantHover: Record<string, string> = {
-  default: "hover:bg-accent hover:border-border",
-  warning: "hover:bg-amber-500/5 hover:border-amber-500/20",
-  danger:  "hover:bg-destructive/5 hover:border-destructive/20",
-  success: "hover:bg-primary/5 hover:border-primary/20",
-  info:    "hover:bg-sky-500/5 hover:border-sky-400/20",
+  default: "hover:bg-surface-2 hover:border-line-strong",
+  warning: "hover:bg-surface-2 hover:border-line-strong",
+  danger:  "hover:bg-surface-2 hover:border-line-strong",
+  success: "hover:bg-surface-2 hover:border-line-strong",
+  info:    "hover:bg-surface-2 hover:border-line-strong",
 };
 
 // ---------------------------------------------------------------------------
@@ -55,12 +57,12 @@ const variantHover: Record<string, string> = {
 
 function statusColor(status: string) {
   switch (status) {
-    case "ACTIVE":      return "bg-primary";
-    case "PAUSED":      return "bg-amber-500";
-    case "DRAINED":     return "bg-sky-400";
-    case "QUARANTINED": return "bg-destructive";
-    case "OFFLINE":     return "bg-muted-foreground";
-    default:            return "bg-muted-foreground";
+    case "ACTIVE":      return "bg-ok";
+    case "PAUSED":      return "bg-warn";
+    case "DRAINED":     return "bg-info-accent";
+    case "QUARANTINED": return "bg-err";
+    case "OFFLINE":     return "bg-ink-muted";
+    default:            return "bg-ink-muted";
   }
 }
 
@@ -71,10 +73,10 @@ function statusColor(status: string) {
 function SectionHeader({ icon: Icon, title, count }: { icon: LucideIcon; title: string; count?: number }) {
   return (
     <div className="flex items-center gap-2 mb-3">
-      <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-      <span className="text-xs font-semibold text-foreground">{title}</span>
+      <Icon className="h-3.5 w-3.5 text-ink-muted" strokeWidth={1.75} />
+      <span className="text-[13.5px] font-semibold text-ink">{title}</span>
       {count !== undefined && (
-        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{count}</span>
+        <span className="text-[11.5px] font-medium px-1.5 py-0.5 rounded-md border border-line bg-surface-2 text-ink-secondary">{count}</span>
       )}
     </div>
   );
@@ -90,7 +92,7 @@ function AgentFleet({ projectId, onToast }: { projectId: Id<"projects"> | null; 
 
   if (!agents || agents.length === 0) {
     return (
-      <div className="text-xs text-muted-foreground text-center py-4">No agents registered</div>
+      <div className="text-[12.5px] text-ink-muted text-center py-4">No agents registered</div>
     );
   }
 
@@ -113,32 +115,37 @@ function AgentFleet({ projectId, onToast }: { projectId: Id<"projects"> | null; 
       {agents.slice(0, 8).map((agent) => (
         <div
           key={agent._id}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border bg-muted/20 hover:bg-muted/40 transition-colors group"
+          className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-line bg-surface-2 hover:border-line-strong transition-colors duration-150 group"
         >
-          <span className="text-lg shrink-0">{agent.emoji || "🤖"}</span>
+          {agent.emoji ? (
+            <span className="text-lg shrink-0">{agent.emoji}</span>
+          ) : (
+            <Bot className="h-4 w-4 shrink-0 text-ink-muted" strokeWidth={1.75} />
+          )}
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-foreground truncate">{agent.name}</p>
-            <p className="text-[11px] text-muted-foreground truncate">{agent.role}</p>
+            <p className="text-[12.5px] font-semibold text-ink truncate">{agent.name}</p>
+            <p className="text-[11.5px] text-ink-muted truncate">{agent.role}</p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <span className={cn("h-2 w-2 rounded-full", statusColor(agent.status))} />
-            <span className="text-[11px] text-muted-foreground">{agent.status}</span>
+            <span className="text-[11.5px] text-ink-muted">{agent.status}</span>
             {(agent.status === "ACTIVE" || agent.status === "PAUSED") && (
               <button
                 onClick={() => handleToggle(agent)}
-                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-muted"
+                className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 p-1 rounded-md hover:bg-surface-3"
                 title={agent.status === "ACTIVE" ? "Pause" : "Resume"}
+                aria-label={agent.status === "ACTIVE" ? "Pause agent" : "Resume agent"}
               >
                 {agent.status === "ACTIVE"
-                  ? <Pause className="h-3 w-3 text-amber-500" />
-                  : <Play className="h-3 w-3 text-primary" />}
+                  ? <Pause className="h-3 w-3 text-warn" />
+                  : <Play className="h-3 w-3 text-ok" />}
               </button>
             )}
           </div>
         </div>
       ))}
       {agents.length > 8 && (
-        <div className="col-span-full text-center text-xs text-muted-foreground py-1">
+        <div className="col-span-full text-center text-[12.5px] text-ink-muted py-1">
           +{agents.length - 8} more agents
         </div>
       )}
@@ -156,21 +163,19 @@ function ApprovalQueue({ projectId, onToast }: { projectId: Id<"projects"> | nul
   const deny = useMutation(api.approvals.deny);
   const [loading, setLoading] = useState<string | null>(null);
 
-  if (!approvals) return <div className="text-xs text-muted-foreground text-center py-4">Loading…</div>;
+  if (!approvals) return <div className="text-[12.5px] text-ink-muted text-center py-4">Loading…</div>;
   if (approvals.length === 0) return (
-    <div className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground">
-      <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
+    <div className="flex items-center justify-center gap-2 py-4 text-[12.5px] text-ink-muted">
+      <CheckCircle2 className="h-3.5 w-3.5 text-ok" strokeWidth={1.75} />
       All clear — no pending approvals
     </div>
   );
-
-  const riskColor = (r: string) => r === "RED" ? "text-destructive bg-destructive/10" : r === "YELLOW" ? "text-amber-500 bg-amber-500/10" : "text-primary bg-primary/10";
 
   const handleApprove = async (id: Id<"approvals">) => {
     setLoading(id);
     try {
       await approve({ approvalId: id, decidedByUserId: "operator", reason: "Command Panel approval" });
-      onToast("Approved ✓");
+      onToast("Approved");
     } catch (e) { onToast(e instanceof Error ? e.message : "Failed", true); }
     finally { setLoading(null); }
   };
@@ -187,22 +192,20 @@ function ApprovalQueue({ projectId, onToast }: { projectId: Id<"projects"> | nul
   return (
     <div className="space-y-2">
       {approvals.map((a) => (
-        <div key={a._id} className="flex items-start gap-3 px-3 py-2.5 rounded-lg border border-border bg-muted/20">
+        <div key={a._id} className="flex items-start gap-3 px-3 py-2.5 rounded-lg border border-line bg-surface-2">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-0.5">
-              <span className={cn("text-[11px] font-bold px-1.5 py-0.5 rounded", riskColor(a.riskLevel))}>
-                {a.riskLevel}
-              </span>
-              <span className="text-[11px] text-muted-foreground">{a.actionType}</span>
+              <RiskBadge level={a.riskLevel as RiskLevel} />
+              <span className="text-[11.5px] text-ink-muted">{a.actionType}</span>
             </div>
-            <p className="text-xs text-foreground truncate">{a.actionSummary}</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">{a.justification?.slice(0, 80)}</p>
+            <p className="text-[12.5px] text-ink truncate">{a.actionSummary}</p>
+            <p className="text-[11.5px] text-ink-muted mt-0.5">{a.justification?.slice(0, 80)}</p>
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <button
               onClick={() => handleApprove(a._id)}
               disabled={loading === a._id}
-              className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold bg-primary/10 text-primary hover:bg-primary/15 transition-colors disabled:opacity-40"
+              className="flex items-center gap-1 px-2 py-1 rounded-md text-[11.5px] font-medium bg-ok-soft text-ok hover:opacity-90 transition-opacity duration-150 disabled:opacity-40"
             >
               {loading === a._id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
               OK
@@ -210,7 +213,7 @@ function ApprovalQueue({ projectId, onToast }: { projectId: Id<"projects"> | nul
             <button
               onClick={() => handleDeny(a._id)}
               disabled={loading === a._id}
-              className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors disabled:opacity-40"
+              className="flex items-center gap-1 px-2 py-1 rounded-md text-[11.5px] font-medium bg-err-soft text-err hover:opacity-90 transition-opacity duration-150 disabled:opacity-40"
             >
               <XCircle className="h-3 w-3" />
               No
@@ -268,13 +271,15 @@ function QuickTaskCreator({ projectId, onToast }: { projectId: Id<"projects"> | 
         onChange={(e) => setTitle(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && handleCreate()}
         placeholder="Task title…"
-        className="w-full px-3 py-2 rounded-lg border border-border bg-muted/40 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all"
+        aria-label="Task title"
+        className="h-9 w-full px-3 rounded-lg border border-line bg-surface-1 text-[13.5px] text-ink placeholder:text-ink-muted"
       />
       <div className="flex items-center gap-2">
         <select
           value={type}
           onChange={(e) => setType(e.target.value)}
-          className="flex-1 px-2 py-1.5 rounded-lg border border-border bg-muted/40 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+          aria-label="Task type"
+          className="flex-1 px-2 py-1.5 rounded-lg border border-line bg-surface-1 text-[12.5px] text-ink"
         >
           {TASK_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
@@ -284,10 +289,10 @@ function QuickTaskCreator({ projectId, onToast }: { projectId: Id<"projects"> | 
               key={p}
               onClick={() => setPriority(p)}
               className={cn(
-                "px-2.5 py-1 rounded text-xs font-semibold transition-colors",
+                "px-2.5 py-1 rounded-md text-[12.5px] font-medium transition-colors duration-150",
                 priority === p
-                  ? p === 3 ? "bg-destructive/15 text-destructive" : p === 2 ? "bg-amber-500/15 text-amber-500" : "bg-primary/15 text-primary"
-                  : "bg-muted text-muted-foreground hover:text-foreground"
+                  ? p === 3 ? "bg-err-soft text-err" : p === 2 ? "bg-warn-soft text-warn" : "bg-ok-soft text-ok"
+                  : "bg-surface-2 text-ink-muted hover:text-ink"
               )}
             >
               P{p}
@@ -297,7 +302,7 @@ function QuickTaskCreator({ projectId, onToast }: { projectId: Id<"projects"> | 
         <button
           onClick={handleCreate}
           disabled={!title.trim() || loading}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 disabled:opacity-40 transition-all"
+          className="flex items-center gap-1.5 h-9 px-3 rounded-lg bg-act text-act-ink text-[13px] font-medium hover:opacity-90 disabled:opacity-40 transition-opacity duration-150"
         >
           {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
           Create
@@ -317,26 +322,26 @@ function ActivityFeed({ projectId }: { projectId: Id<"projects"> | null }) {
     projectId ? { projectId, limit: 10 } : { limit: 10 }
   );
 
-  if (!activities) return <div className="text-xs text-muted-foreground text-center py-4">Loading…</div>;
-  if (activities.length === 0) return <div className="text-xs text-muted-foreground text-center py-4">No recent activity</div>;
+  if (!activities) return <div className="text-[12.5px] text-ink-muted text-center py-4">Loading…</div>;
+  if (activities.length === 0) return <div className="text-[12.5px] text-ink-muted text-center py-4">No recent activity</div>;
 
   const actionColor = (action: string) => {
-    if (action.includes("CREATED") || action.includes("CREATE")) return "text-primary";
-    if (action.includes("APPROVED") || action.includes("DONE")) return "text-primary";
-    if (action.includes("ERROR") || action.includes("FAIL") || action.includes("DENY")) return "text-destructive";
-    if (action.includes("PAUSE") || action.includes("BLOCK")) return "text-amber-500";
-    return "text-muted-foreground";
+    if (action.includes("CREATED") || action.includes("CREATE")) return "text-ok";
+    if (action.includes("APPROVED") || action.includes("DONE")) return "text-ok";
+    if (action.includes("ERROR") || action.includes("FAIL") || action.includes("DENY")) return "text-err";
+    if (action.includes("PAUSE") || action.includes("BLOCK")) return "text-warn";
+    return "text-ink-muted";
   };
 
   return (
-    <div className="space-y-0 divide-y divide-border/40">
+    <div className="space-y-0 divide-y divide-line">
       {activities.map((a) => (
         <div key={a._id} className="flex items-start gap-3 py-2.5">
-          <span className={cn("text-[11px] font-bold mt-0.5 shrink-0 min-w-[70px]", actionColor(a.action))}>
+          <span className={cn("text-[11.5px] font-medium mt-0.5 shrink-0 min-w-[70px]", actionColor(a.action))}>
             {a.action.replace(/_/g, " ").slice(0, 12)}
           </span>
-          <p className="text-xs text-foreground flex-1 leading-relaxed truncate">{a.description}</p>
-          <span className="text-[11px] text-muted-foreground shrink-0">
+          <p className="text-[12.5px] text-ink flex-1 leading-relaxed truncate">{a.description}</p>
+          <span className="text-[11.5px] text-ink-muted shrink-0">
             {new Date(a._creationTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           </span>
         </div>
@@ -371,12 +376,13 @@ function BroadcastPanel({ onToast }: { onToast: (msg: string, err?: boolean) => 
         onChange={(e) => setMsg(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && handleSend()}
         placeholder="Send directive to all active agents…"
-        className="flex-1 px-3 py-2 rounded-lg border border-border bg-muted/40 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all"
+        aria-label="Broadcast directive"
+        className="h-9 flex-1 px-3 rounded-lg border border-line bg-surface-1 text-[13.5px] text-ink placeholder:text-ink-muted"
       />
       <button
         onClick={handleSend}
         disabled={!msg.trim() || sending}
-        className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 disabled:opacity-40 transition-all"
+        className="flex items-center gap-1.5 h-9 px-3 rounded-lg bg-act text-act-ink text-[13px] font-medium hover:opacity-90 disabled:opacity-40 transition-opacity duration-150"
       >
         {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
         Send
@@ -398,12 +404,12 @@ function TaskPipeline({ projectId }: { projectId: Id<"projects"> | null }) {
   for (const t of allTasks) counts[t.status] = (counts[t.status] ?? 0) + 1;
 
   const pipeline = [
-    { label: "INBOX",      color: "bg-muted-foreground" },
-    { label: "ASSIGNED",   color: "bg-sky-400" },
-    { label: "IN_PROGRESS",color: "bg-primary" },
-    { label: "REVIEW",     color: "bg-amber-400" },
-    { label: "DONE",       color: "bg-primary" },
-    { label: "BLOCKED",    color: "bg-destructive" },
+    { label: "INBOX",      color: "bg-ink-muted" },
+    { label: "ASSIGNED",   color: "bg-ink-muted" },
+    { label: "IN_PROGRESS",color: "bg-info-accent" },
+    { label: "REVIEW",     color: "bg-info-accent" },
+    { label: "DONE",       color: "bg-ok" },
+    { label: "BLOCKED",    color: "bg-warn" },
   ];
   const total = allTasks.length || 1;
 
@@ -414,11 +420,11 @@ function TaskPipeline({ projectId }: { projectId: Id<"projects"> | null }) {
         const pct = Math.round((n / total) * 100);
         return (
           <div key={label} className="flex items-center gap-3">
-            <span className="text-[11px] font-mono text-muted-foreground w-24 shrink-0">{label.replace("_", " ")}</span>
-            <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-              <div className={cn("h-full rounded-full transition-all", color)} style={{ width: `${pct}%` }} />
+            <span className="text-[11.5px] text-ink-muted w-24 shrink-0">{label.replace("_", " ")}</span>
+            <div className="flex-1 h-1.5 rounded-full bg-surface-2 overflow-hidden">
+              <div className={cn("h-full rounded-full transition-all duration-150", color)} style={{ width: `${pct}%` }} />
             </div>
-            <span className="text-[10px] font-semibold text-foreground w-6 text-right">{n}</span>
+            <span className="text-[11.5px] font-medium text-ink w-6 text-right">{n}</span>
           </div>
         );
       })}
@@ -481,7 +487,7 @@ export function CommandPanel({ projectId, onOpenSuggestionsDrawer }: CommandPane
           toast("Standup report queued (check Comms)");
           break;
         case "health-check":
-          toast("Health check: all systems operational ✓");
+          toast("Health check: all systems operational");
           break;
         case "broadcast":
           toast("Use the Broadcast bar below");
@@ -501,39 +507,35 @@ export function CommandPanel({ projectId, onOpenSuggestionsDrawer }: CommandPane
   };
 
   return (
-    <main className="flex-1 overflow-auto">
-      <div className="max-w-[1100px] mx-auto px-6 py-5 space-y-6">
-
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-2 mb-0.5">
-              <Terminal className="h-4 w-4 text-primary" />
-              <h1 className="text-sm font-semibold tracking-tight text-foreground">Command Panel</h1>
-            </div>
-            <p className="text-xs text-muted-foreground">Orchestrate agents, tasks, and approvals in real-time</p>
-          </div>
-          <span className="flex items-center gap-1.5 text-xs font-medium text-primary">
-            <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+    <main className="flex-1 overflow-auto bg-app">
+      <PageHeader
+        title="Command Panel"
+        description="Orchestrate agents, tasks, and approvals in real-time"
+        icon={<Terminal size={16} strokeWidth={1.7} />}
+        status={
+          <span className="flex items-center gap-1.5 text-[12.5px] font-medium text-ok">
+            <span className="h-1.5 w-1.5 rounded-full bg-ok" />
             Live
           </span>
-        </div>
+        }
+      />
+      <div className="max-w-[1100px] mx-auto px-6 py-5 space-y-6">
 
         {/* Status Bar */}
         <Card className="p-4">
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
             {[
-              { label: "Active Agents",  value: activeCount,  color: "text-primary", dot: "bg-primary" },
-              { label: "Paused Agents",  value: pausedCount,  color: "text-amber-500",   dot: "bg-amber-500" },
-              { label: "Pending Approvals", value: pendingCount, color: pendingCount > 0 ? "text-destructive" : "text-foreground", dot: pendingCount > 0 ? "bg-destructive" : "bg-muted-foreground" },
-              { label: "Total Tasks",    value: taskCount,    color: "text-foreground",  dot: "bg-primary" },
-              { label: "Done Today",     value: doneCount,    color: "text-primary", dot: "bg-primary" },
+              { label: "Active Agents",  value: activeCount,  color: "text-ok",   dot: "bg-ok" },
+              { label: "Paused Agents",  value: pausedCount,  color: "text-warn", dot: "bg-warn" },
+              { label: "Pending Approvals", value: pendingCount, color: pendingCount > 0 ? "text-err" : "text-ink", dot: pendingCount > 0 ? "bg-err" : "bg-ink-muted" },
+              { label: "Total Tasks",    value: taskCount,    color: "text-ink",  dot: "bg-ink-muted" },
+              { label: "Done Today",     value: doneCount,    color: "text-ok",   dot: "bg-ok" },
             ].map((stat) => (
               <div key={stat.label} className="flex items-center gap-3">
                 <span className={cn("h-2 w-2 rounded-full shrink-0", stat.dot)} />
                 <div>
-                  <p className={cn("text-lg font-bold leading-none", stat.color)}>{stat.value}</p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">{stat.label}</p>
+                  <p className={cn("text-[20px] font-semibold leading-none", stat.color)}>{stat.value}</p>
+                  <p className="text-[11.5px] text-ink-muted mt-0.5">{stat.label}</p>
                 </div>
               </div>
             ))}
@@ -549,16 +551,16 @@ export function CommandPanel({ projectId, onOpenSuggestionsDrawer }: CommandPane
               return (
                 <Card
                   key={action.id}
-                  className={cn("p-3.5 cursor-pointer transition-colors border", variantHover[action.variant])}
+                  className={cn("p-3.5 cursor-pointer transition-colors duration-150 border", variantHover[action.variant])}
                   onClick={() => handleAction(action.id)}
                 >
                   <div className="flex items-start gap-3">
-                    <div className="rounded-md bg-muted p-1.5 border border-border shrink-0">
-                      <Icon className={cn("h-4 w-4", action.accent)} strokeWidth={1.5} />
+                    <div className="rounded-md bg-surface-2 p-1.5 border border-line shrink-0">
+                      <Icon className={cn("h-4 w-4", action.accent)} strokeWidth={1.6} />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-xs font-semibold text-foreground leading-tight">{action.label}</p>
-                      <p className="text-[11px] text-muted-foreground leading-relaxed mt-0.5 line-clamp-2">{action.description}</p>
+                      <p className="text-[12.5px] font-semibold text-ink leading-tight">{action.label}</p>
+                      <p className="text-[11.5px] text-ink-muted leading-relaxed mt-0.5 line-clamp-2">{action.description}</p>
                     </div>
                   </div>
                 </Card>
@@ -608,13 +610,13 @@ export function CommandPanel({ projectId, onOpenSuggestionsDrawer }: CommandPane
           <Card className="p-4">
             <SectionHeader icon={Clock} title="Action Log" count={actionLog.length} />
             {actionLog.length === 0 ? (
-              <div className="text-xs text-muted-foreground text-center py-4">No actions taken yet this session</div>
+              <div className="text-[12.5px] text-ink-muted text-center py-4">No actions taken yet this session</div>
             ) : (
-              <div className="space-y-0 divide-y divide-border/40">
+              <div className="space-y-0 divide-y divide-line">
                 {actionLog.map((entry, i) => (
                   <div key={i} className="flex items-center justify-between py-2">
-                    <span className="text-xs text-foreground font-medium">{entry.label.replace(/-/g, " ")}</span>
-                    <span className="text-[11px] text-muted-foreground">{entry.time}</span>
+                    <span className="text-[12.5px] text-ink font-medium">{entry.label.replace(/-/g, " ")}</span>
+                    <span className="text-[11.5px] text-ink-muted">{entry.time}</span>
                   </div>
                 ))}
               </div>

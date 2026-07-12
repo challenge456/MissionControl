@@ -1,256 +1,188 @@
 /**
  * Workflow Run Panel
- * 
+ *
  * Displays workflow execution progress with step-by-step status indicators.
  * Real-time updates via Convex subscriptions.
  */
 
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
-import { Id } from "../../../convex/_generated/dataModel";
+import { X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { StatusBadge, type StatusBadgeProps } from "./components/factory/badges";
 
 interface WorkflowRunPanelProps {
   runId: string;
   onClose?: () => void;
 }
 
+const RUN_STATUS_TONE: Record<string, StatusBadgeProps["tone"]> = {
+  PENDING: "neutral",
+  RUNNING: "info",
+  COMPLETED: "success",
+  FAILED: "error",
+  PAUSED: "warning",
+};
+
+const RUN_BAR_CLASS: Record<string, string> = {
+  PENDING: "bg-ink-muted",
+  RUNNING: "bg-info-accent",
+  COMPLETED: "bg-ok",
+  FAILED: "bg-err",
+  PAUSED: "bg-warn",
+};
+
+const STEP_DOT_CLASS: Record<string, string> = {
+  PENDING: "bg-ink-muted",
+  RUNNING: "bg-info-accent",
+  DONE: "bg-ok",
+  FAILED: "bg-err",
+};
+
+const STEP_TEXT_CLASS: Record<string, string> = {
+  PENDING: "text-ink-muted",
+  RUNNING: "text-info-accent",
+  DONE: "text-ok",
+  FAILED: "text-err",
+};
+
 export function WorkflowRunPanel({ runId, onClose }: WorkflowRunPanelProps) {
   const run = useQuery(api.workflowRuns.get, { runId });
   const workflow = run ? useQuery(api.workflows.get, { workflowId: run.workflowId }) : null;
-  
+
   if (!run || !workflow) {
     return (
-      <div style={{ padding: "20px", color: "#888" }}>
+      <div className="p-5 text-[13px] text-ink-muted">
         Loading workflow run...
       </div>
     );
   }
-  
-  const statusColors = {
-    PENDING: "#6b7280",
-    RUNNING: "#3b82f6",
-    COMPLETED: "#10b981",
-    FAILED: "#ef4444",
-    PAUSED: "#f59e0b",
-  };
-  
-  const stepStatusColors = {
-    PENDING: "#6b7280",
-    RUNNING: "#3b82f6",
-    DONE: "#10b981",
-    FAILED: "#ef4444",
-  };
-  
-  const statusEmoji = {
-    PENDING: "⏳",
-    RUNNING: "▶️",
-    DONE: "✅",
-    FAILED: "❌",
-  };
-  
+
   return (
-    <div style={{
-      position: "fixed",
-      top: 0,
-      right: 0,
-      width: "500px",
-      height: "100vh",
-      backgroundColor: "#1a1a1a",
-      borderLeft: "1px solid #333",
-      display: "flex",
-      flexDirection: "column",
-      zIndex: 1000,
-    }}>
+    <div className="fixed right-0 top-0 z-[1000] flex h-screen w-[500px] flex-col border-l border-line bg-surface-1">
       {/* Header */}
-      <div style={{
-        padding: "20px",
-        borderBottom: "1px solid #333",
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-      }}>
+      <div className="flex items-center justify-between border-b border-line p-5">
         <div>
-          <h2 style={{ margin: 0, fontSize: "18px", fontWeight: 600 }}>
-            {workflow.name}
-          </h2>
-          <div style={{ fontSize: "12px", color: "#888", marginTop: "4px" }}>
-            Run: {run.runId}
-          </div>
+          <h2 className="text-[15px] font-semibold text-ink">{workflow.name}</h2>
+          <div className="mt-1 font-mono text-[11.5px] text-ink-muted">Run: {run.runId}</div>
         </div>
         {onClose && (
           <button
             onClick={onClose}
-            style={{
-              background: "none",
-              border: "none",
-              color: "#888",
-              fontSize: "20px",
-              cursor: "pointer",
-              padding: "4px 8px",
-            }}
+            aria-label="Close workflow run panel"
+            className="rounded-md p-1.5 text-ink-muted transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
           >
-            ×
+            <X size={16} strokeWidth={1.75} />
           </button>
         )}
       </div>
-      
-      {/* Status Badge */}
-      <div style={{ padding: "20px", borderBottom: "1px solid #333" }}>
-        <div style={{
-          display: "inline-block",
-          padding: "6px 12px",
-          borderRadius: "6px",
-          backgroundColor: statusColors[run.status] + "20",
-          color: statusColors[run.status],
-          fontSize: "12px",
-          fontWeight: 600,
-          textTransform: "uppercase",
-        }}>
-          {run.status}
-        </div>
-        
-        <div style={{ marginTop: "12px", fontSize: "14px", color: "#ccc" }}>
+
+      {/* Status */}
+      <div className="border-b border-line p-5">
+        <StatusBadge tone={RUN_STATUS_TONE[run.status] ?? "neutral"}>{run.status}</StatusBadge>
+
+        <div className="mt-3 text-[13px] text-ink-secondary">
           Step {run.currentStepIndex + 1} of {run.totalSteps}
         </div>
-        
+
         {/* Progress bar */}
-        <div style={{
-          marginTop: "8px",
-          height: "4px",
-          backgroundColor: "#333",
-          borderRadius: "2px",
-          overflow: "hidden",
-        }}>
-          <div style={{
-            width: `${((run.currentStepIndex + 1) / run.totalSteps) * 100}%`,
-            height: "100%",
-            backgroundColor: statusColors[run.status],
-            transition: "width 0.3s ease",
-          }} />
+        <div className="mt-2 h-1 overflow-hidden rounded-full bg-surface-2">
+          <div
+            className={cn(
+              "h-full rounded-full transition-[width] duration-200",
+              RUN_BAR_CLASS[run.status] ?? "bg-ink-muted"
+            )}
+            style={{ width: `${((run.currentStepIndex + 1) / run.totalSteps) * 100}%` }}
+          />
         </div>
       </div>
-      
+
       {/* Initial Input */}
-      <div style={{ padding: "20px", borderBottom: "1px solid #333" }}>
-        <div style={{ fontSize: "12px", color: "#888", marginBottom: "8px" }}>
-          INITIAL INPUT
+      <div className="border-b border-line p-5">
+        <div className="mb-2 text-[11.5px] font-medium uppercase tracking-[0.06em] text-ink-muted">
+          Initial input
         </div>
-        <div style={{
-          fontSize: "14px",
-          color: "#ccc",
-          backgroundColor: "#0a0a0a",
-          padding: "12px",
-          borderRadius: "6px",
-          maxHeight: "100px",
-          overflow: "auto",
-        }}>
+        <div className="max-h-[100px] overflow-auto rounded-lg bg-surface-2 p-3 text-[13px] text-ink-secondary">
           {run.initialInput}
         </div>
       </div>
-      
+
       {/* Steps */}
-      <div style={{
-        flex: 1,
-        overflowY: "auto",
-        padding: "20px",
-      }}>
-        <div style={{ fontSize: "12px", color: "#888", marginBottom: "12px" }}>
-          WORKFLOW STEPS
+      <div className="flex-1 overflow-y-auto p-5">
+        <div className="mb-3 text-[11.5px] font-medium uppercase tracking-[0.06em] text-ink-muted">
+          Workflow steps
         </div>
-        
+
         {run.steps.map((step, index) => {
           const stepDef = workflow.steps[index];
           const agentDef = workflow.agents.find((a) => a.id === stepDef.agent);
-          
+
           return (
             <div
               key={step.stepId}
-              style={{
-                marginBottom: "12px",
-                padding: "12px",
-                backgroundColor: index === run.currentStepIndex ? "#0a0a0a" : "transparent",
-                borderRadius: "6px",
-                border: index === run.currentStepIndex ? "1px solid #333" : "1px solid transparent",
-              }}
+              className={cn(
+                "mb-3 rounded-lg border p-3",
+                index === run.currentStepIndex
+                  ? "border-line bg-surface-2"
+                  : "border-transparent"
+              )}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <span style={{ fontSize: "16px" }}>
-                  {statusEmoji[step.status]}
-                </span>
-                <span style={{
-                  fontSize: "14px",
-                  fontWeight: 600,
-                  color: stepStatusColors[step.status],
-                }}>
+              <div className="flex items-center gap-2">
+                <span
+                  className={cn(
+                    "h-1.5 w-1.5 shrink-0 rounded-full",
+                    STEP_DOT_CLASS[step.status] ?? "bg-ink-muted"
+                  )}
+                  aria-hidden
+                />
+                <span
+                  className={cn(
+                    "font-mono text-[13px] font-semibold",
+                    STEP_TEXT_CLASS[step.status] ?? "text-ink"
+                  )}
+                >
                   {step.stepId}
                 </span>
-                <span style={{ fontSize: "12px", color: "#666" }}>
-                  ({agentDef?.persona})
-                </span>
+                <span className="text-[12px] text-ink-muted">({agentDef?.persona})</span>
               </div>
-              
+
               {step.retryCount > 0 && (
-                <div style={{ fontSize: "11px", color: "#f59e0b", marginTop: "4px" }}>
+                <div className="mt-1 text-[11.5px] text-warn">
                   Retry {step.retryCount}/{stepDef.retryLimit}
                 </div>
               )}
-              
+
               {step.error && (
-                <div style={{
-                  fontSize: "11px",
-                  color: "#ef4444",
-                  marginTop: "4px",
-                  backgroundColor: "#ef444410",
-                  padding: "6px",
-                  borderRadius: "4px",
-                }}>
+                <div className="mt-1 rounded-md bg-err-soft p-1.5 text-[11.5px] text-err">
                   {step.error}
                 </div>
               )}
-              
+
               {step.status === "DONE" && step.output && (
-                <div style={{
-                  fontSize: "11px",
-                  color: "#888",
-                  marginTop: "4px",
-                  maxHeight: "60px",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}>
+                <div className="mt-1 max-h-[60px] overflow-hidden text-ellipsis text-[11.5px] text-ink-muted">
                   {step.output.substring(0, 150)}
                   {step.output.length > 150 && "..."}
                 </div>
               )}
-              
+
               {step.startedAt && (
-                <div style={{ fontSize: "11px", color: "#666", marginTop: "4px" }}>
-                  {step.completedAt ? (
-                    `Completed in ${Math.round((step.completedAt - step.startedAt) / 1000)}s`
-                  ) : (
-                    `Running for ${Math.round((Date.now() - step.startedAt) / 1000)}s`
-                  )}
+                <div className="mt-1 text-[11.5px] text-ink-muted">
+                  {step.completedAt
+                    ? `Completed in ${Math.round((step.completedAt - step.startedAt) / 1000)}s`
+                    : `Running for ${Math.round((Date.now() - step.startedAt) / 1000)}s`}
                 </div>
               )}
             </div>
           );
         })}
       </div>
-      
+
       {/* Footer */}
-      <div style={{
-        padding: "20px",
-        borderTop: "1px solid #333",
-        fontSize: "12px",
-        color: "#666",
-      }}>
+      <div className="border-t border-line p-5 text-[12px] text-ink-muted">
         {run.completedAt ? (
-          <div>
-            Completed in {Math.round((run.completedAt - run.startedAt) / 1000)}s
-          </div>
+          <div>Completed in {Math.round((run.completedAt - run.startedAt) / 1000)}s</div>
         ) : (
-          <div>
-            Running for {Math.round((Date.now() - run.startedAt) / 1000)}s
-          </div>
+          <div>Running for {Math.round((Date.now() - run.startedAt) / 1000)}s</div>
         )}
       </div>
     </div>

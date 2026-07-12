@@ -495,7 +495,7 @@ export function SkillsView() {
   const sourceUnavailable = !loadingSkills && skills.length === 0 && Boolean(error);
 
   return (
-    <main className="mc-page">
+    <main className="relative flex-1 overflow-auto bg-app">
       <div className="flex min-w-0 flex-1 flex-col">
         <PageHeader
           title="Skills Browser"
@@ -516,7 +516,7 @@ export function SkillsView() {
           }
         />
 
-        <div className="mc-page-body mc-page-stack">
+        <div className="mx-auto flex max-w-[1200px] flex-col gap-6 px-6 py-6">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <Card>
             <CardContent className="p-4">
@@ -552,7 +552,7 @@ export function SkillsView() {
           <Card className="p-5">
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
               <div className="rounded-2xl border border-[var(--panel-line)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--shell-panel)_96%,transparent),color-mix(in_srgb,var(--background)_88%,transparent))] p-5">
-                <div className="mc-kicker">Skill sources unavailable</div>
+                <div className="text-[12.5px] font-medium text-ink-secondary">Skill sources unavailable</div>
                 <div className="mt-2 text-2xl font-semibold text-foreground">Mission Control cannot reach the configured skill roots right now.</div>
                 <p className="mt-3 max-w-3xl text-sm leading-relaxed text-muted-foreground">
                   That is why this view currently shows zero skills and the editor rail falls back into a request error. This should degrade into setup guidance, not a broken workspace.
@@ -562,7 +562,7 @@ export function SkillsView() {
                 </div>
               </div>
               <div className="rounded-2xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] p-5">
-                <div className="mc-kicker">What to check</div>
+                <div className="text-[12.5px] font-medium text-ink-secondary">What to check</div>
                 <ul className="mt-3 space-y-3 text-sm leading-relaxed text-muted-foreground">
                   <li>Confirm the orchestration server is running and reachable from the UI.</li>
                   <li>Verify the repo plugin skills and local Codex skill paths still exist on disk.</li>
@@ -643,9 +643,9 @@ export function SkillsView() {
                 {loadingSkills ? (
                   Array.from({ length: 5 }).map((_, index) => (
                     <div key={index} className="rounded-xl border border-[var(--panel-line)] p-4">
-                      <div className="h-4 w-32 rounded skeleton-shimmer" />
-                      <div className="mt-3 h-3 w-full rounded skeleton-shimmer" />
-                      <div className="mt-2 h-3 w-4/5 rounded skeleton-shimmer" />
+                      <div className="h-4 w-32 rounded animate-pulse bg-surface-2" />
+                      <div className="mt-3 h-3 w-full rounded animate-pulse bg-surface-2" />
+                      <div className="mt-2 h-3 w-4/5 rounded animate-pulse bg-surface-2" />
                     </div>
                   ))
                 ) : filteredSkills.length === 0 ? (
