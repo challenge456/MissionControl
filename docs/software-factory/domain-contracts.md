@@ -524,6 +524,26 @@ type ExpireGovernanceRecordsCommand = {
 5. expiry is server-evaluated and auditable via lifecycle events
 6. UI, CLI, and orchestration must all call these server-owned commands
 
+## 10. Sixth-slice factory overview contract
+
+MissionControl exposes one authoritative portfolio-level overview query for the Control > Portfolio surface.
+
+```ts
+type GetFactoryOverview = {
+  projectId?: Id<"projects">;
+  limit?: number;
+};
+```
+
+It returns:
+
+1. summary metrics for active work, blocked work, pending approvals, stale evidence, verification failures, attention-seeking runs, and recently accepted outcomes
+2. blocked WorkOrders with their latest execution run summary
+3. pending approval queue entries with linked WorkOrder context
+4. stale verification receipts with linked WorkOrder context
+5. latest runs needing attention because of failure, pause, retry churn, or human intervention
+6. recently accepted WorkOrders to make throughput visible in the same surface
+
 - `WORK_ORDER_CREATED`
 - `DISPATCH_REQUESTED`
 - `DISPATCHED`

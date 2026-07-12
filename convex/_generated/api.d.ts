@@ -57,6 +57,7 @@ import type * as lib_armPolicy from "../lib/armPolicy.js";
 import type * as lib_contextManifests from "../lib/contextManifests.js";
 import type * as lib_contextPackages from "../lib/contextPackages.js";
 import type * as lib_contextRegistryGate from "../lib/contextRegistryGate.js";
+import type * as lib_factoryOverview from "../lib/factoryOverview.js";
 import type * as lib_flags from "../lib/flags.js";
 import type * as lib_genomeHash from "../lib/genomeHash.js";
 import type * as lib_getActiveTenant from "../lib/getActiveTenant.js";
@@ -195,6 +196,7 @@ declare const fullApi: ApiFromModules<{
   "lib/contextManifests": typeof lib_contextManifests;
   "lib/contextPackages": typeof lib_contextPackages;
   "lib/contextRegistryGate": typeof lib_contextRegistryGate;
+  "lib/factoryOverview": typeof lib_factoryOverview;
   "lib/flags": typeof lib_flags;
   "lib/genomeHash": typeof lib_genomeHash;
   "lib/getActiveTenant": typeof lib_getActiveTenant;

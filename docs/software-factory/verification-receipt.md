@@ -284,3 +284,33 @@ pnpm run ci:test:e2e
   - original WorkOrder: `wd730tjzk2mfr0qsc4scgp807x8aajd2` → state `SUPERSEDED`
   - replacement WorkOrder: `wd7df781m9sm3bazvykezyb7j58aarq4`
   - lineage preserved via `supersededByWorkOrderId` / `supersedesWorkOrderId`
+
+## Sixth slice — Real Factory Overview dashboard
+
+| Criterion | Result | Evidence |
+| --- | --- | --- |
+| Portfolio overview is backed by live Convex data | PASS | `convex/workOrders.ts#factoryOverview`, `apps/mission-control-ui/src/controlPlane/FactoryOverviewView.tsx` |
+| Summary metrics cover active work, blocked work, approvals, stale evidence, and attention-seeking runs | PASS | `convex/lib/factoryOverview.ts`, `apps/mission-control-ui/src/controlPlane/factoryOverviewModel.ts` |
+| Exception-first lists show blocked work, approval queue, stale evidence, and runs needing attention | PASS | `apps/mission-control-ui/src/controlPlane/FactoryOverviewView.tsx` |
+| Control > Portfolio no longer uses placeholder-only content | PASS | `apps/mission-control-ui/src/sections/ControlSection.tsx`, `apps/mission-control-ui/src/controlPlane/FactoryOverviewView.tsx` |
+| Factory overview helper/model logic is test-covered | PASS | `convex/__tests__/factoryOverview.test.ts`, `apps/mission-control-ui/src/controlPlane/factoryOverviewModel.test.ts` |
+
+### Additional checks executed
+
+```bash
+pnpm install --frozen-lockfile
+pnpm exec convex codegen --typecheck disable
+pnpm exec vitest run convex/__tests__/factoryOverview.test.ts apps/mission-control-ui/src/controlPlane/factoryOverviewModel.test.ts
+pnpm exec tsc --noEmit -p convex/tsconfig.json
+pnpm --filter mission-control-ui typecheck
+pnpm --filter mission-control-ui build
+pnpm run ci:typecheck
+pnpm run ci:test
+pnpm run ci:test:e2e
+```
+
+### Result summary
+
+- Added authoritative `workOrders:factoryOverview` query for the control-plane portfolio view
+- Replaced the Control > Portfolio placeholder with a live overview built from WorkOrders, approval decisions, verification receipts, and workflow runs
+- Surfaced exception-first lists for blocked work, pending approvals, stale evidence, and attention-seeking runs
