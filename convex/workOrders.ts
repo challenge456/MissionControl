@@ -3,6 +3,7 @@ import { internalMutation, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { deriveVerificationStatus, currentWorkflowStepLabel, totalWorkflowRetries } from "./lib/workOrders";
 import { ACTIVE_RUN_STATUSES, nextStateForRunStatus, validateDispatchable } from "./lib/workOrderDispatch";
+import { isRunNeedingAttention, summarizeFactoryMetrics } from "./lib/factoryOverview";
 import {
   approvalStatusSatisfiesRequirement,
   deriveApprovalStatus,
@@ -593,6 +594,23 @@ async function loadExecutionSummaries(ctx: any, workOrderIds: string[]) {
   return summaries;
 }
 
+async function loadLatestExecutionSummaries(ctx: any, workOrderIds: string[]) {
+  const summaries = new Map<string, any | null>();
+
+  await Promise.all(
+    workOrderIds.map(async (workOrderId) => {
+      const run = await ctx.db
+        .query("workflowRuns")
+        .withIndex("by_work_order", (q: any) => q.eq("workOrderId", workOrderId))
+        .order("desc")
+        .first();
+      summaries.set(workOrderId, run ? summarizeRun(run) : null);
+    })
+  );
+
+  return summaries;
+}
+
 function buildGovernanceStatus(args: {
   workOrder: any;
   revisions: any[];
@@ -889,6 +907,84 @@ export const get = query({
        governancePolicy: policy,
        governanceStatus,
       acceptanceSummary: acceptance,
+    };
+  },
+});
+
+export const factoryOverview = query({
+  args: {
+    projectId: v.optional(v.id("projects")),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit ?? 5;
+    const workOrders = (args.projectId
+      ? await ctx.db
+          .query("workOrders")
+          .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+          .collect()
+      : await ctx.db.query("workOrders").collect()).sort((a: any, b: any) => b.updatedAt - a.updatedAt);
+
+    const runMap = await loadLatestExecutionSummaries(ctx, workOrders.map((workOrder) => workOrder._id));
+    const latestRuns = workOrders
+      .map((workOrder) => {
+        const latestRun = runMap.get(workOrder._id) ?? null;
+        return latestRun ? { workOrder, latestRun } : null;
+      })
+      .filter(Boolean) as Array<{ workOrder: any; latestRun: any }>;
+
+    const approvalDecisions = await ctx.db.query("approvalDecisions").collect();
+    const pendingApprovals = approvalDecisions.filter((approval: any) => approval.status === "PENDING" && (!args.projectId || approval.projectId === args.projectId));
+
+    const receiptCandidates = await ctx.db.query("verificationReceipts").collect();
+    const staleReceipts = receiptCandidates.filter((receipt: any) => (
+      (!args.projectId || receipt.projectId === args.projectId)
+      && (receipt.status === "STALE" || (receipt.validUntil && receipt.validUntil <= Date.now() && ["PASSED", "WAIVED"].includes(receipt.status)))
+    ));
+
+    const runsNeedingAttention = latestRuns.filter(({ latestRun }) => isRunNeedingAttention(latestRun));
+    const blockedWorkOrders = workOrders
+      .filter((workOrder) => workOrder.state === "BLOCKED")
+      .slice(0, limit)
+      .map((workOrder) => ({
+        workOrder,
+        latestRun: runMap.get(workOrder._id) ?? null,
+      }));
+
+    const recentAccepted = workOrders
+      .filter((workOrder) => workOrder.state === "DONE" && workOrder.acceptedRevisionNumber != null)
+      .slice(0, limit)
+      .map((workOrder) => ({
+        workOrder,
+        latestRun: runMap.get(workOrder._id) ?? null,
+      }));
+
+    const approvalQueue = await Promise.all(
+      pendingApprovals.slice(0, limit).map(async (approval: any) => ({
+        ...approval,
+        workOrder: await ctx.db.get(approval.workOrderId),
+      }))
+    );
+
+    const staleEvidence = await Promise.all(
+      staleReceipts.slice(0, limit).map(async (receipt: any) => ({
+        receipt,
+        workOrder: await ctx.db.get(receipt.workOrderId),
+      }))
+    );
+
+    return {
+      summary: summarizeFactoryMetrics({
+        workOrders,
+        approvalsPending: pendingApprovals.length,
+        staleEvidence: staleReceipts.length,
+        runsNeedingAttention: runsNeedingAttention.length,
+      }),
+      blockedWorkOrders,
+      approvalQueue,
+      staleEvidence,
+      runsNeedingAttention: runsNeedingAttention.slice(0, limit),
+      recentAccepted,
     };
   },
 });

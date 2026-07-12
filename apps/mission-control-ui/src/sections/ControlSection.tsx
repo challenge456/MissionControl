@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { MainView } from "../TopNav";
+import { FactoryOverviewView } from "../controlPlane/FactoryOverviewView";
 import { WorkOrdersView } from "../controlPlane/WorkOrdersView";
 import { WorkOrderApprovalsView } from "../controlPlane/WorkOrderApprovalsView";
 
@@ -55,6 +56,10 @@ export function ControlSection({ currentView, projectId, onNavigate }: ControlSe
 
   if (activeView === "control-approvals") {
     return <WorkOrderApprovalsView projectId={projectId} />;
+  }
+
+  if (activeView === "control-portfolio") {
+    return <FactoryOverviewView projectId={projectId} onNavigate={onNavigate} />;
   }
 
   const activeCopy = VIEW_COPY[activeView];
