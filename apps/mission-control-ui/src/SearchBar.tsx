@@ -108,7 +108,7 @@ export function SearchBar({ projectId, onResultClick }: SearchBarProps) {
   return (
     <div className="relative w-full max-w-[460px]">
       <div className="relative">
-        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Search size={15} strokeWidth={1.7} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-muted" aria-hidden />
         <Input
           type="text"
           value={query}
@@ -116,16 +116,16 @@ export function SearchBar({ projectId, onResultClick }: SearchBarProps) {
           onKeyDown={handleKeyDown}
           onFocus={() => query.length >= 2 && setIsOpen(true)}
           placeholder="Search tasks, approvals, agents..."
-          className="h-10 pl-9 text-sm"
+          className="h-9 rounded-lg border-line bg-surface-1 pl-9 text-[13.5px] placeholder:text-ink-muted"
           aria-label="Search tasks, approvals, and agents"
         />
       </div>
 
       {isOpen && (
-        <div className="absolute z-[1000] mt-2 w-full overflow-hidden rounded-2xl border border-[var(--panel-line-strong)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--shell-panel-strong)_99%,transparent),color-mix(in_srgb,var(--background)_92%,transparent))] shadow-[var(--card-shadow-hover)]">
-          <div className="border-b border-[var(--panel-line)] px-4 py-3 text-[11px] font-medium text-muted-foreground">
+        <div className="absolute z-[1000] mt-2 w-full overflow-hidden rounded-xl border border-line bg-surface-3 shadow-[var(--shadow-elevation-2)]">
+          <div className="border-b border-line px-4 py-3 text-[11.5px] font-medium text-ink-muted">
             {nonActionableFeedback ? (
-              <span className="text-amber-400">This item has no linked task</span>
+              <span className="text-warn">This item has no linked task</span>
             ) : (
               <>{results?.totalResults ?? 0} result(s)</>
             )}
@@ -195,7 +195,7 @@ export function SearchBar({ projectId, onResultClick }: SearchBarProps) {
       )}
 
       {noResults && (
-        <div className="absolute z-[1000] mt-2 w-full rounded-2xl border border-[var(--panel-line)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--shell-panel-strong)_99%,transparent),color-mix(in_srgb,var(--background)_92%,transparent))] px-4 py-3 text-center text-sm text-muted-foreground shadow-[var(--card-shadow)]">
+        <div className="absolute z-[1000] mt-2 w-full rounded-xl border border-line bg-surface-3 px-4 py-3 text-center text-[13.5px] text-ink-muted shadow-[var(--shadow-elevation-2)]">
           No results for "{query}"
         </div>
       )}
@@ -219,8 +219,8 @@ function SearchSection({
   if (!rows.length) return null;
 
   return (
-    <div className="border-b border-[var(--panel-line)] p-2 last:border-b-0">
-      <p className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+    <div className="border-b border-line p-2 last:border-b-0">
+      <p className="mb-1 px-2 text-[11.5px] font-medium uppercase tracking-[0.06em] text-ink-muted">
         {title}
       </p>
       {rows.map((row) => (
@@ -230,18 +230,18 @@ function SearchSection({
           onClick={row.onClick}
           disabled={!row.onClick}
           className={cn(
-            "w-full rounded-lg px-3 py-2.5 text-left transition-colors",
-            row.isSelected && "bg-cyan-400/8",
+            "w-full rounded-lg px-3 py-2.5 text-left transition-colors duration-150",
+            row.isSelected && "bg-surface-2",
             row.onClick
-              ? "cursor-pointer text-foreground hover:bg-cyan-400/6"
-              : "cursor-default text-muted-foreground/90"
+              ? "cursor-pointer text-ink hover:bg-surface-2"
+              : "cursor-default text-ink-secondary"
           )}
         >
-          <span className="flex items-center gap-2 truncate text-sm font-medium">
-            {title === "Agents" && <Bot className="h-3.5 w-3.5 text-cyan-200" />}
+          <span className="flex items-center gap-2 truncate text-[13.5px] font-medium">
+            {title === "Agents" && <Bot size={14} strokeWidth={1.7} aria-hidden />}
             <span className="truncate">{row.title}</span>
           </span>
-          <span className="block truncate text-xs text-muted-foreground">{row.subtitle}</span>
+          <span className="block truncate text-[12.5px] text-ink-muted">{row.subtitle}</span>
         </button>
       ))}
     </div>

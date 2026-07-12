@@ -236,7 +236,7 @@ export function TaskEditMode({ task, onSave, onCancel, onSaveError }: TaskEditMo
                     }
                   }}
                 >
-                  <span className="mr-1">{agent.emoji || "🤖"}</span>
+                  {agent.emoji ? <span className="mr-1">{agent.emoji}</span> : null}
                   {agent.name}
                 </Button>
               );

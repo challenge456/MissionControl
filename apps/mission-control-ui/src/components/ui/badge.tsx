@@ -24,11 +24,11 @@ const badgeVariants = cva(
         muted:
           "bg-muted text-muted-foreground border-border hover:bg-muted/80",
         "neon-success":
-          "bg-[var(--neon-green)]/15 text-[var(--neon-green)] border-[var(--glass-border-green)]",
+          "border-transparent bg-ok-soft text-ok",
         "neon-cyan":
-          "bg-[var(--neon-cyan)]/15 text-[var(--neon-cyan)] border-[var(--glass-border)]",
+          "border-transparent bg-info-soft text-info-accent",
         "neon-error":
-          "bg-[var(--neon-magenta)]/15 text-[var(--neon-magenta)] border-[var(--neon-magenta)]/30",
+          "border-transparent bg-err-soft text-err",
       },
     },
     defaultVariants: {

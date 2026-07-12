@@ -21,6 +21,7 @@
       "@mission-control/state-machine": ["./packages/state-machine/src"],
       "@mission-control/policy-engine": ["./packages/policy-engine/src"],
       "@mission-control/coordinator": ["./packages/coordinator/src"],
+      "@mission-control/context-tools": ["./packages/context-tools/src"],
       "@mission-control/agent-runtime": ["./packages/agent-runtime/src"],
       "@mission-control/context-router": ["./packages/context-router/src"],
       "@mission-control/model-router": ["./packages/model-router/src"],

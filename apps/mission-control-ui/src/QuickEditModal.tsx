@@ -109,7 +109,7 @@ export function QuickEditModal({ task, onClose, onSave }: QuickEditModalProps) {
           alignItems: "center",
         }}>
           <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 600 }}>
-            ✏️ Quick Edit Task
+            Quick Edit Task
           </h2>
           <button
             onClick={onClose}
@@ -308,7 +308,7 @@ export function QuickEditModal({ task, onClose, onSave }: QuickEditModalProps) {
                 cursor: saving || !title.trim() ? "not-allowed" : "pointer",
               }}
             >
-              {saving ? "Saving..." : "💾 Save Changes"}
+              {saving ? "Saving..." : "Save Changes"}
             </button>
             <button
               onClick={onClose}

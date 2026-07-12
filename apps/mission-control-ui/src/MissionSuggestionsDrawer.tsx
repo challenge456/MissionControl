@@ -38,22 +38,14 @@ type TaskSuggestion = {
 };
 
 const PRIORITY_LABELS: Record<number, { label: string; classes: string }> = {
-  1: { label: "Critical", classes: "text-red-500" },
-  2: { label: "High", classes: "text-amber-500" },
-  3: { label: "Normal", classes: "text-blue-500" },
-  4: { label: "Low", classes: "text-muted-foreground" },
+  1: { label: "Critical", classes: "text-err" },
+  2: { label: "High", classes: "text-warn" },
+  3: { label: "Normal", classes: "text-ink-secondary" },
+  4: { label: "Low", classes: "text-ink-muted" },
 };
 
-const TYPE_CLASSES: Record<string, string> = {
-  CONTENT: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-  SOCIAL: "bg-pink-500/10 text-pink-500 border-pink-500/20",
-  EMAIL_MARKETING: "bg-cyan-500/10 text-cyan-500 border-cyan-500/20",
-  CUSTOMER_RESEARCH: "bg-primary/10 text-primary border-primary/20",
-  SEO_RESEARCH: "bg-yellow-500/10 text-yellow-600 border-yellow-500/20",
-  ENGINEERING: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-  DOCS: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-  OPS: "bg-orange-500/10 text-orange-500 border-orange-500/20",
-};
+/** Task type is a category, not a status — always the neutral chip. */
+const TYPE_BADGE_CLASSES = "border-line bg-surface-2 text-ink-secondary";
 
 export function MissionSuggestionsDrawer({ projectId, onClose }: MissionSuggestionsDrawerProps) {
   const [suggestions, setSuggestions] = useState<TaskSuggestion[]>([]);
@@ -118,9 +110,7 @@ export function MissionSuggestionsDrawer({ projectId, onClose }: MissionSuggesti
         <div className="flex h-full flex-col">
           <SheetHeader className="border-b border-border px-6 py-4 text-left">
             <div className="flex items-center gap-3">
-              <div className="rounded-md border border-primary/20 bg-primary/10 p-2">
-                <Sparkles className="h-4 w-4 text-primary" />
-              </div>
+              <Sparkles className="h-4 w-4 text-ink-secondary" strokeWidth={1.75} />
               <div>
                 <SheetTitle>Mission-Aligned Tasks</SheetTitle>
                 <SheetDescription>
@@ -179,7 +169,7 @@ export function MissionSuggestionsDrawer({ projectId, onClose }: MissionSuggesti
                             <div className="flex flex-wrap items-center gap-2">
                               <Badge
                                 variant="outline"
-                                className={TYPE_CLASSES[suggestion.type] ?? "bg-muted text-muted-foreground border-border"}
+                                className={TYPE_BADGE_CLASSES}
                               >
                                 {suggestion.type.replace(/_/g, " ")}
                               </Badge>

@@ -9,9 +9,9 @@ import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BarChart3, CheckCircle, XCircle, Bot } from "lucide-react";
+import { RiskBadge, StatusBadge } from "@/components/factory/badges";
+import { CheckCircle, XCircle, Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const ENVIRONMENTS = ["local", "dev", "staging", "pilot", "production"] as const;
@@ -90,16 +90,13 @@ export function QcMetricsView({ projectId }: QcMetricsViewProps) {
   const currentEnvSummary = envSummary?.find((s) => s.environment === envTab);
 
   return (
-    <div className="flex-1 overflow-auto p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <BarChart3 className="h-6 w-6 text-primary" />
-          Metrics
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
+    <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-6 py-6">
+      <header>
+        <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-ink">Metrics</h1>
+        <p className="mt-1.5 text-[14px] text-ink-secondary">
           Quality score trends, gate pass rates, and agent output quality
         </p>
-      </div>
+      </header>
 
       {/* Time range + environment tabs */}
       <div className="flex flex-wrap items-center gap-4">
@@ -125,50 +122,50 @@ export function QcMetricsView({ projectId }: QcMetricsViewProps) {
 
       {/* Gate pass rate */}
       <Card className="p-4">
-        <h3 className="text-sm font-semibold mb-2">Gate pass rate (all runs)</h3>
+        <h3 className="mb-2 text-[15px] font-semibold text-ink">Gate pass rate (all runs)</h3>
         <div className="flex items-center gap-4">
           {gatePassRate !== null ? (
             <>
               <div
                 className={cn(
-                  "text-3xl font-bold",
-                  gatePassRate >= 80 && "text-primary",
-                  gatePassRate >= 50 && gatePassRate < 80 && "text-yellow-600",
-                  gatePassRate < 50 && "text-red-600"
+                  "font-mono text-[26px] font-semibold leading-none",
+                  gatePassRate >= 80 && "text-ok",
+                  gatePassRate >= 50 && gatePassRate < 80 && "text-warn",
+                  gatePassRate < 50 && "text-err"
                 )}
               >
                 {gatePassRate}%
               </div>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <CheckCircle className="h-4 w-4 text-primary" />
+              <div className="flex items-center gap-2 text-[13px] text-ink-secondary">
+                <CheckCircle className="h-4 w-4 text-ok" strokeWidth={1.75} />
                 <span>Passed</span>
-                <XCircle className="h-4 w-4 text-red-500 ml-2" />
+                <XCircle className="ml-2 h-4 w-4 text-err" strokeWidth={1.75} />
                 <span>Failed</span>
               </div>
             </>
           ) : (
-            <span className="text-muted-foreground">No completed runs</span>
+            <span className="text-[13px] text-ink-muted">No completed runs</span>
           )}
         </div>
       </Card>
 
       {/* Quality score trend */}
       <Card className="p-6">
-        <h3 className="text-sm font-semibold mb-4">
+        <h3 className="mb-4 text-[15px] font-semibold text-ink">
           Quality score trend — {envTab}
         </h3>
         {qualityScoresForChart.length > 0 ? (
-          <div className="flex items-end gap-1 h-40">
+          <div className="flex h-40 items-end gap-1">
             {qualityScoresForChart.map((m, i) => {
               const height = Math.max(4, (m.value / 100) * 100);
               return (
                 <div
                   key={`${m.recordedAt}-${i}`}
-                  className="flex-1 min-w-0 flex flex-col items-center gap-0.5"
+                  className="flex min-w-0 flex-1 flex-col items-center gap-0.5"
                   title={`${new Date(m.recordedAt).toLocaleDateString()}: ${m.value}`}
                 >
                   <div
-                    className="w-full rounded-t bg-primary/80"
+                    className="w-full rounded-t bg-ok"
                     style={{ height: `${height}%` }}
                   />
                 </div>
@@ -176,12 +173,12 @@ export function QcMetricsView({ projectId }: QcMetricsViewProps) {
             })}
           </div>
         ) : (
-          <div className="h-32 flex items-center justify-center text-sm text-muted-foreground">
+          <div className="flex h-32 items-center justify-center text-[13px] text-ink-muted">
             No quality score data for this environment and range
           </div>
         )}
         {aggregate && aggregate.length > 0 && (
-          <div className="mt-4 flex gap-4 text-xs text-muted-foreground">
+          <div className="mt-4 flex gap-4 font-mono text-[12px] text-ink-muted">
             <span>Avg: {Math.round(aggregate[0].avg)}</span>
             <span>Min: {aggregate[0].min}</span>
             <span>Max: {aggregate[0].max}</span>
@@ -192,11 +189,11 @@ export function QcMetricsView({ projectId }: QcMetricsViewProps) {
 
       {/* Agent output quality panel */}
       <Card className="p-6">
-        <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-          <Bot className="h-4 w-4" />
+        <h3 className="mb-2 flex items-center gap-2 text-[15px] font-semibold text-ink">
+          <Bot className="h-4 w-4" strokeWidth={1.75} />
           Agent output quality
         </h3>
-        <p className="text-xs text-muted-foreground mb-4">
+        <p className="mb-4 text-[12.5px] text-ink-muted">
           Runs with check type &quot;Agent Output&quot;
         </p>
         {agentOutputRuns.length > 0 ? (
@@ -204,32 +201,27 @@ export function QcMetricsView({ projectId }: QcMetricsViewProps) {
             {agentOutputRuns.slice(0, 10).map((run) => (
               <div
                 key={run._id}
-                className="flex items-center justify-between p-3 rounded-lg border border-border"
+                className="flex items-center justify-between rounded-lg border border-line p-3 transition-colors duration-150 hover:bg-surface-2"
               >
                 <div>
-                  <span className="font-mono text-sm">{run.runId}</span>
-                  <span className="text-xs text-muted-foreground ml-2">
+                  <span className="font-mono text-[13px] text-ink">{run.runId}</span>
+                  <span className="ml-2 text-[12.5px] text-ink-muted">
                     {run.environment ?? "—"}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="font-medium">{run.qualityScore ?? "—"}</span>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      run.riskGrade === "GREEN" && "bg-primary/10 text-primary",
-                      run.riskGrade === "YELLOW" && "bg-yellow-500/10 text-yellow-600",
-                      run.riskGrade === "RED" && "bg-red-500/10 text-red-600"
-                    )}
-                  >
-                    {run.riskGrade ?? "—"}
-                  </Badge>
+                  <span className="font-mono text-[13px] font-medium text-ink">{run.qualityScore ?? "—"}</span>
+                  {run.riskGrade ? (
+                    <RiskBadge level={run.riskGrade} />
+                  ) : (
+                    <StatusBadge tone="neutral">—</StatusBadge>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          <div className="text-sm text-muted-foreground">
+          <div className="text-[13px] text-ink-muted">
             No agent output QC runs yet. Start a run with check type &quot;Agent Output&quot;.
           </div>
         )}
@@ -238,15 +230,15 @@ export function QcMetricsView({ projectId }: QcMetricsViewProps) {
       {/* Current environment summary */}
       {currentEnvSummary && (
         <Card className="p-4">
-          <h3 className="text-sm font-semibold mb-2">Summary — {envTab}</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+          <h3 className="mb-2 text-[15px] font-semibold text-ink">Summary — {envTab}</h3>
+          <div className="grid grid-cols-2 gap-4 text-[13px] sm:grid-cols-4">
             <div>
-              <div className="text-muted-foreground">Latest score</div>
-              <div className="font-medium">{currentEnvSummary.latestScore ?? "—"}</div>
+              <div className="text-[12.5px] text-ink-muted">Latest score</div>
+              <div className="font-medium text-ink">{currentEnvSummary.latestScore ?? "—"}</div>
             </div>
             <div>
-              <div className="text-muted-foreground">Pass rate</div>
-              <div className="font-medium">
+              <div className="text-[12.5px] text-ink-muted">Pass rate</div>
+              <div className="font-medium text-ink">
                 {currentEnvSummary.completedCount
                   ? Math.round(currentEnvSummary.passRate * 100)
                   : 0}
@@ -254,12 +246,12 @@ export function QcMetricsView({ projectId }: QcMetricsViewProps) {
               </div>
             </div>
             <div>
-              <div className="text-muted-foreground">Runs</div>
-              <div className="font-medium">{currentEnvSummary.runCount}</div>
+              <div className="text-[12.5px] text-ink-muted">Runs</div>
+              <div className="font-medium text-ink">{currentEnvSummary.runCount}</div>
             </div>
             <div>
-              <div className="text-muted-foreground">R · Y · G</div>
-              <div className="font-medium">
+              <div className="text-[12.5px] text-ink-muted">R · Y · G</div>
+              <div className="font-medium text-ink">
                 {currentEnvSummary.redCount} · {currentEnvSummary.yellowCount} ·{" "}
                 {currentEnvSummary.greenCount}
               </div>

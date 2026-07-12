@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
+import { Bot, Brain, Clock, Globe, Package, Pencil, Trash2, type LucideIcon } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
@@ -89,12 +90,12 @@ function MemoryModal({
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000]" onClick={onClose}>
-      <div className="bg-card border border-border rounded-lg w-full max-w-[520px] max-h-[85vh] overflow-auto shadow-[0_20px_60px_rgba(0,0,0,0.4)]" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <h2 className="text-lg font-semibold text-foreground m-0">
+      <div className="bg-surface-3 border border-line rounded-xl w-full max-w-[520px] max-h-[85vh] overflow-auto shadow-[var(--shadow-elevation-2)]" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-line">
+          <h2 className="text-[15px] font-semibold text-ink m-0">
             {mode === "create" ? "Add Memory" : "Edit Memory"}
           </h2>
-          <button className="bg-transparent border-none text-muted-foreground text-2xl cursor-pointer px-1 leading-none" onClick={onClose}>
+          <button aria-label="Close" className="bg-transparent border-none text-ink-muted hover:text-ink transition-colors duration-150 text-2xl cursor-pointer px-1 leading-none" onClick={onClose}>
             &times;
           </button>
         </div>
@@ -102,11 +103,11 @@ function MemoryModal({
         <div className="p-5 flex flex-col gap-1">
           {mode === "create" && (
             <>
-              <label className="text-xs font-semibold text-muted-foreground mt-2 mb-1">Agent</label>
+              <label className="text-[11.5px] font-medium text-ink-muted mt-2 mb-1">Agent</label>
               <select
                 value={agentId}
                 onChange={(e) => setAgentId(e.target.value)}
-                className="px-3 py-2 bg-background border border-border rounded-md text-foreground text-sm w-full mb-1"
+                className="h-9 px-3 bg-surface-1 border border-line rounded-lg text-ink text-[13.5px] w-full mb-1"
               >
                 <option value="">Select agent...</option>
                 {agents.map((a) => (
@@ -116,11 +117,11 @@ function MemoryModal({
                 ))}
               </select>
 
-              <label className="text-xs font-semibold text-muted-foreground mt-2 mb-1">Type</label>
+              <label className="text-[11.5px] font-medium text-ink-muted mt-2 mb-1">Type</label>
               <select
                 value={docType}
                 onChange={(e) => setDocType(e.target.value as DocType)}
-                className="px-3 py-2 bg-background border border-border rounded-md text-foreground text-sm w-full mb-1"
+                className="h-9 px-3 bg-surface-1 border border-line rounded-lg text-ink text-[13.5px] w-full mb-1"
               >
                 <option value="SESSION_MEMORY">Session Memory</option>
                 <option value="WORKING_MD">Working Doc</option>
@@ -129,24 +130,24 @@ function MemoryModal({
             </>
           )}
 
-          <label className="text-xs font-semibold text-muted-foreground mt-2 mb-1">Content</label>
+          <label className="text-[11.5px] font-medium text-ink-muted mt-2 mb-1">Content</label>
           <textarea
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            className="px-3 py-2.5 bg-background border border-border rounded-md text-foreground text-sm w-full resize-y font-[system-ui,-apple-system,sans-serif] leading-relaxed box-border"
+            className="px-3 py-2.5 bg-surface-1 border border-line rounded-lg text-ink text-[13.5px] placeholder:text-ink-muted w-full resize-y leading-relaxed box-border"
             rows={8}
             placeholder="Enter memory content..."
             autoFocus
           />
         </div>
 
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-border">
-          <button className="px-4 py-2 bg-transparent border border-border rounded-md text-muted-foreground text-sm cursor-pointer" onClick={onClose}>
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-line">
+          <button className="h-9 px-3 bg-transparent border border-line rounded-lg text-ink-secondary hover:text-ink hover:border-line-strong transition-colors duration-150 text-[13px] cursor-pointer" onClick={onClose}>
             Cancel
           </button>
           <button
             className={cn(
-              "px-5 py-2 bg-primary border-none rounded-md text-white text-sm font-semibold cursor-pointer",
+              "h-9 px-3 bg-act border-none rounded-lg text-act-ink text-[13px] font-medium cursor-pointer transition-opacity duration-150 hover:opacity-90",
               (saving || !content.trim() || (mode === "create" && !agentId)) && "opacity-50 cursor-not-allowed"
             )}
             onClick={handleSave}
@@ -233,12 +234,12 @@ function PatternModal({
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000]" onClick={onClose}>
-      <div className="bg-card border border-border rounded-lg w-full max-w-[520px] max-h-[85vh] overflow-auto shadow-[0_20px_60px_rgba(0,0,0,0.4)]" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <h2 className="text-lg font-semibold text-foreground m-0">
+      <div className="bg-surface-3 border border-line rounded-xl w-full max-w-[520px] max-h-[85vh] overflow-auto shadow-[var(--shadow-elevation-2)]" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-line">
+          <h2 className="text-[15px] font-semibold text-ink m-0">
             {mode === "create" ? "Add Pattern" : "Edit Pattern"}
           </h2>
-          <button className="bg-transparent border-none text-muted-foreground text-2xl cursor-pointer px-1 leading-none" onClick={onClose}>
+          <button aria-label="Close" className="bg-transparent border-none text-ink-muted hover:text-ink transition-colors duration-150 text-2xl cursor-pointer px-1 leading-none" onClick={onClose}>
             &times;
           </button>
         </div>
@@ -246,11 +247,11 @@ function PatternModal({
         <div className="p-5 flex flex-col gap-1">
           {mode === "create" && (
             <>
-              <label className="text-xs font-semibold text-muted-foreground mt-2 mb-1">Agent</label>
+              <label className="text-[11.5px] font-medium text-ink-muted mt-2 mb-1">Agent</label>
               <select
                 value={agentId}
                 onChange={(e) => setAgentId(e.target.value)}
-                className="px-3 py-2 bg-background border border-border rounded-md text-foreground text-sm w-full mb-1"
+                className="h-9 px-3 bg-surface-1 border border-line rounded-lg text-ink text-[13.5px] w-full mb-1"
               >
                 <option value="">Select agent...</option>
                 {agents.map((a) => (
@@ -262,15 +263,15 @@ function PatternModal({
             </>
           )}
 
-          <label className="text-xs font-semibold text-muted-foreground mt-2 mb-1">Pattern</label>
+          <label className="text-[11.5px] font-medium text-ink-muted mt-2 mb-1">Pattern</label>
           <input
             value={pattern}
             onChange={(e) => setPattern(e.target.value)}
-            className="px-3 py-2 bg-background border border-border rounded-md text-foreground text-sm w-full box-border mb-1"
+            className="h-9 px-3 bg-surface-1 border border-line rounded-lg text-ink text-[13.5px] placeholder:text-ink-muted w-full box-border mb-1"
             placeholder="e.g., strength:content-writing"
           />
 
-          <label className="text-xs font-semibold text-muted-foreground mt-2 mb-1">
+          <label className="text-[11.5px] font-medium text-ink-muted mt-2 mb-1">
             Confidence: {(confidence * 100).toFixed(0)}%
           </label>
           <input
@@ -283,23 +284,23 @@ function PatternModal({
             className="w-full mb-4"
           />
 
-          <label className="text-xs font-semibold text-muted-foreground mt-2 mb-1">Evidence (one per line)</label>
+          <label className="text-[11.5px] font-medium text-ink-muted mt-2 mb-1">Evidence (one per line)</label>
           <textarea
             value={evidenceText}
             onChange={(e) => setEvidenceText(e.target.value)}
-            className="px-3 py-2.5 bg-background border border-border rounded-md text-foreground text-sm w-full resize-y font-[system-ui,-apple-system,sans-serif] leading-relaxed box-border"
+            className="px-3 py-2.5 bg-surface-1 border border-line rounded-lg text-ink text-[13.5px] placeholder:text-ink-muted w-full resize-y leading-relaxed box-border"
             rows={4}
             placeholder="Task completed successfully&#10;High quality output"
           />
         </div>
 
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-border">
-          <button className="px-4 py-2 bg-transparent border border-border rounded-md text-muted-foreground text-sm cursor-pointer" onClick={onClose}>
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-line">
+          <button className="h-9 px-3 bg-transparent border border-line rounded-lg text-ink-secondary hover:text-ink hover:border-line-strong transition-colors duration-150 text-[13px] cursor-pointer" onClick={onClose}>
             Cancel
           </button>
           <button
             className={cn(
-              "px-5 py-2 bg-primary border-none rounded-md text-white text-sm font-semibold cursor-pointer",
+              "h-9 px-3 bg-act border-none rounded-lg text-act-ink text-[13px] font-medium cursor-pointer transition-opacity duration-150 hover:opacity-90",
               (saving || !pattern.trim() || (mode === "create" && !agentId)) && "opacity-50 cursor-not-allowed"
             )}
             onClick={handleSave}
@@ -329,25 +330,25 @@ function DeleteConfirm({
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000]" onClick={onCancel}>
       <div
-        className="bg-card border border-border rounded-lg w-full max-w-[420px] max-h-[85vh] overflow-auto shadow-[0_20px_60px_rgba(0,0,0,0.4)]"
+        className="bg-surface-3 border border-line rounded-xl w-full max-w-[420px] max-h-[85vh] overflow-auto shadow-[var(--shadow-elevation-2)]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <h2 className="text-lg font-semibold text-red-400 m-0">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-line">
+          <h2 className="text-[15px] font-semibold text-err m-0">
             Confirm Delete
           </h2>
         </div>
         <div className="p-5 flex flex-col gap-1">
-          <p className="text-muted-foreground m-0 leading-relaxed">
+          <p className="text-[13.5px] text-ink-secondary m-0 leading-relaxed">
             {message}
           </p>
         </div>
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-border">
-          <button className="px-4 py-2 bg-transparent border border-border rounded-md text-muted-foreground text-sm cursor-pointer" onClick={onCancel}>
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-line">
+          <button className="h-9 px-3 bg-transparent border border-line rounded-lg text-ink-secondary hover:text-ink hover:border-line-strong transition-colors duration-150 text-[13px] cursor-pointer" onClick={onCancel}>
             Cancel
           </button>
           <button
-            className="px-5 py-2 bg-red-500 border-none rounded-md text-white text-sm font-semibold cursor-pointer"
+            className="h-9 px-3 bg-err-soft border border-transparent rounded-lg text-err text-[13px] font-medium cursor-pointer transition-opacity duration-150 hover:opacity-90"
             onClick={onConfirm}
           >
             Delete
@@ -435,14 +436,15 @@ function DailyJournalLayout({
         <input
           type="search"
           placeholder="Search journal..."
+          aria-label="Search journal"
           value={journalSearch}
           onChange={(e) => setJournalSearch(e.target.value)}
-          className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm text-foreground placeholder:text-muted-foreground"
+          className="h-9 w-full px-3 bg-surface-1 border border-line rounded-lg text-[13.5px] text-ink placeholder:text-ink-muted"
         />
         {ltmDoc && (
-          <div className="p-4 rounded-lg border border-border bg-card">
-            <h4 className="text-sm font-semibold text-foreground mb-1">Long-Term Memory</h4>
-            <p className="text-xs text-muted-foreground">
+          <div className="p-4 rounded-xl border border-line bg-surface-1">
+            <h4 className="text-[13.5px] font-semibold text-ink mb-1">Long-Term Memory</h4>
+            <p className="text-[12.5px] text-ink-muted">
               {wordCount(ltmDoc.content).toLocaleString()} words · Updated{" "}
               {(() => {
                 const sec = (Date.now() - ltmDoc.updatedAt) / 1000;
@@ -455,14 +457,14 @@ function DailyJournalLayout({
           </div>
         )}
         <div>
-          <h4 className="text-sm font-semibold text-foreground mb-2">DAILY JOURNAL</h4>
+          <h4 className="text-[11.5px] font-medium uppercase tracking-[0.06em] text-ink-muted mb-2">Daily Journal</h4>
           {filteredNotes.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No daily notes yet.</p>
+            <p className="text-[13.5px] text-ink-muted">No daily notes yet.</p>
           ) : (
             <div className="space-y-4">
               {Array.from(grouped.entries()).map(([dateLabel, docs]) => (
                 <div key={dateLabel}>
-                  <p className="text-xs font-medium text-muted-foreground mb-2">
+                  <p className="text-[12.5px] font-medium text-ink-muted mb-2">
                     {dateLabel} · {docs.length} {docs.length === 1 ? "entry" : "entries"}
                   </p>
                   <ul className="space-y-1">
@@ -472,10 +474,10 @@ function DailyJournalLayout({
                           type="button"
                           onClick={() => setSelectedJournalDocId(d._id)}
                           className={cn(
-                            "w-full text-left px-3 py-2 rounded-md text-sm border transition-colors",
+                            "w-full text-left px-3 py-2 rounded-lg text-[13.5px] border transition-colors duration-150",
                             selectedJournalDocId === d._id
-                              ? "bg-primary/10 border-primary/30 text-foreground"
-                              : "border-transparent hover:bg-muted/50 text-foreground"
+                              ? "bg-surface-2 border-line-strong text-ink"
+                              : "border-transparent hover:bg-surface-2 text-ink"
                           )}
                         >
                           <span className="block font-medium truncate">
@@ -485,7 +487,7 @@ function DailyJournalLayout({
                               year: "numeric",
                             })}
                           </span>
-                          <span className="text-xs text-muted-foreground">
+                          <span className="text-[12.5px] text-ink-muted">
                             {wordCount(d.content)} words
                           </span>
                         </button>
@@ -501,8 +503,8 @@ function DailyJournalLayout({
       {/* Right column: detail panel */}
       <div className="min-w-0">
         {selectedDoc ? (
-          <div className="p-4 rounded-lg border border-border bg-card h-full">
-            <h3 className="text-lg font-semibold text-foreground mb-1">
+          <div className="p-4 rounded-xl border border-line bg-surface-1 h-full">
+            <h3 className="text-[15px] font-semibold text-ink mb-1">
               {new Date(selectedDoc.updatedAt).toLocaleDateString(undefined, {
                 year: "numeric",
                 month: "2-digit",
@@ -510,29 +512,29 @@ function DailyJournalLayout({
               })}{" "}
               – {new Date(selectedDoc.updatedAt).toLocaleDateString(undefined, { weekday: "long" })}
             </h3>
-            <p className="text-xs text-muted-foreground mb-4">
+            <p className="text-[12.5px] text-ink-muted mb-4">
               {wordCount(selectedDoc.content)} words · {getAgentLabel(selectedDoc.agentId)}
             </p>
             {scheduleLines.length > 0 && (
-              <div className="mb-4 p-3 rounded-md bg-muted/50 border border-border">
-                <h5 className="text-xs font-semibold text-muted-foreground mb-2">Schedule</h5>
+              <div className="mb-4 p-3 rounded-lg bg-surface-2 border border-line">
+                <h5 className="text-[11.5px] font-medium uppercase tracking-[0.06em] text-ink-muted mb-2">Schedule</h5>
                 <ul className="space-y-1">
                   {scheduleLines.map((line, i) => (
-                    <li key={i} className="text-sm flex gap-2">
-                      <span className="font-mono text-foreground shrink-0">{line.time}</span>
-                      <span className="text-foreground">{line.label}</span>
+                    <li key={i} className="text-[13.5px] flex gap-2">
+                      <span className="text-ink font-medium tabular-nums shrink-0">{line.time}</span>
+                      <span className="text-ink">{line.label}</span>
                     </li>
                   ))}
                 </ul>
               </div>
             )}
-            <div className="prose prose-sm dark:prose-invert max-w-none text-foreground whitespace-pre-wrap font-sans">
+            <div className="prose prose-sm dark:prose-invert max-w-none text-ink whitespace-pre-wrap font-sans">
               {selectedDoc.content}
             </div>
           </div>
         ) : (
-          <div className="flex items-center justify-center h-48 rounded-lg border border-dashed border-border bg-muted/20">
-            <p className="text-sm text-muted-foreground">Select an entry to view</p>
+          <div className="flex items-center justify-center h-48 rounded-xl border border-dashed border-line bg-surface-2">
+            <p className="text-[13.5px] text-ink-muted">Select an entry to view</p>
           </div>
         )}
       </div>
@@ -640,49 +642,49 @@ export function MemoryView({ projectId }: MemoryViewProps) {
   ];
 
   return (
-    <main className="flex-1 overflow-auto bg-background p-6">
+    <main className="flex-1 overflow-auto bg-app p-6">
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground mt-0 mb-1">Memory</h1>
-          <p className="text-base text-muted-foreground mt-0">Agent learning and document browser</p>
+          <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-ink mt-0 mb-1">Memory</h1>
+          <p className="text-[14px] text-ink-secondary mt-0">Agent learning and document browser</p>
         </div>
         <div className="flex gap-2 pt-1">
           {(activeTier === "session" ||
             activeTier === "agent" ||
             activeTier === "global") && (
             <button
-              className="px-4 py-2 bg-primary border-none rounded-md text-white text-sm font-semibold cursor-pointer transition-opacity"
+              className="h-9 px-3 bg-act border-none rounded-lg text-act-ink text-[13px] font-medium cursor-pointer transition-opacity duration-150 hover:opacity-90"
               onClick={() =>
                 setMemoryModal({ open: true, mode: "create" })
               }
             >
-              + Add Memory
+              Add Memory
             </button>
           )}
           {activeTier === "project" && (
             <button
-              className="px-4 py-2 bg-primary border-none rounded-md text-white text-sm font-semibold cursor-pointer transition-opacity"
+              className="h-9 px-3 bg-act border-none rounded-lg text-act-ink text-[13px] font-medium cursor-pointer transition-opacity duration-150 hover:opacity-90"
               onClick={() =>
                 setPatternModal({ open: true, mode: "create" })
               }
             >
-              + Add Pattern
+              Add Pattern
             </button>
           )}
         </div>
       </div>
 
       {/* Tier Navigation */}
-      <div className="flex gap-2 mb-6 flex-wrap">
+      <div className="mb-6 inline-flex flex-wrap gap-1 rounded-lg border border-line p-0.5">
         {tiers.map((t) => (
           <button
             key={t.key}
             onClick={() => setActiveTier(t.key)}
             className={cn(
-              "px-5 py-2.5 rounded-md text-sm font-medium cursor-pointer transition-all border",
+              "rounded-md px-3 py-1.5 text-[12.5px] font-medium cursor-pointer transition-colors duration-150",
               activeTier === t.key
-                ? "bg-primary border-primary text-white"
-                : "bg-card border-border text-muted-foreground"
+                ? "bg-surface-2 text-ink"
+                : "text-ink-muted hover:text-ink-secondary"
             )}
           >
             {t.label}
@@ -707,8 +709,8 @@ export function MemoryView({ projectId }: MemoryViewProps) {
       {activeTier === "session" && (
         <div className="mt-2">
           <div className="flex items-center gap-3 mb-4">
-            <h2 className="text-xl font-semibold text-foreground m-0">Session Documents</h2>
-            <span className="px-2.5 py-0.5 bg-card border border-border rounded-xl text-xs font-semibold text-muted-foreground">{sessionDocs.length}</span>
+            <h2 className="text-[19px] font-semibold tracking-tight text-ink m-0">Session Documents</h2>
+            <span className="rounded-md border border-line bg-surface-2 px-1.5 py-0.5 text-[11.5px] font-medium text-ink-secondary">{sessionDocs.length}</span>
           </div>
           {sessionDocs.length === 0 && (
             <EmptyState icon="clock" text="No session memories yet" />
@@ -751,8 +753,8 @@ export function MemoryView({ projectId }: MemoryViewProps) {
       {activeTier === "project" && (
         <div className="mt-2">
           <div className="flex items-center gap-3 mb-4">
-            <h2 className="text-xl font-semibold text-foreground m-0">Learned Patterns</h2>
-            <span className="px-2.5 py-0.5 bg-card border border-border rounded-xl text-xs font-semibold text-muted-foreground">
+            <h2 className="text-[19px] font-semibold tracking-tight text-ink m-0">Learned Patterns</h2>
+            <span className="rounded-md border border-line bg-surface-2 px-1.5 py-0.5 text-[11.5px] font-medium text-ink-secondary">
               {(agentPatterns ?? []).length}
             </span>
           </div>
@@ -761,31 +763,32 @@ export function MemoryView({ projectId }: MemoryViewProps) {
           )}
           <div className="flex flex-col gap-3">
             {(agentPatterns ?? []).map((p) => (
-              <div key={p._id} className="p-4 bg-card border border-border rounded-lg transition-colors">
+              <div key={p._id} className="p-4 bg-surface-1 border border-line rounded-xl transition-colors duration-150 hover:border-line-strong">
                 <div className="flex items-start gap-3">
                   <div>
-                    <div className="text-base font-semibold text-foreground mb-1">{p.pattern}</div>
-                    <div className="text-sm text-muted-foreground mb-1">
+                    <div className="text-[15px] font-semibold text-ink mb-1">{p.pattern}</div>
+                    <div className="text-[13.5px] text-ink-secondary mb-1">
                       Agent: {getAgentLabel(p.agentId)}
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-2 ml-auto">
                     <div
                       className={cn(
-                        "px-2.5 py-[3px] rounded-xl text-xs font-semibold text-white",
+                        "rounded-md px-1.5 py-0.5 font-mono text-[11.5px] font-medium leading-none",
                         p.confidence > 0.7
-                          ? "bg-primary"
+                          ? "bg-ok-soft text-ok"
                           : p.confidence > 0.4
-                            ? "bg-amber-500"
-                            : "bg-muted-foreground"
+                            ? "bg-warn-soft text-warn"
+                            : "bg-surface-2 text-ink-secondary border border-line"
                       )}
                     >
                       {(p.confidence * 100).toFixed(0)}%
                     </div>
                     <div className="flex gap-1">
                       <button
-                        className="px-2 py-1 bg-transparent border border-border rounded text-muted-foreground text-sm cursor-pointer transition-all"
+                        className="px-2 py-1 bg-transparent border border-line rounded-md text-ink-muted hover:text-ink hover:border-line-strong cursor-pointer transition-colors duration-150"
                         title="Edit"
+                        aria-label="Edit pattern"
                         onClick={() =>
                           setPatternModal({
                             open: true,
@@ -800,11 +803,12 @@ export function MemoryView({ projectId }: MemoryViewProps) {
                           })
                         }
                       >
-                        &#9998;
+                        <Pencil size={14} strokeWidth={1.7} aria-hidden />
                       </button>
                       <button
-                        className="px-2 py-1 bg-transparent border border-border rounded text-red-400 text-sm cursor-pointer transition-all"
+                        className="px-2 py-1 bg-transparent border border-line rounded-md text-ink-muted hover:text-err hover:border-line-strong cursor-pointer transition-colors duration-150"
                         title="Delete"
+                        aria-label="Delete pattern"
                         onClick={() =>
                           setDeleteConfirm({
                             open: true,
@@ -814,15 +818,15 @@ export function MemoryView({ projectId }: MemoryViewProps) {
                           })
                         }
                       >
-                        &#128465;
+                        <Trash2 size={14} strokeWidth={1.7} aria-hidden />
                       </button>
                     </div>
                   </div>
                 </div>
-                <div className="text-sm text-muted-foreground mt-2 mb-1">
+                <div className="text-[13.5px] text-ink-secondary mt-2 mb-1">
                   Evidence: {p.evidence?.length ?? 0} instances
                 </div>
-                <div className="text-xs text-muted-foreground">
+                <div className="text-[12.5px] text-ink-muted">
                   Discovered:{" "}
                   {new Date(p.discoveredAt).toLocaleDateString()}
                 </div>
@@ -836,11 +840,12 @@ export function MemoryView({ projectId }: MemoryViewProps) {
       {activeTier === "agent" && (
         <div className="mt-2">
           <div className="flex items-center gap-3 mb-4">
-            <h2 className="text-xl font-semibold text-foreground m-0">Agent Memories</h2>
+            <h2 className="text-[19px] font-semibold tracking-tight text-ink m-0">Agent Memories</h2>
             <select
               value={agentFilter}
               onChange={(e) => setAgentFilter(e.target.value)}
-              className="px-3 py-1.5 bg-card border border-border rounded-md text-foreground text-sm ml-auto cursor-pointer"
+              aria-label="Filter by agent"
+              className="h-9 px-3 bg-surface-1 border border-line rounded-lg text-ink text-[13.5px] ml-auto cursor-pointer"
             >
               <option value="all">All Agents</option>
               {agentsList.map((a) => (
@@ -891,8 +896,8 @@ export function MemoryView({ projectId }: MemoryViewProps) {
       {activeTier === "global" && (
         <div className="mt-2">
           <div className="flex items-center gap-3 mb-4">
-            <h2 className="text-xl font-semibold text-foreground m-0">Global Knowledge Base</h2>
-            <span className="px-2.5 py-0.5 bg-card border border-border rounded-xl text-xs font-semibold text-muted-foreground">{globalDocs.length}</span>
+            <h2 className="text-[19px] font-semibold tracking-tight text-ink m-0">Global Knowledge Base</h2>
+            <span className="rounded-md border border-line bg-surface-2 px-1.5 py-0.5 text-[11.5px] font-medium text-ink-secondary">{globalDocs.length}</span>
           </div>
           {globalDocs.length === 0 && (
             <EmptyState
@@ -986,39 +991,40 @@ function MemoryCard({
   onDelete: () => void;
 }) {
   const typeLabels: Record<string, { label: string; twBg: string }> = {
-    SESSION_MEMORY: { label: "Session", twBg: "bg-blue-500" },
-    WORKING_MD: { label: "Working Doc", twBg: "bg-blue-500" },
-    DAILY_NOTE: { label: "Daily Note", twBg: "bg-amber-500" },
+    SESSION_MEMORY: { label: "Session", twBg: "bg-info-soft text-info-accent" },
+    WORKING_MD: { label: "Working Doc", twBg: "bg-info-soft text-info-accent" },
+    DAILY_NOTE: { label: "Daily Note", twBg: "bg-warn-soft text-warn" },
   };
-  const tl = typeLabels[type] ?? { label: type, twBg: "bg-muted-foreground" };
+  const tl = typeLabels[type] ?? { label: type, twBg: "bg-surface-2 text-ink-secondary border border-line" };
 
   return (
-    <div className="p-4 bg-card border border-border rounded-lg transition-colors">
+    <div className="p-4 bg-surface-1 border border-line rounded-xl transition-colors duration-150 hover:border-line-strong">
       <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-sm font-semibold text-foreground">{agent}</span>
-            <span className={cn("px-2 py-0.5 rounded-lg text-[0.7rem] font-semibold text-white", tl.twBg)}>
+            <span className="text-[13.5px] font-semibold text-ink">{agent}</span>
+            <span className={cn("rounded-md px-1.5 py-0.5 text-[11.5px] font-medium leading-none", tl.twBg)}>
               {tl.label}
             </span>
           </div>
-          <div className="text-sm text-muted-foreground leading-relaxed mb-2 whitespace-pre-wrap break-words">
+          <div className="text-[13.5px] text-ink-secondary leading-relaxed mb-2 whitespace-pre-wrap break-words">
             {content.length > 280 ? content.slice(0, 280) + "..." : content}
           </div>
-          <div className="text-xs text-muted-foreground">
+          <div className="text-[12.5px] text-ink-muted">
             Updated: {new Date(updatedAt).toLocaleString()}
           </div>
         </div>
         <div className="flex gap-1">
-          <button className="px-2 py-1 bg-transparent border border-border rounded text-muted-foreground text-sm cursor-pointer transition-all" title="Edit" onClick={onEdit}>
-            &#9998;
+          <button className="px-2 py-1 bg-transparent border border-line rounded-md text-ink-muted hover:text-ink hover:border-line-strong cursor-pointer transition-colors duration-150" title="Edit" aria-label="Edit memory" onClick={onEdit}>
+            <Pencil size={14} strokeWidth={1.7} aria-hidden />
           </button>
           <button
-            className="px-2 py-1 bg-transparent border border-border rounded text-red-400 text-sm cursor-pointer transition-all"
+            className="px-2 py-1 bg-transparent border border-line rounded-md text-ink-muted hover:text-err hover:border-line-strong cursor-pointer transition-colors duration-150"
             title="Delete"
+            aria-label="Delete memory"
             onClick={onDelete}
           >
-            &#128465;
+            <Trash2 size={14} strokeWidth={1.7} aria-hidden />
           </button>
         </div>
       </div>
@@ -1027,16 +1033,19 @@ function MemoryCard({
 }
 
 function EmptyState({ icon, text }: { icon: string; text: string }) {
-  const emojiMap: Record<string, string> = {
-    clock: "\u23F0",
-    brain: "\uD83E\uDDE0",
-    robot: "\uD83E\uDD16",
-    globe: "\uD83C\uDF10",
+  const iconMap: Record<string, LucideIcon> = {
+    clock: Clock,
+    brain: Brain,
+    robot: Bot,
+    globe: Globe,
   };
+  const Icon = iconMap[icon] ?? Package;
   return (
-    <div className="flex flex-col items-center justify-center py-12 text-center">
-      <div className="text-4xl mb-4">{emojiMap[icon] ?? "\uD83D\uDCE6"}</div>
-      <div className="text-base text-muted-foreground max-w-xs leading-relaxed">{text}</div>
+    <div className="flex flex-col items-center justify-center rounded-xl border border-line bg-surface-1 px-6 py-12 text-center">
+      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-xl border border-line bg-surface-2 text-ink-muted">
+        <Icon className="h-7 w-7" strokeWidth={1.5} aria-hidden />
+      </div>
+      <div className="text-[13.5px] text-ink-secondary max-w-xs leading-relaxed">{text}</div>
     </div>
   );
 }

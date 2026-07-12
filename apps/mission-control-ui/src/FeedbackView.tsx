@@ -4,10 +4,10 @@ import type { Id } from "../../../convex/_generated/dataModel";
 import { PageHeader } from "./components/PageHeader";
 import { Card } from "./components/ui/card";
 import { Button } from "./components/ui/button";
-import { Badge } from "./components/ui/badge";
 import { EmptyState } from "./components/ui/empty-state";
+import { StatusBadge } from "./components/factory/badges";
+import { MetricBlock } from "./components/factory/MetricBlock";
 import { MessageSquare, FlaskConical, ShieldAlert, AlertTriangle, Activity, ChevronRight } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 function isCriticalFindingSeverity(severity: string | null | undefined) {
   return severity === "RED" || severity === "ERROR" || severity === "CRITICAL";
@@ -41,38 +41,42 @@ export function FeedbackView({ projectId, onNavigate }: FeedbackViewProps) {
   const hasAny = findingsList.length > 0 || approvalsList.length > 0 || alertsList.length > 0;
 
   return (
-    <main className="mc-page">
+    <main className="relative flex-1 overflow-auto bg-app">
       <PageHeader
         title="Feedback"
         description="Feedback on runs and decisions. QC findings, approvals, and alerts that may need review."
         icon={<MessageSquare className="h-4 w-4" />}
-        status={
-          <Badge variant="outline" className="border-cyan-300/20 text-cyan-100">
-            review surfaces
-          </Badge>
-        }
+        status={<StatusBadge tone="neutral">review surfaces</StatusBadge>}
       />
-      <div className="mc-page-body mc-page-stack">
+      <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-6 py-6">
         <div className="grid gap-4 md:grid-cols-4">
           <Card className="p-4">
-            <div className="mc-kicker">QC findings</div>
-            <div className="mt-2 text-3xl font-semibold text-foreground">{findingsList.length}</div>
-            <div className="mt-1 text-xs text-muted-foreground">Recent findings available for operator review</div>
+            <MetricBlock
+              label="QC findings"
+              value={findingsList.length}
+              detail="Recent findings available for operator review"
+            />
           </Card>
           <Card className="p-4">
-            <div className="mc-kicker">Approvals</div>
-            <div className="mt-2 text-3xl font-semibold text-amber-100">{approvalsList.length}</div>
-            <div className="mt-1 text-xs text-muted-foreground">Pending decisions still waiting on explicit review</div>
+            <MetricBlock
+              label="Approvals"
+              value={approvalsList.length}
+              detail="Pending decisions still waiting on explicit review"
+            />
           </Card>
           <Card className="p-4">
-            <div className="mc-kicker">Alerts</div>
-            <div className="mt-2 text-3xl font-semibold text-red-300">{alertsList.length}</div>
-            <div className="mt-1 text-xs text-muted-foreground">Open alert conditions reflected in feedback surfaces</div>
+            <MetricBlock
+              label="Alerts"
+              value={alertsList.length}
+              detail="Open alert conditions reflected in feedback surfaces"
+            />
           </Card>
           <Card className="p-4">
-            <div className="mc-kicker">Activity</div>
-            <div className="mt-2 text-3xl font-semibold text-cyan-100">{activitiesList.length}</div>
-            <div className="mt-1 text-xs text-muted-foreground">Recent events that explain current review posture</div>
+            <MetricBlock
+              label="Activity"
+              value={activitiesList.length}
+              detail="Recent events that explain current review posture"
+            />
           </Card>
         </div>
 
@@ -88,7 +92,7 @@ export function FeedbackView({ projectId, onNavigate }: FeedbackViewProps) {
                     <Button variant="outline" size="sm" onClick={() => onNavigate("system")}>
                       System
                     </Button>
-                    <Button variant="neon-cyan" size="sm" onClick={() => onNavigate("qc-dashboard")}>
+                    <Button variant="default" size="sm" onClick={() => onNavigate("qc-dashboard")}>
                       QC dashboard
                     </Button>
                   </div>
@@ -102,8 +106,8 @@ export function FeedbackView({ projectId, onNavigate }: FeedbackViewProps) {
             {findingsList.length > 0 && (
               <Card className="p-4">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                    <FlaskConical className="h-4 w-4 text-muted-foreground" />
+                  <h3 className="text-[15px] font-semibold text-ink flex items-center gap-2">
+                    <FlaskConical size={15} strokeWidth={1.75} className="text-ink-muted" />
                     Recent QC findings
                   </h3>
                   {onNavigate && (
@@ -117,18 +121,15 @@ export function FeedbackView({ projectId, onNavigate }: FeedbackViewProps) {
                   {findingsList.slice(0, 5).map((f) => (
                     <li
                       key={f._id}
-                      className={cn(
-                        "flex items-center justify-between text-xs py-2 px-3 rounded-md border border-border/50",
-                        isCriticalFindingSeverity(f.severity) ? "bg-red-500/5 border-red-500/20" : "bg-muted/20"
-                      )}
+                      className="flex items-center justify-between rounded-lg border border-line bg-surface-2 px-3 py-2 text-[12.5px]"
                     >
-                      <span className="font-medium text-foreground truncate flex-1 mr-2">{f.title ?? f.category ?? "Finding"}</span>
-                      <span className={cn(
-                        "text-[0.65rem] font-medium uppercase shrink-0",
-                        isCriticalFindingSeverity(f.severity) ? "text-red-400" : "text-amber-500"
-                      )}>
+                      <span className="mr-2 flex-1 truncate font-medium text-ink">{f.title ?? f.category ?? "Finding"}</span>
+                      <StatusBadge
+                        tone={isCriticalFindingSeverity(f.severity) ? "error" : "warning"}
+                        className="shrink-0"
+                      >
                         {f.severity}
-                      </span>
+                      </StatusBadge>
                     </li>
                   ))}
                 </ul>
@@ -138,8 +139,8 @@ export function FeedbackView({ projectId, onNavigate }: FeedbackViewProps) {
             {approvalsList.length > 0 && (
               <Card className="p-4">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                    <ShieldAlert className="h-4 w-4 text-muted-foreground" />
+                  <h3 className="text-[15px] font-semibold text-ink flex items-center gap-2">
+                    <ShieldAlert size={15} strokeWidth={1.75} className="text-ink-muted" />
                     Pending approvals
                   </h3>
                   {onNavigate && (
@@ -149,7 +150,7 @@ export function FeedbackView({ projectId, onNavigate }: FeedbackViewProps) {
                     </Button>
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-[12.5px] text-ink-secondary">
                   {approvalsList.length} approval{approvalsList.length !== 1 ? "s" : ""} awaiting review. Open Approvals from the home dashboard or task board.
                 </p>
               </Card>
@@ -158,8 +159,8 @@ export function FeedbackView({ projectId, onNavigate }: FeedbackViewProps) {
             {alertsList.length > 0 && (
               <Card className="p-4">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                    <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+                  <h3 className="text-[15px] font-semibold text-ink flex items-center gap-2">
+                    <AlertTriangle size={15} strokeWidth={1.75} className="text-ink-muted" />
                     Open alerts
                   </h3>
                   {onNavigate && (
@@ -171,14 +172,11 @@ export function FeedbackView({ projectId, onNavigate }: FeedbackViewProps) {
                 </div>
                 <ul className="space-y-1">
                   {alertsList.slice(0, 5).map((a) => (
-                    <li key={a._id} className="text-xs py-1.5 border-b border-border/50 last:border-0">
-                      <span className={cn(
-                        "font-medium",
-                        isCriticalFindingSeverity(a.severity) ? "text-red-400" : "text-amber-500"
-                      )}>
+                    <li key={a._id} className="flex items-center gap-2 border-b border-line py-1.5 text-[12.5px] last:border-0">
+                      <StatusBadge tone={isCriticalFindingSeverity(a.severity) ? "error" : "warning"}>
                         {a.severity}
-                      </span>
-                      <span className="text-muted-foreground ml-2">{a.title}</span>
+                      </StatusBadge>
+                      <span className="text-ink-secondary">{a.title}</span>
                     </li>
                   ))}
                 </ul>
@@ -187,11 +185,11 @@ export function FeedbackView({ projectId, onNavigate }: FeedbackViewProps) {
 
             {activitiesList.length > 0 && (
               <Card className="p-4">
-                <h3 className="text-sm font-semibold text-foreground flex items-center gap-2 mb-2">
-                  <Activity className="h-4 w-4 text-muted-foreground" />
+                <h3 className="text-[15px] font-semibold text-ink flex items-center gap-2 mb-2">
+                  <Activity size={15} strokeWidth={1.75} className="text-ink-muted" />
                   Recent activity
                 </h3>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-[12.5px] text-ink-secondary">
                   {activitiesList.length} recent event{activitiesList.length !== 1 ? "s" : ""}. Activity is also on the home dashboard.
                 </p>
               </Card>
@@ -199,12 +197,12 @@ export function FeedbackView({ projectId, onNavigate }: FeedbackViewProps) {
             </div>
 
             <Card className="p-5">
-              <div className="mc-kicker">Operator guidance</div>
-              <div className="mt-2 space-y-3 text-sm leading-relaxed text-muted-foreground">
-                <div className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-4">
+              <h3 className="text-[15px] font-semibold text-ink">Operator guidance</h3>
+              <div className="mt-3 space-y-3 text-[13.5px] leading-relaxed text-ink-secondary">
+                <div className="rounded-lg border border-line bg-surface-2 px-4 py-4">
                   Use Feedback to evaluate what needs a decision, not to debug the whole system from scratch.
                 </div>
-                <div className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-4">
+                <div className="rounded-lg border border-line bg-surface-2 px-4 py-4">
                   If a finding is severe, route straight into QC or Radar. If it is ambiguous, gather context before escalating.
                 </div>
               </div>

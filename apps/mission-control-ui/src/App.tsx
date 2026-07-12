@@ -13,6 +13,8 @@ import { useToast } from "./Toast";
 import { useKeyboardShortcuts } from "./KeyboardShortcuts";
 import { useModalState } from "./hooks/useModalState";
 import { PrivacyProvider } from "./contexts/PrivacyContext";
+import { useFlag } from "./hooks/useFlag";
+import { AppShellV2 } from "./shellV2/AppShellV2";
 
 const DashboardOverview = lazy(() =>
   import("./DashboardOverview").then((module) => ({ default: module.DashboardOverview }))
@@ -108,7 +110,7 @@ function ProjectSwitcher() {
         const value = e.target.value;
         setProjectId(value ? (value as Id<"projects">) : null);
       }}
-      className="h-10 min-w-[168px] rounded-2xl border border-[var(--panel-line)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--background)_90%,transparent))] px-3.5 text-sm font-medium text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-xl transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="h-9 min-w-[168px] rounded-lg border border-line bg-surface-1 px-3 text-[13.5px] font-medium text-ink transition-colors duration-150 cursor-pointer hover:border-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <option value="">All Projects</option>
       {projects.map((p) => (
@@ -435,10 +437,10 @@ function SectionLoadingState() {
   return (
     <main className="flex flex-1 overflow-hidden">
       <div className="flex flex-1 flex-col gap-4 p-6">
-        <div className="h-16 rounded-2xl border border-[var(--panel-line)] skeleton-shimmer" />
+        <div className="h-16 rounded-xl border border-line animate-pulse bg-surface-2" />
         <div className="grid flex-1 gap-4 lg:grid-cols-3">
-          <div className="rounded-2xl border border-[var(--panel-line)] skeleton-shimmer" />
-          <div className="rounded-2xl border border-[var(--panel-line)] skeleton-shimmer lg:col-span-2" />
+          <div className="rounded-xl border border-line animate-pulse bg-surface-2" />
+          <div className="rounded-xl border border-line animate-pulse bg-surface-2 lg:col-span-2" />
         </div>
       </div>
     </main>
@@ -736,10 +738,55 @@ export default function App() {
   }
 
   // ── Render ───────────────────────────────────────────────────────────────
+  const shellV2 = useFlag("ui.shell.v2");
+
+  if (shellV2) {
+    return (
+      <ProjectContext.Provider value={{ projectId, setProjectId, project }}>
+        <PrivacyProvider>
+          <AppShellV2
+            activeView={currentView}
+            onNavigate={setCurrentView}
+            workspaceSwitcher={<ProjectSwitcher />}
+            onOpenSearch={() => open("commandPalette")}
+            pendingApprovals={pendingApprovals?.length ?? 0}
+            onOpenApprovals={() => open("approvals")}
+          >
+            <Suspense fallback={<SectionLoadingState />}>{renderSection()}</Suspense>
+          </AppShellV2>
+          <Suspense fallback={null}>
+            <TaskDrawerTabs taskId={selectedTaskId} onClose={() => setSelectedTaskId(null)} />
+          </Suspense>
+          <Suspense fallback={null}>
+            <ModalLayer
+              projectId={projectId}
+              modals={modals}
+              open={open}
+              close={close}
+              selectedTaskId={selectedTaskId}
+              setSelectedTaskId={setSelectedTaskId}
+              sidebarSelectedAgentId={sidebarSelectedAgentId}
+              setSidebarSelectedAgentId={setSidebarSelectedAgentId}
+              sidebarWidth={sidebarWidth}
+              onNavigate={setCurrentView}
+              onConfirmPauseSquad={handleConfirmPauseSquad}
+              onResumeSquad={handleResumeSquad}
+              onToast={toast}
+              onNavigateToGateway={() => {
+                handleSectionChange("agents");
+                handleTabChange("gateway");
+              }}
+            />
+          </Suspense>
+        </PrivacyProvider>
+      </ProjectContext.Provider>
+    );
+  }
+
   return (
     <ProjectContext.Provider value={{ projectId, setProjectId, project }}>
       <PrivacyProvider>
-      <div className="flex h-screen flex-col bg-background text-foreground neon-app-bg">
+      <div className="flex h-screen flex-col bg-background text-foreground">
         <AppTopBar
           projectSwitcher={<ProjectSwitcher />}
           searchBar={

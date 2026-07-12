@@ -2,6 +2,10 @@ import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
+import { X } from "lucide-react";
+import { MetricBlock, MetricRow } from "./components/factory/MetricBlock";
+import { StatusBadge } from "./components/factory/badges";
+import { CHART_SERIES } from "./components/factory/chartTheme";
 
 interface AnalyticsDashboardProps {
   projectId: Id<"projects"> | null;
@@ -13,12 +17,12 @@ export function AnalyticsDashboard({ projectId, onClose }: AnalyticsDashboardPro
     api.agents.listAll,
     projectId ? { projectId } : {}
   );
-  
+
   const tasks = useQuery(
     api.tasks.listAll,
     projectId ? { projectId } : {}
   );
-  
+
   const runs = useQuery(
     api.runs.listRecent,
     { limit: 1000 }
@@ -26,9 +30,9 @@ export function AnalyticsDashboard({ projectId, onClose }: AnalyticsDashboardPro
 
   if (!agents || !tasks || !runs) {
     return (
-      <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[1000]">
-        <div className="bg-card rounded-xl p-6">
-          <div className="w-8 h-8 border-[3px] border-blue-500 border-t-transparent rounded-full animate-spin" />
+      <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/70">
+        <div className="rounded-xl border border-line bg-surface-1 p-6">
+          <div className="h-16 w-40 animate-pulse rounded bg-surface-2" />
         </div>
       </div>
     );
@@ -39,7 +43,7 @@ export function AnalyticsDashboard({ projectId, onClose }: AnalyticsDashboardPro
 
   const last7DaysRuns = runs.filter(r => r.startedAt >= sevenDaysAgo);
   const dailyCosts = new Array(7).fill(0);
-  
+
   last7DaysRuns.forEach(run => {
     const daysAgo = Math.floor((now - run.startedAt) / (24 * 60 * 60 * 1000));
     if (daysAgo >= 0 && daysAgo < 7) {
@@ -53,15 +57,15 @@ export function AnalyticsDashboard({ projectId, onClose }: AnalyticsDashboardPro
   const agentEfficiency = agents.map(agent => {
     const agentTasks = tasks.filter(t => t.assigneeIds.includes(agent._id));
     const agentRuns = runs.filter(r => r.agentId === agent._id);
-    
+
     const completedTasks = agentTasks.filter(t => t.status === "DONE").length;
     const totalCost = agentRuns.reduce((sum, r) => sum + r.costUsd, 0);
     const totalTime = agentRuns.reduce((sum, r) => sum + (r.durationMs || 0), 0);
-    
+
     const tasksPerHour = totalTime > 0 ? (completedTasks / (totalTime / (1000 * 60 * 60))) : 0;
     const costPerTask = completedTasks > 0 ? totalCost / completedTasks : 0;
     const efficiencyScore = completedTasks > 0 ? (completedTasks / (totalCost + 1)) * 100 : 0;
-    
+
     return {
       agent,
       completedTasks,
@@ -81,7 +85,7 @@ export function AnalyticsDashboard({ projectId, onClose }: AnalyticsDashboardPro
   });
 
   const bottlenecks = [];
-  
+
   const reviewTasks = tasks.filter(t => t.status === "REVIEW");
   if (reviewTasks.length > 5) {
     bottlenecks.push({
@@ -112,61 +116,55 @@ export function AnalyticsDashboard({ projectId, onClose }: AnalyticsDashboardPro
     });
   }
 
-  const RANK_COLORS = ["bg-amber-400", "bg-slate-400", "bg-amber-700", "bg-accent"];
-
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[1000] p-5 overflow-y-auto">
-      <div className="bg-card rounded-xl p-6 max-w-[1200px] w-full max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center overflow-y-auto bg-black/70 p-5">
+      <div className="max-h-[90vh] w-full max-w-[1200px] overflow-y-auto rounded-xl border border-line bg-surface-1 p-6">
         {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-foreground">
-            📊 Advanced Analytics
-          </h2>
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-[19px] font-semibold text-ink">Analytics</h2>
+            <p className="mt-1 text-[13px] text-ink-secondary">
+              Cost forecast, agent efficiency, and pipeline bottlenecks
+            </p>
+          </div>
           <button
             onClick={onClose}
-            className="bg-transparent border-none text-muted-foreground text-2xl cursor-pointer px-2 py-1 hover:text-foreground transition-colors"
+            aria-label="Close analytics"
+            className="rounded-md p-1.5 text-ink-muted transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
           >
-            ×
+            <X size={16} strokeWidth={1.75} />
           </button>
         </div>
 
         {/* Cost Forecasting */}
         <div className="mb-6">
-          <h3 className="text-lg font-semibold text-foreground mb-3">
-            💰 Cost Forecasting
-          </h3>
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-3 mb-4">
-            <div className="bg-secondary p-4 rounded-lg">
-              <div className="text-xs text-muted-foreground mb-1">Avg Daily Cost</div>
-              <div className="text-2xl font-bold text-blue-500">
-                ${avgDailyCost.toFixed(2)}
-              </div>
-            </div>
-            <div className="bg-secondary p-4 rounded-lg">
-              <div className="text-xs text-muted-foreground mb-1">7-Day Forecast</div>
-              <div className="text-2xl font-bold text-blue-500">
-                ${forecast7Days.toFixed(2)}
-              </div>
-            </div>
-          </div>
+          <h3 className="mb-3 text-[15px] font-semibold text-ink">Cost forecasting</h3>
+          <MetricRow className="mb-4 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-2">
+            <MetricBlock label="Avg daily cost" value={`$${avgDailyCost.toFixed(2)}`} detail="Last 7 days" />
+            <MetricBlock label="7-day forecast" value={`$${forecast7Days.toFixed(2)}`} detail="At current burn rate" />
+          </MetricRow>
 
           {/* Daily cost chart */}
-          <div className="bg-secondary p-4 rounded-lg">
-            <div className="text-sm text-foreground mb-3">
-              Daily Cost Trend (Last 7 Days)
+          <div className="rounded-xl border border-line bg-surface-1 p-4">
+            <div className="mb-3 text-[12.5px] font-medium text-ink-secondary">
+              Daily cost trend (last 7 days)
             </div>
-            <div className="flex items-end gap-1 h-[100px]">
+            <div className="flex h-[100px] items-end gap-1">
               {dailyCosts.map((cost, i) => {
                 const maxCost = Math.max(...dailyCosts, 1);
                 const height = (cost / maxCost) * 100;
                 return (
-                  <div key={i} className="flex-1 flex flex-col items-center">
+                  <div key={i} className="flex flex-1 flex-col items-center">
                     <div
-                      className="w-full bg-blue-500 rounded-t"
-                      style={{ height: `${height}%`, minHeight: cost > 0 ? "4px" : "0" }}
+                      className="w-full rounded-t-sm"
+                      style={{
+                        height: `${height}%`,
+                        minHeight: cost > 0 ? "4px" : "0",
+                        backgroundColor: CHART_SERIES[1],
+                      }}
                       title={`$${cost.toFixed(2)}`}
                     />
-                    <div className="text-[0.7rem] text-muted-foreground mt-1">
+                    <div className="mt-1 text-[11px] text-ink-muted">
                       {i === 6 ? "Today" : `${6 - i}d`}
                     </div>
                   </div>
@@ -178,39 +176,32 @@ export function AnalyticsDashboard({ projectId, onClose }: AnalyticsDashboardPro
 
         {/* Agent Efficiency Leaderboard */}
         <div className="mb-6">
-          <h3 className="text-lg font-semibold text-foreground mb-3">
-            🏆 Agent Efficiency Leaderboard
-          </h3>
-          <div className="bg-secondary rounded-lg overflow-hidden">
+          <h3 className="mb-3 text-[15px] font-semibold text-ink">Agent efficiency</h3>
+          <div className="overflow-hidden rounded-xl border border-line">
             {agentEfficiency.slice(0, 5).map((item, i) => (
               <div
                 key={item.agent._id}
                 className={cn(
-                  "px-4 py-3 flex justify-between items-center",
-                  i < 4 && "border-b border-card"
+                  "flex items-center justify-between px-4 py-3",
+                  i < 4 && "border-b border-line"
                 )}
               >
                 <div className="flex items-center gap-3">
-                  <div className={cn(
-                    "w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-slate-900",
-                    RANK_COLORS[i] ?? RANK_COLORS[3]
-                  )}>
+                  <div className="flex h-6 w-6 items-center justify-center rounded-md border border-line bg-surface-2 font-mono text-[11.5px] font-semibold text-ink-secondary">
                     {i + 1}
                   </div>
                   <div>
-                    <div className="text-sm text-foreground">
-                      {item.agent.emoji} {item.agent.name}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {item.completedTasks} tasks &bull; ${item.totalCost.toFixed(2)} spent
+                    <div className="text-[13px] font-medium text-ink">{item.agent.name}</div>
+                    <div className="text-[12px] text-ink-muted">
+                      {item.completedTasks} tasks · ${item.totalCost.toFixed(2)} spent
                     </div>
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-base font-bold text-blue-500">
+                  <div className="font-mono text-[14px] font-semibold text-ink">
                     {item.efficiencyScore.toFixed(1)}
                   </div>
-                  <div className="text-[0.7rem] text-muted-foreground">
+                  <div className="text-[11px] text-ink-muted">
                     ${item.costPerTask.toFixed(2)}/task
                   </div>
                 </div>
@@ -221,22 +212,24 @@ export function AnalyticsDashboard({ projectId, onClose }: AnalyticsDashboardPro
 
         {/* Task Completion Trend */}
         <div className="mb-6">
-          <h3 className="text-lg font-semibold text-foreground mb-3">
-            📈 Task Completion Trend
-          </h3>
-          <div className="bg-secondary p-4 rounded-lg">
-            <div className="flex items-end gap-1 h-[100px]">
+          <h3 className="mb-3 text-[15px] font-semibold text-ink">Task completion trend</h3>
+          <div className="rounded-xl border border-line bg-surface-1 p-4">
+            <div className="flex h-[100px] items-end gap-1">
               {completionTrend.map((count, i) => {
                 const maxCount = Math.max(...completionTrend, 1);
                 const height = (count / maxCount) * 100;
                 return (
-                  <div key={i} className="flex-1 flex flex-col items-center">
+                  <div key={i} className="flex flex-1 flex-col items-center">
                     <div
-                      className="w-full bg-primary rounded-t"
-                      style={{ height: `${height}%`, minHeight: count > 0 ? "4px" : "0" }}
+                      className="w-full rounded-t-sm"
+                      style={{
+                        height: `${height}%`,
+                        minHeight: count > 0 ? "4px" : "0",
+                        backgroundColor: CHART_SERIES[0],
+                      }}
                       title={`${count} tasks`}
                     />
-                    <div className="text-[0.7rem] text-muted-foreground mt-1">
+                    <div className="mt-1 text-[11px] text-ink-muted">
                       {i === 6 ? "Today" : `${6 - i}d`}
                     </div>
                   </div>
@@ -249,35 +242,29 @@ export function AnalyticsDashboard({ projectId, onClose }: AnalyticsDashboardPro
         {/* Bottleneck Detection */}
         {bottlenecks.length > 0 && (
           <div>
-            <h3 className="text-lg font-semibold text-foreground mb-3">
-              ⚠️  Bottleneck Detection
-            </h3>
+            <h3 className="mb-3 text-[15px] font-semibold text-ink">Bottlenecks</h3>
             <div className="flex flex-col gap-2">
               {bottlenecks.map((bottleneck, i) => (
                 <div
                   key={i}
-                  className={cn(
-                    "px-4 py-3 rounded-lg border-2",
-                    bottleneck.severity === "critical"
-                      ? "bg-red-950 border-red-500"
-                      : "bg-amber-950 border-orange-500"
-                  )}
+                  className="flex items-center justify-between rounded-lg border border-line bg-surface-2 px-4 py-3"
                 >
-                  <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-3">
+                    <StatusBadge tone={bottleneck.severity === "critical" ? "error" : "warning"}>
+                      {bottleneck.severity === "critical" ? "Critical" : "Warning"}
+                    </StatusBadge>
                     <div>
-                      <div className="text-sm font-semibold text-foreground">
-                        {bottleneck.type}
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-0.5">
-                        {bottleneck.message}
-                      </div>
+                      <div className="text-[13px] font-medium text-ink">{bottleneck.type}</div>
+                      <div className="mt-0.5 text-[12px] text-ink-muted">{bottleneck.message}</div>
                     </div>
-                    <div className={cn(
-                      "text-xl font-bold",
-                      bottleneck.severity === "critical" ? "text-red-500" : "text-orange-500"
-                    )}>
-                      {bottleneck.count}
-                    </div>
+                  </div>
+                  <div
+                    className={cn(
+                      "font-mono text-[19px] font-semibold",
+                      bottleneck.severity === "critical" ? "text-err" : "text-warn"
+                    )}
+                  >
+                    {bottleneck.count}
                   </div>
                 </div>
               ))}

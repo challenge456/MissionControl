@@ -165,19 +165,19 @@ export function KeyboardShortcutsHelp({ onClose }: { onClose: () => void }) {
       aria-label="Keyboard shortcuts"
     >
       <div
-        className="bg-popover border border-border rounded-xl p-6 max-w-[480px] w-full shadow-2xl"
+        className="bg-surface-3 border border-line rounded-xl p-6 max-w-[480px] w-full shadow-[var(--shadow-elevation-2)]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2 mb-5">
-          <Keyboard className="h-5 w-5 text-muted-foreground" />
-          <h2 className="text-lg font-semibold text-foreground">Keyboard Shortcuts</h2>
+          <Keyboard className="h-5 w-5 text-ink-muted" strokeWidth={1.75} />
+          <h2 className="text-[15px] font-semibold text-ink">Keyboard Shortcuts</h2>
         </div>
 
         <div className="flex flex-col gap-4">
           {shortcutGroups.map((group, gi) => (
             <div key={group.title}>
               {gi > 0 && <Separator className="mb-3" />}
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+              <p className="text-[11.5px] font-semibold text-ink-muted uppercase tracking-wider mb-2">
                 {group.title}
               </p>
               <div className="flex flex-col gap-1.5">
@@ -186,12 +186,12 @@ export function KeyboardShortcutsHelp({ onClose }: { onClose: () => void }) {
                     key={si}
                     className="flex items-center justify-between py-1.5"
                   >
-                    <span className="text-sm text-foreground">{shortcut.description}</span>
+                    <span className="text-[13.5px] text-ink">{shortcut.description}</span>
                     <div className="flex gap-1">
                       {shortcut.keys.map((key, ki) => (
                         <kbd
                           key={ki}
-                          className="inline-flex items-center justify-center min-w-[24px] h-6 px-1.5 bg-muted border border-border rounded text-[11px] font-mono text-muted-foreground"
+                          className="inline-flex items-center justify-center min-w-[24px] h-6 px-1.5 bg-surface-2 border border-line rounded text-[11px] font-mono text-ink-muted"
                         >
                           {key}
                         </kbd>

@@ -126,7 +126,7 @@ export function TaskComments({ taskId }: TaskCommentsProps) {
                       {comment.author.emoji} {comment.author.name}
                     </>
                   ) : (
-                    <>👤 {comment.authorUserId || "User"}</>
+                    <>{comment.authorUserId || "User"}</>
                   )}
                 </div>
                 <div style={{

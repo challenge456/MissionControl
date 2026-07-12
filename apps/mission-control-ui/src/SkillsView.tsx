@@ -68,9 +68,9 @@ interface TreeNode {
 }
 
 const SOURCE_STYLES: Record<SkillSource, string> = {
-  repo: "border-cyan-300/30 bg-cyan-400/10 text-cyan-100",
-  codex: "border-emerald-300/30 bg-emerald-400/10 text-emerald-100",
-  openclaw: "border-amber-300/30 bg-amber-400/10 text-amber-100",
+  repo: "border-line bg-surface-2 text-ink-secondary",
+  codex: "border-line bg-surface-2 text-ink-secondary",
+  openclaw: "border-line bg-surface-2 text-ink-secondary",
 };
 
 const SOURCE_FILTERS: Array<{ id: SkillSource | "all"; label: string }> = [
@@ -444,9 +444,9 @@ export function SkillsView() {
   }
 
   const recommendationToneClass = {
-    neutral: "border-cyan-300/18 bg-cyan-400/8 text-cyan-50",
-    warning: "border-amber-300/25 bg-amber-400/10 text-amber-50",
-    positive: "border-emerald-300/20 bg-emerald-400/10 text-emerald-50",
+    neutral: "border-line bg-surface-2",
+    warning: "border-line bg-warn-soft",
+    positive: "border-line bg-ok-soft",
   } as const;
 
   function renderTree(nodes: TreeNode[], depth = 0): ReactNode {
@@ -458,11 +458,11 @@ export function SkillsView() {
             <button
               type="button"
               onClick={() => toggleFolder(node.path)}
-              className="flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-cyan-400/8 hover:text-foreground"
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-ink-muted transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
               style={{ paddingLeft: `${depth * 16 + 8}px` }}
             >
               {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-              <Folder className="h-3.5 w-3.5 text-cyan-200" />
+              <Folder className="h-3.5 w-3.5 text-ink-muted" />
               <span className="truncate">{node.name}</span>
             </button>
             {isOpen && node.children ? renderTree(node.children, depth + 1) : null}
@@ -478,14 +478,14 @@ export function SkillsView() {
           type="button"
           onClick={() => handleSelectFile(node.path)}
           className={cn(
-            "flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-xs transition-colors",
+            "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors duration-150",
             active
-              ? "bg-cyan-400/12 text-foreground shadow-[inset_0_0_0_1px_rgba(34,211,238,0.18)]"
-              : "text-muted-foreground hover:bg-cyan-400/8 hover:text-foreground"
+              ? "bg-surface-2 text-ink"
+              : "text-ink-muted hover:bg-surface-2 hover:text-ink"
           )}
           style={{ paddingLeft: `${depth * 16 + 8}px` }}
         >
-          <FileIcon className="h-3.5 w-3.5 shrink-0 text-cyan-100/80" />
+          <FileIcon className="h-3.5 w-3.5 shrink-0 text-ink-muted" />
           <span className="truncate">{node.name}</span>
         </button>
       );
@@ -495,7 +495,7 @@ export function SkillsView() {
   const sourceUnavailable = !loadingSkills && skills.length === 0 && Boolean(error);
 
   return (
-    <main className="mc-page">
+    <main className="relative flex-1 overflow-auto bg-app">
       <div className="flex min-w-0 flex-1 flex-col">
         <PageHeader
           title="Skills Browser"
@@ -510,38 +510,38 @@ export function SkillsView() {
             </div>
           }
           status={
-            <Badge variant="outline" className="border-cyan-300/30 bg-cyan-400/8 text-cyan-100">
+            <Badge variant="outline" className="border-line bg-surface-2 text-ink-secondary">
               {loadingSkills ? "Scanning sources" : `${skills.length} discovered`}
             </Badge>
           }
         />
 
-        <div className="mc-page-body mc-page-stack">
+        <div className="mx-auto flex max-w-[1200px] flex-col gap-6 px-6 py-6">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <Card>
             <CardContent className="p-4">
-              <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Total skills</div>
+              <div className="text-[11.5px] uppercase tracking-[0.06em] text-ink-muted">Total skills</div>
               <div className="mt-2 text-2xl font-semibold text-foreground">{totalSkills}</div>
               <div className="mt-1 text-xs text-muted-foreground">Across repo, Codex, and OpenClaw</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4">
-              <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Repo managed</div>
+              <div className="text-[11.5px] uppercase tracking-[0.06em] text-ink-muted">Repo managed</div>
               <div className="mt-2 text-2xl font-semibold text-foreground">{repoSkills}</div>
               <div className="mt-1 text-xs text-muted-foreground">Versioned inside Mission Control</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4">
-              <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Fresh this week</div>
+              <div className="text-[11.5px] uppercase tracking-[0.06em] text-ink-muted">Fresh this week</div>
               <div className="mt-2 text-2xl font-semibold text-foreground">{recentlyUpdatedSkills}</div>
               <div className="mt-1 text-xs text-muted-foreground">Recently updated capabilities</div>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4">
-              <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Needs review</div>
+              <div className="text-[11.5px] uppercase tracking-[0.06em] text-ink-muted">Needs review</div>
               <div className="mt-2 text-2xl font-semibold text-foreground">{skillsNeedingAttention}</div>
               <div className="mt-1 text-xs text-muted-foreground">Stale, underspecified, or too thin</div>
             </CardContent>
@@ -551,18 +551,18 @@ export function SkillsView() {
         {sourceUnavailable ? (
           <Card className="p-5">
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-              <div className="rounded-2xl border border-[var(--panel-line)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--shell-panel)_96%,transparent),color-mix(in_srgb,var(--background)_88%,transparent))] p-5">
-                <div className="mc-kicker">Skill sources unavailable</div>
+              <div className="rounded-xl border border-line bg-surface-2 p-5">
+                <div className="text-[12.5px] font-medium text-ink-secondary">Skill sources unavailable</div>
                 <div className="mt-2 text-2xl font-semibold text-foreground">Mission Control cannot reach the configured skill roots right now.</div>
                 <p className="mt-3 max-w-3xl text-sm leading-relaxed text-muted-foreground">
                   That is why this view currently shows zero skills and the editor rail falls back into a request error. This should degrade into setup guidance, not a broken workspace.
                 </p>
-                <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
+                <div className="mt-4 rounded-lg border border-line bg-warn-soft px-4 py-3 text-sm text-warn">
                   {error}
                 </div>
               </div>
-              <div className="rounded-2xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] p-5">
-                <div className="mc-kicker">What to check</div>
+              <div className="rounded-xl border border-line bg-surface-2 p-5">
+                <div className="text-[12.5px] font-medium text-ink-secondary">What to check</div>
                 <ul className="mt-3 space-y-3 text-sm leading-relaxed text-muted-foreground">
                   <li>Confirm the orchestration server is running and reachable from the UI.</li>
                   <li>Verify the repo plugin skills and local Codex skill paths still exist on disk.</li>
@@ -576,8 +576,8 @@ export function SkillsView() {
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
           <Card className="min-h-0 overflow-hidden">
             <CardContent className="flex h-full flex-col gap-4 p-4">
-              <div className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] p-3">
-                <div className="flex items-center gap-2 rounded-2xl border border-[var(--panel-line)] bg-background/60 px-3 py-2">
+              <div className="rounded-xl border border-line bg-surface-2 p-3">
+                <div className="flex items-center gap-2 rounded-lg border border-line bg-surface-1 px-3 py-2">
                   <Search className="h-4 w-4 text-muted-foreground" />
                   <input
                     value={search}
@@ -593,10 +593,10 @@ export function SkillsView() {
                       type="button"
                       onClick={() => setSourceFilter(filter.id)}
                       className={cn(
-                        "rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] transition-colors",
+                        "rounded-md border px-3 py-1.5 text-[11.5px] font-medium transition-colors duration-150",
                         sourceFilter === filter.id
-                          ? "border-cyan-300/35 bg-cyan-400/12 text-cyan-100"
-                          : "border-[var(--panel-line)] bg-transparent text-muted-foreground hover:text-foreground"
+                          ? "border-line-strong bg-surface-2 text-ink"
+                          : "border-line bg-transparent text-ink-muted hover:text-ink"
                       )}
                     >
                       {filter.label}
@@ -605,8 +605,8 @@ export function SkillsView() {
                 </div>
               </div>
 
-              <div className="rounded-xl border border-[var(--panel-line)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--shell-panel)_92%,transparent),color-mix(in_srgb,var(--background)_88%,transparent))] p-4">
-                <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-200/70">
+              <div className="rounded-xl border border-line bg-surface-2 p-4">
+                <div className="flex items-center gap-2 text-[11.5px] font-semibold uppercase tracking-[0.06em] text-ink-muted">
                   <WandSparkles className="h-3.5 w-3.5" />
                   Operator guidance
                 </div>
@@ -626,7 +626,7 @@ export function SkillsView() {
                     <div
                       key={recommendation.title}
                       className={cn(
-                        "rounded-2xl border px-3 py-3",
+                        "rounded-lg border px-3 py-3",
                         recommendationToneClass[recommendation.tone]
                       )}
                     >
@@ -642,10 +642,10 @@ export function SkillsView() {
               <div className="min-h-0 flex-1 overflow-auto space-y-3 pr-1">
                 {loadingSkills ? (
                   Array.from({ length: 5 }).map((_, index) => (
-                    <div key={index} className="rounded-xl border border-[var(--panel-line)] p-4">
-                      <div className="h-4 w-32 rounded skeleton-shimmer" />
-                      <div className="mt-3 h-3 w-full rounded skeleton-shimmer" />
-                      <div className="mt-2 h-3 w-4/5 rounded skeleton-shimmer" />
+                    <div key={index} className="rounded-xl border border-line p-4">
+                      <div className="h-4 w-32 rounded animate-pulse bg-surface-2" />
+                      <div className="mt-3 h-3 w-full rounded animate-pulse bg-surface-2" />
+                      <div className="mt-2 h-3 w-4/5 rounded animate-pulse bg-surface-2" />
                     </div>
                   ))
                 ) : filteredSkills.length === 0 ? (
@@ -663,16 +663,16 @@ export function SkillsView() {
                         type="button"
                         onClick={() => handleSelectSkill(skill.id)}
                         className={cn(
-                          "w-full rounded-xl border p-4 text-left transition-all duration-200",
+                          "w-full rounded-xl border p-4 text-left transition-colors duration-150",
                           selected
-                            ? "border-cyan-300/30 bg-cyan-400/10 shadow-[0_0_0_1px_rgba(34,211,238,0.16),0_18px_40px_rgba(8,47,73,0.28)]"
-                            : "border-[var(--panel-line)] bg-[color:var(--shell-panel)] hover:border-[var(--panel-line-strong)]"
+                            ? "border-line-strong bg-surface-2"
+                            : "border-line bg-surface-1 hover:border-line-strong"
                         )}
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <div className="truncate text-sm font-semibold text-foreground">{skill.name}</div>
-                            <div className="mt-1 truncate text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                            <div className="mt-1 truncate font-mono text-[11px] text-ink-muted">
                               {skill.relativePath}
                             </div>
                           </div>
@@ -699,7 +699,7 @@ export function SkillsView() {
             <Card className="min-h-0 overflow-hidden">
               <CardContent className="flex h-full flex-col p-4">
                 <div className="mb-4">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-200/65">
+                  <div className="text-[11.5px] font-semibold uppercase tracking-[0.06em] text-ink-muted">
                     File tree
                   </div>
                   <div className="mt-1 text-sm font-semibold text-foreground">
@@ -711,18 +711,18 @@ export function SkillsView() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 pb-4">
-                  <div className="rounded-2xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-3 py-2">
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Source</div>
+                  <div className="rounded-lg border border-line bg-surface-2 px-3 py-2">
+                    <div className="text-[11.5px] uppercase tracking-[0.06em] text-ink-muted">Source</div>
                     <div className="mt-1 text-xs font-semibold text-foreground">{selectedSkill?.sourceLabel ?? "N/A"}</div>
                   </div>
-                  <div className="rounded-2xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-3 py-2">
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Files</div>
+                  <div className="rounded-lg border border-line bg-surface-2 px-3 py-2">
+                    <div className="text-[11.5px] uppercase tracking-[0.06em] text-ink-muted">Files</div>
                     <div className="mt-1 text-xs font-semibold text-foreground">{selectedSkill?.fileCount ?? 0}</div>
                   </div>
                 </div>
 
-                <div className="mb-4 rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] p-3">
-                  <div className="flex items-center gap-2 rounded-2xl border border-[var(--panel-line)] bg-background/60 px-3 py-2">
+                <div className="mb-4 rounded-xl border border-line bg-surface-2 p-3">
+                  <div className="flex items-center gap-2 rounded-lg border border-line bg-surface-1 px-3 py-2">
                     <Search className="h-4 w-4 text-muted-foreground" />
                     <input
                       value={fileSearch}
@@ -770,7 +770,7 @@ export function SkillsView() {
 
             <Card className="min-h-0 overflow-hidden">
               <CardContent className="flex h-full flex-col p-0">
-                <div className="flex items-center justify-between border-b border-[var(--panel-line)] px-4 py-3">
+                <div className="flex items-center justify-between border-b border-line px-4 py-3">
                   <div className="min-w-0">
                     <div className="truncate text-sm font-semibold text-foreground">
                       {selectedFile?.path ?? "Select a file"}
@@ -778,7 +778,7 @@ export function SkillsView() {
                     <div className="mt-1 flex items-center gap-3 text-[11px] text-muted-foreground">
                       <span>{selectedFile ? formatFileSize(selectedFile.size) : "0 B"}</span>
                       <span>{selectedFile ? formatRelativeTime(selectedFile.updatedAt) : "No file selected"}</span>
-                      {dirty ? <span className="text-amber-200">Unsaved changes</span> : null}
+                      {dirty ? <span className="text-warn">Unsaved changes</span> : null}
                     </div>
                   </div>
 
@@ -807,7 +807,7 @@ export function SkillsView() {
                     </Button>
                     <Button
                       size="sm"
-                      variant="neon-cyan"
+                      variant="default"
                       onClick={() => void saveCurrentFile()}
                       disabled={!selectedFilePath || !dirty || saving}
                     >
@@ -818,14 +818,14 @@ export function SkillsView() {
                 </div>
 
                 {error && selectedFilePath ? (
-                  <div className="border-b border-red-400/20 bg-red-400/10 px-4 py-2 text-xs text-red-100">
+                  <div className="border-b border-line bg-err-soft px-4 py-2 text-xs text-err">
                     {error}
                   </div>
                 ) : null}
 
                 {selectedSkillRecommendations.length > 0 && (
-                  <div className="border-b border-[var(--panel-line)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--shell-panel)_88%,transparent),transparent)] px-4 py-3">
-                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-cyan-200/70">
+                  <div className="border-b border-line bg-surface-2 px-4 py-3">
+                    <div className="mb-2 text-[11.5px] font-semibold uppercase tracking-[0.06em] text-ink-muted">
                       Suggested improvements
                     </div>
                     <div className="grid gap-2 xl:grid-cols-2">
@@ -833,7 +833,7 @@ export function SkillsView() {
                         <div
                           key={recommendation.title}
                           className={cn(
-                            "rounded-2xl border px-3 py-2.5",
+                            "rounded-lg border px-3 py-2.5",
                             recommendationToneClass[recommendation.tone]
                           )}
                         >
@@ -861,23 +861,23 @@ export function SkillsView() {
                       Loading file contents...
                     </div>
                   ) : editMode ? (
-                    <div className="grid h-full min-h-0 grid-cols-[56px_minmax(0,1fr)] bg-[linear-gradient(180deg,rgba(3,7,18,0.94),rgba(10,15,30,0.94))]">
-                      <pre className="overflow-hidden border-r border-[var(--panel-line)] px-3 py-4 text-right font-mono text-[11px] leading-6 text-muted-foreground">
+                    <div className="grid h-full min-h-0 grid-cols-[56px_minmax(0,1fr)] bg-surface-1">
+                      <pre className="overflow-hidden border-r border-line px-3 py-4 text-right font-mono text-[11px] leading-6 text-ink-muted">
                         {buildLineNumbers(draftContent)}
                       </pre>
                       <Textarea
                         value={draftContent}
                         onChange={(event) => setDraftContent(event.target.value)}
                         spellCheck={false}
-                        className="h-full min-h-0 resize-none border-0 bg-transparent px-4 py-4 font-mono text-[12px] leading-6 text-slate-100 shadow-none focus-visible:ring-0"
+                        className="h-full min-h-0 resize-none border-0 bg-transparent px-4 py-4 font-mono text-[12px] leading-6 text-ink shadow-none focus-visible:ring-0"
                       />
                     </div>
                   ) : (
-                    <div className="grid h-full min-h-0 grid-cols-[56px_minmax(0,1fr)] bg-[linear-gradient(180deg,rgba(3,7,18,0.94),rgba(10,15,30,0.94))]">
-                      <pre className="overflow-hidden border-r border-[var(--panel-line)] px-3 py-4 text-right font-mono text-[11px] leading-6 text-muted-foreground">
+                    <div className="grid h-full min-h-0 grid-cols-[56px_minmax(0,1fr)] bg-surface-1">
+                      <pre className="overflow-hidden border-r border-line px-3 py-4 text-right font-mono text-[11px] leading-6 text-ink-muted">
                         {buildLineNumbers(savedContent)}
                       </pre>
-                      <pre className="overflow-auto px-4 py-4 font-mono text-[12px] leading-6 text-slate-100">
+                      <pre className="overflow-auto px-4 py-4 font-mono text-[12px] leading-6 text-ink">
                         <code>{savedContent}</code>
                       </pre>
                     </div>

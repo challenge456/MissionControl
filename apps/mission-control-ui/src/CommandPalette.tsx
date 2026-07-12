@@ -30,6 +30,7 @@ import {
   MessageSquare,
   Brain,
   Users,
+  ClipboardList,
 } from "lucide-react";
 
 interface CommandPaletteProps {
@@ -244,7 +245,7 @@ export function CommandPalette({
                     onClose();
                   }}
                 >
-                  <span className="text-base leading-none">📋</span>
+                  <ClipboardList className="h-4 w-4 shrink-0 text-ink-muted" strokeWidth={1.75} />
                   <span className="flex-1 min-w-0">
                     <span className="block truncate text-sm">{task.title}</span>
                     <span className="block truncate text-xs text-muted-foreground">
@@ -267,7 +268,7 @@ export function CommandPalette({
                   }}
                   disabled={!approval.taskId}
                 >
-                  <span className="text-base leading-none">🛡️</span>
+                  <Shield className="h-4 w-4 shrink-0 text-ink-muted" strokeWidth={1.75} />
                   <span className="flex-1 min-w-0">
                     <span className="block truncate text-sm">{approval.actionSummary}</span>
                     <span className="block truncate text-xs text-muted-foreground">
@@ -288,7 +289,7 @@ export function CommandPalette({
                     onClose();
                   }}
                 >
-                  <span className="text-base leading-none">{agent.emoji || "🤖"}</span>
+                  {agent.emoji ? <span className="text-base leading-none">{agent.emoji}</span> : <Bot className="h-4 w-4 shrink-0 text-ink-muted" strokeWidth={1.75} />}
                   <span className="flex-1 min-w-0">
                     <span className="block truncate text-sm">{agent.name}</span>
                     <span className="block truncate text-xs text-muted-foreground">

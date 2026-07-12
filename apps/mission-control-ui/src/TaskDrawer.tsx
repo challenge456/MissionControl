@@ -2,7 +2,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id, Doc } from "../../../convex/_generated/dataModel";
 import { useState, useEffect } from "react";
-import { X } from "lucide-react";
+import { Paperclip, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -171,7 +171,7 @@ function TaskDrawerContent({
                 task.dueAt < Date.now()
                   ? "border-destructive text-destructive"
                   : task.dueAt < Date.now() + 86400000 * 2
-                    ? "border-amber-500 text-amber-500"
+                    ? "border-warn text-warn"
                     : ""
               )}
             >
@@ -245,7 +245,8 @@ function TaskDrawerContent({
               <div className="flex gap-1.5 flex-wrap mt-2">
                 {task.deliverable.artifactIds.map((id: string, i: number) => (
                   <Badge key={i} variant="secondary" className="text-xs gap-1">
-                    📎 {id}
+                    <Paperclip className="h-3 w-3" strokeWidth={1.75} />
+                    {id}
                   </Badge>
                 ))}
               </div>
@@ -256,7 +257,7 @@ function TaskDrawerContent({
         {task.blockedReason && (
           <Section title="Blocked">
             <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md text-sm text-destructive">
-              ⚠️ {task.blockedReason}
+              {task.blockedReason}
             </div>
           </Section>
         )}
@@ -371,7 +372,7 @@ function ReassignDropdown({
             onCheckedChange={() => toggleAgent(a._id)}
             onSelect={(e) => e.preventDefault()}
           >
-            <span>{a.emoji || "🤖"} {a.name}</span>
+            <span>{a.emoji ? `${a.emoji} ` : ""}{a.name}</span>
           </DropdownMenuCheckboxItem>
         ))}
         <DropdownMenuSeparator />
@@ -478,7 +479,7 @@ function StatusBadge({ status }: { status: string }) {
 function AgentChip({ agent }: { agent: Agent }) {
   return (
     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-muted rounded-full text-xs text-foreground">
-      <span>{agent.emoji || "🤖"}</span>
+      {agent.emoji ? <span>{agent.emoji}</span> : null}
       <span>{agent.name}</span>
       <span className="text-muted-foreground">{agent.role}</span>
     </span>

@@ -111,10 +111,10 @@ export function CreateTaskModal({
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(240px,0.7fr)]">
-            <div className="space-y-4 rounded-2xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] p-4">
+            <div className="space-y-4 rounded-xl border border-line bg-surface-2 p-4">
               <div className="flex items-center gap-2">
-                <Layers3 className="h-4 w-4 text-cyan-200" />
-                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Task brief</div>
+                <Layers3 className="h-4 w-4 text-ink-muted" strokeWidth={1.75} />
+                <div className="text-[11.5px] font-semibold uppercase tracking-[0.06em] text-ink-muted">Task brief</div>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="task-title">Title</Label>
@@ -141,10 +141,10 @@ export function CreateTaskModal({
               </div>
             </div>
 
-            <div className="space-y-4 rounded-2xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] p-4">
+            <div className="space-y-4 rounded-xl border border-line bg-surface-2 p-4">
               <div className="flex items-center gap-2">
-                <Flag className="h-4 w-4 text-emerald-200" />
-                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Routing</div>
+                <Flag className="h-4 w-4 text-ink-muted" strokeWidth={1.75} />
+                <div className="text-[11.5px] font-semibold uppercase tracking-[0.06em] text-ink-muted">Routing</div>
               </div>
 
               <div className="grid grid-cols-1 gap-3">
@@ -201,9 +201,9 @@ export function CreateTaskModal({
           </div>
 
           {agents && agents.length > 0 && (
-            <div className="space-y-3 rounded-2xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] p-4">
+            <div className="space-y-3 rounded-xl border border-line bg-surface-2 p-4">
               <div className="flex items-center gap-2">
-                <Bot className="h-4 w-4 text-cyan-200" />
+                <Bot className="h-4 w-4 text-ink-muted" strokeWidth={1.75} />
                 <Label>Assignees</Label>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -213,14 +213,12 @@ export function CreateTaskModal({
                     <Button
                       key={agent._id}
                       type="button"
-                      variant={selected ? "neon-cyan" : "outline"}
+                      variant={selected ? "default" : "outline"}
                       size="sm"
-                      className="h-10 gap-2 rounded-2xl px-3"
+                      className="h-9 gap-2 rounded-lg px-3"
                       onClick={() => toggleAssignee(agent._id)}
                     >
-                      <span className="flex h-6 w-6 items-center justify-center rounded-full border border-cyan-300/16 bg-cyan-400/8 text-cyan-100">
-                        <Bot className="h-3.5 w-3.5" />
-                      </span>
+                      <Bot className="h-3.5 w-3.5" strokeWidth={1.75} />
                       <span>{agent.name}</span>
                     </Button>
                   );

@@ -5,9 +5,10 @@ import type { Id } from "../../../convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { PageHeader } from "./components/PageHeader";
+import { StatusBadge, type StatusBadgeProps } from "@/components/factory/badges";
 import { useToast } from "./Toast";
 import { cn } from "@/lib/utils";
-import { Activity, Zap, Filter, Radio, AlertTriangle, CheckCircle2, Play } from "lucide-react";
+import { Activity, Zap, Filter, Radio, CheckCircle2 } from "lucide-react";
 
 function fmtTime(ts?: number) {
   if (!ts) return "n/a";
@@ -20,23 +21,19 @@ function compactJson(value: unknown) {
   return s.length <= 100 ? s : `${s.slice(0, 100)}…`;
 }
 
-function eventPillClass(type: string) {
-  if (type.includes("FAILED") || type.includes("BLOCKED"))
-    return "bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/30";
-  if (type.includes("STARTED") || type.includes("STEP"))
-    return "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30";
-  if (type.includes("COMPLETED") || type.includes("DONE"))
-    return "bg-primary/15 text-primary border-primary/30";
-  if (type.includes("DECISION"))
-    return "bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/30";
-  return "bg-muted text-muted-foreground border-border";
+function eventPillTone(type: string): StatusBadgeProps["tone"] {
+  if (type.includes("FAILED") || type.includes("BLOCKED")) return "error";
+  if (type.includes("STARTED") || type.includes("STEP")) return "info";
+  if (type.includes("COMPLETED") || type.includes("DONE")) return "success";
+  if (type.includes("DECISION")) return "info";
+  return "neutral";
 }
 
 function EventTypePill({ value }: { value: string }) {
   return (
-    <span className={cn("inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap", eventPillClass(value))}>
+    <StatusBadge tone={eventPillTone(value)} className="whitespace-nowrap">
       {value}
-    </span>
+    </StatusBadge>
   );
 }
 
@@ -79,7 +76,7 @@ export function TelemetryView({ projectId }: { projectId: Id<"projects"> | null 
   const inWindow    = stats?.inWindow ?? 0;
 
   return (
-    <main className="mc-page">
+    <main className="flex-1 overflow-auto bg-app">
       <PageHeader
         title="ARM Telemetry"
         description={
@@ -90,27 +87,27 @@ export function TelemetryView({ projectId }: { projectId: Id<"projects"> | null 
         eyebrow="Operations"
         actions={
           <Button size="sm" onClick={handleEmitTestEvent} variant="outline">
-            <Zap className="h-3.5 w-3.5 mr-1.5" />
+            <Zap className="h-3.5 w-3.5 mr-1.5" strokeWidth={1.7} />
             Emit Test Event
           </Button>
         }
       />
 
       {/* Summary stats */}
-      <div className="mc-page-body mc-page-stack">
+      <div className="mx-auto max-w-[1200px] px-6 py-6 flex flex-col gap-6">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { icon: Activity,     label: "Total Events",     value: totalEvents,             accent: "text-foreground" },
-          { icon: Radio,        label: `Last ${windowMinutes}m`, value: inWindow,          accent: inWindow > 0 ? "text-blue-500" : "text-foreground" },
-          { icon: Filter,       label: "Filtered Rows",    value: (events ?? []).length,   accent: "text-foreground" },
-          { icon: CheckCircle2, label: "Latest Event",     value: stats?.latestTimestamp ? 1 : 0, accent: "text-primary" },
-        ].map(({ icon: Icon, label, value, accent }) => (
+          { icon: Activity,     label: "Total Events",     value: totalEvents },
+          { icon: Radio,        label: `Last ${windowMinutes}m`, value: inWindow },
+          { icon: Filter,       label: "Filtered Rows",    value: (events ?? []).length },
+          { icon: CheckCircle2, label: "Latest Event",     value: stats?.latestTimestamp ? 1 : 0 },
+        ].map(({ icon: Icon, label, value }) => (
           <Card key={label} className="p-4">
-            <div className="flex items-center gap-1.5 mb-2">
-              <Icon className="h-3.5 w-3.5 text-muted-foreground" strokeWidth={1.5} />
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</span>
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <Icon className="h-3.5 w-3.5 text-ink-muted" strokeWidth={1.6} />
+              <span className="text-[12.5px] font-medium text-ink-secondary">{label}</span>
             </div>
-            <p className={cn("text-2xl font-bold tracking-tight tabular-nums", accent)}>{value}</p>
+            <p className="text-[20px] font-semibold leading-none tabular-nums text-ink">{value}</p>
           </Card>
         ))}
       </div>
@@ -119,20 +116,22 @@ export function TelemetryView({ projectId }: { projectId: Id<"projects"> | null 
       <div className="flex flex-col gap-4">
         {/* Filters + Event type breakdown */}
         <Card className="overflow-hidden">
-          <div className="px-5 py-3 border-b border-border bg-muted/30 flex items-center justify-between gap-3 flex-wrap">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Event Type Breakdown</p>
+          <div className="px-5 py-3 border-b border-line flex items-center justify-between gap-3 flex-wrap">
+            <p className="text-[15px] font-semibold text-ink">Event Type Breakdown</p>
             <div className="flex items-center gap-3 flex-wrap">
               <div className="flex items-center gap-2">
-                <Filter className="h-3 w-3 text-muted-foreground" />
+                <Filter className="h-3 w-3 text-ink-muted" strokeWidth={1.6} />
                 <input
-                  className="rounded-md border border-border bg-background px-2.5 py-1 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring w-36"
+                  className="h-9 rounded-lg border border-line bg-surface-1 px-3 text-[13.5px] text-ink placeholder:text-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring w-36"
                   placeholder="Filter type…"
+                  aria-label="Filter events by type"
                   value={typeFilter}
                   onChange={(e) => setTypeFilter(e.target.value)}
                 />
               </div>
               <select
-                className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="h-9 rounded-lg border border-line bg-surface-1 px-3 text-[13.5px] text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label="Time window"
                 value={windowMinutes}
                 onChange={(e) => setWindowMinutes(Number(e.target.value))}
               >
@@ -145,13 +144,13 @@ export function TelemetryView({ projectId }: { projectId: Id<"projects"> | null 
           </div>
           <div className="p-4">
             {topTypes.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-6">No events captured yet.</p>
+              <p className="text-[13.5px] text-ink-muted text-center py-6">No events captured yet.</p>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {topTypes.map((row) => (
-                  <div key={row.type} className="rounded-lg border border-border bg-muted/40 px-3 py-2.5">
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1 truncate">{row.type}</p>
-                    <p className="text-xl font-bold text-foreground tabular-nums">{row.count}</p>
+                  <div key={row.type} className="rounded-lg border border-line bg-surface-2 px-3 py-2.5">
+                    <p className="text-[11.5px] text-ink-muted font-medium mb-1 truncate">{row.type}</p>
+                    <p className="text-[20px] font-semibold leading-none text-ink tabular-nums">{row.count}</p>
                   </div>
                 ))}
               </div>
@@ -161,39 +160,36 @@ export function TelemetryView({ projectId }: { projectId: Id<"projects"> | null 
 
         {/* Recent events table */}
         <Card className="overflow-hidden">
-          <div className="px-5 py-3 border-b border-border bg-muted/30">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Recent Events</p>
+          <div className="px-5 py-3 border-b border-line">
+            <p className="text-[15px] font-semibold text-ink">Recent Events</p>
           </div>
           {(events ?? []).length === 0 ? (
             <div className="py-12 text-center">
-              <Activity className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">No op events found.</p>
+              <Activity className="h-8 w-8 text-ink-muted/30 mx-auto mb-2" strokeWidth={1.6} />
+              <p className="text-[13.5px] text-ink-muted">No op events found.</p>
             </div>
           ) : (
             <div className="overflow-auto">
-              <table className="w-full min-w-[960px] text-left text-xs">
+              <table className="w-full min-w-[960px] border-collapse text-left text-[13px]">
                 <thead>
-                  <tr className="bg-muted/50 border-b border-border">
+                  <tr className="border-b border-line">
                     {["Timestamp", "Type", "Run", "Instance", "Version", "Payload"].map((h) => (
-                      <th key={h} className="px-3 py-2.5 font-semibold text-muted-foreground uppercase tracking-wider text-[10px]">{h}</th>
+                      <th key={h} className="px-4 py-2.5 text-[11.5px] font-medium uppercase tracking-[0.06em] text-ink-muted">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {(events ?? []).map((event, i) => (
+                  {(events ?? []).map((event) => (
                     <tr
                       key={event._id}
-                      className={cn(
-                        "border-b border-border/50 hover:bg-muted/40 transition-colors",
-                        i % 2 !== 0 ? "bg-muted/20" : ""
-                      )}
+                      className="border-b border-line last:border-b-0 hover:bg-surface-2 transition-colors duration-150"
                     >
-                      <td className="px-3 py-2.5 font-mono text-muted-foreground whitespace-nowrap">{fmtTime(event.timestamp)}</td>
-                      <td className="px-3 py-2.5"><EventTypePill value={event.type} /></td>
-                      <td className="px-3 py-2.5 font-mono text-muted-foreground truncate max-w-[120px]">{event.runId ?? "n/a"}</td>
-                      <td className="px-3 py-2.5 font-mono text-muted-foreground truncate max-w-[120px]">{event.instanceId ?? "n/a"}</td>
-                      <td className="px-3 py-2.5 font-mono text-muted-foreground truncate max-w-[120px]">{event.versionId ?? "n/a"}</td>
-                      <td className="px-3 py-2.5 text-muted-foreground/80 truncate max-w-[240px] font-mono">{compactJson(event.payload)}</td>
+                      <td className="px-4 py-3.5 font-mono text-ink-muted whitespace-nowrap">{fmtTime(event.timestamp)}</td>
+                      <td className="px-4 py-3.5"><EventTypePill value={event.type} /></td>
+                      <td className="px-4 py-3.5 font-mono text-ink-muted truncate max-w-[120px]">{event.runId ?? "n/a"}</td>
+                      <td className="px-4 py-3.5 font-mono text-ink-muted truncate max-w-[120px]">{event.instanceId ?? "n/a"}</td>
+                      <td className="px-4 py-3.5 font-mono text-ink-muted truncate max-w-[120px]">{event.versionId ?? "n/a"}</td>
+                      <td className="px-4 py-3.5 text-ink-muted truncate max-w-[240px] font-mono">{compactJson(event.payload)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -204,8 +200,8 @@ export function TelemetryView({ projectId }: { projectId: Id<"projects"> | null 
       </div>
 
       <Card className="p-5">
-        <div className="mc-kicker">Telemetry guidance</div>
-        <div className="mt-2 space-y-3 text-sm leading-relaxed text-muted-foreground">
+        <div className="text-[15px] font-semibold text-ink">Telemetry guidance</div>
+        <div className="mt-2 space-y-3 text-[13.5px] leading-relaxed text-ink-secondary">
           <p>Telemetry is useful only when it helps explain a decision, a failure, or a bottleneck. Treat spikes without narrative as a sign of poor instrumentation.</p>
           <p>Use the time window to isolate operator incidents first, then widen the window only when you need trend context.</p>
         </div>

@@ -21,12 +21,12 @@ export function QuickActionsMenu({
   const [isOpen, setIsOpen] = useState(false);
 
   const actions = [
-    { id: "new-task", label: "📝 New Task", action: onCreateTask, shortcut: "⌘N" },
-    { id: "search", label: "🔍 Search", action: onOpenSearch, shortcut: "⌘K" },
-    { id: "approvals", label: "✅ Approvals", action: onOpenApprovals, shortcut: "⇧⌘A" },
-    { id: "agents", label: "🤖 Agents", action: onOpenAgents, shortcut: "⌘2" },
+    { id: "new-task", label: "New Task", action: onCreateTask, shortcut: "⌘N" },
+    { id: "search", label: "Search", action: onOpenSearch, shortcut: "⌘K" },
+    { id: "approvals", label: "Approvals", action: onOpenApprovals, shortcut: "⇧⌘A" },
+    { id: "agents", label: "Agents", action: onOpenAgents, shortcut: "⌘2" },
     ...(onOpenControls
-      ? [{ id: "controls", label: "🚨 Controls", action: onOpenControls, shortcut: "⇧⌘C" }]
+      ? [{ id: "controls", label: "Controls", action: onOpenControls, shortcut: "⇧⌘C" }]
       : []),
   ];
 

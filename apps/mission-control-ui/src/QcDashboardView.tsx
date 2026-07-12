@@ -10,17 +10,16 @@ import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PageHeader } from "./components/PageHeader";
+import { RiskBadge, StatusBadge, type StatusBadgeProps } from "@/components/factory/badges";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ShieldCheck, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, Clock, Play } from "lucide-react";
+import { TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, Clock, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const ENV_OPTIONS = [
@@ -40,35 +39,29 @@ interface QcDashboardViewProps {
 }
 
 function RiskGradeBadge({ grade }: { grade: "GREEN" | "YELLOW" | "RED" | undefined }) {
-  if (!grade) return <Badge variant="muted">N/A</Badge>;
+  if (!grade) return <StatusBadge tone="neutral">N/A</StatusBadge>;
+  return <RiskBadge level={grade} className="font-mono" />;
+}
 
-  const variantMap: Record<string, "success" | "warning" | "error"> = {
-    GREEN: "success",
-    YELLOW: "warning",
-    RED: "error",
-  };
+const RUN_STATUS_TONE: Record<string, StatusBadgeProps["tone"]> = {
+  COMPLETED: "success",
+  RUNNING: "info",
+  PENDING: "neutral",
+  FAILED: "error",
+  CANCELED: "neutral",
+};
 
+function RunStatusBadge({ status }: { status: string }) {
   return (
-    <Badge variant={variantMap[grade]} className="font-mono">
-      {grade}
-    </Badge>
+    <StatusBadge tone={RUN_STATUS_TONE[status] ?? "neutral"}>{status}</StatusBadge>
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const variantMap: Record<string, "success" | "muted" | "error"> = {
-    COMPLETED: "success",
-    RUNNING: "muted",
-    PENDING: "muted",
-    FAILED: "error",
-    CANCELED: "muted",
-  };
-
-  return (
-    <Badge variant={variantMap[status] ?? "muted"} className="text-xs">
-      {status}
-    </Badge>
-  );
+function gradeDotClass(grade: "GREEN" | "YELLOW" | "RED" | null | undefined): string {
+  if (grade === "RED") return "bg-err";
+  if (grade === "YELLOW") return "bg-warn";
+  if (grade === "GREEN") return "bg-ok";
+  return "bg-ink-muted";
 }
 
 export function QcDashboardView({ projectId, onRunSelect, onOpenStartQcRun }: QcDashboardViewProps) {
@@ -127,55 +120,52 @@ export function QcDashboardView({ projectId, onRunSelect, onOpenStartQcRun }: Qc
 
   if (envFilter === "ALL" && !runsList) {
     return (
-      <main className="mc-page">
-        <div className="mc-page-body flex items-center justify-center">
-          <div className="text-sm text-muted-foreground">Loading QC runs...</div>
-        </div>
-      </main>
+      <div className="mx-auto flex w-full max-w-[1200px] items-center justify-center px-6 py-16">
+        <div className="text-[13.5px] text-ink-muted">Loading QC runs...</div>
+      </div>
     );
   }
   if (envFilter !== "ALL" && runsByEnv === undefined) {
     return (
-      <main className="mc-page">
-        <div className="mc-page-body flex items-center justify-center">
-          <div className="text-sm text-muted-foreground">Loading QC runs...</div>
-        </div>
-      </main>
+      <div className="mx-auto flex w-full max-w-[1200px] items-center justify-center px-6 py-16">
+        <div className="text-[13.5px] text-ink-muted">Loading QC runs...</div>
+      </div>
     );
   }
 
   return (
-    <main className="mc-page">
-      <PageHeader
-        title="Quality Control"
-        description="Automated quality checks, coverage analysis, and delivery gates."
-        icon={<ShieldCheck className="h-4.5 w-4.5" strokeWidth={1.7} />}
-        eyebrow="Quality"
-        status={
-          <Badge variant="outline" className="border-cyan-300/20 text-cyan-100">
-            {totalRuns} runs
-          </Badge>
-        }
-        actions={
+    <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-6 py-6">
+      <div className="flex items-start justify-between gap-6">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-ink">
+              Quality Control
+            </h1>
+            <StatusBadge tone="neutral">{totalRuns} runs</StatusBadge>
+          </div>
+          <p className="mt-1.5 text-[14px] text-ink-secondary">
+            Automated quality checks, coverage analysis, and delivery gates.
+          </p>
+        </div>
+        <div className="shrink-0">
           <Button size="sm" className="gap-2" onClick={onOpenStartQcRun}>
-            <Play className="h-4 w-4" />
+            <Play className="h-4 w-4" strokeWidth={1.75} />
             Start QC Run
           </Button>
-        }
-      />
-      <div className="mc-page-body mc-page-stack">
+        </div>
+      </div>
 
       {/* Environment filter tabs */}
       <Card className="p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <div className="mc-kicker">Environment lens</div>
-            <div className="mt-1 text-sm font-semibold text-foreground">Filter the QC posture by environment</div>
+            <div className="text-[15px] font-semibold text-ink">Environment lens</div>
+            <div className="mt-1 text-[12.5px] text-ink-muted">Filter the QC posture by environment</div>
           </div>
           <Tabs value={envFilter} onValueChange={(v) => setEnvFilter(v as EnvFilter)}>
-            <TabsList className="flex flex-wrap h-auto gap-1">
+            <TabsList className="flex h-auto flex-wrap gap-1">
               {ENV_OPTIONS.map((env) => (
-                <TabsTrigger key={env} value={env} className="text-xs">
+                <TabsTrigger key={env} value={env} className="text-[12.5px]">
                   {env === "ALL" ? "All" : env}
                 </TabsTrigger>
               ))}
@@ -189,23 +179,18 @@ export function QcDashboardView({ projectId, onRunSelect, onOpenStartQcRun }: Qc
         <Card className="p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <div className="mc-kicker">Environment posture</div>
-              <div className="mt-1 text-sm font-semibold text-foreground">Quick quality read across local, staging, and production lanes</div>
+              <div className="text-[15px] font-semibold text-ink">Environment posture</div>
+              <div className="mt-1 text-[12.5px] text-ink-muted">Quick quality read across local, staging, and production lanes</div>
             </div>
-            <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex flex-wrap items-center gap-3">
               {envSummary.map((s) => (
                 <TooltipProvider key={s.environment}>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <div className="rounded-full border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-3 py-1.5 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-2 rounded-lg border border-line bg-surface-2 px-3 py-1.5 text-[12.5px] text-ink-secondary">
                         <span
-                          className={cn(
-                            "mr-2 inline-block h-2 w-2 rounded-full",
-                            s.latestGrade === "RED" && "bg-red-500",
-                            s.latestGrade === "YELLOW" && "bg-yellow-500",
-                            s.latestGrade === "GREEN" && "bg-green-500",
-                            !s.latestGrade && "bg-muted-foreground/50"
-                          )}
+                          aria-hidden
+                          className={cn("inline-block h-2 w-2 rounded-full", gradeDotClass(s.latestGrade))}
                         />
                         {s.environment}
                       </div>
@@ -222,52 +207,52 @@ export function QcDashboardView({ projectId, onRunSelect, onOpenStartQcRun }: Qc
       )}
 
       {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card className="p-4">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Latest Score</div>
+          <div className="text-[12.5px] font-medium text-ink-secondary">Latest Score</div>
           <div className="mt-2 flex items-baseline gap-2">
-            <div className="text-3xl font-bold">{latestRun?.qualityScore ?? "--"}</div>
-            {trend === "up" && <TrendingUp className="h-4 w-4 text-primary" />}
-            {trend === "down" && <TrendingDown className="h-4 w-4 text-red-500" />}
+            <div className="font-mono text-[26px] font-semibold leading-none text-ink">{latestRun?.qualityScore ?? "--"}</div>
+            {trend === "up" && <TrendingUp className="h-4 w-4 text-ok" strokeWidth={1.75} />}
+            {trend === "down" && <TrendingDown className="h-4 w-4 text-err" strokeWidth={1.75} />}
           </div>
-          <div className="mt-1 text-xs text-muted-foreground">
+          <div className="mt-1 text-[12px] text-ink-muted">
             {latestRun ? `Run ${latestRun.runId}` : "No runs yet"}
           </div>
         </Card>
 
         <Card className="p-4">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Avg Quality</div>
-          <div className="mt-2 text-3xl font-bold">{avgQualityScore}</div>
-          <div className="mt-1 text-xs text-muted-foreground">
+          <div className="text-[12.5px] font-medium text-ink-secondary">Avg Quality</div>
+          <div className="mt-2 font-mono text-[26px] font-semibold leading-none text-ink">{avgQualityScore}</div>
+          <div className="mt-1 text-[12px] text-ink-muted">
             Across {completedRuns.length} runs
           </div>
         </Card>
 
         <Card className="p-4">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Risk Distribution</div>
+          <div className="text-[12.5px] font-medium text-ink-secondary">Risk Distribution</div>
           <div className="mt-2 flex items-center gap-2">
             <div className="flex items-center gap-1">
-              <div className="h-2 w-2 rounded-full bg-red-500" />
-              <span className="text-sm font-medium">{redRuns}</span>
+              <span aria-hidden className="h-2 w-2 rounded-full bg-err" />
+              <span className="text-[13px] font-medium text-ink">{redRuns}</span>
             </div>
             <div className="flex items-center gap-1">
-              <div className="h-2 w-2 rounded-full bg-yellow-500" />
-              <span className="text-sm font-medium">{yellowRuns}</span>
+              <span aria-hidden className="h-2 w-2 rounded-full bg-warn" />
+              <span className="text-[13px] font-medium text-ink">{yellowRuns}</span>
             </div>
             <div className="flex items-center gap-1">
-              <div className="h-2 w-2 rounded-full bg-green-500" />
-              <span className="text-sm font-medium">{greenRuns}</span>
+              <span aria-hidden className="h-2 w-2 rounded-full bg-ok" />
+              <span className="text-[13px] font-medium text-ink">{greenRuns}</span>
             </div>
           </div>
-          <div className="mt-1 text-xs text-muted-foreground">
+          <div className="mt-1 text-[12px] text-ink-muted">
             RED / YELLOW / GREEN
           </div>
         </Card>
 
         <Card className="p-4">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Runs</div>
-          <div className="mt-2 text-3xl font-bold">{totalRuns}</div>
-          <div className="mt-1 text-xs text-muted-foreground">
+          <div className="text-[12.5px] font-medium text-ink-secondary">Total Runs</div>
+          <div className="mt-2 font-mono text-[26px] font-semibold leading-none text-ink">{totalRuns}</div>
+          <div className="mt-1 text-[12px] text-ink-muted">
             {runs.filter((r) => r.status === "RUNNING").length} running
           </div>
         </Card>
@@ -278,18 +263,18 @@ export function QcDashboardView({ projectId, onRunSelect, onOpenStartQcRun }: Qc
       {/* Quality Score Trend */}
       {scoresForTrend.length > 0 && (
         <Card className="p-6">
-          <h3 className="text-sm font-semibold mb-4">Quality Score Trend</h3>
-          <div className="flex items-end gap-2 h-32">
+          <h3 className="mb-4 text-[15px] font-semibold text-ink">Quality Score Trend</h3>
+          <div className="flex h-32 items-end gap-2">
             <TooltipProvider>
               {scoresForTrend.map((s) => {
                 const height = (s.qualityScore / 100) * 100;
-                const color = s.riskGrade === "RED" ? "bg-red-500" : s.riskGrade === "YELLOW" ? "bg-yellow-500" : "bg-green-500";
+                const color = s.riskGrade === "RED" ? "bg-err" : s.riskGrade === "YELLOW" ? "bg-warn" : "bg-ok";
                 return (
                   <Tooltip key={s.runId}>
                     <TooltipTrigger asChild>
-                      <div className="flex-1 flex flex-col items-center gap-1 cursor-default">
+                      <div className="flex flex-1 cursor-default flex-col items-center gap-1">
                         <div className={cn("w-full rounded-t", color)} style={{ height: `${height}%` }} />
-                        <div className="text-[0.65rem] text-muted-foreground">#{s.runSequence}</div>
+                        <div className="font-mono text-[11px] text-ink-muted">#{s.runSequence}</div>
                       </div>
                     </TooltipTrigger>
                     <TooltipContent>
@@ -306,17 +291,20 @@ export function QcDashboardView({ projectId, onRunSelect, onOpenStartQcRun }: Qc
       {/* Latest Findings (RED) */}
       {topRedFindings.length > 0 && (
         <Card className="p-6">
-          <h3 className="text-sm font-semibold mb-4">Latest RED Findings</h3>
+          <h3 className="mb-4 text-[15px] font-semibold text-ink">Latest RED Findings</h3>
           <div className="space-y-2">
             {topRedFindings.map((f) => (
               <div
                 key={f._id}
-                className="rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-sm"
+                className="rounded-lg border border-line bg-surface-2 p-3"
               >
-                <div className="font-medium">{f.title}</div>
-                <div className="text-muted-foreground text-xs mt-1">{f.description}</div>
+                <div className="flex items-center gap-2">
+                  <StatusBadge tone="error">RED</StatusBadge>
+                  <div className="text-[13.5px] font-medium text-ink">{f.title}</div>
+                </div>
+                <div className="mt-1 text-[12.5px] text-ink-secondary">{f.description}</div>
                 {f.filePaths?.length ? (
-                  <div className="text-xs mt-1 font-mono text-muted-foreground">
+                  <div className="mt-1 font-mono text-[12px] text-ink-muted">
                     {f.filePaths.slice(0, 2).join(", ")}
                   </div>
                 ) : null}
@@ -328,8 +316,8 @@ export function QcDashboardView({ projectId, onRunSelect, onOpenStartQcRun }: Qc
       </div>
 
       <Card className="p-5">
-        <div className="mc-kicker">Operator guidance</div>
-        <div className="mt-2 space-y-3 text-sm leading-relaxed text-muted-foreground">
+        <div className="text-[15px] font-semibold text-ink">Operator guidance</div>
+        <div className="mt-2 space-y-3 text-[13px] leading-relaxed text-ink-secondary">
           <p>The dashboard matters most when it tells you whether a release should keep moving. Trends matter less than the newest red findings and the latest gate result.</p>
           <p>Use environment filters to separate local noise from production risk. A green local run does not buy confidence if staging is yellow or red.</p>
         </div>
@@ -338,43 +326,42 @@ export function QcDashboardView({ projectId, onRunSelect, onOpenStartQcRun }: Qc
 
       {/* Recent Runs */}
       <Card className="p-6">
-        <h3 className="text-sm font-semibold mb-4">Recent Runs</h3>
+        <h3 className="mb-4 text-[15px] font-semibold text-ink">Recent Runs</h3>
         <div className="space-y-3">
           {runs.slice(0, 10).map((run) => (
             <div
               key={run._id}
-              className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-accent/50 transition-colors cursor-pointer"
+              className="flex cursor-pointer items-center justify-between rounded-lg border border-line p-3 transition-colors duration-150 hover:bg-surface-2"
               onClick={() => onRunSelect?.(run._id)}
             >
               <div className="flex items-center gap-3">
                 <div className="flex flex-col">
-                  <div className="font-mono text-sm font-medium">{run.runId}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {run.branch ?? "main"} • {run.commitSha?.substring(0, 7)}
+                  <div className="font-mono text-[13px] font-medium text-ink">{run.runId}</div>
+                  <div className="text-[12.5px] text-ink-muted">
+                    {run.branch ?? "main"} · <span className="font-mono">{run.commitSha?.substring(0, 7)}</span>
                   </div>
                 </div>
               </div>
               <div className="flex items-center gap-3">
                 {run.qualityScore !== undefined && (
-                  <div className="text-sm font-medium">{run.qualityScore}</div>
+                  <div className="font-mono text-[13px] font-medium text-ink">{run.qualityScore}</div>
                 )}
                 <RiskGradeBadge grade={run.riskGrade} />
-                <StatusBadge status={run.status} />
+                <RunStatusBadge status={run.status} />
                 {run.status === "COMPLETED" && run.gatePassed === false && (
-                  <AlertTriangle className="h-4 w-4 text-red-500" />
+                  <AlertTriangle className="h-4 w-4 text-err" strokeWidth={1.75} />
                 )}
                 {run.status === "COMPLETED" && run.gatePassed === true && (
-                  <CheckCircle2 className="h-4 w-4 text-primary" />
+                  <CheckCircle2 className="h-4 w-4 text-ok" strokeWidth={1.75} />
                 )}
                 {run.status === "RUNNING" && (
-                  <Clock className="h-4 w-4 text-blue-500 animate-pulse" />
+                  <Clock className="h-4 w-4 text-info-accent" strokeWidth={1.75} />
                 )}
               </div>
             </div>
           ))}
         </div>
       </Card>
-      </div>
-    </main>
+    </div>
   );
 }

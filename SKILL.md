@@ -1,4 +1,32 @@
-# Mission Control — Agent Integration Skill
+---
+name: mission-control-agent-integration
+description: >-
+  Umbrella skill for integrating an agent with Mission Control, the
+  orchestration and observability control plane. Use this skill when an agent
+  needs to interact with Mission Control and you must route to the right
+  focused skill — registration, heartbeats, task lifecycle, approvals,
+  deliverables, memory, budget, or run logging. All interactions use Convex
+  mutations and queries; there is no REST API.
+version: 2.0.0
+owner: software-factory
+risk: low
+capabilities:
+  - skill-routing
+  - agent-onboarding
+  - convex-integration
+related_skills:
+  - mission-control-register-agent
+  - mission-control-heartbeat
+  - mission-control-task-lifecycle
+  - mission-control-request-approval
+  - mission-control-submit-deliverable
+  - mission-control-record-memory
+  - mission-control-budget-control
+  - mission-control-run-logging
+compatibility: convex-backend
+---
+
+# Mission Control — Agent Integration
 
 This skill teaches agents how to interact with Mission Control, the orchestration and observability control plane. All interactions use **Convex** mutations and queries — there is no REST API.
 
@@ -8,193 +36,20 @@ This skill teaches agents how to interact with Mission Control, the orchestratio
 - **Functions:** Convex queries (read-only), mutations (writes), actions (external APIs)
 - **Real-time:** All data changes are automatically pushed to connected clients
 
-## 1. Register Yourself
+## Skill Routing Table
 
-Before doing anything, register with Mission Control. If you're already registered, this updates your heartbeat.
+Pick the focused skill for the job. Full API contracts live in each skill's `skills/<name>/SKILL.md`.
 
-```
-Mutation: api.agents.register
-Args:
-  name: string          — Your unique agent name (e.g., "Coder")
-  emoji: string         — Your emoji identifier (e.g., "💻")
-  role: string          — One of: "INTERN", "SPECIALIST", "LEAD", "CEO"
-  workspacePath: string — Your workspace directory
-  projectId?: Id        — Project you belong to (optional)
-  allowedTaskTypes?: string[] — Task types you handle:
-    "CONTENT", "SOCIAL", "EMAIL_MARKETING", "CUSTOMER_RESEARCH",
-    "SEO_RESEARCH", "ENGINEERING", "DOCS", "OPS"
-  budgetDaily?: number  — Daily spend limit in USD
-  budgetPerRun?: number — Per-run spend limit in USD
-  canSpawn?: boolean    — Whether you can create sub-agents
-  maxSubAgents?: number — Max sub-agents you can spawn
-
-Returns: { agent: Agent, created: boolean }
-```
-
-## 2. Send Heartbeats
-
-Call this regularly (every 30-60 seconds) to stay alive. Agents that miss heartbeats for 2 minutes get quarantined.
-
-```
-Mutation: api.agents.heartbeat
-Args:
-  agentId: Id<"agents">
-  currentTaskId?: Id<"tasks">         — Task you're currently working on
-  spendSinceLastHeartbeat?: number    — USD spent since last heartbeat
-  soulVersionHash?: string            — Your current soul/config hash
-  status?: string                     — Your status if changed
-  errorMessage?: string               — Report errors (3 in a row = quarantine warning)
-
-Returns:
-  success: boolean
-  budgetRemaining: number
-  budgetExceeded: boolean
-  pendingTasks: Task[]       — Tasks assigned to you
-  claimableTasks: Task[]     — INBOX tasks matching your types
-  pendingApprovals: Approval[]
-  pendingNotifications: Notification[]
-```
-
-## 3. Claim and Work on Tasks
-
-### Find available tasks
-
-```
-Query: api.tasks.listByStatus
-Args: { status: "INBOX", projectId?: Id }
-— Filter results by your allowedTaskTypes
-```
-
-### Assign yourself to a task
-
-```
-Mutation: api.tasks.assign
-Args:
-  taskId: Id<"tasks">
-  assigneeIds: [yourAgentId]
-```
-
-### Transition task through states
-
-```
-Mutation: api.tasks.transition
-Args:
-  taskId: Id<"tasks">
-  toStatus: string    — Target status
-  actorType: "AGENT"
-  actorAgentId: Id<"agents">
-  idempotencyKey: string   — Unique key to prevent duplicates
-  reason?: string
-```
-
-**State machine flow:**
-INBOX → ASSIGNED → IN_PROGRESS → REVIEW → DONE
-
-Other states: NEEDS_APPROVAL, BLOCKED, FAILED, CANCELED
-
-### Create a new task
-
-```
-Mutation: api.tasks.create
-Args:
-  title: string
-  type: "CONTENT" | "SOCIAL" | "EMAIL_MARKETING" | "CUSTOMER_RESEARCH" |
-        "SEO_RESEARCH" | "ENGINEERING" | "DOCS" | "OPS"
-  priority: 1 (critical) | 2 (high) | 3 (normal) | 4 (low)
-  description?: string
-  projectId?: Id<"projects">
-  creatorAgentId?: Id<"agents">
-  assigneeIds?: Id<"agents">[]
-  idempotencyKey: string
-```
-
-## 4. Submit Content Drops (Deliverables)
-
-When you've completed work, submit it as a content drop for human review.
-
-```
-Mutation: api.contentDrops.submit
-Args:
-  title: string
-  contentType: "BLOG_POST" | "SOCIAL_POST" | "EMAIL_DRAFT" | "SCRIPT" |
-               "REPORT" | "CODE_SNIPPET" | "DESIGN" | "OTHER"
-  content: string        — The actual deliverable content
-  summary?: string       — Brief summary of the work
-  agentId?: Id<"agents"> — Your agent ID
-  taskId?: Id<"tasks">   — Related task (if any)
-  projectId?: Id<"projects">
-  fileUrl?: string       — Link to external file if applicable
-  tags?: string[]
-```
-
-Content drops appear in the Content Pipeline view's "Drops" tab, where humans can approve, reject, or publish them.
-
-## 5. Post Messages to Task Threads
-
-Communicate progress, ask questions, or share artifacts on task threads.
-
-```
-Mutation: api.messages.create
-Args:
-  taskId: Id<"tasks">
-  authorType: "AGENT"
-  authorAgentId: Id<"agents">
-  type: "COMMENT" | "WORK_PLAN" | "PROGRESS" | "ARTIFACT" | "REVIEW"
-  content: string
-  idempotencyKey?: string
-  artifacts?: Array<{ name: string, type: string, url?: string, content?: string }>
-```
-
-## 6. Deposit Memories
-
-Persist knowledge across sessions using the agent documents system.
-
-```
-Mutation: api.agentDocuments.upsert (or create)
-Args:
-  agentId: Id<"agents">
-  type: "WORKING_MD" | "DAILY_NOTE" | "SESSION_MEMORY"
-  content: string
-  projectId?: Id<"projects">
-```
-
-Query your memories:
-
-```
-Query: api.agentDocuments.getByAgent
-Args: { agentId: Id<"agents"> }
-```
-
-## 7. Record Spend
-
-Track your costs per run:
-
-```
-Mutation: api.agents.recordSpend
-Args:
-  agentId: Id<"agents">
-  amount: number      — USD spent
-  runId?: Id<"runs">
-  description?: string
-```
-
-## 8. Log Runs
-
-Record each execution turn:
-
-```
-Mutation: api.runs.create
-Args:
-  agentId: Id<"agents">
-  taskId?: Id<"tasks">
-  sessionKey: string
-  model: string           — e.g., "claude-sonnet-4-20250514"
-  inputTokens: number
-  outputTokens: number
-  costUsd: number
-  status: "RUNNING" | "COMPLETED" | "FAILED"
-  idempotencyKey: string
-```
+| When you need to... | Skill | Key API |
+|---------------------|-------|---------|
+| Announce yourself before any other work | [mission-control-register-agent](skills/mission-control-register-agent/SKILL.md) | `api.agents.register` |
+| Stay alive and discover pending work | [mission-control-heartbeat](skills/mission-control-heartbeat/SKILL.md) | `api.agents.heartbeat` |
+| Claim, create, or transition tasks | [mission-control-task-lifecycle](skills/mission-control-task-lifecycle/SKILL.md) | `api.tasks.assign` / `api.tasks.transition` / `api.tasks.create` |
+| Get sign-off for YELLOW/RED-risk actions | [mission-control-request-approval](skills/mission-control-request-approval/SKILL.md) | `api.approvals.request` |
+| Submit finished work or post to task threads | [mission-control-submit-deliverable](skills/mission-control-submit-deliverable/SKILL.md) | `api.contentDrops.submit` / `api.messages.create` |
+| Persist knowledge across sessions | [mission-control-record-memory](skills/mission-control-record-memory/SKILL.md) | `api.agentDocuments.upsert` |
+| Record spend and respect budget limits | [mission-control-budget-control](skills/mission-control-budget-control/SKILL.md) | `api.agents.recordSpend` |
+| Log each execution turn | [mission-control-run-logging](skills/mission-control-run-logging/SKILL.md) | `api.runs.create` |
 
 ## Key Rules
 

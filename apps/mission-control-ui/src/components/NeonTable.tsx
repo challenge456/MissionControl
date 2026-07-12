@@ -11,12 +11,12 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
-/** Wrapper that renders a table inside a glass panel with consistent neon styling */
+/** Legacy alias: table inside a v2 surface (hairline border, no glass). */
 const NeonTable = React.forwardRef<
   HTMLTableElement,
   React.HTMLAttributes<HTMLTableElement>
 >(({ className, ...props }, ref) => (
-  <div className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)]/50 overflow-hidden">
+  <div className="overflow-hidden rounded-xl border border-line bg-surface-1">
     <Table ref={ref} className={cn(className)} {...props} />
   </div>
 ));

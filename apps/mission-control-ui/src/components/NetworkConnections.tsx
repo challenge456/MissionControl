@@ -24,13 +24,14 @@ export interface NetworkConnectionsProps {
 }
 
 /**
- * Renders curved SVG paths between connection endpoints with optional glow and animation.
+ * Renders curved SVG paths between connection endpoints. Flat hairline
+ * strokes per the v2 style guide (no glow filters, no gradient strokes).
  * Coordinates are in 0–100 percent space (viewBox 0 0 100 100); e.g. (50,50) = center.
  */
 function NetworkConnections({
   connections,
   className,
-  stroke = "var(--neon-cyan)",
+  stroke = "var(--border-emphasized)",
   animated = true,
 }: NetworkConnectionsProps) {
   return (
@@ -40,20 +41,7 @@ function NetworkConnections({
       preserveAspectRatio="none"
       aria-hidden
     >
-      <defs>
-        <filter id="neon-glow-connections" x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur stdDeviation="2" result="blur" />
-          <feMerge>
-            <feMergeNode in="blur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-        <linearGradient id="connection-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="var(--neon-green)" stopOpacity="0.9" />
-          <stop offset="100%" stopColor="var(--neon-cyan)" stopOpacity="0.9" />
-        </linearGradient>
-      </defs>
-      <g filter="url(#neon-glow-connections)">
+      <g>
         {connections.map(({ id, from, to, curvature = 0.3 }) => {
           const dx = to.x - from.x;
           const cpx = from.x + dx * (0.5 + curvature * 0.2);

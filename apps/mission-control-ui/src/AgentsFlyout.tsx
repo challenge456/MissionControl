@@ -4,10 +4,8 @@ import { api } from "../../../convex/_generated/api";
 import type { Doc, Id } from "../../../convex/_generated/dataModel";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "./components/factory/badges";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { AgentDetailFlyout } from "./AgentDetailFlyout";
 
 const FLYOUT_WIDTH = 320;
@@ -26,10 +24,10 @@ function SidebarButton({
   fullWidth?: boolean;
 }) {
   const variantClasses: Record<string, string> = {
-    default: "bg-muted hover:bg-muted/80 text-foreground",
-    warning: "bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/20",
-    danger: "bg-red-500/10 hover:bg-red-500/20 text-red-400 border-red-500/20",
-    success: "bg-primary/10 hover:bg-primary/15 text-primary border-primary/20",
+    default: "border-line bg-surface-2 text-ink-secondary hover:text-ink hover:border-line-strong",
+    warning: "border-transparent bg-warn-soft text-warn hover:opacity-90",
+    danger: "border-transparent bg-err-soft text-err hover:opacity-90",
+    success: "border-transparent bg-ok-soft text-ok hover:opacity-90",
   };
 
   return (
@@ -37,18 +35,14 @@ function SidebarButton({
       type="button"
       onClick={onClick}
       className={cn(
-        "px-3 py-2 rounded-md text-xs font-medium border border-border transition-colors cursor-pointer",
+        "px-3 py-2 rounded-lg text-xs font-medium border transition-colors duration-150 cursor-pointer",
         variantClasses[variant],
         fullWidth ? "w-full" : "flex-1 min-w-0"
       )}
     >
       <span className="flex items-center justify-center gap-1.5">
         {label}
-        {badge && (
-          <Badge variant="default" className="text-[10px] px-1.5 py-0 h-4 min-w-4.5 justify-center">
-            {badge}
-          </Badge>
-        )}
+        {badge && <StatusBadge tone="info">{badge}</StatusBadge>}
       </span>
     </button>
   );
@@ -76,20 +70,20 @@ function AgentRow({
     <button
       type="button"
       onClick={onClick}
-      className="w-full flex items-center gap-3 px-3 py-2 text-left cursor-pointer border-0 bg-transparent hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+      className="w-full flex items-center gap-3 px-3 py-2 text-left cursor-pointer border-0 bg-transparent hover:bg-surface-2 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       aria-label={`${agent.name}, ${roleShort}, ${statusLabel}`}
     >
-      <span className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-sm shrink-0">
+      <span className="flex w-8 h-8 shrink-0 items-center justify-center rounded-lg border border-line bg-surface-2 text-sm text-ink">
         {agent.emoji || agent.name.charAt(0)}
       </span>
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-foreground truncate">{agent.name}</div>
-        <div className="text-xs text-muted-foreground">{roleShort}</div>
+        <div className="text-[13px] font-medium text-ink truncate">{agent.name}</div>
+        <div className="text-[11.5px] text-ink-muted">{roleShort}</div>
       </div>
       <span
         className={cn(
           "w-2 h-2 rounded-full shrink-0",
-          isActive ? "bg-primary" : "bg-muted-foreground/40"
+          isActive ? "bg-ok" : "bg-ink-muted"
         )}
         title={agent.status}
         aria-hidden
@@ -161,7 +155,7 @@ export function AgentsFlyout({
       {/* Fly-out panel */}
       <aside
         ref={panelRef}
-        className="fixed top-0 left-0 bottom-0 z-50 flex flex-col border-r border-border bg-card shadow-xl animate-in slide-in-from-left duration-200"
+        className="fixed top-0 left-0 bottom-0 z-50 flex flex-col border-r border-line bg-surface-1 animate-in slide-in-from-left duration-200"
         style={{ width: FLYOUT_WIDTH }}
         role="dialog"
         aria-modal="true"
@@ -169,17 +163,15 @@ export function AgentsFlyout({
         tabIndex={-1}
       >
         {/* Header */}
-        <div className="flex items-center gap-2 px-4 py-3 shrink-0 border-b border-border">
-          <span className="font-semibold text-sm uppercase tracking-wider text-foreground">
+        <div className="flex items-center gap-2 px-4 py-3 shrink-0 border-b border-line">
+          <span className="font-semibold text-[13px] text-ink">
             Agents
           </span>
-          <Badge variant="outline" className="text-xs px-1.5 py-0">
-            {agentCount}
-          </Badge>
+          <StatusBadge tone="neutral">{agentCount}</StatusBadge>
           <button
             type="button"
             onClick={onClose}
-            className="ml-auto p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            className="ml-auto p-1.5 rounded-md text-ink-muted hover:text-ink hover:bg-surface-2 transition-colors duration-150"
             aria-label="Close agents panel"
           >
             <X className="h-4 w-4" />
@@ -187,8 +179,8 @@ export function AgentsFlyout({
         </div>
 
         {/* Quick Actions */}
-        <div className="px-3 py-3 shrink-0 border-b border-border">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+        <div className="px-3 py-3 shrink-0 border-b border-line">
+          <div className="text-[11.5px] font-medium uppercase tracking-[0.06em] text-ink-muted mb-2">
             Quick Actions
           </div>
           <div className="grid grid-cols-2 gap-1.5 mb-2">
@@ -232,9 +224,13 @@ export function AgentsFlyout({
         <ScrollArea className="flex-1 min-h-0">
           <div className="py-1">
             {agents === undefined ? (
-              <div className="p-3 text-muted-foreground text-sm">Loading...</div>
+              <div className="p-3 flex flex-col gap-2">
+                <div className="h-3.5 animate-pulse rounded bg-surface-2" />
+                <div className="h-3.5 animate-pulse rounded bg-surface-2" />
+                <div className="h-3.5 animate-pulse rounded bg-surface-2" />
+              </div>
             ) : agents.length === 0 ? (
-              <div className="p-3 text-muted-foreground text-sm">No agents</div>
+              <div className="p-3 text-ink-muted text-[13px]">No agents</div>
             ) : (
               agents.map((a: Doc<"agents">) => (
                 <AgentRow

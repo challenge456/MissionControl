@@ -3,7 +3,7 @@ import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Doc, Id } from "../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/factory/badges";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
@@ -56,25 +56,23 @@ export function Sidebar({
 
   return (
     <aside
-      className="flex flex-col border-r border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-[var(--blur-panel)] shrink-0 overflow-hidden transition-[width] duration-200"
+      className="flex flex-col border-r border-line bg-rail shrink-0 overflow-hidden transition-[width] duration-200"
       style={{ width, minWidth: width }}
     >
       {/* Header */}
-      <div className={cn("px-3 py-3 border-b border-[var(--glass-border)] flex items-center shrink-0", collapsed ? "justify-center" : "justify-between")}>
+      <div className={cn("px-3 py-3 border-b border-line flex items-center shrink-0", collapsed ? "justify-center" : "justify-between")}>
         {!collapsed && (
           <>
-            <span className="font-semibold text-xs uppercase tracking-wider text-foreground">
+            <span className="text-[11.5px] font-medium uppercase tracking-[0.06em] text-ink-muted">
               Agents
             </span>
-            <Badge variant="outline" className="text-xs px-1.5 py-0">
-              {agentCount}
-            </Badge>
+            <StatusBadge tone="neutral">{agentCount}</StatusBadge>
           </>
         )}
         <button
           type="button"
           onClick={() => setCollapsed((c) => !c)}
-          className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          className="p-1 rounded-md text-ink-muted hover:text-ink hover:bg-surface-2 transition-colors duration-150"
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
@@ -85,8 +83,8 @@ export function Sidebar({
       {!collapsed && (
         <>
           {/* Quick Actions */}
-          <div className="px-3 py-3 shrink-0 border-b border-border">
-            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+          <div className="px-3 py-3 shrink-0 border-b border-line">
+            <div className="text-[11.5px] font-medium uppercase tracking-[0.06em] text-ink-muted mb-2">
               Quick Actions
             </div>
             <div className="grid grid-cols-2 gap-1.5 mb-2">
@@ -118,9 +116,13 @@ export function Sidebar({
           <ScrollArea className="flex-1 min-h-0">
             <div className="py-1">
               {agents === undefined ? (
-                <div className="p-3 text-muted-foreground text-sm">Loading...</div>
+                <div className="flex flex-col gap-2 p-3">
+                  <div className="h-3.5 animate-pulse rounded bg-surface-2" />
+                  <div className="h-3.5 animate-pulse rounded bg-surface-2" />
+                  <div className="h-3.5 animate-pulse rounded bg-surface-2" />
+                </div>
               ) : agents.length === 0 ? (
-                <div className="p-3 text-muted-foreground text-sm">No agents</div>
+                <div className="p-3 text-ink-muted text-[13.5px]">No agents</div>
               ) : (
                 agents.map((a: Doc<"agents">) => (
                   <AgentRow
@@ -154,25 +156,25 @@ function AgentRow({ agent, onClick }: { agent: Doc<"agents">; onClick?: () => vo
     <button
       type="button"
       className={cn(
-        "w-full flex items-center gap-3 px-3 py-2 text-left border-0 bg-transparent transition-colors",
+        "w-full flex items-center gap-3 px-3 py-2 text-left border-0 bg-transparent transition-colors duration-150",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
-        onClick ? "cursor-pointer hover:bg-muted/50" : "cursor-default"
+        onClick ? "cursor-pointer hover:bg-surface-2" : "cursor-default"
       )}
       onClick={onClick}
       aria-label={`${agent.name}, ${roleShort}, ${statusLabel}`}
       disabled={!onClick}
     >
-      <span className="w-7 h-7 rounded-full bg-accent flex items-center justify-center text-xs font-medium shrink-0 text-foreground">
+      <span className="w-7 h-7 rounded-full border border-line bg-surface-2 flex items-center justify-center text-xs font-medium shrink-0 text-ink">
         {agent.emoji || agent.name.charAt(0)}
       </span>
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-foreground truncate">{agent.name}</div>
-        <div className="text-xs text-muted-foreground">{roleShort}</div>
+        <div className="text-[13.5px] font-medium text-ink truncate">{agent.name}</div>
+        <div className="text-[12px] text-ink-muted">{roleShort}</div>
       </div>
       <span
         className={cn(
-          "w-2 h-2 rounded-full shrink-0",
-          isActive ? "bg-primary status-dot-pulse" : "bg-muted-foreground/40"
+          "w-1.5 h-1.5 rounded-full shrink-0",
+          isActive ? "bg-ok" : "bg-ink-muted/40"
         )}
         title={agent.status}
         aria-hidden
@@ -195,10 +197,10 @@ function SidebarButton({
   fullWidth?: boolean;
 }) {
   const variantClasses: Record<string, string> = {
-    default: "bg-muted hover:bg-muted/80 text-foreground",
-    warning: "bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/20",
-    danger: "bg-red-500/10 hover:bg-red-500/20 text-red-400 border-red-500/20",
-    success: "bg-primary/10 hover:bg-primary/20 text-primary border-primary/20",
+    default: "border-line bg-surface-2 text-ink-secondary hover:text-ink hover:border-line-strong",
+    warning: "border-transparent bg-warn-soft text-warn hover:opacity-90",
+    danger: "border-transparent bg-err-soft text-err hover:opacity-90",
+    success: "border-transparent bg-ok-soft text-ok hover:opacity-90",
   };
 
   return (
@@ -206,18 +208,14 @@ function SidebarButton({
       type="button"
       onClick={onClick}
       className={cn(
-        "px-3 py-2 rounded-md text-xs font-medium border border-border transition-colors cursor-pointer",
+        "px-3 py-2 rounded-lg text-xs font-medium border transition-colors duration-150 cursor-pointer",
         variantClasses[variant],
         fullWidth ? "w-full" : "flex-1 min-w-0"
       )}
     >
       <span className="flex items-center justify-center gap-1.5">
         {label}
-        {badge && (
-          <Badge variant="default" className="text-[10px] px-1.5 py-0 h-4 min-w-4.5 justify-center">
-            {badge}
-          </Badge>
-        )}
+        {badge && <StatusBadge tone="warning">{badge}</StatusBadge>}
       </span>
     </button>
   );

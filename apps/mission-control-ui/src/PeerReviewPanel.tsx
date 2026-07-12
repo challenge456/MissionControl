@@ -3,6 +3,18 @@ import { api } from "../../../convex/_generated/api";
 import { useState } from "react";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
+import { StatusBadge } from "@/components/factory/badges";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  FileText,
+  Minus,
+  Pencil,
+  Plus,
+  ThumbsUp,
+  Wrench,
+  type LucideIcon,
+} from "lucide-react";
 
 interface PeerReviewPanelProps {
   taskId: Id<"tasks">;
@@ -15,35 +27,35 @@ export function PeerReviewPanel({ taskId, projectId }: PeerReviewPanelProps) {
   const stats = useQuery(api.reviews.getStats, { projectId });
 
   if (!reviews || !stats) {
-    return <div className="p-5 text-muted-foreground">Loading reviews...</div>;
+    return <div className="p-5 text-ink-muted">Loading reviews...</div>;
   }
 
   return (
     <div className="p-5">
       {/* Stats Summary */}
       <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3 mb-5">
-        <StatCard label="Total Reviews" value={reviews.length} icon="📝" />
-        <StatCard label="Praise" value={stats.byType.PRAISE} icon="👏" colorClass="text-primary" />
-        <StatCard label="Refutes" value={stats.byType.REFUTE} icon="⚠️" colorClass="text-amber-500" />
-        <StatCard label="Changesets" value={stats.byType.CHANGESET} icon="🔧" colorClass="text-blue-500" />
-        <StatCard label="Avg Score" value={stats.avgScore.toFixed(1)} icon="⭐" />
+        <StatCard label="Total Reviews" value={reviews.length} />
+        <StatCard label="Praise" value={stats.byType.PRAISE} colorClass="text-ok" />
+        <StatCard label="Refutes" value={stats.byType.REFUTE} colorClass="text-warn" />
+        <StatCard label="Changesets" value={stats.byType.CHANGESET} colorClass="text-info-accent" />
+        <StatCard label="Avg Score" value={stats.avgScore.toFixed(1)} />
       </div>
 
       {/* Create Review Button */}
       <button
         onClick={() => setShowCreateReview(true)}
-        className="w-full p-3 bg-primary hover:bg-primary/85 border-none rounded-md text-primary-foreground text-sm font-medium cursor-pointer mb-5 transition-colors"
+        className="w-full h-9 bg-act text-act-ink border-none rounded-lg text-[13px] font-medium cursor-pointer mb-5 transition-opacity duration-150 hover:opacity-90"
       >
-        + Create Review
+        Create Review
       </button>
 
       {/* Reviews List */}
       <div className="flex flex-col gap-3">
         {reviews.length === 0 ? (
-          <div className="text-center py-10 text-muted-foreground">
-            <div className="text-5xl mb-3">📝</div>
-            <div className="text-base">No reviews yet</div>
-            <div className="text-sm mt-2">Be the first to review this task!</div>
+          <div className="flex flex-col items-center text-center py-10 text-ink-muted">
+            <FileText className="h-7 w-7 mb-3" strokeWidth={1.5} />
+            <div className="text-[15px] font-semibold text-ink">No reviews yet</div>
+            <div className="text-[13px] mt-2">Be the first to review this task.</div>
           </div>
         ) : (
           reviews.map((review) => (
@@ -63,39 +75,38 @@ export function PeerReviewPanel({ taskId, projectId }: PeerReviewPanelProps) {
   );
 }
 
-const STAT_DEFAULT_CLASS = "text-foreground";
+const STAT_DEFAULT_CLASS = "text-ink";
 
-function StatCard({ label, value, icon, colorClass }: { label: string; value: number | string; icon: string; colorClass?: string }) {
+function StatCard({ label, value, colorClass }: { label: string; value: number | string; colorClass?: string }) {
   return (
-    <div className="bg-background rounded-md p-3 border border-card">
-      <div className="text-xl mb-1">{icon}</div>
-      <div className={cn("text-2xl font-semibold", colorClass || STAT_DEFAULT_CLASS)}>
+    <div className="bg-surface-2 rounded-lg p-3 border border-line">
+      <div className={cn("text-[19px] font-semibold tabular-nums", colorClass || STAT_DEFAULT_CLASS)}>
         {value}
       </div>
-      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="text-xs text-ink-muted mt-0.5">{label}</div>
     </div>
   );
 }
 
 const TYPE_BORDER_CLASSES: Record<string, string> = {
-  PRAISE: "border-primary",
-  REFUTE: "border-amber-500",
-  CHANGESET: "border-blue-500",
-  APPROVE: "border-blue-500",
+  PRAISE: "border-l-ok",
+  REFUTE: "border-l-warn",
+  CHANGESET: "border-l-info-accent",
+  APPROVE: "border-l-ok",
 };
 
 const TYPE_TEXT_CLASSES: Record<string, string> = {
-  PRAISE: "text-primary",
-  REFUTE: "text-amber-500",
-  CHANGESET: "text-blue-500",
-  APPROVE: "text-blue-500",
+  PRAISE: "text-ok",
+  REFUTE: "text-warn",
+  CHANGESET: "text-info-accent",
+  APPROVE: "text-ok",
 };
 
-const TYPE_ICONS: Record<string, string> = {
-  PRAISE: "👏",
-  REFUTE: "⚠️",
-  CHANGESET: "🔧",
-  APPROVE: "✅",
+const TYPE_ICONS: Record<string, LucideIcon> = {
+  PRAISE: ThumbsUp,
+  REFUTE: AlertTriangle,
+  CHANGESET: Wrench,
+  APPROVE: CheckCircle2,
 };
 
 function ReviewCard({ review }: any) {
@@ -122,51 +133,54 @@ function ReviewCard({ review }: any) {
 
   return (
     <div className={cn(
-      "bg-background rounded-lg p-4 border",
-      TYPE_BORDER_CLASSES[review.type] || "border-gray-500"
+      "bg-surface-1 rounded-lg p-4 border border-line border-l-2",
+      TYPE_BORDER_CLASSES[review.type] || "border-l-line-strong"
     )}>
       {/* Header */}
       <div className="flex justify-between mb-3">
         <div className="flex items-center gap-2">
-          <span className="text-xl">{TYPE_ICONS[review.type] || "📝"}</span>
-          <span className={cn("text-sm font-semibold", TYPE_TEXT_CLASSES[review.type] || "text-gray-500")}>
+          {(() => {
+            const TypeIcon = TYPE_ICONS[review.type] ?? FileText;
+            return <TypeIcon className={cn("h-4 w-4", TYPE_TEXT_CLASSES[review.type] || "text-ink-muted")} strokeWidth={1.75} />;
+          })()}
+          <span className={cn("text-[13px] font-semibold", TYPE_TEXT_CLASSES[review.type] || "text-ink-muted")}>
             {review.type}
           </span>
           {review.score && (
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs text-ink-muted">
               Score: {review.score}/10
             </span>
           )}
         </div>
-        <div className="text-xs text-muted-foreground">
+        <div className="text-xs text-ink-muted">
           {new Date(review._creationTime).toLocaleString()}
         </div>
       </div>
 
       {/* Summary */}
-      <div className="text-sm font-medium mb-2 text-foreground">
+      <div className="text-sm font-medium mb-2 text-ink">
         {review.summary}
       </div>
 
       {/* Details */}
       {review.details && (
-        <div className="text-[13px] text-muted-foreground mb-3">
+        <div className="text-[13px] text-ink-muted mb-3">
           {review.details}
         </div>
       )}
 
       {/* Changeset */}
       {review.changeset && (
-        <div className="bg-slate-950 rounded p-3 mb-3">
-          <div className="text-xs font-semibold mb-2 text-foreground">
+        <div className="bg-surface-2 border border-line rounded-md p-3 mb-3">
+          <div className="text-xs font-semibold mb-2 text-ink">
             Files Changed:
           </div>
           {review.changeset.files.map((file: any, idx: number) => (
-            <div key={idx} className="text-[11px] text-muted-foreground mb-1">
-              {file.action === "ADD" && "➕"}
-              {file.action === "MODIFY" && "✏️"}
-              {file.action === "DELETE" && "❌"}
-              {" "}{file.path}
+            <div key={idx} className="flex items-center gap-1.5 text-[11px] text-ink-muted mb-1">
+              {file.action === "ADD" && <Plus className="h-3 w-3" strokeWidth={1.75} />}
+              {file.action === "MODIFY" && <Pencil className="h-3 w-3" strokeWidth={1.75} />}
+              {file.action === "DELETE" && <Minus className="h-3 w-3" strokeWidth={1.75} />}
+              <span className="font-mono">{file.path}</span>
             </div>
           ))}
         </div>
@@ -174,18 +188,13 @@ function ReviewCard({ review }: any) {
 
       {/* Status Badge */}
       <div className="flex items-center gap-2">
-        <span className={cn(
-          "text-[11px] px-2 py-1 rounded font-semibold",
-          review.status === "PENDING"
-            ? "bg-orange-900 text-amber-400"
-            : "bg-primary/5 text-primary"
-        )}>
+        <StatusBadge tone={review.status === "PENDING" ? "warning" : "success"}>
           {review.status}
-        </span>
+        </StatusBadge>
         {review.severity && (
-          <span className="text-[11px] px-2 py-1 rounded bg-orange-900 text-amber-400">
+          <StatusBadge tone={review.severity === "CRITICAL" ? "error" : "warning"}>
             {review.severity}
-          </span>
+          </StatusBadge>
         )}
       </div>
 
@@ -193,7 +202,7 @@ function ReviewCard({ review }: any) {
       {review.status === "PENDING" && !responding && (
         <button
           onClick={() => setResponding(true)}
-          className="mt-3 px-3 py-2 bg-card border border-border rounded text-foreground text-xs cursor-pointer hover:bg-muted transition-colors"
+          className="mt-3 px-3 py-2 bg-transparent border border-line rounded-lg text-ink-secondary text-xs cursor-pointer hover:text-ink hover:border-line-strong transition-colors duration-150"
         >
           Respond
         </button>
@@ -205,24 +214,24 @@ function ReviewCard({ review }: any) {
             value={responseText}
             onChange={(e) => setResponseText(e.target.value)}
             placeholder="Your response..."
-            className="w-full min-h-[60px] p-2 bg-slate-950 border border-border rounded text-foreground text-xs mb-2 resize-y"
+            className="w-full min-h-[60px] p-2 bg-surface-1 border border-line rounded-lg text-ink text-xs mb-2 resize-y placeholder:text-ink-muted"
           />
           <div className="flex gap-2">
             <button
               onClick={() => handleRespond(true)}
-              className="px-3 py-1.5 bg-primary hover:bg-primary border-none rounded text-white text-xs cursor-pointer transition-colors"
+              className="px-3 py-1.5 bg-act text-act-ink border-none rounded-lg text-xs cursor-pointer transition-opacity duration-150 hover:opacity-90"
             >
               Accept
             </button>
             <button
               onClick={() => handleRespond(false)}
-              className="px-3 py-1.5 bg-red-500 hover:bg-red-600 border-none rounded text-white text-xs cursor-pointer transition-colors"
+              className="px-3 py-1.5 bg-err-soft text-err border border-transparent rounded-lg text-xs cursor-pointer transition-opacity duration-150 hover:opacity-90"
             >
               Reject
             </button>
             <button
               onClick={() => setResponding(false)}
-              className="px-3 py-1.5 bg-card border border-border rounded text-foreground text-xs cursor-pointer hover:bg-muted transition-colors"
+              className="px-3 py-1.5 bg-transparent border border-line rounded-lg text-ink-secondary text-xs cursor-pointer hover:text-ink hover:border-line-strong transition-colors duration-150"
             >
               Cancel
             </button>
@@ -232,7 +241,7 @@ function ReviewCard({ review }: any) {
 
       {/* Resolved Response */}
       {review.responseText && (
-        <div className="mt-3 p-2 bg-slate-950 rounded text-xs text-muted-foreground">
+        <div className="mt-3 p-2 bg-surface-2 border border-line rounded-md text-xs text-ink-muted">
           <strong>Response:</strong> {review.responseText}
         </div>
       )}
@@ -271,7 +280,7 @@ function CreateReviewModal({ taskId, projectId, onClose }: any) {
     }
   };
 
-  const inputClasses = "w-full p-2 bg-background border border-border rounded text-foreground text-sm";
+  const inputClasses = "w-full h-9 px-3 bg-surface-1 border border-line rounded-lg text-ink text-[13.5px] placeholder:text-ink-muted";
 
   return (
     <div
@@ -279,7 +288,7 @@ function CreateReviewModal({ taskId, projectId, onClose }: any) {
       onClick={onClose}
     >
       <div
-        className="bg-card rounded-xl max-w-[500px] w-full p-6 text-card-foreground"
+        className="bg-surface-3 border border-line rounded-xl shadow-[var(--shadow-elevation-2)] max-w-[500px] w-full p-6 text-ink"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="mb-5 text-lg font-semibold">Create Review</h3>
@@ -288,10 +297,10 @@ function CreateReviewModal({ taskId, projectId, onClose }: any) {
         <div className="mb-4">
           <label className="block text-sm mb-2">Review Type</label>
           <select value={type} onChange={(e) => setType(e.target.value as any)} className={inputClasses}>
-            <option value="PRAISE">👏 Praise</option>
-            <option value="REFUTE">⚠️ Refute</option>
-            <option value="CHANGESET">🔧 Changeset</option>
-            <option value="APPROVE">✅ Approve</option>
+            <option value="PRAISE">Praise</option>
+            <option value="REFUTE">Refute</option>
+            <option value="CHANGESET">Changeset</option>
+            <option value="APPROVE">Approve</option>
           </select>
         </div>
 
@@ -348,7 +357,7 @@ function CreateReviewModal({ taskId, projectId, onClose }: any) {
         <div className="flex gap-3 justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-2 bg-card border border-border rounded-md text-foreground text-sm cursor-pointer hover:bg-muted transition-colors"
+            className="h-9 px-3 bg-transparent border border-line rounded-lg text-ink-secondary text-[13px] font-medium cursor-pointer hover:text-ink hover:border-line-strong transition-colors duration-150"
           >
             Cancel
           </button>
@@ -356,10 +365,10 @@ function CreateReviewModal({ taskId, projectId, onClose }: any) {
             onClick={handleSubmit}
             disabled={!summary.trim()}
             className={cn(
-              "px-4 py-2 border-none rounded-md text-white text-sm transition-colors",
+              "h-9 px-3 border-none rounded-lg text-[13px] font-medium transition-opacity duration-150",
               summary.trim()
-                ? "bg-blue-500 hover:bg-blue-600 cursor-pointer"
-                : "bg-accent cursor-not-allowed"
+                ? "bg-act text-act-ink cursor-pointer hover:opacity-90"
+                : "bg-surface-2 text-ink-muted cursor-not-allowed"
             )}
           >
             Create Review

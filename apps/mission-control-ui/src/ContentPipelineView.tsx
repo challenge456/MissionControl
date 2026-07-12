@@ -2,15 +2,17 @@ import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id, Doc } from "../../../convex/_generated/dataModel";
-import { motion, AnimatePresence } from "framer-motion";
 import {
   Filter, LayoutGrid, Package, FileText, CheckCircle2, XCircle,
   Eye, X, Plus, Sparkles, BarChart3, Tag, Clock, User,
-  TrendingUp, Loader2, Send, ChevronDown,
+  TrendingUp, Loader2, Send, Mail, MessageSquare, Clapperboard,
+  Code, PenTool, File,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { SkeletonCard } from "@/components/ui/skeleton-card";
 import { PageHeader } from "./components/PageHeader";
+import { StatusBadge as FactoryStatusBadge } from "./components/factory/badges";
+import { MetricBlock } from "./components/factory/MetricBlock";
 import { cn } from "@/lib/utils";
 
 interface ContentPipelineViewProps {
@@ -24,33 +26,38 @@ type TabMode = "drops" | "pipeline" | "metrics";
 // ---------------------------------------------------------------------------
 
 const PIPELINE_COLUMNS = [
-  { id: "idea",      label: "Ideas",      color: "border-t-zinc-400",   bg: "bg-zinc-500/10"    },
-  { id: "drafting",  label: "Drafting",   color: "border-t-sky-500",    bg: "bg-sky-500/10"     },
-  { id: "review",    label: "Review",     color: "border-t-amber-500",  bg: "bg-amber-500/10"   },
-  { id: "published", label: "Published",  color: "border-t-primary",bg: "bg-primary/10" },
+  { id: "idea",      label: "Ideas"     },
+  { id: "drafting",  label: "Drafting"  },
+  { id: "review",    label: "Review"    },
+  { id: "published", label: "Published" },
 ];
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; dot: string }> = {
-  DRAFT:     { label: "Draft",     color: "text-zinc-400",     bg: "bg-zinc-500/10",    dot: "bg-zinc-500"    },
-  SUBMITTED: { label: "Submitted", color: "text-sky-400",      bg: "bg-sky-500/10",     dot: "bg-sky-500"     },
-  APPROVED:  { label: "Approved",  color: "text-primary",  bg: "bg-primary/10", dot: "bg-primary" },
-  REJECTED:  { label: "Rejected",  color: "text-destructive",  bg: "bg-destructive/10", dot: "bg-destructive" },
-  PUBLISHED: { label: "Published", color: "text-primary",      bg: "bg-primary/10",     dot: "bg-primary"     },
+const STATUS_CONFIG: Record<string, { label: string; tone: "neutral" | "success" | "warning" | "error" | "info"; color: string; bar: string }> = {
+  DRAFT:     { label: "Draft",     tone: "neutral", color: "text-ink-muted",   bar: "bg-line-strong"  },
+  SUBMITTED: { label: "Submitted", tone: "info",    color: "text-info-accent", bar: "bg-info-accent"  },
+  APPROVED:  { label: "Approved",  tone: "success", color: "text-ok",          bar: "bg-ok"           },
+  REJECTED:  { label: "Rejected",  tone: "error",   color: "text-err",         bar: "bg-err"          },
+  PUBLISHED: { label: "Published", tone: "success", color: "text-ok",          bar: "bg-ok"           },
 };
 
-const TYPE_ICONS: Record<string, string> = {
-  BLOG_POST:    "📝",
-  SOCIAL_POST:  "📱",
-  EMAIL_DRAFT:  "✉️",
-  SCRIPT:       "🎬",
-  REPORT:       "📊",
-  CODE_SNIPPET: "💻",
-  DESIGN:       "🎨",
-  OTHER:        "📄",
+const TYPE_ICONS: Record<string, LucideIcon> = {
+  BLOG_POST:    FileText,
+  SOCIAL_POST:  MessageSquare,
+  EMAIL_DRAFT:  Mail,
+  SCRIPT:       Clapperboard,
+  REPORT:       BarChart3,
+  CODE_SNIPPET: Code,
+  DESIGN:       PenTool,
+  OTHER:        File,
 };
 
 const CONTENT_TYPES = ["BLOG_POST", "SOCIAL_POST", "EMAIL_DRAFT", "SCRIPT", "REPORT", "CODE_SNIPPET", "DESIGN", "OTHER"];
 const STATUSES = ["DRAFT", "SUBMITTED", "APPROVED", "REJECTED", "PUBLISHED"];
+
+function TypeIcon({ type, size = 15 }: { type: string; size?: number }) {
+  const Icon = TYPE_ICONS[type] ?? File;
+  return <Icon size={size} strokeWidth={1.6} className="shrink-0 text-ink-muted" aria-hidden />;
+}
 
 // ---------------------------------------------------------------------------
 // STATUS BADGE
@@ -58,27 +65,17 @@ const STATUSES = ["DRAFT", "SUBMITTED", "APPROVED", "REJECTED", "PUBLISHED"];
 
 function StatusBadge({ status }: { status: string }) {
   const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.DRAFT;
-  return (
-    <span className={cn("inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full uppercase tracking-wide", cfg.color, cfg.bg)}>
-      <span className={cn("h-1.5 w-1.5 rounded-full", cfg.dot)} />
-      {cfg.label}
-    </span>
-  );
+  return <FactoryStatusBadge tone={cfg.tone}>{cfg.label}</FactoryStatusBadge>;
 }
 
 // ---------------------------------------------------------------------------
 // STAT CARD
 // ---------------------------------------------------------------------------
 
-function StatCard({ label, value, icon, sub }: { label: string; value: number | string; icon: string; sub?: string }) {
+function StatCard({ label, value, sub }: { label: string; value: number | string; sub?: string }) {
   return (
-    <Card className="p-4 flex items-start gap-3">
-      <span className="text-2xl">{icon}</span>
-      <div>
-        <p className="text-lg font-bold text-foreground leading-none">{value}</p>
-        <p className="text-xs font-medium text-foreground mt-0.5">{label}</p>
-        {sub && <p className="text-[10px] text-muted-foreground mt-0.5">{sub}</p>}
-      </div>
+    <Card className="p-4">
+      <MetricBlock label={label} value={value} detail={sub} />
     </Card>
   );
 }
@@ -95,46 +92,45 @@ function ContentDropCard({
   onSelect: (id: Id<"contentDrops">) => void;
 }) {
   const agent = drop.agentId ? agents.find((a) => a._id === drop.agentId) : null;
-  const typeIcon = TYPE_ICONS[drop.contentType] ?? "📄";
 
   return (
     <Card
-      className="p-4 cursor-pointer hover:shadow-md hover:border-primary/25 transition-all group flex flex-col gap-3"
+      className="group flex cursor-pointer flex-col gap-3 p-4"
       onClick={() => onSelect(drop._id)}
     >
       {/* Header row */}
       <div className="flex items-start justify-between gap-2">
-        <div className="flex items-start gap-2 flex-1 min-w-0">
-          <span className="text-lg shrink-0 mt-0.5">{typeIcon}</span>
-          <p className="text-xs font-semibold text-foreground leading-relaxed line-clamp-2 flex-1">{drop.title}</p>
+        <div className="flex min-w-0 flex-1 items-start gap-2">
+          <span className="mt-0.5"><TypeIcon type={drop.contentType} /></span>
+          <p className="line-clamp-2 flex-1 text-[13.5px] font-medium leading-relaxed text-ink">{drop.title}</p>
         </div>
         <StatusBadge status={drop.status} />
       </div>
 
       {/* Summary */}
       {drop.summary && (
-        <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2">{drop.summary}</p>
+        <p className="line-clamp-2 text-[12.5px] leading-relaxed text-ink-secondary">{drop.summary}</p>
       )}
 
       {/* Tags */}
       {drop.tags && drop.tags.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {drop.tags.map((tag) => (
-            <span key={tag} className="text-[9px] uppercase tracking-wide font-semibold bg-muted px-1.5 py-0.5 rounded text-muted-foreground">
+            <FactoryStatusBadge key={tag} tone="neutral">
               {tag}
-            </span>
+            </FactoryStatusBadge>
           ))}
         </div>
       )}
 
       {/* Footer */}
-      <div className="flex items-center justify-between text-[10px] text-muted-foreground border-t border-border/50 pt-2">
+      <div className="flex items-center justify-between border-t border-line pt-2 text-[11.5px] text-ink-muted">
         <div className="flex items-center gap-2">
-          <span className="uppercase tracking-wide">{drop.contentType.replace(/_/g, " ")}</span>
+          <span>{drop.contentType.replace(/_/g, " ")}</span>
           {agent && (
             <>
               <span>·</span>
-              <span>{agent.emoji ?? "🤖"} {agent.name}</span>
+              <span>{agent.emoji ? `${agent.emoji} ` : ""}{agent.name}</span>
             </>
           )}
         </div>
@@ -163,7 +159,13 @@ function ContentDropDetail({
   if (!drop) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-        <Card className="w-full max-w-2xl p-6"><SkeletonCard lines={4} /></Card>
+        <div className="w-full max-w-2xl rounded-xl border border-line bg-surface-3 p-6 shadow-[var(--shadow-elevation-2)]">
+          <div className="space-y-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-3.5 animate-pulse rounded bg-surface-2" style={{ width: `${90 - i * 10}%` }} />
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
@@ -183,70 +185,67 @@ function ContentDropDetail({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
-      <motion.div
-        initial={{ opacity: 0, scale: 0.96, y: 8 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.96 }}
-        className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-xl"
+      <div
+        className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <Card className="p-6 space-y-4">
+        <div className="space-y-4 rounded-xl border border-line bg-surface-3 p-6 shadow-[var(--shadow-elevation-2)]">
           {/* Header */}
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-xl">{TYPE_ICONS[drop.contentType] ?? "📄"}</span>
-                <h2 className="text-sm font-semibold text-foreground leading-snug">{drop.title}</h2>
+              <div className="mb-1 flex items-center gap-2">
+                <TypeIcon type={drop.contentType} />
+                <h2 className="text-[15px] font-semibold leading-snug text-ink">{drop.title}</h2>
               </div>
-              <div className="flex items-center gap-2 text-[10px] text-muted-foreground flex-wrap">
-                <span className="uppercase tracking-wide">{drop.contentType.replace(/_/g, " ")}</span>
-                {agent && <><span>·</span><span>{agent.emoji ?? "🤖"} {agent.name}</span></>}
+              <div className="flex flex-wrap items-center gap-2 text-[11.5px] text-ink-muted">
+                <span>{drop.contentType.replace(/_/g, " ")}</span>
+                {agent && <><span>·</span><span>{agent.emoji ? `${agent.emoji} ` : ""}{agent.name}</span></>}
                 <span>·</span>
                 <StatusBadge status={drop.status} />
               </div>
             </div>
-            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted transition-colors shrink-0">
-              <X className="h-4 w-4 text-muted-foreground" />
+            <button onClick={onClose} aria-label="Close" className="shrink-0 rounded-lg p-1.5 transition-colors duration-150 hover:bg-surface-2">
+              <X size={15} strokeWidth={1.7} className="text-ink-muted" />
             </button>
           </div>
 
           {/* Summary */}
           {drop.summary && (
-            <p className="text-xs text-muted-foreground border-l-2 border-border pl-3">{drop.summary}</p>
+            <p className="border-l-2 border-line pl-3 text-[12.5px] text-ink-secondary">{drop.summary}</p>
           )}
 
           {/* Content */}
-          <div className="bg-muted/40 rounded-xl p-4 max-h-[320px] overflow-y-auto border border-border">
-            <pre className="text-xs text-foreground/80 whitespace-pre-wrap font-mono leading-relaxed">{drop.content}</pre>
+          <div className="max-h-[320px] overflow-y-auto rounded-xl border border-line bg-surface-2 p-4">
+            <pre className="whitespace-pre-wrap font-mono text-[12px] leading-relaxed text-ink-secondary">{drop.content}</pre>
           </div>
 
           {/* Tags */}
           {drop.tags && drop.tags.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {drop.tags.map((tag) => (
-                <span key={tag} className="text-[10px] uppercase tracking-wide font-semibold bg-muted px-2 py-0.5 rounded-full text-muted-foreground border border-border">
+                <FactoryStatusBadge key={tag} tone="neutral">
                   {tag}
-                </span>
+                </FactoryStatusBadge>
               ))}
             </div>
           )}
 
           {/* Review note display */}
           {drop.reviewNote && (
-            <div className="text-xs text-muted-foreground border-l-2 border-amber-500/50 pl-3 py-1 bg-amber-500/5 rounded-r">
-              <span className="font-semibold text-amber-500">Review note:</span> {drop.reviewNote}
+            <div className="rounded-lg bg-warn-soft px-3 py-2 text-[12.5px] text-warn">
+              <span className="font-medium">Review note:</span> {drop.reviewNote}
             </div>
           )}
 
           {/* Metadata */}
-          <div className="grid grid-cols-2 gap-3 text-[10px] text-muted-foreground border-t border-border pt-3">
+          <div className="grid grid-cols-2 gap-3 border-t border-line pt-3 text-[11.5px] text-ink-muted">
             <div className="flex items-center gap-1.5">
-              <Clock className="h-3 w-3" />
+              <Clock size={12} strokeWidth={1.7} aria-hidden />
               Created {new Date(drop._creationTime).toLocaleString()}
             </div>
             {drop.reviewedAt && (
               <div className="flex items-center gap-1.5">
-                <User className="h-3 w-3" />
+                <User size={12} strokeWidth={1.7} aria-hidden />
                 Reviewed by {drop.reviewedBy} · {new Date(drop.reviewedAt).toLocaleDateString()}
               </div>
             )}
@@ -254,19 +253,19 @@ function ContentDropDetail({
 
           {/* Review actions */}
           {canReview && (
-            <div className="border-t border-border pt-4 space-y-3">
+            <div className="space-y-3 border-t border-line pt-4">
               <input
                 type="text"
                 value={reviewNote}
                 onChange={(e) => setReviewNote(e.target.value)}
                 placeholder="Optional review note…"
-                className="w-full px-3 py-2 rounded-lg border border-border bg-muted/40 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                className="h-9 w-full rounded-lg border border-line bg-surface-1 px-3 text-[13.5px] text-ink placeholder:text-ink-muted"
               />
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => handleAction("APPROVED")}
                   disabled={loading !== null}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-primary hover:bg-primary/85 transition-colors disabled:opacity-50"
+                  className="flex h-9 items-center gap-1.5 rounded-lg bg-act px-3 text-[13px] font-medium text-act-ink transition-opacity duration-150 hover:opacity-90 disabled:opacity-50"
                 >
                   {loading === "APPROVED" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
                   Approve
@@ -274,7 +273,7 @@ function ContentDropDetail({
                 <button
                   onClick={() => handleAction("REJECTED")}
                   disabled={loading !== null}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-red-600 hover:bg-red-700 transition-colors disabled:opacity-50"
+                  className="flex h-9 items-center gap-1.5 rounded-lg bg-err-soft px-3 text-[13px] font-medium text-err transition-opacity duration-150 hover:opacity-90 disabled:opacity-50"
                 >
                   {loading === "REJECTED" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5" />}
                   Reject
@@ -282,7 +281,7 @@ function ContentDropDetail({
                 <button
                   onClick={() => handleAction("PUBLISHED")}
                   disabled={loading !== null}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-muted-foreground bg-muted hover:bg-muted/80 border border-border transition-colors disabled:opacity-50"
+                  className="flex h-9 items-center gap-1.5 rounded-lg border border-line px-3 text-[13px] font-medium text-ink-secondary transition-colors duration-150 hover:border-line-strong hover:text-ink disabled:opacity-50"
                 >
                   {loading === "PUBLISHED" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />}
                   Publish
@@ -290,8 +289,8 @@ function ContentDropDetail({
               </div>
             </div>
           )}
-        </Card>
-      </motion.div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -335,46 +334,44 @@ function CreateDropForm({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
-      <motion.div
-        initial={{ opacity: 0, scale: 0.96, y: 8 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
+      <div
         className="w-full max-w-xl rounded-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <Card className="p-6 space-y-4">
+        <div className="space-y-4 rounded-xl border border-line bg-surface-3 p-6 shadow-[var(--shadow-elevation-2)]">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-foreground">New Content Drop</h2>
-            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted"><X className="h-4 w-4 text-muted-foreground" /></button>
+            <h2 className="text-[15px] font-semibold text-ink">New Content Drop</h2>
+            <button onClick={onClose} aria-label="Close" className="rounded-lg p-1.5 transition-colors duration-150 hover:bg-surface-2"><X size={15} strokeWidth={1.7} className="text-ink-muted" /></button>
           </div>
           <input
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Title"
-            className="w-full px-3 py-2 rounded-lg border border-border bg-muted/40 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+            className="h-9 w-full rounded-lg border border-line bg-surface-1 px-3 text-[13.5px] text-ink placeholder:text-ink-muted"
           />
           <input
             type="text"
             value={summary}
             onChange={(e) => setSummary(e.target.value)}
             placeholder="Summary (optional)"
-            className="w-full px-3 py-2 rounded-lg border border-border bg-muted/40 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+            className="h-9 w-full rounded-lg border border-line bg-surface-1 px-3 text-[13.5px] text-ink placeholder:text-ink-muted"
           />
           <div className="flex gap-3">
             <select
               value={contentType}
               onChange={(e) => setContentType(e.target.value)}
-              className="flex-1 px-3 py-2 rounded-lg border border-border bg-muted/40 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+              className="h-9 flex-1 rounded-lg border border-line bg-surface-1 px-3 text-[13.5px] text-ink"
             >
-              {CONTENT_TYPES.map((t) => <option key={t} value={t}>{TYPE_ICONS[t]} {t.replace(/_/g, " ")}</option>)}
+              {CONTENT_TYPES.map((t) => <option key={t} value={t}>{t.replace(/_/g, " ")}</option>)}
             </select>
             <select
               value={agentId}
               onChange={(e) => setAgentId(e.target.value)}
-              className="flex-1 px-3 py-2 rounded-lg border border-border bg-muted/40 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+              className="h-9 flex-1 rounded-lg border border-line bg-surface-1 px-3 text-[13.5px] text-ink"
             >
               <option value="">No agent</option>
-              {agents.map((a) => <option key={a._id} value={a._id}>{a.emoji ?? "🤖"} {a.name}</option>)}
+              {agents.map((a) => <option key={a._id} value={a._id}>{a.emoji ? `${a.emoji} ` : ""}{a.name}</option>)}
             </select>
           </div>
           <textarea
@@ -382,23 +379,23 @@ function CreateDropForm({
             onChange={(e) => setContent(e.target.value)}
             placeholder="Content body…"
             rows={6}
-            className="w-full px-3 py-2.5 rounded-lg border border-border bg-muted/40 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none font-mono"
+            className="w-full resize-none rounded-lg border border-line bg-surface-1 px-3 py-2.5 font-mono text-[12px] text-ink placeholder:text-ink-muted"
           />
           <div className="flex justify-end gap-2">
-            <button onClick={onClose} className="px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground bg-muted hover:bg-muted/80 border border-border transition-colors">
+            <button onClick={onClose} className="flex h-9 items-center rounded-lg border border-line px-3 text-[13px] font-medium text-ink-secondary transition-colors duration-150 hover:border-line-strong hover:text-ink">
               Cancel
             </button>
             <button
               onClick={handleSubmit}
               disabled={!title.trim() || !content.trim() || loading}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-all"
+              className="flex h-9 items-center gap-1.5 rounded-lg bg-act px-3 text-[13px] font-medium text-act-ink transition-opacity duration-150 hover:opacity-90 disabled:opacity-40"
             >
               {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
               Submit Drop
             </button>
           </div>
-        </Card>
-      </motion.div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -411,7 +408,7 @@ function MetricsTab({ projectId }: { projectId: Id<"projects"> | null }) {
   const stats = useQuery(api.contentDrops.getStats, projectId ? { projectId } : {});
   const drops = useQuery(api.contentDrops.list, projectId ? { projectId } : {});
 
-  if (!stats || !drops) return <div className="flex items-center justify-center py-12 text-muted-foreground text-xs">Loading metrics…</div>;
+  if (!stats || !drops) return <div className="flex items-center justify-center py-12 text-[12.5px] text-ink-muted">Loading metrics…</div>;
 
   const approvalRate = stats.byStatus.SUBMITTED
     ? Math.round(((stats.byStatus.APPROVED ?? 0) / ((stats.byStatus.APPROVED ?? 0) + (stats.byStatus.REJECTED ?? 0) || 1)) * 100)
@@ -422,20 +419,20 @@ function MetricsTab({ projectId }: { projectId: Id<"projects"> | null }) {
   const maxCount = Math.max(...typeEntries.map((e) => e[1]), 1);
 
   return (
-    <div className="p-6 space-y-6 max-w-4xl mx-auto">
+    <div className="mx-auto max-w-4xl space-y-6 py-6">
       {/* KPI row */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <StatCard label="Total Drops"    value={stats.total}    icon="📦" sub="All time" />
-        <StatCard label="Published"      value={stats.byStatus.PUBLISHED ?? 0} icon="🚀" sub="Live content" />
-        <StatCard label="Approval Rate"  value={`${approvalRate}%`} icon="✅" sub="Approved / reviewed" />
-        <StatCard label="Pending Review" value={stats.byStatus.SUBMITTED ?? 0} icon="⏳" sub="Awaiting decision" />
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <StatCard label="Total Drops"    value={stats.total}    sub="All time" />
+        <StatCard label="Published"      value={stats.byStatus.PUBLISHED ?? 0} sub="Live content" />
+        <StatCard label="Approval Rate"  value={`${approvalRate}%`} sub="Approved / reviewed" />
+        <StatCard label="Pending Review" value={stats.byStatus.SUBMITTED ?? 0} sub="Awaiting decision" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Status breakdown */}
         <Card className="p-5">
-          <h3 className="text-xs font-semibold text-foreground mb-4 flex items-center gap-2">
-            <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" /> Status Breakdown
+          <h3 className="mb-4 flex items-center gap-2 text-[15px] font-semibold text-ink">
+            <BarChart3 size={15} strokeWidth={1.7} className="text-ink-muted" aria-hidden /> Status Breakdown
           </h3>
           <div className="space-y-2.5">
             {statusEntries.map(([status, count]) => {
@@ -443,16 +440,16 @@ function MetricsTab({ projectId }: { projectId: Id<"projects"> | null }) {
               const pct = Math.round((count / (stats.total || 1)) * 100);
               return (
                 <div key={status} className="flex items-center gap-3">
-                  <span className={cn("text-[10px] font-semibold w-20 shrink-0", cfg?.color ?? "text-muted-foreground")}>
-                    {status}
+                  <span className={cn("w-20 shrink-0 text-[11.5px] font-medium", cfg?.color ?? "text-ink-muted")}>
+                    {cfg?.label ?? status}
                   </span>
-                  <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-2">
                     <div
-                      className={cn("h-full rounded-full transition-all", cfg?.dot ?? "bg-muted-foreground")}
+                      className={cn("h-full rounded-full transition-all duration-150", cfg?.bar ?? "bg-line-strong")}
                       style={{ width: `${pct}%` }}
                     />
                   </div>
-                  <span className="text-[10px] font-bold text-foreground w-6 text-right">{count}</span>
+                  <span className="w-6 text-right font-mono text-[11.5px] text-ink">{count}</span>
                 </div>
               );
             })}
@@ -461,21 +458,21 @@ function MetricsTab({ projectId }: { projectId: Id<"projects"> | null }) {
 
         {/* Content type breakdown */}
         <Card className="p-5">
-          <h3 className="text-xs font-semibold text-foreground mb-4 flex items-center gap-2">
-            <Tag className="h-3.5 w-3.5 text-muted-foreground" /> Content Types
+          <h3 className="mb-4 flex items-center gap-2 text-[15px] font-semibold text-ink">
+            <Tag size={15} strokeWidth={1.7} className="text-ink-muted" aria-hidden /> Content Types
           </h3>
           <div className="space-y-2.5">
             {typeEntries.map(([type, count]) => (
               <div key={type} className="flex items-center gap-3">
-                <span className="text-sm w-6 text-center shrink-0">{TYPE_ICONS[type] ?? "📄"}</span>
-                <span className="text-[10px] text-muted-foreground flex-1 truncate">{type.replace(/_/g, " ")}</span>
-                <div className="w-24 h-2 rounded-full bg-muted overflow-hidden">
+                <TypeIcon type={type} size={14} />
+                <span className="flex-1 truncate text-[11.5px] text-ink-secondary">{type.replace(/_/g, " ")}</span>
+                <div className="h-2 w-24 overflow-hidden rounded-full bg-surface-2">
                   <div
-                    className="h-full rounded-full bg-primary transition-all"
+                    className="h-full rounded-full bg-ok transition-all duration-150"
                     style={{ width: `${Math.round((count / maxCount) * 100)}%` }}
                   />
                 </div>
-                <span className="text-[10px] font-bold text-foreground w-4 text-right">{count}</span>
+                <span className="w-4 text-right font-mono text-[11.5px] text-ink">{count}</span>
               </div>
             ))}
           </div>
@@ -484,19 +481,19 @@ function MetricsTab({ projectId }: { projectId: Id<"projects"> | null }) {
 
       {/* Recent published */}
       <Card className="p-5">
-        <h3 className="text-xs font-semibold text-foreground mb-4 flex items-center gap-2">
-          <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" /> Recent Published
+        <h3 className="mb-4 flex items-center gap-2 text-[15px] font-semibold text-ink">
+          <TrendingUp size={15} strokeWidth={1.7} className="text-ink-muted" aria-hidden /> Recent Published
         </h3>
         <div className="space-y-2">
           {drops.filter((d) => d.status === "PUBLISHED").slice(0, 5).map((d) => (
-            <div key={d._id} className="flex items-center gap-3 text-xs py-2 border-b border-border/40 last:border-0">
-              <span className="text-base">{TYPE_ICONS[d.contentType] ?? "📄"}</span>
-              <p className="flex-1 text-foreground truncate">{d.title}</p>
-              <span className="text-[10px] text-muted-foreground shrink-0">{new Date(d._creationTime).toLocaleDateString()}</span>
+            <div key={d._id} className="flex items-center gap-3 border-b border-line py-2 text-[13.5px] last:border-0">
+              <TypeIcon type={d.contentType} size={14} />
+              <p className="flex-1 truncate text-ink">{d.title}</p>
+              <span className="shrink-0 text-[11.5px] text-ink-muted">{new Date(d._creationTime).toLocaleDateString()}</span>
             </div>
           ))}
           {drops.filter((d) => d.status === "PUBLISHED").length === 0 && (
-            <p className="text-xs text-muted-foreground text-center py-4">No published content yet</p>
+            <p className="py-4 text-center text-[12.5px] text-ink-muted">No published content yet</p>
           )}
         </div>
       </Card>
@@ -527,9 +524,19 @@ export function ContentPipelineView({ projectId }: ContentPipelineViewProps) {
 
   if (isLoading) {
     return (
-      <main className="mc-page">
-        <div className="mc-page-body grid grid-cols-4 gap-4">
-          {Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} lines={3} />)}
+      <main className="flex-1 overflow-auto bg-app">
+        <div className="mx-auto grid max-w-[1200px] grid-cols-4 gap-4 px-6 py-6">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="rounded-xl border border-line bg-surface-1 p-5">
+              <div className="mb-4 h-3 w-24 animate-pulse rounded bg-surface-2" />
+              <div className="mb-6 h-7 w-16 animate-pulse rounded bg-surface-2" />
+              <div className="space-y-3">
+                {Array.from({ length: 3 }).map((_, j) => (
+                  <div key={j} className="h-2 animate-pulse rounded bg-surface-2" style={{ width: `${90 - j * 10}%` }} />
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       </main>
     );
@@ -555,7 +562,7 @@ export function ContentPipelineView({ projectId }: ContentPipelineViewProps) {
   };
 
   return (
-    <main className="mc-page flex flex-col overflow-hidden">
+    <main className="flex flex-1 flex-col overflow-hidden bg-app">
       <PageHeader
         title="Content Pipeline"
         description={
@@ -565,12 +572,12 @@ export function ContentPipelineView({ projectId }: ContentPipelineViewProps) {
         }
         eyebrow="Content"
         actions={
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex flex-wrap items-center gap-2">
           {contentDrops.length === 0 && (
             <button
               onClick={handleSeed}
               disabled={seeding}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 transition-colors"
+              className="flex h-9 items-center gap-1.5 rounded-lg border border-line px-3 text-[13px] font-medium text-ink-secondary transition-colors duration-150 hover:border-line-strong hover:text-ink disabled:opacity-50"
             >
               {seeding ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
               Seed Sample Data
@@ -580,13 +587,13 @@ export function ContentPipelineView({ projectId }: ContentPipelineViewProps) {
           {/* Create button */}
           <button
             onClick={() => setShowCreate(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-primary-foreground bg-primary hover:bg-primary/90 transition-colors"
+            className="flex h-9 items-center gap-1.5 rounded-lg bg-act px-3 text-[13px] font-medium text-act-ink transition-opacity duration-150 hover:opacity-90"
           >
             <Plus className="h-3 w-3" /> New Drop
           </button>
 
           {/* Tab switcher */}
-          <div className="flex rounded-md border border-border overflow-hidden">
+          <div className="flex rounded-lg border border-line p-0.5" role="tablist">
             {([
               { id: "drops",   label: "Drops",   icon: Package },
               { id: "pipeline",label: "Pipeline", icon: LayoutGrid },
@@ -594,16 +601,18 @@ export function ContentPipelineView({ projectId }: ContentPipelineViewProps) {
             ] as { id: TabMode; label: string; icon: React.ComponentType<{ className?: string }> }[]).map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
+                role="tab"
+                aria-selected={tab === id}
                 onClick={() => setTab(id)}
                 className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors",
-                  tab === id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12.5px] transition-colors duration-150",
+                  tab === id ? "bg-surface-2 text-ink" : "text-ink-muted hover:text-ink-secondary"
                 )}
               >
                 <Icon className="h-3 w-3" />
                 {label}
                 {id === "drops" && contentDrops.length > 0 && (
-                  <span className={cn("text-[9px] font-bold px-1 rounded-full", tab === id ? "bg-white/20" : "bg-muted-foreground/20")}>{contentDrops.length}</span>
+                  <span className="font-mono text-[11.5px] text-ink-muted">{contentDrops.length}</span>
                 )}
               </button>
             ))}
@@ -612,68 +621,80 @@ export function ContentPipelineView({ projectId }: ContentPipelineViewProps) {
       }
       />
 
-      <div className="mc-page-body mc-page-stack">
+      <div className="mx-auto flex min-h-0 w-full max-w-[1200px] flex-1 flex-col gap-6 px-6 py-6">
       <div className="grid gap-4 md:grid-cols-4">
         <Card className="p-4">
-          <div className="mc-kicker">Drops</div>
-          <div className="mt-2 text-3xl font-semibold text-foreground">{contentDrops.length}</div>
-          <div className="mt-1 text-xs text-muted-foreground">Content units tracked end to end</div>
+          <MetricBlock
+            label="Drops"
+            value={contentDrops.length}
+            detail="Content units tracked end to end"
+          />
         </Card>
         <Card className="p-4">
-          <div className="mc-kicker">Published</div>
-          <div className="mt-2 text-3xl font-semibold text-emerald-100">{stats?.byStatus.PUBLISHED ?? 0}</div>
-          <div className="mt-1 text-xs text-muted-foreground">Drops that already cleared the pipeline</div>
+          <MetricBlock
+            label="Published"
+            value={stats?.byStatus.PUBLISHED ?? 0}
+            detail="Drops that already cleared the pipeline"
+          />
         </Card>
         <Card className="p-4">
-          <div className="mc-kicker">Pending review</div>
-          <div className="mt-2 text-3xl font-semibold text-amber-100">{stats?.byStatus.SUBMITTED ?? 0}</div>
-          <div className="mt-1 text-xs text-muted-foreground">Items still waiting on editorial or operator review</div>
+          <MetricBlock
+            label="Pending review"
+            value={stats?.byStatus.SUBMITTED ?? 0}
+            detail="Items still waiting on editorial or operator review"
+          />
         </Card>
         <Card className="p-4">
-          <div className="mc-kicker">Pipeline tasks</div>
-          <div className="mt-2 text-3xl font-semibold text-cyan-100">{captures.length}</div>
-          <div className="mt-1 text-xs text-muted-foreground">Upstream work shaping the publishing queue</div>
+          <MetricBlock
+            label="Pipeline tasks"
+            value={captures.length}
+            detail="Upstream work shaping the publishing queue"
+          />
         </Card>
       </div>
 
       {/* Filters (Drops tab only) */}
       {tab === "drops" && contentDrops.length > 0 && (
-        <div className="flex items-center gap-2 px-6 py-2.5 border-b border-border/30 bg-muted/20 flex-wrap">
-          <Filter className="h-3 w-3 text-muted-foreground shrink-0" />
-          <div className="flex gap-1.5 flex-wrap">
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface-1 px-4 py-2.5">
+          <Filter size={14} strokeWidth={1.7} className="shrink-0 text-ink-muted" aria-hidden />
+          <div className="flex flex-wrap gap-1.5">
             {["ALL", ...STATUSES].map((s) => (
               <button
                 key={s}
                 onClick={() => setStatusFilter(s)}
                 className={cn(
-                  "text-[10px] font-semibold px-2 py-0.5 rounded-full transition-colors",
-                  statusFilter === s ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
+                  "rounded-md border px-2 py-0.5 text-[11.5px] font-medium transition-colors duration-150",
+                  statusFilter === s
+                    ? "border-line bg-surface-2 text-ink"
+                    : "border-transparent text-ink-muted hover:text-ink-secondary"
                 )}
               >
-                {s === "ALL" ? "All" : s}
+                {s === "ALL" ? "All" : STATUS_CONFIG[s]?.label ?? s}
                 {s !== "ALL" && (stats?.byStatus[s] ?? 0) > 0 && (
-                  <span className="ml-1 opacity-60">{stats?.byStatus[s]}</span>
+                  <span className="ml-1 font-mono text-ink-muted">{stats?.byStatus[s]}</span>
                 )}
               </button>
             ))}
           </div>
-          <div className="w-px h-4 bg-border mx-1" />
-          <div className="flex gap-1.5 flex-wrap">
+          <div className="mx-1 h-4 w-px bg-line" />
+          <div className="flex flex-wrap gap-1.5">
             {["ALL", ...CONTENT_TYPES].map((t) => (
               <button
                 key={t}
                 onClick={() => setTypeFilter(t)}
                 className={cn(
-                  "text-[10px] font-semibold px-2 py-0.5 rounded-full transition-colors",
-                  typeFilter === t ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
+                  "rounded-md border px-2 py-0.5 text-[11.5px] font-medium transition-colors duration-150",
+                  typeFilter === t
+                    ? "border-line bg-surface-2 text-ink"
+                    : "border-transparent text-ink-muted hover:text-ink-secondary"
                 )}
               >
-                {t === "ALL" ? "All Types" : `${TYPE_ICONS[t]} ${t.replace(/_/g, " ")}`}
+                {t === "ALL" ? "All Types" : t.replace(/_/g, " ")}
               </button>
             ))}
           </div>
           {filteredDrops.length !== contentDrops.length && (
-            <span className="text-[10px] text-muted-foreground ml-auto">
+            <span className="ml-auto text-[11.5px] text-ink-muted">
               Showing {filteredDrops.length} of {contentDrops.length}
             </span>
           )}
@@ -685,11 +706,11 @@ export function ContentPipelineView({ projectId }: ContentPipelineViewProps) {
         <div className="flex-1 overflow-y-auto">
           {filteredDrops.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
-              <Package className="h-12 w-12 text-muted-foreground/20 mb-4" />
-              <p className="text-sm font-semibold text-foreground mb-1">
+              <Package size={40} strokeWidth={1.6} className="mb-4 text-ink-muted" aria-hidden />
+              <p className="mb-1 text-[15px] font-semibold text-ink">
                 {contentDrops.length === 0 ? "No content drops yet" : "No drops match your filters"}
               </p>
-              <p className="text-xs text-muted-foreground mb-6 max-w-xs">
+              <p className="mb-6 max-w-xs text-[12.5px] text-ink-muted">
                 {contentDrops.length === 0
                   ? "Seed sample data to get started, or create your first content drop."
                   : "Try adjusting the status or type filter."}
@@ -699,14 +720,14 @@ export function ContentPipelineView({ projectId }: ContentPipelineViewProps) {
                   <button
                     onClick={handleSeed}
                     disabled={seeding}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 transition-colors"
+                    className="flex h-9 items-center gap-1.5 rounded-lg border border-line px-3 text-[13px] font-medium text-ink-secondary transition-colors duration-150 hover:border-line-strong hover:text-ink disabled:opacity-50"
                   >
                     {seeding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
                     Seed Sample Data
                   </button>
                   <button
                     onClick={() => setShowCreate(true)}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                    className="flex h-9 items-center gap-1.5 rounded-lg bg-act px-3 text-[13px] font-medium text-act-ink transition-opacity duration-150 hover:opacity-90"
                   >
                     <Plus className="h-3.5 w-3.5" /> Create First Drop
                   </button>
@@ -714,19 +735,10 @@ export function ContentPipelineView({ projectId }: ContentPipelineViewProps) {
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <AnimatePresence>
-                {filteredDrops.map((drop, i) => (
-                  <motion.div
-                    key={drop._id}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.04 }}
-                  >
-                    <ContentDropCard drop={drop} agents={agents} onSelect={setSelectedDrop} />
-                  </motion.div>
-                ))}
-              </AnimatePresence>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {filteredDrops.map((drop) => (
+                <ContentDropCard key={drop._id} drop={drop} agents={agents} onSelect={setSelectedDrop} />
+              ))}
             </div>
           )}
         </div>
@@ -734,29 +746,26 @@ export function ContentPipelineView({ projectId }: ContentPipelineViewProps) {
 
       {tab === "pipeline" && (
         <div className="flex-1 overflow-x-auto">
-          <div className="flex gap-4 px-6 py-6 min-w-max h-full">
-            {PIPELINE_COLUMNS.map((col, colIdx) => (
-              <motion.div
+          <div className="flex h-full min-w-max gap-4 py-1">
+            {PIPELINE_COLUMNS.map((col) => (
+              <div
                 key={col.id}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: colIdx * 0.08 }}
-                className="w-72 flex flex-col"
+                className="flex w-72 flex-col"
               >
-                <div className={cn("flex items-center justify-between px-3 py-2 mb-3 rounded-lg border border-border border-t-2", col.color, col.bg)}>
-                  <span className="text-xs font-semibold uppercase tracking-wider text-foreground">{col.label}</span>
-                  <span className="text-[10px] font-bold text-muted-foreground bg-background/60 px-1.5 py-0.5 rounded">
+                <div className="mb-3 flex items-center justify-between rounded-lg border border-line bg-surface-2 px-3 py-2">
+                  <span className="text-[11.5px] font-medium uppercase tracking-[0.06em] text-ink-muted">{col.label}</span>
+                  <span className="font-mono text-[11.5px] text-ink-secondary">
                     {columnItems[col.id]?.length ?? 0}
                   </span>
                 </div>
                 <div className="flex-1 space-y-2 overflow-y-auto">
                   {(columnItems[col.id] ?? []).slice(0, 12).map((item) => (
-                    <Card key={item._id} className="p-3 hover:border-primary/20 transition-colors">
-                      <p className="text-xs font-medium text-foreground/90 leading-relaxed line-clamp-2 mb-2">{item.title}</p>
+                    <Card key={item._id} className="p-3">
+                      <p className="mb-2 line-clamp-2 text-[12.5px] font-medium leading-relaxed text-ink">{item.title}</p>
                       <div className="flex items-center gap-2">
-                        <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{item.type}</span>
+                        <FactoryStatusBadge tone="neutral">{item.type}</FactoryStatusBadge>
                         {item.priority > 0 && (
-                          <span className={cn("text-[9px] font-bold", item.priority === 3 ? "text-destructive" : item.priority === 2 ? "text-amber-500" : "text-primary")}>
+                          <span className={cn("font-mono text-[11.5px] font-medium", item.priority === 3 ? "text-err" : item.priority === 2 ? "text-warn" : "text-ink-muted")}>
                             P{item.priority}
                           </span>
                         )}
@@ -764,10 +773,10 @@ export function ContentPipelineView({ projectId }: ContentPipelineViewProps) {
                     </Card>
                   ))}
                   {(columnItems[col.id]?.length ?? 0) === 0 && (
-                    <div className="py-10 text-center text-[10px] text-muted-foreground/40 uppercase tracking-widest">Empty</div>
+                    <div className="py-10 text-center text-[11.5px] text-ink-muted">Empty</div>
                   )}
                 </div>
-              </motion.div>
+              </div>
             ))}
           </div>
         </div>
@@ -776,14 +785,12 @@ export function ContentPipelineView({ projectId }: ContentPipelineViewProps) {
       {tab === "metrics" && <MetricsTab projectId={projectId} />}
 
       {/* Modals */}
-      <AnimatePresence>
-        {selectedDrop && (
-          <ContentDropDetail dropId={selectedDrop} agents={agents} onClose={() => setSelectedDrop(null)} />
-        )}
-        {showCreate && (
-          <CreateDropForm projectId={projectId} agents={agents} onClose={() => setShowCreate(false)} />
-        )}
-      </AnimatePresence>
+      {selectedDrop && (
+        <ContentDropDetail dropId={selectedDrop} agents={agents} onClose={() => setSelectedDrop(null)} />
+      )}
+      {showCreate && (
+        <CreateDropForm projectId={projectId} agents={agents} onClose={() => setShowCreate(false)} />
+      )}
       </div>
     </main>
   );

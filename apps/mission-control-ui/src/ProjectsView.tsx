@@ -4,9 +4,10 @@ import { api } from "../../../convex/_generated/api";
 import type { Id, Doc } from "../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "./components/PageHeader";
+import { StatusBadge } from "./components/factory/badges";
+import { MetricBlock } from "./components/factory/MetricBlock";
 import { FolderKanban, Github, Orbit, RadioTower, Sparkles } from "lucide-react";
 
 interface ProjectsViewProps {
@@ -38,12 +39,12 @@ export function ProjectsView({ projectId }: ProjectsViewProps) {
 
   if (!projects || !totals) {
     return (
-      <main className="mc-page">
-        <div className="mc-page-body mc-page-stack">
-          <div className="h-24 rounded-2xl border border-[var(--panel-line)] skeleton-shimmer" />
+      <main className="flex-1 overflow-auto bg-app">
+        <div className="mx-auto flex max-w-[1200px] flex-col gap-6 px-6 py-6">
+          <div className="h-24 animate-pulse rounded-xl border border-line bg-surface-2" />
           <div className="grid gap-4 xl:grid-cols-[400px_minmax(0,1fr)]">
-            <div className="h-[520px] rounded-2xl border border-[var(--panel-line)] skeleton-shimmer" />
-            <div className="h-[520px] rounded-2xl border border-[var(--panel-line)] skeleton-shimmer" />
+            <div className="h-[520px] animate-pulse rounded-xl border border-line bg-surface-2" />
+            <div className="h-[520px] animate-pulse rounded-xl border border-line bg-surface-2" />
           </div>
         </div>
       </main>
@@ -53,42 +54,46 @@ export function ProjectsView({ projectId }: ProjectsViewProps) {
   const selectedProjectDoc = projects.find((project) => project._id === selectedProject) ?? null;
 
   return (
-    <main className="mc-page">
+    <main className="flex-1 overflow-auto bg-app">
       <PageHeader
         title="Projects"
         description="Operate every mission, repo, and swarm from a single view. Select a project to inspect readiness, agent staffing, and integration health."
-        icon={<FolderKanban className="h-4.5 w-4.5" strokeWidth={1.7} />}
+        icon={<FolderKanban size={16} strokeWidth={1.7} />}
         status={
-          <Badge variant="outline" className="border-cyan-300/25 text-cyan-100">
-            {totals.total} tracked projects
-          </Badge>
+          <StatusBadge tone="neutral">{totals.total} tracked projects</StatusBadge>
         }
       />
 
-      <div className="mc-page-body mc-page-stack">
+      <div className="mx-auto flex max-w-[1200px] flex-col gap-6 px-6 py-6">
         <div className="grid gap-4 md:grid-cols-3">
           <Card className="p-5">
-            <div className="mc-kicker">Portfolio</div>
-            <div className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-foreground">{totals.total}</div>
-            <div className="mt-1 text-sm text-muted-foreground">Active project workspaces under Mission Control.</div>
+            <MetricBlock
+              label="Portfolio"
+              value={totals.total}
+              detail="Active project workspaces under Mission Control."
+            />
           </Card>
           <Card className="p-5">
-            <div className="mc-kicker">Connected repos</div>
-            <div className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-cyan-100">{totals.connected}</div>
-            <div className="mt-1 text-sm text-muted-foreground">Projects with a linked GitHub repository and branch context.</div>
+            <MetricBlock
+              label="Connected repos"
+              value={totals.connected}
+              detail="Projects with a linked GitHub repository and branch context."
+            />
           </Card>
           <Card className="p-5">
-            <div className="mc-kicker">Swarm-ready</div>
-            <div className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-emerald-100">{totals.swarms}</div>
-            <div className="mt-1 text-sm text-muted-foreground">Projects that already define a swarm configuration.</div>
+            <MetricBlock
+              label="Swarm-ready"
+              value={totals.swarms}
+              detail="Projects that already define a swarm configuration."
+            />
           </Card>
         </div>
 
         <div className="grid gap-4 xl:grid-cols-[380px_minmax(0,1fr)]">
           <Card className="overflow-hidden">
-            <div className="border-b border-[var(--panel-line)] px-5 py-4">
-              <div className="mc-kicker">Project registry</div>
-              <div className="mt-1 text-sm font-semibold text-foreground">Choose where you want to operate</div>
+            <div className="border-b border-line px-5 py-4">
+              <div className="text-[12.5px] font-medium text-ink-secondary">Project registry</div>
+              <div className="mt-1 text-[15px] font-semibold text-ink">Choose where you want to operate</div>
             </div>
             <div className="space-y-3 p-4">
               {projects.map((project) => (
@@ -107,11 +112,11 @@ export function ProjectsView({ projectId }: ProjectsViewProps) {
           ) : (
             <Card className="flex min-h-[520px] items-center justify-center p-10 text-center">
               <div>
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-400/10 text-cyan-100 shadow-[var(--glow-cyan)]">
-                  <Sparkles className="h-5 w-5" />
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl border border-line bg-surface-2 text-ink-muted">
+                  <Sparkles size={16} strokeWidth={1.7} />
                 </div>
-                <div className="mt-4 text-lg font-semibold text-foreground">Select a project</div>
-                <div className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
+                <div className="mt-4 text-[15px] font-semibold text-ink">Select a project</div>
+                <div className="mt-2 max-w-md text-[13.5px] leading-relaxed text-ink-secondary">
                   Use the registry on the left to inspect agent staffing, GitHub connectivity, and swarm configuration for the project you want to drive next.
                 </div>
               </div>
@@ -139,27 +144,22 @@ function ProjectCard({ project, isSelected, onSelect }: ProjectCardProps) {
       type="button"
       onClick={onSelect}
       className={cn(
-        "w-full rounded-2xl border px-4 py-4 text-left transition-all duration-200",
+        "w-full rounded-xl border px-4 py-4 text-left transition-colors duration-150",
         isSelected
-          ? "border-cyan-300/25 bg-cyan-400/10 shadow-[var(--glow-cyan)]"
-          : "border-[var(--panel-line)] bg-[color:var(--shell-panel)] hover:border-[var(--panel-line-strong)] hover:bg-cyan-400/6"
+          ? "border-line-strong bg-surface-2"
+          : "border-line bg-surface-1 hover:border-line-strong hover:bg-surface-2"
       )}
       aria-label={`Project ${project.name}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">📁</span>
-            <div className="truncate text-sm font-semibold text-foreground">{project.name}</div>
-          </div>
-          <div className="mt-1 text-xs leading-relaxed text-muted-foreground">
+          <div className="truncate text-[15px] font-semibold text-ink">{project.name}</div>
+          <div className="mt-1 text-[12.5px] leading-relaxed text-ink-secondary">
             {project.description || "No description yet. Define the operating scope for this project."}
           </div>
         </div>
         {project.githubRepo && (
-          <div className="rounded-full border border-[var(--panel-line)] bg-[color:var(--shell-panel)] p-2 text-cyan-100">
-            <Github className="h-3.5 w-3.5" />
-          </div>
+          <Github size={14} strokeWidth={1.7} className="mt-1 shrink-0 text-ink-muted" aria-hidden />
         )}
       </div>
 
@@ -171,14 +171,10 @@ function ProjectCard({ project, isSelected, onSelect }: ProjectCardProps) {
 
       <div className="mt-4 flex flex-wrap gap-2">
         {project.githubRepo && (
-          <Badge variant="outline" className="border-cyan-300/20 text-cyan-100">
-            Repo linked
-          </Badge>
+          <StatusBadge tone="neutral">Repo linked</StatusBadge>
         )}
         {project.swarmConfig && (
-          <Badge variant="outline" className="border-emerald-300/20 text-emerald-100">
-            Swarm configured
-          </Badge>
+          <StatusBadge tone="success">Swarm configured</StatusBadge>
         )}
       </div>
     </button>
@@ -187,9 +183,9 @@ function ProjectCard({ project, isSelected, onSelect }: ProjectCardProps) {
 
 function StatPill({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-lg border border-[var(--panel-line)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--panel-muted-bg)_92%,transparent),transparent)] px-3 py-2">
-      <div className="text-lg font-semibold tracking-[-0.03em] text-foreground">{value}</div>
-      <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{label}</div>
+    <div className="rounded-lg border border-line bg-surface-2 px-3 py-2">
+      <div className="text-[15px] font-semibold text-ink">{value}</div>
+      <div className="text-[11.5px] text-ink-muted">{label}</div>
     </div>
   );
 }
@@ -203,17 +199,14 @@ function ProjectDetails({ project }: { project: Doc<"projects"> }) {
 
   return (
     <Card className="overflow-hidden">
-      <div className="border-b border-[var(--panel-line)] px-6 py-5">
+      <div className="border-b border-line px-6 py-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <div className="mc-kicker">Project detail</div>
-            <div className="mt-2 flex items-center gap-3">
-              <span className="text-2xl">📁</span>
-              <div>
-                <div className="text-xl font-semibold text-foreground">{project.name}</div>
-                <div className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-                  {project.description || "Add a project description so operators understand the project outcome, constraints, and current business purpose."}
-                </div>
+            <div className="text-[12.5px] font-medium text-ink-secondary">Project detail</div>
+            <div className="mt-2">
+              <div className="text-[19px] font-semibold tracking-tight text-ink">{project.name}</div>
+              <div className="mt-1 max-w-3xl text-[13.5px] leading-relaxed text-ink-secondary">
+                {project.description || "Add a project description so operators understand the project outcome, constraints, and current business purpose."}
               </div>
             </div>
           </div>
@@ -226,7 +219,7 @@ function ProjectDetails({ project }: { project: Doc<"projects"> }) {
               </Button>
             )}
             {project.swarmConfig && (
-              <Button variant="neon-cyan" size="sm">
+              <Button variant="outline" size="sm">
                 <Orbit className="h-3.5 w-3.5" />
                 Swarm live
               </Button>
@@ -239,33 +232,39 @@ function ProjectDetails({ project }: { project: Doc<"projects"> }) {
         <div className="space-y-4">
           <div className="grid gap-4 md:grid-cols-3">
             <Card className="p-4">
-              <div className="mc-kicker">Task load</div>
-              <div className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-foreground">{stats?.tasks.total ?? 0}</div>
-              <div className="mt-1 text-xs text-muted-foreground">Total tasks attached to this project.</div>
+              <MetricBlock
+                label="Task load"
+                value={stats?.tasks.total ?? 0}
+                detail="Total tasks attached to this project."
+              />
             </Card>
             <Card className="p-4">
-              <div className="mc-kicker">Agent capacity</div>
-              <div className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-cyan-100">{activeAgents.length}</div>
-              <div className="mt-1 text-xs text-muted-foreground">Agents actively operating right now.</div>
+              <MetricBlock
+                label="Agent capacity"
+                value={activeAgents.length}
+                detail="Agents actively operating right now."
+              />
             </Card>
             <Card className="p-4">
-              <div className="mc-kicker">Approvals</div>
-              <div className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-amber-200">{stats?.approvals.pending ?? 0}</div>
-              <div className="mt-1 text-xs text-muted-foreground">Human decisions still waiting in queue.</div>
+              <MetricBlock
+                label="Approvals"
+                value={stats?.approvals.pending ?? 0}
+                detail="Human decisions still waiting in queue."
+              />
             </Card>
           </div>
 
           <Card className="p-5">
-            <div className="mc-kicker">Integration posture</div>
+            <div className="text-[12.5px] font-medium text-ink-secondary">Integration posture</div>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <IntegrationRow
-                icon={<Github className="h-4 w-4" />}
+                icon={<Github size={15} strokeWidth={1.7} />}
                 label="Repository"
                 value={project.githubRepo || "Not connected"}
                 detail={project.githubRepo ? `Branch ${project.githubBranch || "main"}` : "Link a repository for release and code context."}
               />
               <IntegrationRow
-                icon={<RadioTower className="h-4 w-4" />}
+                icon={<RadioTower size={15} strokeWidth={1.7} />}
                 label="Webhook"
                 value={project.githubWebhookSecret ? "Configured" : "Missing"}
                 detail={project.githubWebhookSecret ? "Inbound repo events are enabled." : "Set a webhook secret if this project should react to GitHub events."}
@@ -276,25 +275,25 @@ function ProjectDetails({ project }: { project: Doc<"projects"> }) {
 
         <div className="space-y-4">
           <Card className="p-5">
-            <div className="mc-kicker">Swarm settings</div>
+            <div className="text-[12.5px] font-medium text-ink-secondary">Swarm settings</div>
             <div className="mt-3 space-y-3">
               {project.swarmConfig ? (
                 <>
                   <IntegrationRow
-                    icon={<Orbit className="h-4 w-4" />}
+                    icon={<Orbit size={15} strokeWidth={1.7} />}
                     label="Max agents"
                     value={String(project.swarmConfig.maxAgents)}
                     detail={project.swarmConfig.autoScale ? "Auto-scale is enabled." : "Capacity is fixed manually."}
                   />
                   <IntegrationRow
-                    icon={<Sparkles className="h-4 w-4" />}
+                    icon={<Sparkles size={15} strokeWidth={1.7} />}
                     label="Default model"
                     value={project.swarmConfig.defaultModel || "Claude Sonnet 4"}
                     detail="Primary runtime model for default assignments."
                   />
                 </>
               ) : (
-                <div className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-4 text-sm leading-relaxed text-muted-foreground">
+                <div className="rounded-xl border border-line bg-surface-2 px-4 py-4 text-[13.5px] leading-relaxed text-ink-secondary">
                   This project does not have swarm settings yet. Add one before expecting repeatable routing and capacity behavior.
                 </div>
               )}
@@ -302,7 +301,7 @@ function ProjectDetails({ project }: { project: Doc<"projects"> }) {
           </Card>
 
           <Card className="p-5">
-            <div className="mc-kicker">Agent roster</div>
+            <div className="text-[12.5px] font-medium text-ink-secondary">Agent roster</div>
             <div className="mt-3 space-y-3">
               <RosterGroup title="Active agents" agents={activeAgents} emptyLabel="No active agents are currently assigned." />
               <RosterGroup title="Paused agents" agents={pausedAgents} emptyLabel="No paused agents." />
@@ -326,17 +325,15 @@ function IntegrationRow({
   detail: string;
 }) {
   return (
-    <div className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-3">
+    <div className="rounded-xl border border-line bg-surface-2 px-4 py-3">
       <div className="flex items-center gap-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-cyan-300/16 bg-cyan-400/10 text-cyan-100">
-          {icon}
-        </div>
+        <span className="text-ink-secondary">{icon}</span>
         <div className="min-w-0">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{label}</div>
-          <div className="mt-1 text-sm font-semibold text-foreground">{value}</div>
+          <div className="text-[11.5px] text-ink-muted">{label}</div>
+          <div className="mt-1 text-[13.5px] font-medium text-ink">{value}</div>
         </div>
       </div>
-      <div className="mt-2 text-xs leading-relaxed text-muted-foreground">{detail}</div>
+      <div className="mt-2 text-[12.5px] leading-relaxed text-ink-muted">{detail}</div>
     </div>
   );
 }
@@ -352,26 +349,24 @@ function RosterGroup({
 }) {
   return (
     <div>
-      <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{title}</div>
+      <div className="mb-2 text-[11.5px] text-ink-muted">{title}</div>
       {agents.length > 0 ? (
         <div className="space-y-2">
           {agents.map((agent) => (
-            <div key={agent._id} className="flex items-center gap-3 rounded-lg border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-3 py-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-cyan-400/12 text-sm font-semibold text-cyan-100">
+            <div key={agent._id} className="flex items-center gap-3 rounded-lg border border-line bg-surface-2 px-3 py-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full border border-line bg-surface-3 text-[13px] font-semibold text-ink-secondary">
                 {agent.emoji || agent.name.charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-semibold text-foreground">{agent.name}</div>
-                <div className="text-xs text-muted-foreground">{agent.role}</div>
+                <div className="text-[13.5px] font-medium text-ink">{agent.name}</div>
+                <div className="text-[12.5px] text-ink-muted">{agent.role}</div>
               </div>
-              <Badge variant="outline" className="border-[var(--panel-line)] text-muted-foreground">
-                {agent.status.toLowerCase()}
-              </Badge>
+              <StatusBadge tone="neutral">{agent.status.toLowerCase()}</StatusBadge>
             </div>
           ))}
         </div>
       ) : (
-        <div className="rounded-lg border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-3 text-sm text-muted-foreground">
+        <div className="rounded-lg border border-line bg-surface-2 px-4 py-3 text-[13.5px] text-ink-secondary">
           {emptyLabel}
         </div>
       )}

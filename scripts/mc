@@ -68,6 +68,10 @@ COMMANDS:
     claim               Claim next available task
     logs [run-id]       Show logs for a run
     assess              Competency Assessment (run | grade | compare | report)
+    flags [set <key> <on|off>]   List or set feature flags
+    skill lint [path]   Lint SKILL.md files against the skill standard
+    context <subcmd>    Manage context manifests (init | list | add | remove |
+                        lock | verify | diff | outdated)
     version             Show version
     help                Show this help
 
@@ -482,6 +486,65 @@ cmd_logs() {
 }
 
 # Command: version
+# Command: flags
+cmd_flags() {
+    source_env
+    check_convex
+    cd "$MC_DIR"
+
+    case "${1:-list}" in
+        list|"")
+            log_cmd "Feature flags:"
+            npx convex run featureFlags:list '{}' 2>/dev/null || log_error "Could not fetch flags"
+            ;;
+        set)
+            local key="${2:-}"
+            local value="${3:-}"
+            if [[ -z "$key" || ( "$value" != "on" && "$value" != "off" ) ]]; then
+                log_error "Usage: mc flags set <key> <on|off>"
+                exit 1
+            fi
+            local enabled="false"
+            [[ "$value" == "on" ]] && enabled="true"
+            log_cmd "Setting flag $key -> $value"
+            npx convex run featureFlags:setFlag "{\"key\": \"$key\", \"enabled\": $enabled, \"actorId\": \"mc-cli\"}" \
+                && log_info "Flag $key set to $value" \
+                || { log_error "Failed to set flag"; exit 1; }
+            ;;
+        *)
+            log_error "Unknown flags subcommand: $1 (use: list | set <key> <on|off>)"
+            exit 1
+            ;;
+    esac
+}
+
+# Command: skill
+cmd_skill() {
+    case "${1:-}" in
+        lint)
+            shift
+            if [[ ! -f "$MC_DIR/packages/context-tools/dist/index.js" ]]; then
+                log_warn "context-tools not built — building now..."
+                (cd "$MC_DIR" && pnpm --filter @mission-control/context-tools build) || {
+                    log_error "Failed to build context-tools"
+                    exit 1
+                }
+            fi
+            node "$MC_DIR/scripts/skill-lint.mjs" "$@"
+            ;;
+        *)
+            log_error "Unknown skill subcommand: ${1:-} (use: lint [path])"
+            exit 1
+            ;;
+    esac
+}
+
+# Command: context
+cmd_context() {
+    # Dist auto-build and all subcommand logic live in mc-context.mjs
+    node "$MC_DIR/scripts/mc-context.mjs" "$@"
+}
+
 cmd_version() {
     echo "Mission Control CLI v${VERSION}"
 }
@@ -565,6 +628,18 @@ case "${1:-help}" in
             log_error "scripts/assess/mc-assess.sh not found"
             exit 1
         fi
+        ;;
+    flags)
+        shift
+        cmd_flags "$@"
+        ;;
+    skill)
+        shift
+        cmd_skill "$@"
+        ;;
+    context)
+        shift
+        cmd_context "$@"
         ;;
     version|--version|-v)
         cmd_version

@@ -3,10 +3,18 @@ import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id, Doc } from "../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Camera } from "lucide-react";
+import { StatusBadge } from "./components/factory/badges";
+import { PageHeader } from "./components/PageHeader";
+import {
+  BarChart3,
+  Camera,
+  File,
+  PenTool,
+  Video,
+  Workflow,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 interface CapturesViewProps {
   projectId: Id<"projects"> | null;
@@ -33,48 +41,70 @@ export function CapturesView({ projectId }: CapturesViewProps) {
 
   if (captures === undefined) {
     return (
-      <main className="flex-1 overflow-auto p-6">
-        <div className="mb-6">
-          <h1 className="text-lg font-semibold text-foreground">Captures</h1>
-          <p className="text-sm text-muted-foreground">Loading...</p>
+      <main className="flex-1 overflow-auto bg-app">
+        <PageHeader
+          title="Captures"
+          description="Visual artifacts and deliverables gallery"
+        />
+        <div className="mx-auto flex max-w-[1200px] flex-col gap-6 px-6 py-6">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="rounded-xl border border-line bg-surface-1 p-4">
+                <div className="h-[140px] animate-pulse rounded-lg bg-surface-2" />
+                <div className="mt-4 h-3.5 w-2/3 animate-pulse rounded bg-surface-2" />
+                <div className="mt-2 h-3 w-1/2 animate-pulse rounded bg-surface-2" />
+              </div>
+            ))}
+          </div>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="flex-1 overflow-auto p-6">
-      <div className="mb-6">
-        <h1 className="text-lg font-semibold text-foreground">Captures</h1>
-        <p className="text-sm text-muted-foreground">Visual artifacts and deliverables gallery</p>
-      </div>
+    <main className="flex-1 overflow-auto bg-app">
+      <PageHeader
+        title="Captures"
+        description="Visual artifacts and deliverables gallery"
+      />
 
-      <div className="flex gap-2 mb-6 flex-wrap">
-        {FILTER_OPTIONS.map((opt) => (
-          <Button
-            key={opt.value}
-            variant={filterType === opt.value ? "default" : "outline"}
-            size="sm"
-            onClick={() => setFilterType(opt.value)}
-          >
-            {opt.label}
-          </Button>
-        ))}
-      </div>
+      <div className="mx-auto flex max-w-[1200px] flex-col gap-6 px-6 py-6">
+        <div className="flex flex-wrap">
+          <div className="flex flex-wrap rounded-lg border border-line p-0.5" role="tablist">
+            {FILTER_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                role="tab"
+                aria-selected={filterType === opt.value}
+                onClick={() => setFilterType(opt.value)}
+                className={cn(
+                  "rounded-md px-2.5 py-1 text-[12.5px] transition-colors duration-150",
+                  filterType === opt.value
+                    ? "bg-surface-2 text-ink"
+                    : "text-ink-muted hover:text-ink-secondary"
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
-        {captures?.map((capture) => (
-          <CaptureCard key={capture._id} capture={capture} />
-        ))}
-      </div>
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
+          {captures?.map((capture) => (
+            <CaptureCard key={capture._id} capture={capture} />
+          ))}
+        </div>
 
-      {captures?.length === 0 && (
-        <EmptyState
-          icon={Camera}
-          title="No captures yet"
-          description="Visual artifacts will appear here as agents complete tasks"
-        />
-      )}
+        {captures?.length === 0 && (
+          <EmptyState
+            icon={Camera}
+            title="No captures yet"
+            description="Visual artifacts will appear here as agents complete tasks"
+          />
+        )}
+      </div>
     </main>
   );
 }
@@ -82,49 +112,48 @@ export function CapturesView({ projectId }: CapturesViewProps) {
 function CaptureCard({ capture }: { capture: Doc<"captures"> }) {
   const thumbnailUrl = getRenderableThumbnailUrl(capture.thumbnailUrl);
 
-  const typeEmoji: Record<string, string> = {
-    SCREENSHOT: "📷",
-    DIAGRAM: "📊",
-    MOCKUP: "🎨",
-    CHART: "📈",
-    VIDEO: "🎥",
-    OTHER: "📄",
+  const typeIcons: Record<string, LucideIcon> = {
+    SCREENSHOT: Camera,
+    DIAGRAM: Workflow,
+    MOCKUP: PenTool,
+    CHART: BarChart3,
+    VIDEO: Video,
+    OTHER: File,
   };
+  const TypeIcon = typeIcons[capture.type] ?? File;
 
   return (
-    <div className="rounded-lg border border-border bg-card overflow-hidden hover:border-muted-foreground/30 transition-colors cursor-pointer">
+    <div className="cursor-pointer overflow-hidden rounded-xl border border-line bg-surface-1 transition-colors duration-150 hover:border-line-strong">
       <div
-        className="w-full h-[180px] flex items-center justify-center bg-muted"
+        className="flex h-[180px] w-full items-center justify-center bg-surface-2"
         style={thumbnailUrl ? { background: `url(${thumbnailUrl}) center/cover` } : undefined}
       >
         {!thumbnailUrl && (
-          <span className="text-5xl">{typeEmoji[capture.type] || "📄"}</span>
+          <TypeIcon size={24} strokeWidth={1.6} className="text-ink-muted" aria-hidden />
         )}
       </div>
 
       <div className="p-4">
-        <h3 className="text-sm font-semibold text-foreground mb-1.5 truncate">
+        <h3 className="mb-1.5 truncate text-[15px] font-semibold text-ink">
           {capture.title}
         </h3>
         {capture.description && (
-          <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed mb-2">
+          <p className="mb-2 line-clamp-2 text-[12.5px] leading-relaxed text-ink-secondary">
             {capture.description}
           </p>
         )}
-        <div className="flex items-center gap-2 mb-2">
-          <Badge variant="default" className="text-xs">
-            {capture.type}
-          </Badge>
-          <span className="text-xs text-muted-foreground">
+        <div className="mb-2 flex items-center gap-2">
+          <StatusBadge tone="neutral">{capture.type}</StatusBadge>
+          <span className="text-[12.5px] text-ink-muted">
             {new Date(capture.capturedAt).toLocaleDateString()}
           </span>
         </div>
         {capture.tags && capture.tags.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {capture.tags.map((tag, i) => (
-              <Badge key={i} variant="outline" className="text-xs">
+              <StatusBadge key={i} tone="neutral">
                 {tag}
-              </Badge>
+              </StatusBadge>
             ))}
           </div>
         )}
