@@ -738,9 +738,11 @@ export default function App() {
   }
 
   // ── Render ───────────────────────────────────────────────────────────────
-  const shellV2 = useFlag("ui.shell.v2");
+  // The Software Factory v2 shell is now the default UI. Set the `ui.shell.v1`
+  // flag (or VITE_FLAG_UI_SHELL_V1=true) to fall back to the legacy shell.
+  const legacyShell = useFlag("ui.shell.v1");
 
-  if (shellV2) {
+  if (!legacyShell) {
     return (
       <ProjectContext.Provider value={{ projectId, setProjectId, project }}>
         <PrivacyProvider>

@@ -19,6 +19,7 @@ import {
   LayoutDashboard,
   ListChecks,
   MessageSquare,
+  Orbit,
   Radar,
   ScrollText,
   Shield,
@@ -61,6 +62,17 @@ export const NAV_GROUPS: NavGroup[] = [
       { view: "calendar", label: "Calendar", icon: CalendarDays },
       { view: "ops-schedule", label: "Schedule", icon: ClipboardList },
       { view: "audit", label: "Audit", icon: ScrollText },
+    ],
+  },
+  {
+    id: "control",
+    label: "Control",
+    icon: Orbit,
+    items: [
+      { view: "control-portfolio", label: "Portfolio", icon: Orbit },
+      { view: "control-work-orders", label: "Work Orders", icon: ClipboardList },
+      { view: "control-approvals", label: "Approvals", icon: CheckCircle2 },
+      { view: "control-fleet", label: "Fleet", icon: Users },
     ],
   },
   {
