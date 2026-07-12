@@ -77,7 +77,7 @@ Shows:
 - recently accepted outcomes
 - human attention consumed
 
-Not in first slice.
+Delivered as a follow-on live-data slice once WorkOrders, governance, and run inspector primitives exist.
 
 ## B. Work Queue
 

@@ -50,6 +50,7 @@ import type * as lib_agentResolver from "../lib/agentResolver.js";
 import type * as lib_armAudit from "../lib/armAudit.js";
 import type * as lib_armCompat from "../lib/armCompat.js";
 import type * as lib_armPolicy from "../lib/armPolicy.js";
+import type * as lib_factoryOverview from "../lib/factoryOverview.js";
 import type * as lib_genomeHash from "../lib/genomeHash.js";
 import type * as lib_getActiveTenant from "../lib/getActiveTenant.js";
 import type * as lib_legacyToolPolicy from "../lib/legacyToolPolicy.js";
@@ -180,6 +181,7 @@ declare const fullApi: ApiFromModules<{
   "lib/armAudit": typeof lib_armAudit;
   "lib/armCompat": typeof lib_armCompat;
   "lib/armPolicy": typeof lib_armPolicy;
+  "lib/factoryOverview": typeof lib_factoryOverview;
   "lib/genomeHash": typeof lib_genomeHash;
   "lib/getActiveTenant": typeof lib_getActiveTenant;
   "lib/legacyToolPolicy": typeof lib_legacyToolPolicy;

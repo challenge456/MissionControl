@@ -96,6 +96,20 @@ Implement:
 6. CLI, orchestration, and UI lifecycle controls sharing server-owned commands
 7. lifecycle/governance tests plus live end-to-end evidence
 
+## Sixth thin vertical slice
+
+Implement:
+
+**Real Factory Overview dashboard using live WorkOrder and ExecutionRun data**
+
+### Scope
+
+1. authoritative Convex query for portfolio-level factory overview
+2. live summary metrics for active, blocked, awaiting approval, stale evidence, and recently accepted work
+3. exception-first lists for blocked WorkOrders, approval queue, stale evidence, and runs needing attention
+4. Control > Portfolio UI backed by live Convex data instead of placeholder copy
+5. focused view-model tests plus type/build verification
+
 ## Why this slice first
 
 Because it establishes the correct domain boundary without requiring a platform rewrite:
