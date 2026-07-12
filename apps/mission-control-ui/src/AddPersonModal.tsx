@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
+import { KeyRound } from "lucide-react";
 
 type SystemRole = "OWNER" | "ADMIN" | "MANAGER" | "MEMBER" | "VIEWER";
 type AccessLevel = "ADMIN" | "EDIT" | "VIEW";
@@ -27,9 +28,9 @@ const SYSTEM_ROLES: { value: SystemRole; label: string; description: string }[] 
 ];
 
 const ACCESS_LEVELS: { value: AccessLevel; label: string; activeClass: string }[] = [
-  { value: "ADMIN", label: "Admin", activeClass: "bg-red-500 text-white border-red-500" },
-  { value: "EDIT", label: "Edit", activeClass: "bg-amber-500 text-white border-amber-500" },
-  { value: "VIEW", label: "View", activeClass: "bg-blue-500 text-white border-blue-500" },
+  { value: "ADMIN", label: "Admin", activeClass: "bg-act text-act-ink border-transparent" },
+  { value: "EDIT", label: "Edit", activeClass: "bg-act text-act-ink border-transparent" },
+  { value: "VIEW", label: "View", activeClass: "bg-act text-act-ink border-transparent" },
 ];
 
 const PERMISSION_GROUPS = [
@@ -119,7 +120,7 @@ const ROLE_DEFAULT_PERMISSIONS: Record<SystemRole, string[]> = {
   ],
 };
 
-const inputClasses = "px-3 py-2.5 bg-background border border-border rounded-md text-foreground text-sm outline-none focus:border-blue-500 transition-colors";
+const inputClasses = "h-9 rounded-lg border border-line bg-surface-1 px-3 text-[13.5px] text-ink placeholder:text-ink-muted outline-none transition-colors duration-150 focus:border-line-strong";
 
 export function AddPersonModal({ open, onClose, projectId }: AddPersonModalProps) {
   const projects = useQuery(api.projects.list);
@@ -230,25 +231,27 @@ export function AddPersonModal({ open, onClose, projectId }: AddPersonModalProps
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[1000]" onClick={() => { resetForm(); onClose(); }}>
-      <div className="bg-card border border-border rounded-xl w-[min(680px,95vw)] max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-surface-3 border border-line rounded-xl shadow-[var(--shadow-elevation-2)] w-[min(680px,95vw)] max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="flex justify-between items-center px-6 pt-5">
-          <h2 className="text-xl font-semibold text-foreground">Add Team Member</h2>
-          <button className="bg-transparent border-none text-muted-foreground text-2xl cursor-pointer px-2 py-1 leading-none hover:text-foreground transition-colors" onClick={() => { resetForm(); onClose(); }}>
+          <h2 className="text-[19px] font-semibold text-ink">Add Team Member</h2>
+          <button className="bg-transparent border-none text-ink-muted text-2xl cursor-pointer px-2 py-1 leading-none hover:text-ink transition-colors duration-150" onClick={() => { resetForm(); onClose(); }}>
             &times;
           </button>
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 px-6 pt-4 border-b border-border">
+        <div className="flex gap-1 px-6 pt-4 border-b border-line" role="tablist">
           {(["basics", "access", "permissions"] as const).map((tab) => (
             <button
               key={tab}
+              role="tab"
+              aria-selected={activeTab === tab}
               className={cn(
-                "px-4 py-2 bg-transparent border-none border-b-2 text-sm font-medium cursor-pointer -mb-px transition-colors",
+                "px-4 py-2 bg-transparent border-b-2 text-[13px] font-medium cursor-pointer -mb-px transition-colors duration-150",
                 activeTab === tab
-                  ? "text-blue-500 border-b-blue-500"
-                  : "text-muted-foreground border-b-transparent hover:text-foreground"
+                  ? "text-ink border-b-ink"
+                  : "text-ink-muted border-b-transparent hover:text-ink-secondary"
               )}
               onClick={() => setActiveTab(tab)}
             >
@@ -264,29 +267,29 @@ export function AddPersonModal({ open, onClose, projectId }: AddPersonModalProps
           {activeTab === "basics" && (
             <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
-                <label className="text-[0.8125rem] font-semibold text-foreground">Name *</label>
+                <label className="text-[13px] font-semibold text-ink">Name *</label>
                 <input className={inputClasses} value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" />
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-[0.8125rem] font-semibold text-foreground">Email</label>
+                <label className="text-[13px] font-semibold text-ink">Email</label>
                 <input className={inputClasses} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@example.com" />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[0.8125rem] font-semibold text-foreground">Job Role *</label>
+                  <label className="text-[13px] font-semibold text-ink">Job Role *</label>
                   <input className={inputClasses} value={role} onChange={(e) => setRole(e.target.value)} placeholder="e.g. Engineer, Designer, PM" />
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[0.8125rem] font-semibold text-foreground">Title</label>
+                  <label className="text-[13px] font-semibold text-ink">Title</label>
                   <input className={inputClasses} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Senior Engineer" />
                 </div>
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-[0.8125rem] font-semibold text-foreground">System Role</label>
-                <p className="text-[0.8125rem] text-muted-foreground mb-2 leading-relaxed">
+                <label className="text-[13px] font-semibold text-ink">System Role</label>
+                <p className="text-[13px] text-ink-muted mb-2 leading-relaxed">
                   Determines base-level access across the platform.
                 </p>
                 <div className="flex flex-col gap-2">
@@ -294,15 +297,15 @@ export function AddPersonModal({ open, onClose, projectId }: AddPersonModalProps
                     <button
                       key={sr.value}
                       className={cn(
-                        "flex flex-col gap-0.5 px-4 py-3 bg-background border rounded-lg cursor-pointer text-left transition-colors",
+                        "flex flex-col gap-0.5 px-4 py-3 border rounded-lg cursor-pointer text-left transition-colors duration-150",
                         systemRole === sr.value
-                          ? "border-blue-500 bg-blue-500/10"
-                          : "border-border hover:border-blue-500/50"
+                          ? "border-line-strong bg-surface-2"
+                          : "border-line bg-surface-1 hover:border-line-strong"
                       )}
                       onClick={() => handleSystemRoleChange(sr.value)}
                     >
-                      <div className="text-sm font-semibold text-foreground">{sr.label}</div>
-                      <div className="text-xs text-muted-foreground leading-snug">{sr.description}</div>
+                      <div className="text-[13.5px] font-semibold text-ink">{sr.label}</div>
+                      <div className="text-xs text-ink-muted leading-snug">{sr.description}</div>
                     </button>
                   ))}
                 </div>
@@ -312,7 +315,7 @@ export function AddPersonModal({ open, onClose, projectId }: AddPersonModalProps
 
           {activeTab === "access" && (
             <div className="flex flex-col gap-4">
-              <p className="text-[0.8125rem] text-muted-foreground mb-2 leading-relaxed">
+              <p className="text-[13px] text-ink-muted mb-2 leading-relaxed">
                 Grant specific access levels per project. This overrides the
                 system role for those projects.
               </p>
@@ -321,8 +324,8 @@ export function AddPersonModal({ open, onClose, projectId }: AddPersonModalProps
                 {projectAccessList.map((pa) => {
                   const proj = projects?.find((p) => p._id === pa.projectId);
                   return (
-                    <div key={pa.projectId} className="flex items-center gap-3 px-3 py-2.5 bg-background border border-border rounded-lg">
-                      <span className="flex-1 text-sm font-medium text-foreground">
+                    <div key={pa.projectId} className="flex items-center gap-3 px-3 py-2.5 bg-surface-2 border border-line rounded-lg">
+                      <span className="flex-1 text-[13.5px] font-medium text-ink">
                         {proj?.name || "Unknown"}
                       </span>
                       <div className="flex gap-1">
@@ -330,10 +333,10 @@ export function AddPersonModal({ open, onClose, projectId }: AddPersonModalProps
                           <button
                             key={al.value}
                             className={cn(
-                              "px-2.5 py-1 text-xs font-medium border rounded cursor-pointer transition-all",
+                              "px-2.5 py-1 text-xs font-medium border rounded-md cursor-pointer transition-colors duration-150",
                               pa.accessLevel === al.value
                                 ? al.activeClass
-                                : "border-border bg-transparent text-muted-foreground hover:text-foreground"
+                                : "border-line bg-transparent text-ink-muted hover:text-ink"
                             )}
                             onClick={() =>
                               updateProjectAccessLevel(pa.projectId, al.value)
@@ -344,7 +347,7 @@ export function AddPersonModal({ open, onClose, projectId }: AddPersonModalProps
                         ))}
                       </div>
                       <button
-                        className="bg-transparent border-none text-muted-foreground text-xl cursor-pointer px-1 leading-none hover:text-foreground transition-colors"
+                        className="bg-transparent border-none text-ink-muted text-xl cursor-pointer px-1 leading-none hover:text-ink transition-colors duration-150"
                         onClick={() => removeProjectAccess(pa.projectId)}
                       >
                         &times;
@@ -356,7 +359,7 @@ export function AddPersonModal({ open, onClose, projectId }: AddPersonModalProps
 
               {projects && projects.length > 0 && (
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[0.8125rem] font-semibold text-foreground">Add Project</label>
+                  <label className="text-[13px] font-semibold text-ink">Add Project</label>
                   <div className="flex flex-wrap gap-2">
                     {projects
                       .filter(
@@ -368,7 +371,7 @@ export function AddPersonModal({ open, onClose, projectId }: AddPersonModalProps
                       .map((p) => (
                         <button
                           key={p._id}
-                          className="px-3.5 py-1.5 text-[0.8125rem] font-medium bg-transparent border border-dashed border-border rounded-md text-blue-500 cursor-pointer hover:bg-blue-500/10 transition-colors"
+                          className="px-3.5 py-1.5 text-[13px] font-medium bg-transparent border border-dashed border-line rounded-md text-ink-secondary cursor-pointer hover:text-ink hover:border-line-strong transition-colors duration-150"
                           onClick={() => addProjectAccess(p._id)}
                         >
                           + {p.name}
@@ -378,7 +381,7 @@ export function AddPersonModal({ open, onClose, projectId }: AddPersonModalProps
                   {projects.every((p) =>
                     projectAccessList.some((pa) => pa.projectId === p._id)
                   ) && (
-                    <p className="text-[0.8125rem] text-muted-foreground mb-2 leading-relaxed">
+                    <p className="text-[13px] text-ink-muted mb-2 leading-relaxed">
                       All projects have been assigned.
                     </p>
                   )}
@@ -387,11 +390,11 @@ export function AddPersonModal({ open, onClose, projectId }: AddPersonModalProps
 
               {projectAccessList.length === 0 && (
                 <div className="flex flex-col items-center py-8 px-4 text-center">
-                  <div className="text-4xl mb-3">🔑</div>
-                  <div className="text-base font-semibold text-foreground mb-1.5">
+                  <KeyRound className="h-7 w-7 mb-3 text-ink-muted" strokeWidth={1.5} />
+                  <div className="text-[15px] font-semibold text-ink mb-1.5">
                     No project-specific access
                   </div>
-                  <div className="text-[0.8125rem] text-muted-foreground max-w-[400px] leading-relaxed">
+                  <div className="text-[13px] text-ink-muted max-w-[400px] leading-relaxed">
                     The member's system role ({systemRole}) will determine their
                     access to all projects. Add specific projects above to
                     override.
@@ -405,7 +408,7 @@ export function AddPersonModal({ open, onClose, projectId }: AddPersonModalProps
             <div className="flex flex-col gap-4">
               <div className="flex justify-between items-start gap-4">
                 <div>
-                  <p className="text-[0.8125rem] text-muted-foreground mb-2 leading-relaxed">
+                  <p className="text-[13px] text-ink-muted mb-2 leading-relaxed">
                     Fine-tune what this member can do. By default, permissions
                     are derived from the system role ({systemRole}).
                   </p>
@@ -423,7 +426,7 @@ export function AddPersonModal({ open, onClose, projectId }: AddPersonModalProps
                       }
                     }}
                   />
-                  <span className="text-[0.8125rem] text-muted-foreground">
+                  <span className="text-[13px] text-ink-muted">
                     Use custom permissions
                   </span>
                 </label>
@@ -431,8 +434,8 @@ export function AddPersonModal({ open, onClose, projectId }: AddPersonModalProps
 
               <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
                 {PERMISSION_GROUPS.map((group) => (
-                  <div key={group.group} className="flex flex-col gap-1.5 p-3 bg-background rounded-lg border border-border">
-                    <div className="text-[0.8125rem] font-semibold text-blue-500 mb-1">
+                  <div key={group.group} className="flex flex-col gap-1.5 p-3 bg-surface-2 rounded-lg border border-line">
+                    <div className="text-[13px] font-semibold text-ink mb-1">
                       {group.group}
                     </div>
                     {group.permissions.map((perm) => {
@@ -451,7 +454,7 @@ export function AddPersonModal({ open, onClose, projectId }: AddPersonModalProps
                             disabled={!useCustomPermissions}
                             onChange={() => togglePermission(perm.key)}
                           />
-                          <span className="text-[0.8125rem] text-muted-foreground">
+                          <span className="text-[13px] text-ink-muted">
                             {perm.label}
                           </span>
                         </label>
@@ -464,18 +467,18 @@ export function AddPersonModal({ open, onClose, projectId }: AddPersonModalProps
           )}
         </div>
 
-        {error && <div className="px-6 py-2 text-red-500 text-[0.8125rem]">{error}</div>}
+        {error && <div className="px-6 py-2 text-err text-[13px]">{error}</div>}
 
         {/* Footer */}
-        <div className="flex justify-end gap-2.5 px-6 py-4 border-t border-border">
+        <div className="flex justify-end gap-2.5 px-6 py-4 border-t border-line">
           <button
-            className="px-4.5 py-2 text-sm font-medium bg-transparent border border-border rounded-md text-muted-foreground cursor-pointer hover:text-foreground hover:bg-muted transition-colors"
+            className="h-9 px-3 rounded-lg text-[13px] font-medium bg-transparent border border-line text-ink-secondary cursor-pointer hover:text-ink hover:border-line-strong transition-colors duration-150"
             onClick={() => { resetForm(); onClose(); }}
           >
             Cancel
           </button>
           <button
-            className="px-5 py-2 text-sm font-semibold bg-primary hover:bg-primary/85 border-none rounded-md text-primary-foreground cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="h-9 px-3 rounded-lg text-[13px] font-medium bg-act text-act-ink border-none cursor-pointer transition-opacity duration-150 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={handleSubmit}
             disabled={saving}
           >

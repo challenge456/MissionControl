@@ -217,7 +217,7 @@ function ApprovalCard({
       <div className="flex justify-between items-center gap-2">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm text-foreground">
-            {requestor?.emoji || "🤖"} {requestor?.name ?? "Agent"}
+            {requestor?.emoji ? `${requestor.emoji} ` : ""}{requestor?.name ?? "Agent"}
           </span>
           <span className="text-xs text-muted-foreground">· {approval.actionType}</span>
           <Badge
@@ -262,7 +262,7 @@ function ApprovalCard({
       )}
 
       {approval.firstDecisionAt && (
-        <p className="text-xs text-amber-400 mt-1.5">
+        <p className="text-xs text-warn mt-1.5">
           First approval: {approval.firstDecisionByUserId ?? "operator"} at {new Date(approval.firstDecisionAt).toLocaleString()}
         </p>
       )}

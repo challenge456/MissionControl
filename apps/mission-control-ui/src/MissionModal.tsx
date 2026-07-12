@@ -86,7 +86,7 @@ export function MissionModal({ projectId, onClose }: MissionModalProps) {
               id="mission-textarea"
               value={missionText}
               onChange={(e) => setMissionText(e.target.value)}
-              placeholder="e.g., Build an autonomous organization of AI agents that does work for me and produces value 24/7"
+              placeholder="e.g., Build an autonomous organization of AI agents that does work for me and produces value continuously"
               className="w-full h-32 px-4 py-3 bg-background border border-border rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"
               autoFocus
             />
@@ -106,7 +106,7 @@ export function MissionModal({ projectId, onClose }: MissionModalProps) {
             <ul className="text-xs text-muted-foreground space-y-1.5">
               <li>Be specific about the outcomes you want to achieve</li>
               <li>Focus on value creation, not just task completion</li>
-              <li>Make it measurable where possible (e.g., "24/7", "10x productivity")</li>
+              <li>Make it measurable where possible — name a real target</li>
               <li>Keep it concise but inspiring (1-2 sentences ideal)</li>
             </ul>
           </div>

@@ -107,7 +107,7 @@ function ProjectSwitcher() {
         const value = e.target.value;
         setProjectId(value ? (value as Id<"projects">) : null);
       }}
-      className="h-10 min-w-[168px] rounded-2xl border border-[var(--panel-line)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--background)_90%,transparent))] px-3.5 text-sm font-medium text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-xl transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="h-9 min-w-[168px] rounded-lg border border-line bg-surface-1 px-3 text-[13.5px] font-medium text-ink transition-colors duration-150 cursor-pointer hover:border-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <option value="">All Projects</option>
       {projects.map((p) => (
@@ -425,10 +425,10 @@ function SectionLoadingState() {
   return (
     <main className="flex flex-1 overflow-hidden">
       <div className="flex flex-1 flex-col gap-4 p-6">
-        <div className="h-16 rounded-2xl border border-[var(--panel-line)] animate-pulse bg-surface-2" />
+        <div className="h-16 rounded-xl border border-line animate-pulse bg-surface-2" />
         <div className="grid flex-1 gap-4 lg:grid-cols-3">
-          <div className="rounded-2xl border border-[var(--panel-line)] animate-pulse bg-surface-2" />
-          <div className="rounded-2xl border border-[var(--panel-line)] animate-pulse bg-surface-2 lg:col-span-2" />
+          <div className="rounded-xl border border-line animate-pulse bg-surface-2" />
+          <div className="rounded-xl border border-line animate-pulse bg-surface-2 lg:col-span-2" />
         </div>
       </div>
     </main>
