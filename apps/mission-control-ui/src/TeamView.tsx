@@ -1,9 +1,9 @@
 import type { Id } from "../../../convex/_generated/dataModel";
 import type { MainView } from "./TopNav";
-import { cn } from "@/lib/utils";
 import { PageHeader } from "./components/PageHeader";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "./components/factory/badges";
+import { MetricBlock } from "./components/factory/MetricBlock";
 import { Button } from "@/components/ui/button";
 import {
   ArrowRight,
@@ -31,7 +31,6 @@ interface RoleCardData {
   description: string;
   skills: string[];
   icon: LucideIcon;
-  accentClass: string;
 }
 
 interface TeamSection {
@@ -47,7 +46,6 @@ const SOFIE: RoleCardData = {
   description: "Coordinates delegation, keeps execution tidy, and turns rough intent into accountable motion across the fleet.",
   skills: ["Orchestration", "Clarity", "Delegation"],
   icon: ShieldCheck,
-  accentClass: "border-cyan-300/20 bg-cyan-400/8 text-cyan-100",
 };
 
 const TEAM_SECTIONS: TeamSection[] = [
@@ -62,7 +60,6 @@ const TEAM_SECTIONS: TeamSection[] = [
         description: "Owns automation, runtime reliability, and the machinery underneath day-to-day execution.",
         skills: ["Infrastructure", "Automation", "Reliability"],
         icon: Cloud,
-        accentClass: "border-blue-300/18 bg-blue-400/8 text-blue-100",
       },
       {
         name: "Ralph",
@@ -70,7 +67,6 @@ const TEAM_SECTIONS: TeamSection[] = [
         description: "Checks output quality, closes loops, and sends weak work back before it creates trust debt.",
         skills: ["Quality", "Monitoring", "Review"],
         icon: Wrench,
-        accentClass: "border-amber-300/18 bg-amber-400/8 text-amber-100",
       },
     ],
   },
@@ -85,7 +81,6 @@ const TEAM_SECTIONS: TeamSection[] = [
         description: "Looks for leading indicators, opportunities, and changes in demand before they become obvious.",
         skills: ["Radar", "Research", "Signal quality"],
         icon: Search,
-        accentClass: "border-emerald-300/18 bg-emerald-400/8 text-emerald-100",
       },
       {
         name: "Quill The Artisan",
@@ -93,7 +88,6 @@ const TEAM_SECTIONS: TeamSection[] = [
         description: "Translates intent into clear, on-brand writing that feels deliberate instead of automated.",
         skills: ["Voice", "Narrative", "Editing"],
         icon: PenLine,
-        accentClass: "border-violet-300/18 bg-violet-400/8 text-violet-100",
       },
       {
         name: "Pixel",
@@ -101,7 +95,6 @@ const TEAM_SECTIONS: TeamSection[] = [
         description: "Owns visual framing, promotional assets, and attention-shaping design work.",
         skills: ["Design", "Visual taste", "Brand consistency"],
         icon: Palette,
-        accentClass: "border-pink-300/18 bg-pink-400/8 text-pink-100",
       },
       {
         name: "Echo",
@@ -109,7 +102,6 @@ const TEAM_SECTIONS: TeamSection[] = [
         description: "Pushes distribution, keeps channels active, and turns finished work into visible reach.",
         skills: ["Distribution", "Speed", "Audience"],
         icon: Megaphone,
-        accentClass: "border-cyan-300/18 bg-cyan-400/8 text-cyan-100",
       },
     ],
   },
@@ -124,7 +116,6 @@ const TEAM_SECTIONS: TeamSection[] = [
         description: "Builds, fixes, and keeps the product moving toward something we would actually ship.",
         skills: ["Code", "Systems", "Launchability"],
         icon: Code2,
-        accentClass: "border-orange-300/18 bg-orange-400/8 text-orange-100",
       },
       {
         name: "Violet",
@@ -132,7 +123,6 @@ const TEAM_SECTIONS: TeamSection[] = [
         description: "Handles deep analysis, research synthesis, and the work needed before decisions become irreversible.",
         skills: ["Research", "Analysis", "Context"],
         icon: Sparkles,
-        accentClass: "border-fuchsia-300/18 bg-fuchsia-400/8 text-fuchsia-100",
       },
     ],
   },
@@ -144,30 +134,20 @@ function TeamMemberCard({ member, onNavigate }: { member: RoleCardData; onNaviga
   return (
     <Card className="p-5">
       <div className="flex items-start gap-4">
-        <div
-          className={cn(
-            "flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border shadow-[var(--glow-cyan)]",
-            member.accentClass
-          )}
-        >
-          <Icon className="h-5 w-5" strokeWidth={1.7} />
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-line bg-surface-2 text-ink-secondary">
+          <Icon size={16} strokeWidth={1.7} />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <div className="text-sm font-semibold text-foreground">{member.name}</div>
-              <div className="mt-1 text-xs text-muted-foreground">{member.role}</div>
-            </div>
-            <Badge variant="outline" className="border-[var(--panel-line)] text-muted-foreground">
-              role card
-            </Badge>
+          <div>
+            <div className="text-[15px] font-semibold text-ink">{member.name}</div>
+            <div className="mt-0.5 text-[12.5px] text-ink-muted">{member.role}</div>
           </div>
-          <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{member.description}</p>
-          <div className="mt-4 flex flex-wrap gap-2">
+          <p className="mt-3 text-[13.5px] leading-relaxed text-ink-secondary">{member.description}</p>
+          <div className="mt-4 flex flex-wrap gap-1.5">
             {member.skills.map((skill) => (
-              <Badge key={skill} variant="outline" className="border-[var(--panel-line)] text-muted-foreground">
+              <StatusBadge key={skill} tone="neutral">
                 {skill}
-              </Badge>
+              </StatusBadge>
             ))}
           </div>
           {onNavigate ? (
@@ -190,17 +170,13 @@ export function TeamView({ projectId: _projectId, onNavigate }: TeamViewProps) {
   const totalAgents = TEAM_SECTIONS.reduce((sum, section) => sum + section.members.length, 1);
 
   return (
-    <main className="mc-page">
+    <main className="flex-1 overflow-auto bg-app">
       <PageHeader
         title="Team"
         description="A readable map of who does what inside Mission Control so operators can understand ownership before they delegate work."
         eyebrow="Comms"
-        icon={<Bot className="h-4.5 w-4.5" strokeWidth={1.7} />}
-        status={
-          <Badge variant="outline" className="border-cyan-300/20 text-cyan-100">
-            {totalAgents} active roles
-          </Badge>
-        }
+        icon={<Bot size={16} strokeWidth={1.7} />}
+        status={<StatusBadge tone="neutral">{totalAgents} active roles</StatusBadge>}
         actions={
           <div className="flex gap-2">
             {onNavigate ? (
@@ -208,7 +184,7 @@ export function TeamView({ projectId: _projectId, onNavigate }: TeamViewProps) {
                 <Button variant="outline" size="sm" onClick={() => onNavigate("org")}>
                   Org chart
                 </Button>
-                <Button variant="neon-cyan" size="sm" onClick={() => onNavigate("agents")}>
+                <Button size="sm" onClick={() => onNavigate("agents")}>
                   Open agents
                 </Button>
               </>
@@ -217,47 +193,39 @@ export function TeamView({ projectId: _projectId, onNavigate }: TeamViewProps) {
         }
       />
 
-      <div className="mc-page-body mc-page-stack">
+      <div className="mx-auto flex max-w-[1200px] flex-col gap-6 px-6 py-6">
         <div className="grid gap-4 md:grid-cols-4">
           <Card className="p-4">
-            <div className="mc-kicker">Roles mapped</div>
-            <div className="mt-2 text-3xl font-semibold text-foreground">{totalAgents}</div>
-            <div className="mt-1 text-xs text-muted-foreground">Named responsibilities represented in the operating model</div>
+            <MetricBlock label="Roles mapped" value={totalAgents} detail="Named responsibilities represented in the operating model" />
           </Card>
           <Card className="p-4">
-            <div className="mc-kicker">Leadership</div>
-            <div className="mt-2 text-3xl font-semibold text-cyan-100">1</div>
-            <div className="mt-1 text-xs text-muted-foreground">Sofie remains the primary coordination layer for operator intent</div>
+            <MetricBlock label="Leadership" value={1} detail="Sofie remains the primary coordination layer for operator intent" />
           </Card>
           <Card className="p-4">
-            <div className="mc-kicker">Execution bands</div>
-            <div className="mt-2 text-3xl font-semibold text-foreground">{TEAM_SECTIONS.length}</div>
-            <div className="mt-1 text-xs text-muted-foreground">Operations, signal/output, and meta-system work</div>
+            <MetricBlock label="Execution bands" value={TEAM_SECTIONS.length} detail="Operations, signal/output, and meta-system work" />
           </Card>
           <Card className="p-4">
-            <div className="mc-kicker">Design rule</div>
-            <div className="mt-2 text-3xl font-semibold text-emerald-200">Clear</div>
-            <div className="mt-1 text-xs text-muted-foreground">Every role needs an obvious reason to exist and a clear handoff boundary</div>
+            <MetricBlock label="Design rule" value="Clear" detail="Every role needs an obvious reason to exist and a clear handoff boundary" />
           </Card>
         </div>
 
         <Card className="p-6">
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_320px]">
             <div>
-              <div className="mc-kicker">Operator brief</div>
-              <h2 className="mt-2 font-[family:var(--font-display)] text-2xl font-semibold tracking-[0.04em] text-foreground">
+              <div className="text-[12.5px] font-medium text-ink-secondary">Operator brief</div>
+              <h2 className="mt-2 text-[19px] font-semibold tracking-tight text-ink">
                 An autonomous organization of AI agents that does real work with real accountability.
               </h2>
-              <p className="mt-3 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+              <p className="mt-3 max-w-3xl text-[13.5px] leading-relaxed text-ink-secondary">
                 This page should help an operator understand responsibilities quickly. It is not a vanity gallery. If a role or
                 section feels ornamental, it should be merged, renamed, or removed.
               </p>
             </div>
             <div className="space-y-3">
-              <div className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-4 text-sm leading-relaxed text-muted-foreground">
+              <div className="rounded-lg border border-line bg-surface-2 px-4 py-4 text-[13.5px] leading-relaxed text-ink-secondary">
                 Use Team to orient new operators, then move to Org Chart when you need direct reporting structure.
               </div>
-              <div className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-4 text-sm leading-relaxed text-muted-foreground">
+              <div className="rounded-lg border border-line bg-surface-2 px-4 py-4 text-[13.5px] leading-relaxed text-ink-secondary">
                 Every role should map cleanly to a buyer, seller, or platform problem. If it does not, it is likely scope drift.
               </div>
             </div>
@@ -265,20 +233,20 @@ export function TeamView({ projectId: _projectId, onNavigate }: TeamViewProps) {
         </Card>
 
         <Card className="p-5">
-          <div className="mb-5 flex items-start gap-4 rounded-2xl border border-cyan-300/16 bg-cyan-400/6 p-5">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-cyan-300/20 bg-cyan-400/8 text-cyan-100 shadow-[var(--glow-cyan)]">
-              <SOFIE.icon className="h-5 w-5" strokeWidth={1.7} />
+          <div className="mb-5 flex items-start gap-4 rounded-xl border border-line bg-surface-2 p-5">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-line bg-surface-1 text-ink-secondary">
+              <SOFIE.icon size={16} strokeWidth={1.7} />
             </div>
             <div className="min-w-0">
-              <div className="mc-kicker">Chief of staff</div>
-              <div className="mt-1 text-lg font-semibold text-foreground">{SOFIE.name}</div>
-              <div className="text-sm text-muted-foreground">{SOFIE.role}</div>
-              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{SOFIE.description}</p>
-              <div className="mt-4 flex flex-wrap gap-2">
+              <div className="text-[12.5px] font-medium text-ink-secondary">Chief of staff</div>
+              <div className="mt-1 text-[15px] font-semibold text-ink">{SOFIE.name}</div>
+              <div className="text-[12.5px] text-ink-muted">{SOFIE.role}</div>
+              <p className="mt-3 text-[13.5px] leading-relaxed text-ink-secondary">{SOFIE.description}</p>
+              <div className="mt-4 flex flex-wrap gap-1.5">
                 {SOFIE.skills.map((skill) => (
-                  <Badge key={skill} variant="outline" className="border-cyan-300/20 text-cyan-100">
+                  <StatusBadge key={skill} tone="neutral">
                     {skill}
-                  </Badge>
+                  </StatusBadge>
                 ))}
               </div>
             </div>
@@ -288,10 +256,10 @@ export function TeamView({ projectId: _projectId, onNavigate }: TeamViewProps) {
             {TEAM_SECTIONS.map((section) => (
               <section key={section.id} className="space-y-4">
                 <div className="flex items-center gap-3">
-                  <div className="mc-kicker">{section.label}</div>
-                  <div className="h-px flex-1 bg-[var(--panel-line)]" />
+                  <div className="text-[15px] font-semibold text-ink">{section.label}</div>
+                  <div className="h-px flex-1 bg-line" />
                 </div>
-                <p className="max-w-3xl text-sm leading-relaxed text-muted-foreground">{section.description}</p>
+                <p className="max-w-3xl text-[13.5px] leading-relaxed text-ink-secondary">{section.description}</p>
                 <div className="grid gap-4 xl:grid-cols-2">
                   {section.members.map((member) => (
                     <TeamMemberCard key={member.name} member={member} onNavigate={onNavigate} />
@@ -306,8 +274,8 @@ export function TeamView({ projectId: _projectId, onNavigate }: TeamViewProps) {
           <Card className="p-5">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <div className="mc-kicker">Next step</div>
-                <div className="mt-1 text-sm text-muted-foreground">
+                <div className="text-[15px] font-semibold text-ink">Next step</div>
+                <div className="mt-1 text-[13.5px] text-ink-secondary">
                   Move from role mapping into structure or staffing if the current operating model feels thin.
                 </div>
               </div>
@@ -315,7 +283,7 @@ export function TeamView({ projectId: _projectId, onNavigate }: TeamViewProps) {
                 <Button variant="outline" onClick={() => onNavigate("org")}>
                   Org chart
                 </Button>
-                <Button variant="neon-cyan" onClick={() => onNavigate("hiring")}>
+                <Button onClick={() => onNavigate("hiring")}>
                   Hiring
                   <ArrowRight className="h-4 w-4" />
                 </Button>

@@ -39,7 +39,7 @@ export function ExportReportButton({ taskId }: ExportReportButtonProps) {
         gap: "8px",
       }}
     >
-      📄 Export Report
+      Export Report
     </button>
   );
 }

@@ -3,15 +3,13 @@ import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import type { MainView } from "./TopNav";
-import { PageHeader } from "./components/PageHeader";
 import { Card } from "./components/ui/card";
-import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
+import { StatusBadge, type StatusBadgeProps } from "@/components/factory/badges";
 import { cn } from "@/lib/utils";
 import { getBuildPipelineStages, getCurrentBuildStage } from "@/lib/buildPipeline";
 import { getOrchestrationBaseUrl } from "@/lib/orchestrationUrl";
 import {
-  GitBranch,
   ArrowRight,
   Users,
   FileText,
@@ -34,6 +32,12 @@ const STAGE_ICONS = {
   backend: Database,
   launch: Rocket,
 } as const;
+
+const STAGE_STATUS_TONE: Record<string, StatusBadgeProps["tone"]> = {
+  done: "success",
+  active: "info",
+  todo: "neutral",
+};
 
 export function PipelineView({ projectId, onNavigate }: PipelineViewProps) {
   const [gatewayConfigured, setGatewayConfigured] = useState<boolean | null>(null);
@@ -145,251 +149,222 @@ export function PipelineView({ projectId, onNavigate }: PipelineViewProps) {
 
   if (isLoading) {
     return (
-      <main className="mc-page">
-        <div className="mc-page-body">
-          <div className="h-[680px] rounded-2xl border border-[var(--panel-line)] skeleton-shimmer" />
-        </div>
-      </main>
+      <div className="mx-auto flex w-full max-w-[1200px] flex-col px-6 py-6">
+        <div className="h-[680px] animate-pulse rounded-xl border border-line bg-surface-2" />
+      </div>
     );
   }
 
   return (
-    <main className="mc-page">
-      <PageHeader
-        title="Build Pipeline"
-        description="Actor-first product development workflow. Move from mission and structure to prototype, backend, and launch without falling back to the old handoff ritual."
-        icon={<GitBranch className="h-4.5 w-4.5" strokeWidth={1.7} />}
-        status={
-          currentStage ? (
-            <Badge variant="outline" className="border-cyan-300/20 text-cyan-100">
-              Current stage: {currentStage.label}
-            </Badge>
-          ) : undefined
-        }
-      />
+    <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-6 py-6">
+      <header className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-ink">
+            Build Pipeline
+          </h1>
+          {currentStage && (
+            <StatusBadge tone="info">Current stage: {currentStage.label}</StatusBadge>
+          )}
+        </div>
+        <p className="mt-1.5 max-w-[70ch] text-[14px] leading-relaxed text-ink-secondary">
+          Actor-first product development workflow. Move from mission and structure to prototype, backend, and launch without falling back to the old handoff ritual.
+        </p>
+      </header>
 
-      <div className="mc-page-body mc-page-stack">
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-          <Card className="p-5">
-            <div className="mc-kicker">Modern workflow</div>
-            <div className="mt-2 text-xl font-semibold text-foreground">Prototype first. Backend second. Approval before complexity.</div>
-            <div className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-              This replaces the old design-to-code handoff with a single operator-visible loop: define actors, write the PRD, shape the flows, prototype with mock data, then generate the backend from the approved frontend and docs.
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {(["design", "build", "launch"] as const).map((lens) => (
-                <button
-                  key={lens}
-                  type="button"
-                  onClick={() => setFocusLens(lens)}
-                  className={cn(
-                    "rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] transition-all",
-                    focusLens === lens
-                      ? "border-cyan-300/20 bg-cyan-400/10 text-cyan-100 shadow-[var(--glow-cyan)]"
-                      : "border-[var(--panel-line)] bg-[color:var(--shell-panel)] text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  {lens} lens
-                </button>
-              ))}
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Badge variant="outline" className="border-[var(--panel-line)] text-muted-foreground">
-                `design.md` source of truth
-              </Badge>
-              <Badge variant="outline" className="border-cyan-300/20 text-cyan-100">
-                Actor-first
-              </Badge>
-              <Badge variant="outline" className="border-emerald-300/20 text-emerald-100">
-                Prototype before backend
-              </Badge>
-              <Badge variant="outline" className="border-amber-300/20 text-amber-100">
-                Approval gates complexity
-              </Badge>
-            </div>
-          </Card>
-
-          <Card className="p-5">
-            <div className="mc-kicker">Operator brief</div>
-            <div className="mt-2 text-sm font-semibold text-foreground">
-              {currentStage ? `${currentStage.label} is the next discipline to protect.` : "Build-stage guidance will appear here."}
-            </div>
-            <div className="mt-2 text-sm leading-relaxed text-muted-foreground">
-              {currentStage?.description ?? "No stage data available yet."}
-            </div>
-            {currentStage && (
-              <div className="mt-4 rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-4">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Next artifact</div>
-                <div className="mt-1 text-sm font-semibold text-foreground">{currentStage.artifact}</div>
-                {currentStage.view && (
-                  <Button className="mt-4" variant="neon-cyan" size="sm" onClick={() => onNavigate(currentStage.view as MainView)}>
-                    Open relevant surface
-                  </Button>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+        <Card className="p-5">
+          <div className="text-[19px] font-semibold tracking-tight text-ink">Prototype first. Backend second. Approval before complexity.</div>
+          <div className="mt-2 max-w-3xl text-[13.5px] leading-relaxed text-ink-secondary">
+            This replaces the old design-to-code handoff with a single operator-visible loop: define actors, write the PRD, shape the flows, prototype with mock data, then generate the backend from the approved frontend and docs.
+          </div>
+          <div className="mt-4 flex rounded-lg border border-line p-0.5 self-start w-fit" role="tablist">
+            {(["design", "build", "launch"] as const).map((lens) => (
+              <button
+                key={lens}
+                role="tab"
+                type="button"
+                aria-selected={focusLens === lens}
+                onClick={() => setFocusLens(lens)}
+                className={cn(
+                  "rounded-md px-3 py-1.5 text-[12.5px] transition-colors duration-150",
+                  focusLens === lens
+                    ? "bg-surface-2 text-ink"
+                    : "text-ink-muted hover:text-ink-secondary"
                 )}
-              </div>
-            )}
-            <div className="mt-4 rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-4">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                Current lens
-              </div>
-              <div className="mt-1 text-sm font-semibold text-foreground">
-                {focusLens === "design" ? "Design integrity" : focusLens === "build" ? "Build execution" : "Launch trust"}
-              </div>
-              <div className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                {focusLens === "design"
-                  ? "Keep actors, visual intent, and prototype quality explicit before implementation expands."
-                  : focusLens === "build"
-                    ? "Translate approved structure into real product behavior without creating drift."
-                    : "Use readiness gates so the app feels trustworthy the first time a user touches it."}
-              </div>
-            </div>
-          </Card>
-        </div>
+              >
+                {lens} lens
+              </button>
+            ))}
+          </div>
+          <div className="mt-4 text-[12.5px] text-ink-muted">
+            <span className="font-mono">design.md</span> source of truth · Actor-first · Prototype before backend · Approval gates complexity
+          </div>
+        </Card>
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.65fr)]">
-          <Card className="overflow-hidden">
-            <div className="border-b border-[var(--panel-line)] px-5 py-4">
-              <div className="mc-kicker">Pipeline stages</div>
-              <div className="mt-1 text-sm font-semibold text-foreground">The six-stage build loop</div>
+        <Card className="p-5">
+          <div className="text-[15px] font-semibold text-ink">Operator brief</div>
+          <div className="mt-2 text-[13.5px] font-medium text-ink">
+            {currentStage ? `${currentStage.label} is the next discipline to protect.` : "Build-stage guidance will appear here."}
+          </div>
+          <div className="mt-2 text-[13px] leading-relaxed text-ink-secondary">
+            {currentStage?.description ?? "No stage data available yet."}
+          </div>
+          {currentStage && (
+            <div className="mt-4 rounded-lg bg-surface-2 px-4 py-4">
+              <div className="text-[12.5px] font-medium text-ink-secondary">Next artifact</div>
+              <div className="mt-1 text-[13.5px] font-semibold text-ink">{currentStage.artifact}</div>
+              {currentStage.view && (
+                <Button className="mt-4" size="sm" onClick={() => onNavigate(currentStage.view as MainView)}>
+                  Open relevant surface
+                </Button>
+              )}
             </div>
-            <div className="space-y-3 p-4">
-              {stages.map((stage, index) => {
-                const Icon = STAGE_ICONS[stage.id];
-                return (
-                  <div key={stage.id} className="relative">
-                    <button
-                      type="button"
-                      onClick={() => stage.view && onNavigate(stage.view as MainView)}
-                      className={cn(
-                        "w-full rounded-2xl border px-4 py-4 text-left transition-all",
-                        stage.status === "done" && "border-emerald-300/20 bg-emerald-400/8",
-                        stage.status === "active" && "border-cyan-300/20 bg-cyan-400/10 shadow-[var(--glow-cyan)]",
-                        stage.status === "todo" && "border-[var(--panel-line)] bg-[color:var(--shell-panel)] hover:border-[var(--panel-line-strong)]"
-                      )}
-                    >
-                      <div className="flex items-start gap-4">
-                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-cyan-300/18 bg-cyan-400/10 text-cyan-100">
-                          <Icon className="h-4.5 w-4.5" strokeWidth={1.7} />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="mc-kicker">{stage.eyebrow}</span>
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                stage.status === "done" && "border-emerald-300/20 text-emerald-100",
-                                stage.status === "active" && "border-cyan-300/20 text-cyan-100",
-                                stage.status === "todo" && "border-[var(--panel-line)] text-muted-foreground"
-                              )}
-                            >
-                              {stage.status}
-                            </Badge>
-                          </div>
-                          <div className="mt-2 text-sm font-semibold text-foreground">{stage.label}</div>
-                          <div className="mt-1 text-sm leading-relaxed text-muted-foreground">{stage.description}</div>
-                          <div className="mt-3 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                            Artifact: {stage.artifact}
-                          </div>
-                        </div>
-                      </div>
-                    </button>
-                    {index < stages.length - 1 && (
-                      <div className="pointer-events-none absolute bottom-[-14px] left-[22px] flex h-4.5 items-center text-cyan-200/35">
-                        <ArrowRight className="h-3.5 w-3.5 rotate-90" />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+          )}
+          <div className="mt-4 rounded-lg bg-surface-2 px-4 py-4">
+            <div className="text-[12.5px] font-medium text-ink-secondary">Current lens</div>
+            <div className="mt-1 text-[13.5px] font-semibold text-ink">
+              {focusLens === "design" ? "Design integrity" : focusLens === "build" ? "Build execution" : "Launch trust"}
             </div>
-          </Card>
-
-          <Card className="p-5">
-            <div className="mc-kicker">Artifacts and gates</div>
-            <div className="mt-3 space-y-3">
-              {[
-                "Actors drive the interface. Features come after the actor and the first screen are clear.",
-                "The PRD and architecture file should exist before the prototype expands beyond one-off prompts.",
-                "Do not start backend shape until the mock-data prototype is approved.",
-                "Launch means auth, approvals, billing, notifications, and real operator trust are in place.",
-              ].map((item) => (
-                <div key={item} className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-3 text-sm leading-relaxed text-muted-foreground">
-                  {item}
-                </div>
-              ))}
+            <div className="mt-2 text-[13px] leading-relaxed text-ink-secondary">
+              {focusLens === "design"
+                ? "Keep actors, visual intent, and prototype quality explicit before implementation expands."
+                : focusLens === "build"
+                  ? "Translate approved structure into real product behavior without creating drift."
+                  : "Use readiness gates so the app feels trustworthy the first time a user touches it."}
             </div>
-          </Card>
-        </div>
-
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-          <Card className="p-5">
-            <div className="mc-kicker">Playbooks</div>
-            <div className="mt-2 text-sm font-semibold text-foreground">
-              Stage-aware workflows for operating this build loop
-            </div>
-            <div className="mt-4 space-y-3">
-              {playbooks.filter((playbook) => playbook.lens === focusLens).map((playbook) => (
-                <div key={playbook.title} className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold text-foreground">{playbook.title}</div>
-                      <div className="mt-1 text-sm leading-relaxed text-muted-foreground">{playbook.detail}</div>
-                    </div>
-                    <Button variant="outline" size="sm" onClick={playbook.onClick}>
-                      {playbook.actionLabel}
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          <Card className="p-5">
-            <div className="mc-kicker">Readiness matrix</div>
-            <div className="mt-2 text-sm font-semibold text-foreground">
-              See which artifacts are explicit and which are still creating drift
-            </div>
-            <div className="mt-4 space-y-3">
-              {readinessMatrix.map((item) => (
-                <div key={item.id} className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold text-foreground">{item.label}</div>
-                      <div className="mt-1 text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-                        {item.artifact}
-                      </div>
-                    </div>
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        item.status === "done" && "border-emerald-300/20 text-emerald-100",
-                        item.status === "active" && "border-cyan-300/20 text-cyan-100",
-                        item.status === "todo" && "border-[var(--panel-line)] text-muted-foreground"
-                      )}
-                    >
-                      {item.status}
-                    </Badge>
-                  </div>
-                  <div className="mt-2 text-sm leading-relaxed text-muted-foreground">{item.note}</div>
-                </div>
-              ))}
-            </div>
-            <div className="mt-4 rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-4">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                Current recommendations
-              </div>
-              <div className="mt-3 space-y-2.5">
-                {focusRecommendations[focusLens].map((item) => (
-                  <div key={item} className="flex items-start gap-2 text-sm leading-relaxed text-muted-foreground">
-                    <ArrowRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-cyan-100" />
-                    <span>{item}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </Card>
-        </div>
+          </div>
+        </Card>
       </div>
-    </main>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.65fr)]">
+        <Card className="overflow-hidden">
+          <div className="border-b border-line px-5 py-4">
+            <div className="text-[15px] font-semibold text-ink">Pipeline stages</div>
+            <div className="mt-0.5 text-[12.5px] text-ink-muted">The six-stage build loop</div>
+          </div>
+          <div className="space-y-3 p-4">
+            {stages.map((stage, index) => {
+              const Icon = STAGE_ICONS[stage.id];
+              return (
+                <div key={stage.id} className="relative">
+                  <button
+                    type="button"
+                    onClick={() => stage.view && onNavigate(stage.view as MainView)}
+                    className={cn(
+                      "w-full rounded-xl border px-4 py-4 text-left transition-colors duration-150",
+                      stage.status === "active"
+                        ? "border-line-strong bg-surface-2"
+                        : "border-line bg-surface-1 hover:border-line-strong hover:bg-surface-2"
+                    )}
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line bg-surface-2 text-ink-secondary">
+                        <Icon size={16} strokeWidth={1.7} aria-hidden />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[12px] text-ink-muted">{stage.eyebrow}</span>
+                          <StatusBadge tone={STAGE_STATUS_TONE[stage.status] ?? "neutral"}>
+                            {stage.status}
+                          </StatusBadge>
+                        </div>
+                        <div className="mt-2 text-[13.5px] font-semibold text-ink">{stage.label}</div>
+                        <div className="mt-1 text-[13px] leading-relaxed text-ink-secondary">{stage.description}</div>
+                        <div className="mt-3 text-[12px] text-ink-muted">
+                          Artifact: {stage.artifact}
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                  {index < stages.length - 1 && (
+                    <div className="pointer-events-none absolute bottom-[-14px] left-[22px] flex h-4.5 items-center text-ink-muted">
+                      <ArrowRight className="h-3.5 w-3.5 rotate-90" strokeWidth={1.75} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+
+        <Card className="p-5">
+          <div className="text-[15px] font-semibold text-ink">Artifacts and gates</div>
+          <div className="mt-3 space-y-3">
+            {[
+              "Actors drive the interface. Features come after the actor and the first screen are clear.",
+              "The PRD and architecture file should exist before the prototype expands beyond one-off prompts.",
+              "Do not start backend shape until the mock-data prototype is approved.",
+              "Launch means auth, approvals, billing, notifications, and real operator trust are in place.",
+            ].map((item) => (
+              <div key={item} className="rounded-lg bg-surface-2 px-4 py-3 text-[13px] leading-relaxed text-ink-secondary">
+                {item}
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+        <Card className="p-5">
+          <div className="text-[15px] font-semibold text-ink">Playbooks</div>
+          <div className="mt-1 text-[12.5px] text-ink-muted">
+            Stage-aware workflows for operating this build loop
+          </div>
+          <div className="mt-4 space-y-3">
+            {playbooks.filter((playbook) => playbook.lens === focusLens).map((playbook) => (
+              <div key={playbook.title} className="rounded-lg border border-line px-4 py-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="text-[13.5px] font-semibold text-ink">{playbook.title}</div>
+                    <div className="mt-1 text-[13px] leading-relaxed text-ink-secondary">{playbook.detail}</div>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={playbook.onClick}>
+                    {playbook.actionLabel}
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card className="p-5">
+          <div className="text-[15px] font-semibold text-ink">Readiness matrix</div>
+          <div className="mt-1 text-[12.5px] text-ink-muted">
+            See which artifacts are explicit and which are still creating drift
+          </div>
+          <div className="mt-4 space-y-3">
+            {readinessMatrix.map((item) => (
+              <div key={item.id} className="rounded-lg border border-line px-4 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[13.5px] font-semibold text-ink">{item.label}</div>
+                    <div className="mt-1 text-[12px] text-ink-muted">
+                      {item.artifact}
+                    </div>
+                  </div>
+                  <StatusBadge tone={STAGE_STATUS_TONE[item.status] ?? "neutral"}>
+                    {item.status}
+                  </StatusBadge>
+                </div>
+                <div className="mt-2 text-[13px] leading-relaxed text-ink-secondary">{item.note}</div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 rounded-lg bg-surface-2 px-4 py-4">
+            <div className="text-[12.5px] font-medium text-ink-secondary">
+              Current recommendations
+            </div>
+            <div className="mt-3 space-y-2.5">
+              {focusRecommendations[focusLens].map((item) => (
+                <div key={item} className="flex items-start gap-2 text-[13px] leading-relaxed text-ink-secondary">
+                  <ArrowRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-muted" strokeWidth={1.75} />
+                  <span>{item}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Card>
+      </div>
+    </div>
   );
 }

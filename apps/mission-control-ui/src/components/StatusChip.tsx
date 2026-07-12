@@ -1,17 +1,5 @@
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
-import {
-  Inbox,
-  UserCheck,
-  Play,
-  Eye,
-  ShieldAlert,
-  Ban,
-  AlertTriangle,
-  CheckCircle2,
-  XCircle,
-  type LucideIcon,
-} from "lucide-react";
+import { StatusBadge, type StatusBadgeProps } from "@/components/factory/badges";
 
 type TaskStatus =
   | "INBOX"
@@ -24,56 +12,17 @@ type TaskStatus =
   | "DONE"
   | "CANCELED";
 
-const STATUS_CONFIG: Record<TaskStatus, {
-  label: string;
-  icon: LucideIcon;
-  classes: string;
-}> = {
-  INBOX: {
-    label: "Inbox",
-    icon: Inbox,
-    classes: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-  },
-  ASSIGNED: {
-    label: "Assigned",
-    icon: UserCheck,
-    classes: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-  },
-  IN_PROGRESS: {
-    label: "In Progress",
-    icon: Play,
-    classes: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-  },
-  REVIEW: {
-    label: "Review",
-    icon: Eye,
-    classes: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-  },
-  NEEDS_APPROVAL: {
-    label: "Needs Approval",
-    icon: ShieldAlert,
-    classes: "bg-red-500/10 text-red-400 border-red-500/20",
-  },
-  BLOCKED: {
-    label: "Blocked",
-    icon: Ban,
-    classes: "bg-orange-500/10 text-orange-400 border-orange-500/20",
-  },
-  FAILED: {
-    label: "Failed",
-    icon: AlertTriangle,
-    classes: "bg-red-500/10 text-red-400 border-red-500/20",
-  },
-  DONE: {
-    label: "Done",
-    icon: CheckCircle2,
-    classes: "bg-primary/10 text-primary border-primary/20",
-  },
-  CANCELED: {
-    label: "Canceled",
-    icon: XCircle,
-    classes: "bg-gray-500/10 text-gray-400 border-gray-500/20",
-  },
+/** Task-state → badge tone mapping per UI_STYLE_GUIDE.md. */
+const STATUS_CONFIG: Record<TaskStatus, { label: string; tone: StatusBadgeProps["tone"] }> = {
+  INBOX: { label: "Inbox", tone: "neutral" },
+  ASSIGNED: { label: "Assigned", tone: "neutral" },
+  IN_PROGRESS: { label: "In Progress", tone: "info" },
+  REVIEW: { label: "Review", tone: "info" },
+  NEEDS_APPROVAL: { label: "Needs Approval", tone: "warning" },
+  BLOCKED: { label: "Blocked", tone: "warning" },
+  FAILED: { label: "Failed", tone: "error" },
+  DONE: { label: "Done", tone: "success" },
+  CANCELED: { label: "Canceled", tone: "neutral" },
 };
 
 interface StatusChipProps {
@@ -82,31 +31,21 @@ interface StatusChipProps {
   className?: string;
 }
 
-export function StatusChip({ status, size = "sm", className }: StatusChipProps) {
+export function StatusChip({ status, size = "sm", className }: StatusChipProps): JSX.Element {
   const config = STATUS_CONFIG[status as TaskStatus];
+  const sizeClass = size === "md" ? "text-[12.5px]" : undefined;
+
   if (!config) {
     return (
-      <Badge variant="outline" className={cn("text-[11px]", className)}>
+      <StatusBadge tone="neutral" className={cn(sizeClass, className)}>
         {status}
-      </Badge>
+      </StatusBadge>
     );
   }
 
-  const Icon = config.icon;
-  const isSm = size === "sm";
-
   return (
-    <Badge
-      variant="outline"
-      className={cn(
-        "font-medium border gap-1",
-        config.classes,
-        isSm ? "text-[11px] h-5 px-1.5" : "text-xs h-6 px-2",
-        className
-      )}
-    >
-      <Icon className={isSm ? "h-3 w-3" : "h-3.5 w-3.5"} />
+    <StatusBadge tone={config.tone} className={cn(sizeClass, className)}>
       {config.label}
-    </Badge>
+    </StatusBadge>
   );
 }

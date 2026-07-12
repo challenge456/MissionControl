@@ -176,14 +176,14 @@ export function LiveAgentChatView({ projectId }: { projectId: Id<"projects"> | n
 
   if (status === null && !statusError) {
     return (
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-auto bg-app">
         <PageHeader
           title="Live Agent Chat"
           description="Connect to the OpenClaw Gateway for streaming chat with agents."
         />
-        <div className="px-6 py-8 flex flex-col items-center justify-center text-muted-foreground">
-          <Loader2 className="h-10 w-10 animate-spin mb-4" />
-          <p className="text-sm">Checking gateway configuration…</p>
+        <div className="px-6 py-8 flex flex-col items-center justify-center text-ink-muted">
+          <Loader2 className="h-5 w-5 animate-spin mb-4" strokeWidth={1.75} />
+          <p className="text-[13.5px]">Checking gateway configuration…</p>
         </div>
       </main>
     );
@@ -212,26 +212,26 @@ export function LiveAgentChatView({ projectId }: { projectId: Id<"projects"> | n
 
   if (statusError) {
     return (
-      <main className="flex-1 overflow-auto flex flex-col">
+      <main className="flex-1 overflow-auto flex flex-col bg-app">
         <PageHeader
           title="Live Agent Chat"
           description="Connect to the OpenClaw Gateway for streaming chat with agents."
         />
-        <div className="px-4 py-2 border-b border-border bg-amber-500/10 flex items-center gap-2 text-amber-700 dark:text-amber-400">
-          <AlertCircle className="h-4 w-4 shrink-0" />
-          <p className="text-xs">
+        <div className="px-4 py-2 border-b border-line bg-warn-soft flex items-center gap-2 text-warn">
+          <AlertCircle className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+          <p className="text-[12.5px]">
             Orchestration server unavailable — showing demo data. In dev, run the server at{" "}
-            <code className="bg-muted px-1 rounded">http://localhost:4100</code> or set{" "}
-            <code className="bg-muted px-1 rounded">VITE_ORCHESTRATION_URL</code>.
+            <code className="font-mono rounded bg-surface-2 px-1 text-ink-secondary">http://localhost:4100</code> or set{" "}
+            <code className="font-mono rounded bg-surface-2 px-1 text-ink-secondary">VITE_ORCHESTRATION_URL</code>.
           </p>
         </div>
         <div className="flex-1 flex min-h-0 px-6 py-4">
-          <div className="w-56 border-r border-border pr-4 flex flex-col gap-1">
-            <p className="text-xs font-semibold text-muted-foreground uppercase mb-2">Agents (demo)</p>
+          <div className="w-56 border-r border-line pr-4 flex flex-col gap-1">
+            <p className="text-[11.5px] font-medium text-ink-muted uppercase tracking-[0.06em] mb-2">Agents (demo)</p>
             {fictitiousAgents.map((a) => (
               <div
                 key={a.id}
-                className="text-left px-3 py-2 rounded-md text-sm bg-muted/50 text-muted-foreground cursor-default"
+                className="text-left px-3 py-2 rounded-lg text-[13.5px] border border-line bg-surface-1 text-ink-secondary cursor-default"
               >
                 {a.name}
               </div>
@@ -243,23 +243,23 @@ export function LiveAgentChatView({ projectId }: { projectId: Id<"projects"> | n
                 {fictitiousMessages.map((m, i) => (
                   <div
                     key={i}
-                    className={`rounded-lg px-3 py-2 text-sm ${
-                      m.role === "user" ? "bg-primary/10 ml-8" : "bg-muted/50 mr-8"
+                    className={`rounded-lg border border-line px-3 py-2 text-[13.5px] text-ink ${
+                      m.role === "user" ? "bg-surface-3 ml-8" : "bg-surface-2 mr-8"
                     }`}
                   >
-                    <span className="text-[10px] font-semibold text-muted-foreground uppercase">
+                    <span className="text-[11.5px] font-medium text-ink-muted">
                       {m.role}
                     </span>
                     <p className="mt-0.5 whitespace-pre-wrap">{m.content}</p>
                   </div>
                 ))}
               </div>
-              <div className="flex gap-2 border-t border-border pt-3 opacity-60">
+              <div className="flex gap-2 border-t border-line pt-3 opacity-60">
                 <input
                   type="text"
                   disabled
                   placeholder="Connect to orchestration server to send messages…"
-                  className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm text-muted-foreground"
+                  className="h-9 flex-1 rounded-lg border border-line bg-surface-1 px-3 text-[13.5px] text-ink placeholder:text-ink-muted"
                 />
                 <Button size="sm" disabled>
                   Send
@@ -274,14 +274,14 @@ export function LiveAgentChatView({ projectId }: { projectId: Id<"projects"> | n
 
   if (!status?.configured) {
     return (
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-auto bg-app">
         <PageHeader
           title="Live Agent Chat"
           description="Connect to the OpenClaw Gateway for streaming chat with agents."
         />
         <div className="px-6 py-8 flex flex-col items-center justify-center">
-          <AlertCircle className="h-12 w-12 text-amber-500 mb-4" />
-          <p className="text-sm text-muted-foreground text-center max-w-md">
+          <AlertCircle className="h-6 w-6 text-warn mb-4" strokeWidth={1.6} />
+          <p className="text-[13.5px] text-ink-secondary text-center max-w-md">
             Configure the Gateway (Agents → Gateway) with an upstream URL and set GATEWAY_TOKEN on the orchestration server, then return here to connect.
           </p>
         </div>
@@ -290,7 +290,7 @@ export function LiveAgentChatView({ projectId }: { projectId: Id<"projects"> | n
   }
 
   return (
-    <main className="flex-1 overflow-auto flex flex-col">
+    <main className="flex-1 overflow-auto flex flex-col bg-app">
       <PageHeader
         title="Live Agent Chat"
         description={
@@ -320,10 +320,10 @@ export function LiveAgentChatView({ projectId }: { projectId: Id<"projects"> | n
       <div className="flex-1 flex min-h-0 px-6 py-4">
         {connState === "connected" && (
           <>
-            <div className="w-56 border-r border-border pr-4 flex flex-col gap-1">
-              <p className="text-xs font-semibold text-muted-foreground uppercase mb-2">Agents</p>
+            <div className="w-56 border-r border-line pr-4 flex flex-col gap-1">
+              <p className="text-[11.5px] font-medium text-ink-muted uppercase tracking-[0.06em] mb-2">Agents</p>
               {agents.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No agents from Gateway. Using Convex list.</p>
+                <p className="text-[12.5px] text-ink-muted">No agents from Gateway. Using Convex list.</p>
               ) : null}
               {(agents.length > 0 ? agents : (convexAgents ?? []).map((a) => ({ id: String(a._id), name: a.name }))).map(
                 (a) => (
@@ -331,8 +331,10 @@ export function LiveAgentChatView({ projectId }: { projectId: Id<"projects"> | n
                     key={a.id}
                     type="button"
                     onClick={() => setSelectedAgentId(a.id)}
-                    className={`text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                      selectedAgentId === a.id ? "bg-primary/15 text-primary" : "hover:bg-muted"
+                    className={`text-left px-3 py-2 rounded-lg text-[13.5px] transition-colors duration-150 ${
+                      selectedAgentId === a.id
+                        ? "bg-surface-2 text-ink"
+                        : "text-ink-secondary hover:bg-surface-2 hover:text-ink"
                     }`}
                   >
                     {a.name ?? a.id}
@@ -345,22 +347,22 @@ export function LiveAgentChatView({ projectId }: { projectId: Id<"projects"> | n
                 <>
                   <Card className="flex-1 flex flex-col min-h-0 p-4 overflow-hidden">
                     {loadingHistory ? (
-                      <div className="flex items-center justify-center flex-1 text-muted-foreground text-sm">
+                      <div className="flex items-center justify-center flex-1 text-ink-muted text-[13.5px]">
                         <Loader2 className="h-4 w-4 animate-spin mr-2" /> Loading history…
                       </div>
                     ) : (
                       <div className="flex-1 overflow-auto space-y-2 mb-4">
                         {messages.length === 0 && (
-                          <p className="text-sm text-muted-foreground">No messages yet. Say something below.</p>
+                          <p className="text-[13.5px] text-ink-muted">No messages yet. Say something below.</p>
                         )}
                         {messages.map((m, i) => (
                           <div
                             key={i}
-                            className={`rounded-lg px-3 py-2 text-sm ${
-                              m.role === "user" ? "bg-primary/10 ml-8" : "bg-muted/50 mr-8"
+                            className={`rounded-lg border border-line px-3 py-2 text-[13.5px] text-ink ${
+                              m.role === "user" ? "bg-surface-3 ml-8" : "bg-surface-2 mr-8"
                             }`}
                           >
-                            <span className="text-[10px] font-semibold text-muted-foreground uppercase">
+                            <span className="text-[11.5px] font-medium text-ink-muted">
                               {m.role}
                             </span>
                             <p className="mt-0.5 whitespace-pre-wrap">{m.content}</p>
@@ -368,14 +370,15 @@ export function LiveAgentChatView({ projectId }: { projectId: Id<"projects"> | n
                         ))}
                       </div>
                     )}
-                    <div className="flex gap-2 border-t border-border pt-3">
+                    <div className="flex gap-2 border-t border-line pt-3">
                       <input
                         type="text"
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
                         placeholder="Type a message…"
-                        className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        aria-label="Message"
+                        className="h-9 flex-1 rounded-lg border border-line bg-surface-1 px-3 text-[13.5px] text-ink placeholder:text-ink-muted"
                       />
                       <Button size="sm" onClick={sendMessage} disabled={sending || !input.trim()}>
                         {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
@@ -384,18 +387,18 @@ export function LiveAgentChatView({ projectId }: { projectId: Id<"projects"> | n
                   </Card>
                 </>
               ) : (
-                <div className="flex flex-col items-center justify-center flex-1 text-muted-foreground">
-                  <MessageSquare className="h-10 w-10 mb-2 opacity-50" />
-                  <p className="text-sm">Select an agent to start chatting.</p>
+                <div className="flex flex-col items-center justify-center flex-1 text-ink-muted">
+                  <MessageSquare className="h-6 w-6 mb-2" strokeWidth={1.6} />
+                  <p className="text-[13.5px]">Select an agent to start chatting.</p>
                 </div>
               )}
             </div>
           </>
         )}
         {connState !== "connected" && connState !== "connecting" && (
-          <div className="flex flex-col items-center justify-center flex-1 text-muted-foreground">
-            <MessageSquare className="h-10 w-10 mb-2 opacity-50" />
-            <p className="text-sm">Click Connect to attach to the Gateway.</p>
+          <div className="flex flex-col items-center justify-center flex-1 text-ink-muted">
+            <MessageSquare className="h-6 w-6 mb-2" strokeWidth={1.6} />
+            <p className="text-[13.5px]">Click Connect to attach to the Gateway.</p>
           </div>
         )}
       </div>

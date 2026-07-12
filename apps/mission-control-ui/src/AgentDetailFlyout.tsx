@@ -4,16 +4,17 @@ import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { StatusBadge } from "./components/factory/badges";
 
 const FLYOUT_WIDTH = 360;
 
 function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="border-b border-border py-3 last:border-b-0">
-      <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+    <div className="border-b border-line py-3 last:border-b-0">
+      <h3 className="text-[11.5px] font-medium uppercase tracking-[0.06em] text-ink-muted mb-2">
         {title}
       </h3>
-      <div className="space-y-1.5">{children}</div>
+      <div className="flex flex-col gap-2.5">{children}</div>
     </div>
   );
 }
@@ -30,12 +31,12 @@ function DetailRow({
   valueClassName?: string;
 }) {
   return (
-    <div className="flex justify-between items-start gap-2 text-sm">
-      <span className="text-muted-foreground shrink-0">{label}</span>
+    <div className="flex flex-col gap-0.5">
+      <span className="text-[11.5px] font-medium uppercase tracking-[0.06em] text-ink-muted">{label}</span>
       <span
         className={cn(
-          "text-right break-all min-w-0 text-foreground",
-          mono && "font-mono text-xs",
+          "break-all min-w-0 text-[13px] text-ink",
+          mono && "font-mono text-[12px]",
           valueClassName
         )}
       >
@@ -46,7 +47,7 @@ function DetailRow({
 }
 
 const FLYOUT_PANEL_CLASS =
-  "fixed top-0 right-0 bottom-0 z-[60] flex flex-col bg-sidebar border-l border-border shadow-xl max-w-[100vw] animate-in slide-in-from-right duration-200";
+  "fixed top-0 right-0 bottom-0 z-[60] flex flex-col bg-surface-1 border-l border-line max-w-[100vw] animate-in slide-in-from-right duration-200";
 
 export function AgentDetailFlyout({
   agentId,
@@ -93,12 +94,12 @@ export function AgentDetailFlyout({
           aria-label="Agent detail"
           tabIndex={-1}
         >
-          <div className="p-4 flex items-center justify-between border-b border-border">
-            <span className="text-muted-foreground text-sm">Loading…</span>
+          <div className="p-4 flex items-center justify-between border-b border-line">
+            <span className="text-ink-muted text-[13.5px]">Loading…</span>
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-sidebar"
+              className="p-1.5 rounded-md text-ink-muted hover:text-ink hover:bg-surface-2 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Close"
             >
               <X className="h-5 w-5" />
@@ -125,7 +126,7 @@ export function AgentDetailFlyout({
   const remaining = Math.max(0, daily - spent);
   const ratio = daily > 0 ? spent / daily : 0;
   const ratioClass =
-    ratio > 0.9 ? "text-red-500" : ratio > 0.7 ? "text-amber-500" : "text-primary";
+    ratio > 0.9 ? "text-err" : ratio > 0.7 ? "text-warn" : "text-ok";
 
   const hasContact =
     (meta.email as string) || (meta.telegram as string) || (meta.whatsapp as string) || (meta.discord as string);
@@ -146,37 +147,25 @@ export function AgentDetailFlyout({
         aria-label={`${agent.name} details`}
         tabIndex={-1}
       >
-      <div className="shrink-0 p-4 border-b border-border flex items-start justify-between gap-2">
+      <div className="shrink-0 p-4 border-b border-line flex items-start justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0">
-          <div
-            className={cn(
-              "w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold shrink-0",
-              isActive ? "bg-primary/15 text-primary" : "bg-slate-400/20 text-muted-foreground"
-            )}
-          >
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-line bg-surface-2 text-lg text-ink">
             {agent.emoji || agent.name.charAt(0).toUpperCase()}
           </div>
           <div className="min-w-0">
-            <h2 className="text-lg font-bold text-foreground truncate">{agent.name}</h2>
-            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-              <span className="px-2 py-0.5 rounded text-xs font-semibold bg-blue-500/20 text-blue-500">
-                {roleLabel}
-              </span>
-              <span
-                className={cn(
-                  "px-2 py-0.5 rounded text-xs font-semibold",
-                  isActive ? "bg-primary/15 text-primary" : "bg-amber-500/20 text-amber-500"
-                )}
-              >
+            <h2 className="text-[15px] font-semibold text-ink truncate">{agent.name}</h2>
+            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+              <StatusBadge tone="neutral">{roleLabel}</StatusBadge>
+              <StatusBadge tone={isActive ? "success" : "warning"}>
                 {agent.status}
-              </span>
+              </StatusBadge>
             </div>
           </div>
         </div>
         <button
           type="button"
           onClick={onClose}
-          className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-sidebar shrink-0"
+          className="p-1.5 rounded-md text-ink-muted hover:text-ink hover:bg-surface-2 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring shrink-0"
           aria-label="Close agent detail"
         >
           <X className="h-5 w-5" />
@@ -202,22 +191,19 @@ export function AgentDetailFlyout({
               {(meta.discord as string) && <DetailRow label="Discord" value={meta.discord as string} />}
             </>
           ) : (
-            <p className="text-sm text-muted-foreground">No contact channels configured</p>
+            <p className="text-[13px] text-ink-muted">No contact channels configured</p>
           )}
         </DetailSection>
 
         <DetailSection title="Configuration">
           {agent.allowedTaskTypes && agent.allowedTaskTypes.length > 0 && (
             <div className="mb-2">
-              <div className="text-muted-foreground text-xs mb-1">Allowed Task Types</div>
+              <div className="text-[11.5px] font-medium uppercase tracking-[0.06em] text-ink-muted mb-1">Allowed Task Types</div>
               <div className="flex flex-wrap gap-1.5">
                 {agent.allowedTaskTypes.map((t: string) => (
-                  <span
-                    key={t}
-                    className="px-2 py-0.5 rounded border border-primary text-xs text-foreground"
-                  >
+                  <StatusBadge key={t} tone="neutral">
                     {t}
-                  </span>
+                  </StatusBadge>
                 ))}
               </div>
             </div>
@@ -232,12 +218,13 @@ export function AgentDetailFlyout({
         </DetailSection>
 
         <DetailSection title="Budget">
-          <DetailRow label="Daily Budget" value={`$${daily.toFixed(2)}`} />
-          <DetailRow label="Per-Run Budget" value={`$${perRun.toFixed(2)}`} />
-          <DetailRow label="Spent Today" value={`$${spent.toFixed(2)}`} />
+          <DetailRow label="Daily Budget" value={`$${daily.toFixed(2)}`} mono />
+          <DetailRow label="Per-Run Budget" value={`$${perRun.toFixed(2)}`} mono />
+          <DetailRow label="Spent Today" value={`$${spent.toFixed(2)}`} mono />
           <DetailRow
             label="Remaining"
             value={`$${remaining.toFixed(2)}`}
+            mono
             valueClassName={ratioClass}
           />
         </DetailSection>
@@ -245,11 +232,11 @@ export function AgentDetailFlyout({
 
       {/* Footer with Edit action */}
       {onEdit && (
-        <div className="shrink-0 p-4 border-t border-border flex items-center gap-2">
+        <div className="shrink-0 p-4 border-t border-line flex items-center gap-2">
           <button
             type="button"
             onClick={() => onEdit(agentId)}
-            className="px-4 py-2 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+            className="h-9 px-3 rounded-lg text-[13px] font-medium bg-act text-act-ink hover:opacity-90 transition-opacity duration-150"
           >
             Edit
           </button>

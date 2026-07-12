@@ -10,10 +10,15 @@ export type NeonBadgeProps = Omit<BaseBadgeProps, "variant"> & {
   variant?: NeonBadgeVariant;
 };
 
-function NeonBadge({ className, variant = "neon-success", ...props }: NeonBadgeProps) {
+/**
+ * Legacy alias. Variant values map to v2 status tones via the restyled
+ * ui/badge variants (neon-success → ok-soft, neon-cyan → info-soft,
+ * neon-error → err-soft). New code should use factory/badges StatusBadge.
+ */
+function NeonBadge({ className, variant = "neon-success", ...props }: NeonBadgeProps): JSX.Element {
   return (
     <Badge
-      className={cn("border", className)}
+      className={cn(className)}
       variant={variant as BadgeProps["variant"]}
       {...props}
     />

@@ -13,8 +13,9 @@ import type { Id } from "../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "./components/PageHeader";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { GitBranch, Network, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { StatusBadge } from "@/components/factory/badges";
+import { MetricBlock } from "@/components/factory/MetricBlock";
+import { GitBranch } from "lucide-react";
 
 interface MissionDAGViewProps {
   projectId: Id<"projects"> | null;
@@ -185,64 +186,63 @@ export function MissionDAGView({ projectId, onTaskSelect }: MissionDAGViewProps)
   const doneCount = statusCounts.DONE ?? 0;
 
   return (
-    <main className="mc-page">
+    <main className="flex-1 overflow-auto bg-app">
       <PageHeader
         title="Mission DAG"
         description="Visualize dependency structure, sequencing, and blockers across the mission graph."
         icon={<GitBranch className="h-4.5 w-4.5" strokeWidth={1.7} />}
         eyebrow="Operations"
         status={
-          <Badge variant="outline" className="border-cyan-300/20 text-cyan-100">
+          <StatusBadge tone="neutral">
             {nodes.length} tasks · {edges.length} dependencies
-          </Badge>
+          </StatusBadge>
         }
       />
-      <div className="mc-page-body mc-page-stack">
+      <div className="px-6 py-6 flex flex-col gap-6">
         <div className="grid gap-4 md:grid-cols-4">
           <Card className="p-4">
-            <div className="mc-kicker">Graph size</div>
-            <div className="mt-2 text-3xl font-semibold text-foreground">{nodes.length}</div>
-            <div className="mt-1 text-xs text-muted-foreground">Tasks currently represented in the dependency graph</div>
+            <MetricBlock
+              label="Graph size"
+              value={nodes.length}
+              detail="Tasks currently represented in the dependency graph"
+            />
           </Card>
           <Card className="p-4">
-            <div className="mc-kicker">Edges</div>
-            <div className="mt-2 flex items-center gap-2 text-3xl font-semibold text-cyan-100">
-              <Network className="h-5 w-5" />
-              {edges.length}
-            </div>
-            <div className="mt-1 text-xs text-muted-foreground">Explicit dependencies shaping execution order</div>
+            <MetricBlock
+              label="Edges"
+              value={edges.length}
+              detail="Explicit dependencies shaping execution order"
+            />
           </Card>
           <Card className="p-4">
-            <div className="mc-kicker">Blocked</div>
-            <div className="mt-2 flex items-center gap-2 text-3xl font-semibold text-rose-200">
-              <AlertTriangle className="h-5 w-5" />
-              {blockedCount}
-            </div>
-            <div className="mt-1 text-xs text-muted-foreground">Nodes currently breaking flow through the graph</div>
+            <MetricBlock
+              label="Blocked"
+              value={blockedCount}
+              detail="Nodes currently breaking flow through the graph"
+            />
           </Card>
           <Card className="p-4">
-            <div className="mc-kicker">Done</div>
-            <div className="mt-2 flex items-center gap-2 text-3xl font-semibold text-emerald-100">
-              <CheckCircle2 className="h-5 w-5" />
-              {doneCount}
-            </div>
-            <div className="mt-1 text-xs text-muted-foreground">Completed tasks already cleared from critical flow</div>
+            <MetricBlock
+              label="Done"
+              value={doneCount}
+              detail="Completed tasks already cleared from critical flow"
+            />
           </Card>
         </div>
 
         <Card className="p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <div className="mc-kicker">Graph filters</div>
-              <div className="mt-1 text-sm font-semibold text-foreground">Focus the dependency map by task state</div>
+              <div className="text-[15px] font-semibold text-ink">Graph filters</div>
+              <div className="mt-1 text-[12.5px] text-ink-muted">Focus the dependency map by task state</div>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-1 rounded-lg border border-line p-0.5">
               <button
                 className={cn(
-                  "rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] transition-colors",
+                  "rounded-md px-3 py-1.5 text-xs font-medium transition-colors duration-150",
                   filter === "all"
-                    ? "border-cyan-300/20 bg-cyan-400/10 text-cyan-100"
-                    : "border-[var(--panel-line)] bg-[color:var(--shell-panel)] text-muted-foreground"
+                    ? "bg-surface-2 text-ink"
+                    : "text-ink-secondary hover:text-ink"
                 )}
                 onClick={() => setFilter("all")}
               >
@@ -252,10 +252,10 @@ export function MissionDAGView({ projectId, onTaskSelect }: MissionDAGViewProps)
                 <button
                   key={status}
                   className={cn(
-                    "rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] transition-colors",
+                    "rounded-md px-3 py-1.5 text-xs font-medium transition-colors duration-150",
                     filter === status
-                      ? "border-cyan-300/20 bg-cyan-400/10 text-cyan-100"
-                      : "border-[var(--panel-line)] bg-[color:var(--shell-panel)] text-muted-foreground"
+                      ? "bg-surface-2 text-ink"
+                      : "text-ink-secondary hover:text-ink"
                   )}
                   onClick={() => setFilter(filter === status ? "all" : status)}
                 >
@@ -268,11 +268,11 @@ export function MissionDAGView({ projectId, onTaskSelect }: MissionDAGViewProps)
 
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <Card className="overflow-hidden p-0">
-          <div className="border-b border-[var(--panel-line)] px-5 py-4">
-            <div className="mc-kicker">Dependency canvas</div>
-            <div className="mt-1 text-sm font-semibold text-foreground">Read downstream relationships before changing task sequencing</div>
+          <div className="border-b border-line px-5 py-4">
+            <div className="text-[15px] font-semibold text-ink">Dependency canvas</div>
+            <div className="mt-1 text-[12.5px] text-ink-muted">Read downstream relationships before changing task sequencing</div>
           </div>
-          <div className="overflow-auto max-h-[calc(100vh-320px)] bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.05),transparent_28%),linear-gradient(180deg,rgba(6,11,23,0.96),rgba(8,15,28,0.96))]">
+          <div className="overflow-auto max-h-[calc(100vh-320px)] bg-app">
         <svg
           width={canvasWidth}
           height={canvasHeight}
@@ -296,8 +296,8 @@ export function MissionDAGView({ projectId, onTaskSelect }: MissionDAGViewProps)
                 y1={y1}
                 x2={x2}
                 y2={y2}
-                className="stroke-border"
-                strokeWidth={2}
+                className="stroke-line"
+                strokeWidth={1.5}
                 markerEnd="url(#arrowhead)"
               />
             );
@@ -315,7 +315,7 @@ export function MissionDAGView({ projectId, onTaskSelect }: MissionDAGViewProps)
             >
               <polygon
                 points="0 0, 10 3.5, 0 7"
-                className="fill-border"
+                className="fill-line"
               />
             </marker>
           </defs>
@@ -343,9 +343,9 @@ export function MissionDAGView({ projectId, onTaskSelect }: MissionDAGViewProps)
                   rx={8}
                   ry={8}
                   style={{
-                    fill: isHovered ? "var(--muted)" : "var(--card)",
+                    fill: isHovered ? "var(--color-surface-2)" : "var(--color-surface-1)",
                     stroke: statusColor,
-                    strokeWidth: isHovered ? 2.5 : 1.5,
+                    strokeWidth: isHovered ? 2 : 1.5,
                   }}
                 />
                 {/* Status indicator bar */}
@@ -361,7 +361,7 @@ export function MissionDAGView({ projectId, onTaskSelect }: MissionDAGViewProps)
                 <text
                   x={pos.x + 14}
                   y={pos.y + 22}
-                  className="fill-foreground"
+                  className="fill-ink"
                   fontSize={12}
                   fontWeight={600}
                 >
@@ -373,7 +373,7 @@ export function MissionDAGView({ projectId, onTaskSelect }: MissionDAGViewProps)
                 <text
                   x={pos.x + 14}
                   y={pos.y + 42}
-                  className="fill-muted-foreground"
+                  className="fill-ink-muted"
                   fontSize={10}
                 >
                   {node.status} · {node.type} · P{node.priority}
@@ -386,21 +386,21 @@ export function MissionDAGView({ projectId, onTaskSelect }: MissionDAGViewProps)
         </Card>
 
         <Card className="p-4">
-          <div className="mc-kicker">Operator guidance</div>
-          <div className="mt-2 space-y-3 text-sm leading-relaxed text-muted-foreground">
+          <div className="text-[15px] font-semibold text-ink">Operator guidance</div>
+          <div className="mt-2 space-y-3 text-[13.5px] leading-relaxed text-ink-secondary">
             <p>Use the graph to inspect sequencing before you change task ownership. A node with many incoming lines usually represents a coordination choke point.</p>
             <p>Blocked nodes matter most when they sit early in the graph. Clear them before optimizing lower-value branches.</p>
           </div>
-          <div className="mt-4 rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] p-4">
-            <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Legend</div>
+          <div className="mt-4 rounded-xl border border-line bg-surface-2 p-4">
+            <div className="text-[11.5px] font-medium text-ink-muted">Legend</div>
             <div className="mt-3 flex gap-3 flex-wrap">
               {Object.entries(STATUS_COLORS).map(([status, color]) => (
                 <div key={status} className="flex items-center gap-1.5">
                   <div
-                    className="w-2.5 h-2.5 rounded-full"
+                    className="w-2 h-2 rounded-full"
                     style={{ background: color }}
                   />
-                  <span className="text-muted-foreground text-xs">{status}</span>
+                  <span className="text-ink-muted text-xs">{status}</span>
                 </div>
               ))}
             </div>

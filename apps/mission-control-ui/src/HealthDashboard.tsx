@@ -2,10 +2,40 @@ import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
+import { X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { MetricBlock, MetricRow } from "./components/factory/MetricBlock";
+import { StatusBadge, type StatusBadgeProps } from "./components/factory/badges";
 
 interface HealthDashboardProps {
   projectId: Id<"projects"> | null;
   onClose: () => void;
+}
+
+function statusTone(status: string): StatusBadgeProps["tone"] {
+  switch (status) {
+    case "healthy":
+      return "success";
+    case "degraded":
+      return "warning";
+    case "unhealthy":
+      return "error";
+    default:
+      return "neutral";
+  }
+}
+
+function statusDotClass(status: string): string {
+  switch (status) {
+    case "healthy":
+      return "bg-ok";
+    case "degraded":
+      return "bg-warn";
+    case "unhealthy":
+      return "bg-err";
+    default:
+      return "bg-ink-muted";
+  }
 }
 
 export function HealthDashboard({ onClose }: HealthDashboardProps) {
@@ -17,163 +47,65 @@ export function HealthDashboard({ onClose }: HealthDashboardProps) {
 
   if (!healthStatus || !metrics) {
     return (
-      <div style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: "rgba(0,0,0,0.8)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1000,
-      }}>
-        <div style={{
-          background: "var(--card)",
-          padding: "40px",
-          borderRadius: "12px",
-          color: "var(--foreground)",
-        }}>
+      <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/70">
+        <div className="rounded-xl border border-line bg-surface-1 p-10 text-[13px] text-ink-secondary">
           Loading health status...
         </div>
       </div>
     );
   }
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "healthy": return "#10b981";
-      case "degraded": return "#f59e0b";
-      case "unhealthy": return "#ef4444";
-      default: return "#6b7280";
-    }
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "healthy": return "✅";
-      case "degraded": return "⚠️";
-      case "unhealthy": return "❌";
-      default: return "❓";
-    }
-  };
-
   return (
     <div
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: "rgba(0,0,0,0.8)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1000,
-        padding: "20px",
-        overflow: "auto",
-      }}
+      className="fixed inset-0 z-[1000] flex items-center justify-center overflow-auto bg-black/70 p-5"
       onClick={onClose}
     >
       <div
-        style={{
-          background: "var(--card)",
-          borderRadius: "12px",
-          maxWidth: "1200px",
-          width: "100%",
-          maxHeight: "90vh",
-          overflow: "auto",
-          color: "var(--foreground)",
-        }}
+        className="max-h-[90vh] w-full max-w-[1200px] overflow-auto rounded-xl border border-line bg-surface-1"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div style={{
-          padding: "24px",
-          borderBottom: "1px solid var(--border)",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}>
+        <div className="flex items-center justify-between border-b border-line p-6">
           <div>
-            <h2 style={{ margin: 0, fontSize: "24px", fontWeight: 600 }}>
-              🏥 System Health
-            </h2>
-            <p style={{ margin: "4px 0 0 0", color: "var(--muted-foreground)", fontSize: "14px" }}>
+            <h2 className="text-[19px] font-semibold text-ink">System health</h2>
+            <p className="mt-1 text-[13px] text-ink-secondary">
               Last updated: {new Date().toLocaleTimeString()}
             </p>
           </div>
           <button
             onClick={onClose}
-            style={{
-              background: "transparent",
-              border: "none",
-              color: "var(--muted-foreground)",
-              fontSize: "24px",
-              cursor: "pointer",
-              padding: "0 8px",
-            }}
+            aria-label="Close system health"
+            className="rounded-md p-1.5 text-ink-muted transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
           >
-            ×
+            <X size={16} strokeWidth={1.75} />
           </button>
         </div>
 
-        {/* Overall Status */}
-        <div style={{ padding: "24px" }}>
-          <div style={{
-            background: "var(--background)",
-            borderRadius: "8px",
-            padding: "20px",
-            marginBottom: "24px",
-            border: `2px solid ${getStatusColor(healthStatus.status)}`,
-          }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              <span style={{ fontSize: "32px" }}>
-                {getStatusIcon(healthStatus.status)}
-              </span>
-              <div>
-                <div style={{ fontSize: "18px", fontWeight: 600, textTransform: "capitalize" }}>
-                  {healthStatus.status}
-                </div>
-                <div style={{ fontSize: "14px", color: "var(--muted-foreground)" }}>
-                  {healthStatus.message}
-                </div>
-              </div>
+        <div className="p-6">
+          {/* Overall Status */}
+          <div className="mb-6 rounded-xl border border-line bg-surface-2 p-5">
+            <div className="flex items-center gap-3">
+              <StatusBadge tone={statusTone(healthStatus.status)}>
+                {healthStatus.status.toUpperCase()}
+              </StatusBadge>
+              <div className="text-[13.5px] text-ink-secondary">{healthStatus.message}</div>
             </div>
           </div>
 
           {/* Component Status Grid */}
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
-            gap: "16px",
-            marginBottom: "24px",
-          }}>
+          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {Object.entries(healthStatus.checks).map(([component, check]: [string, any]) => (
-              <div
-                key={component}
-                style={{
-                  background: "var(--background)",
-                  borderRadius: "8px",
-                  padding: "16px",
-                  border: `1px solid ${getStatusColor(check.status)}`,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
-                  <span style={{ fontSize: "20px" }}>
-                    {getStatusIcon(check.status)}
-                  </span>
-                  <div style={{ fontSize: "14px", fontWeight: 600, textTransform: "capitalize" }}>
-                    {component}
-                  </div>
+              <div key={component} className="rounded-xl border border-line bg-surface-1 p-4">
+                <div className="mb-2 flex items-center gap-2">
+                  <span
+                    className={cn("h-1.5 w-1.5 rounded-full", statusDotClass(check.status))}
+                    aria-hidden
+                  />
+                  <div className="text-[13px] font-semibold capitalize text-ink">{component}</div>
                 </div>
-                <div style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>
-                  {check.message}
-                </div>
+                <div className="text-[12.5px] text-ink-muted">{check.message}</div>
                 {check.responseTime && (
-                  <div style={{ fontSize: "11px", color: "var(--muted-foreground)", marginTop: "4px" }}>
+                  <div className="mt-1 font-mono text-[11.5px] text-ink-muted">
                     Response: {check.responseTime}ms
                   </div>
                 )}
@@ -182,106 +114,51 @@ export function HealthDashboard({ onClose }: HealthDashboardProps) {
           </div>
 
           {/* Metrics */}
-          <div style={{
-            background: "var(--background)",
-            borderRadius: "8px",
-            padding: "20px",
-          }}>
-            <h3 style={{ margin: "0 0 16px 0", fontSize: "16px", fontWeight: 600 }}>
-              📊 System Metrics
-            </h3>
-            <div style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-              gap: "16px",
-            }}>
-              <MetricCard
-                label="Total Projects"
-                value={metrics.projects?.total || 0}
-                icon="📁"
-              />
-              <MetricCard
-                label="Active Agents"
+          <div className="rounded-xl border border-line bg-surface-1 p-5">
+            <h3 className="mb-4 text-[15px] font-semibold text-ink">System metrics</h3>
+            <MetricRow className="border-b-0 pb-0 sm:grid-cols-3 xl:grid-cols-6">
+              <MetricBlock label="Total projects" value={metrics.projects?.total || 0} />
+              <MetricBlock
+                label="Active agents"
                 value={metrics.agents?.active || 0}
-                icon="🤖"
-                subtitle={`${metrics.agents?.total || 0} total`}
+                detail={`${metrics.agents?.total || 0} total`}
               />
-              <MetricCard
+              <MetricBlock
                 label="Tasks"
                 value={metrics.tasks?.total || 0}
-                icon="📋"
-                subtitle={`${metrics.tasks?.byStatus?.inProgress || 0} in progress`}
+                detail={`${metrics.tasks?.byStatus?.inProgress || 0} in progress`}
               />
-              <MetricCard
-                label="Pending Approvals"
+              <MetricBlock
+                label="Pending approvals"
                 value={metrics.approvals?.pending || 0}
-                icon="✋"
-                highlight={metrics.approvals?.pending > 0}
+                adornment={
+                  metrics.approvals?.pending > 0 ? (
+                    <StatusBadge tone="warning">Action</StatusBadge>
+                  ) : undefined
+                }
               />
-              <MetricCard
-                label="Open Alerts"
+              <MetricBlock
+                label="Open alerts"
                 value={metrics.alerts?.open || 0}
-                icon="🚨"
-                highlight={metrics.alerts?.open > 0}
+                adornment={
+                  metrics.alerts?.open > 0 ? <StatusBadge tone="error">Open</StatusBadge> : undefined
+                }
               />
-              <MetricCard
-                label="Uptime"
-                value={healthStatus.uptime || "N/A"}
-                icon="⏱️"
-              />
-            </div>
+              <MetricBlock label="Uptime" value={healthStatus.uptime || "N/A"} />
+            </MetricRow>
           </div>
 
           {/* Refresh Button */}
-          <div style={{ marginTop: "16px", textAlign: "center" }}>
+          <div className="mt-4 text-center">
             <button
               onClick={() => setRefreshKey((k) => k + 1)}
-              style={{
-                background: "#3b82f6",
-                color: "white",
-                border: "none",
-                borderRadius: "6px",
-                padding: "8px 16px",
-                fontSize: "14px",
-                cursor: "pointer",
-                fontWeight: 500,
-              }}
+              className="inline-flex h-9 items-center rounded-lg bg-act px-3 text-[13px] font-medium text-act-ink transition-opacity duration-150 hover:opacity-90"
             >
-              🔄 Refresh Now
+              Refresh now
             </button>
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-interface MetricCardProps {
-  label: string;
-  value: string | number;
-  icon: string;
-  subtitle?: string;
-  highlight?: boolean;
-}
-
-function MetricCard({ label, value, icon, subtitle, highlight }: MetricCardProps) {
-  return (
-    <div style={{
-      background: highlight ? "#7c2d12" : "var(--background)",
-      borderRadius: "6px",
-      padding: "12px",
-      border: highlight ? "1px solid #ea580c" : "1px solid var(--card)",
-    }}>
-      <div style={{ fontSize: "20px", marginBottom: "4px" }}>{icon}</div>
-      <div style={{ fontSize: "24px", fontWeight: 600, marginBottom: "2px" }}>
-        {value}
-      </div>
-      <div style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>{label}</div>
-      {subtitle && (
-        <div style={{ fontSize: "11px", color: "var(--muted-foreground)", marginTop: "2px" }}>
-          {subtitle}
-        </div>
-      )}
     </div>
   );
 }

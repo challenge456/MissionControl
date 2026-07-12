@@ -3,11 +3,10 @@ import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { GitBranch, Clock, CheckCircle2, XCircle, Loader2, Activity } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/factory/badges";
 import { StatusDot } from "@/components/ui/status-dot";
 import { SkeletonCard } from "@/components/ui/skeleton-card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { PageHeader } from "./components/PageHeader";
 
 interface CodePipelineViewProps {
   projectId: Id<"projects"> | null;
@@ -22,13 +21,11 @@ export function CodePipelineView({ projectId, onTaskSelect }: CodePipelineViewPr
 
   if (isLoading) {
     return (
-      <main className="mc-page">
-        <div className="mc-page-body space-y-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <SkeletonCard key={i} lines={3} />
-          ))}
-        </div>
-      </main>
+      <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-4 px-6 py-6">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <SkeletonCard key={i} lines={3} />
+        ))}
+      </div>
     );
   }
 
@@ -45,195 +42,181 @@ export function CodePipelineView({ projectId, onTaskSelect }: CodePipelineViewPr
   const statusIcon = (status: string) => {
     switch (status) {
       case "IN_PROGRESS":
-        return <Loader2 className="h-3.5 w-3.5 text-amber-400 animate-spin" />;
+        return <Loader2 className="h-3.5 w-3.5 animate-spin text-warn" strokeWidth={1.75} />;
       case "REVIEW":
-        return <Clock className="h-3.5 w-3.5 text-blue-400" />;
+        return <Clock className="h-3.5 w-3.5 text-info-accent" strokeWidth={1.75} />;
       case "DONE":
-        return <CheckCircle2 className="h-3.5 w-3.5 text-primary" />;
+        return <CheckCircle2 className="h-3.5 w-3.5 text-ok" strokeWidth={1.75} />;
       case "CANCELED":
-        return <XCircle className="h-3.5 w-3.5 text-zinc-500" />;
+        return <XCircle className="h-3.5 w-3.5 text-ink-muted" strokeWidth={1.75} />;
       default:
-        return <Activity className="h-3.5 w-3.5 text-blue-400" />;
+        return <Activity className="h-3.5 w-3.5 text-info-accent" strokeWidth={1.75} />;
     }
   };
 
   return (
-    <main className="mc-page">
-      <PageHeader
-        title="Code Pipeline"
-        description="Workflow runs, execution requests, and active code delivery lanes."
-        icon={<GitBranch className="h-4.5 w-4.5" strokeWidth={1.7} />}
-        eyebrow="Code"
-        status={
-          <Badge variant="outline" className="border-cyan-300/20 text-cyan-100">
-            {activeTasks.length} active
-          </Badge>
-        }
-      />
-      <div className="mc-page-body mc-page-stack">
-        <div className="grid gap-4 md:grid-cols-4">
-          <Card className="p-4">
-            <div className="mc-kicker">Active runs</div>
-            <div className="mt-2 text-3xl font-semibold text-foreground">{activeTasks.length}</div>
-            <div className="mt-1 text-xs text-muted-foreground">Tasks currently pushing code execution forward</div>
-          </Card>
-          <Card className="p-4">
-            <div className="mc-kicker">Workflow runs</div>
-            <div className="mt-2 text-3xl font-semibold text-cyan-100">{workflowRuns.length}</div>
-            <div className="mt-1 text-xs text-muted-foreground">Recorded pipeline runs associated with this project</div>
-          </Card>
-          <Card className="p-4">
-            <div className="mc-kicker">Running now</div>
-            <div className="mt-2 text-3xl font-semibold text-amber-100">{runningWorkflowRuns}</div>
-            <div className="mt-1 text-xs text-muted-foreground">Workflow runs still executing in the background</div>
-          </Card>
-          <Card className="p-4">
-            <div className="mc-kicker">Recently done</div>
-            <div className="mt-2 text-3xl font-semibold text-emerald-100">{recentCompleted.length}</div>
-            <div className="mt-1 text-xs text-muted-foreground">Recently completed tasks available for review</div>
-          </Card>
+    <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-6 py-6">
+      <header className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-ink">
+            Code Pipeline
+          </h1>
+          <StatusBadge tone="neutral">{activeTasks.length} active</StatusBadge>
         </div>
+        <p className="mt-1.5 text-[14px] text-ink-secondary">
+          Workflow runs, execution requests, and active code delivery lanes.
+        </p>
+      </header>
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-        {/* Active Runs */}
-        <Card className="p-5">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-2">
-            <div className="h-1.5 w-1.5 rounded-full bg-amber-400 status-dot-pulse" />
-            Active Runs
-          </h2>
-
-          {activeTasks.length === 0 ? (
-            <Card className="p-6">
-              <EmptyState
-                icon={Activity}
-                title="No active runs"
-                description="All pipelines are idle. Create a workflow to get started."
-                className="py-8"
-              />
-            </Card>
-          ) : (
-            <div className="space-y-2">
-              {activeTasks.map((task, idx) => (
-                <Card
-                  key={task._id}
-                  className="p-4 cursor-pointer"
-                  onClick={() => onTaskSelect?.(task._id)}
-                >
-                  <div className="flex items-center gap-3">
-                    {statusIcon(task.status)}
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium text-foreground/90 truncate">
-                        {task.title}
-                      </p>
-                      <p className="text-[0.65rem] text-muted-foreground/60 mt-0.5">
-                        {task.type} &middot; P{task.priority} &middot; ${task.actualCost.toFixed(2)}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <StatusDot
-                        variant={task.status === "IN_PROGRESS" ? "active" : "warning"}
-                        size="sm"
-                      />
-                      <span className="text-[0.65rem] text-muted-foreground/60 uppercase tracking-wider">
-                        {task.status.replace("_", " ")}
-                      </span>
-                    </div>
-                  </div>
-                </Card>
-              ))}
-            </div>
-          )}
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card className="p-4">
+          <div className="text-[12.5px] font-medium text-ink-secondary">Active runs</div>
+          <div className="mt-2 font-mono text-[26px] font-semibold leading-none text-ink">{activeTasks.length}</div>
+          <div className="mt-1.5 text-[12px] text-ink-muted">Tasks currently pushing code execution forward</div>
         </Card>
-
-        <div className="space-y-4">
-          {workflowRuns && workflowRuns.length > 0 && (
-            <Card className="p-5">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-                Workflow Runs
-              </h2>
-              <div className="space-y-2">
-                {workflowRuns.slice(0, 8).map((run) => (
-                  <Card key={run._id} className="p-4">
-                    <div className="flex items-center gap-3">
-                      <GitBranch className="h-3.5 w-3.5 text-primary/60" />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs font-medium text-foreground/90">
-                          Workflow Run #{run._id.slice(-6)}
-                        </p>
-                        <p className="text-[0.65rem] text-muted-foreground/60 mt-0.5">
-                          {run.status} &middot;{" "}
-                          {new Date(run._creationTime).toLocaleString([], {
-                            month: "short",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </p>
-                      </div>
-                      <StatusDot
-                        variant={
-                          run.status === "RUNNING"
-                            ? "active"
-                            : run.status === "COMPLETED"
-                              ? "healthy"
-                              : run.status === "FAILED"
-                                ? "error"
-                                : "offline"
-                        }
-                        size="sm"
-                      />
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            </Card>
-          )}
-
-          <Card className="p-5">
-            <div className="mc-kicker">Operator brief</div>
-            <div className="mt-2 space-y-3 text-sm leading-relaxed text-muted-foreground">
-              <p>Use this page to track real execution lanes, not just completed work. The highest-signal items are active runs and failures that need rerouting.</p>
-              <p>If a workflow run is healthy but the task is stuck, the problem is usually scope or approval friction rather than infrastructure.</p>
-            </div>
-          </Card>
-        </div>
-        </div>
-
-        {/* Recent Completed */}
-        <Card className="p-5">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-            Recently Completed
-          </h2>
-          {recentCompleted.length === 0 ? (
-            <div className="py-6 text-center text-xs text-muted-foreground/40">
-              No completed runs yet
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {recentCompleted.map((task, idx) => (
-                <Card
-                  key={task._id}
-                  className="p-3 cursor-pointer"
-                  onClick={() => onTaskSelect?.(task._id)}
-                >
-                  <div className="flex items-center gap-3">
-                    <CheckCircle2 className="h-3.5 w-3.5 text-primary/60" />
-                    <p className="text-xs text-foreground/70 truncate flex-1">
-                      {task.title}
-                    </p>
-                    <span className="text-[0.65rem] text-muted-foreground/40">
-                      {new Date(task._creationTime).toLocaleDateString([], {
-                        month: "short",
-                        day: "numeric",
-                      })}
-                    </span>
-                  </div>
-                </Card>
-              ))}
-            </div>
-          )}
+        <Card className="p-4">
+          <div className="text-[12.5px] font-medium text-ink-secondary">Workflow runs</div>
+          <div className="mt-2 font-mono text-[26px] font-semibold leading-none text-ink">{workflowRuns.length}</div>
+          <div className="mt-1.5 text-[12px] text-ink-muted">Recorded pipeline runs associated with this project</div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-[12.5px] font-medium text-ink-secondary">Running now</div>
+          <div className="mt-2 font-mono text-[26px] font-semibold leading-none text-ink">{runningWorkflowRuns}</div>
+          <div className="mt-1.5 text-[12px] text-ink-muted">Workflow runs still executing in the background</div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-[12.5px] font-medium text-ink-secondary">Recently done</div>
+          <div className="mt-2 font-mono text-[26px] font-semibold leading-none text-ink">{recentCompleted.length}</div>
+          <div className="mt-1.5 text-[12px] text-ink-muted">Recently completed tasks available for review</div>
         </Card>
       </div>
-    </main>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+      {/* Active Runs */}
+      <Card className="p-5">
+        <h2 className="mb-3 text-[15px] font-semibold text-ink">Active Runs</h2>
+
+        {activeTasks.length === 0 ? (
+          <EmptyState
+            icon={Activity}
+            title="No active runs"
+            description="All pipelines are idle. Create a workflow to get started."
+            className="border-0 bg-transparent py-8"
+          />
+        ) : (
+          <div className="space-y-2">
+            {activeTasks.map((task) => (
+              <div
+                key={task._id}
+                className="cursor-pointer rounded-lg border border-line p-3 transition-colors duration-150 hover:bg-surface-2"
+                onClick={() => onTaskSelect?.(task._id)}
+              >
+                <div className="flex items-center gap-3">
+                  {statusIcon(task.status)}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13.5px] font-medium text-ink">
+                      {task.title}
+                    </p>
+                    <p className="mt-0.5 text-[12px] text-ink-muted">
+                      {task.type} &middot; P{task.priority} &middot; <span className="font-mono">${task.actualCost.toFixed(2)}</span>
+                    </p>
+                  </div>
+                  <StatusDot
+                    variant={task.status === "IN_PROGRESS" ? "active" : "warning"}
+                    size="sm"
+                    label={task.status.replace("_", " ")}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <div className="space-y-4">
+        {workflowRuns && workflowRuns.length > 0 && (
+          <Card className="p-5">
+            <h2 className="mb-3 text-[15px] font-semibold text-ink">Workflow Runs</h2>
+            <div className="space-y-2">
+              {workflowRuns.slice(0, 8).map((run) => (
+                <div key={run._id} className="rounded-lg border border-line p-3">
+                  <div className="flex items-center gap-3">
+                    <GitBranch className="h-3.5 w-3.5 text-ink-muted" strokeWidth={1.75} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-medium text-ink">
+                        Workflow Run <span className="font-mono">#{run._id.slice(-6)}</span>
+                      </p>
+                      <p className="mt-0.5 text-[12px] text-ink-muted">
+                        {run.status} &middot;{" "}
+                        {new Date(run._creationTime).toLocaleString([], {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </p>
+                    </div>
+                    <StatusDot
+                      variant={
+                        run.status === "RUNNING"
+                          ? "active"
+                          : run.status === "COMPLETED"
+                            ? "healthy"
+                            : run.status === "FAILED"
+                              ? "error"
+                              : "offline"
+                      }
+                      size="sm"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        <Card className="p-5">
+          <div className="text-[15px] font-semibold text-ink">Operator brief</div>
+          <div className="mt-2 space-y-3 text-[13px] leading-relaxed text-ink-secondary">
+            <p>Use this page to track real execution lanes, not just completed work. The highest-signal items are active runs and failures that need rerouting.</p>
+            <p>If a workflow run is healthy but the task is stuck, the problem is usually scope or approval friction rather than infrastructure.</p>
+          </div>
+        </Card>
+      </div>
+      </div>
+
+      {/* Recent Completed */}
+      <Card className="p-5">
+        <h2 className="mb-3 text-[15px] font-semibold text-ink">Recently Completed</h2>
+        {recentCompleted.length === 0 ? (
+          <div className="py-6 text-center text-[12.5px] text-ink-muted">
+            No completed runs yet
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {recentCompleted.map((task) => (
+              <div
+                key={task._id}
+                className="cursor-pointer rounded-lg border border-line p-3 transition-colors duration-150 hover:bg-surface-2"
+                onClick={() => onTaskSelect?.(task._id)}
+              >
+                <div className="flex items-center gap-3">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-ok" strokeWidth={1.75} />
+                  <p className="flex-1 truncate text-[13px] text-ink-secondary">
+                    {task.title}
+                  </p>
+                  <span className="text-[12px] text-ink-muted">
+                    {new Date(task._creationTime).toLocaleDateString([], {
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+    </div>
   );
 }

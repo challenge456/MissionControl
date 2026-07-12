@@ -1,6 +1,6 @@
 /**
  * QC Run Detail View
- * 
+ *
  * Detailed view of a single QC run with findings, artifacts, and evidence.
  */
 
@@ -8,14 +8,12 @@ import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { RiskBadge, StatusBadge } from "@/components/factory/badges";
 import {
-  ShieldCheck,
   AlertTriangle,
   CheckCircle2,
-  Info,
   FileText,
   Download,
   ArrowLeft,
@@ -23,7 +21,6 @@ import {
   GitBranch,
   GitCommit,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 interface QcRunDetailViewProps {
   runId: Id<"qcRuns">;
@@ -31,44 +28,19 @@ interface QcRunDetailViewProps {
 }
 
 function RiskGradeBadge({ grade }: { grade: "GREEN" | "YELLOW" | "RED" | undefined }) {
-  if (!grade) return <Badge variant="outline">N/A</Badge>;
-  
-  const colors = {
-    GREEN: "bg-primary/10 text-primary border-primary/20",
-    YELLOW: "bg-yellow-500/10 text-yellow-600 border-yellow-500/20",
-    RED: "bg-red-500/10 text-red-600 border-red-500/20",
-  };
-  
-  return (
-    <Badge variant="outline" className={cn("font-mono", colors[grade])}>
-      {grade}
-    </Badge>
-  );
+  if (!grade) return <StatusBadge tone="neutral">N/A</StatusBadge>;
+  return <RiskBadge level={grade} className="font-mono" />;
 }
 
+const SEVERITY_TONE = {
+  RED: "error",
+  YELLOW: "warning",
+  GREEN: "success",
+  INFO: "info",
+} as const;
+
 function SeverityBadge({ severity }: { severity: "RED" | "YELLOW" | "GREEN" | "INFO" }) {
-  const colors = {
-    RED: "bg-red-500/10 text-red-600 border-red-500/20",
-    YELLOW: "bg-yellow-500/10 text-yellow-600 border-yellow-500/20",
-    GREEN: "bg-primary/10 text-primary border-primary/20",
-    INFO: "bg-blue-500/10 text-blue-600 border-blue-500/20",
-  };
-  
-  const icons = {
-    RED: AlertTriangle,
-    YELLOW: AlertTriangle,
-    GREEN: CheckCircle2,
-    INFO: Info,
-  };
-  
-  const Icon = icons[severity];
-  
-  return (
-    <Badge variant="outline" className={cn("gap-1", colors[severity])}>
-      <Icon className="h-3 w-3" />
-      {severity}
-    </Badge>
-  );
+  return <StatusBadge tone={SEVERITY_TONE[severity]}>{severity}</StatusBadge>;
 }
 
 export function QcRunDetailView({ runId, onBack }: QcRunDetailViewProps) {
@@ -78,8 +50,8 @@ export function QcRunDetailView({ runId, onBack }: QcRunDetailViewProps) {
 
   if (!run || !findings || !artifacts) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-sm text-muted-foreground">Loading run details...</div>
+      <div className="flex flex-1 items-center justify-center">
+        <div className="text-[13.5px] text-ink-muted">Loading run details...</div>
       </div>
     );
   }
@@ -91,88 +63,87 @@ export function QcRunDetailView({ runId, onBack }: QcRunDetailViewProps) {
   }, {} as Record<string, typeof findings>);
 
   return (
-    <div className="flex-1 overflow-auto p-6 space-y-6">
+    <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-6 py-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-6">
         <div className="flex items-center gap-3">
           {onBack && (
-            <Button variant="ghost" size="sm" onClick={onBack}>
-              <ArrowLeft className="h-4 w-4" />
+            <Button variant="ghost" size="sm" onClick={onBack} aria-label="Back">
+              <ArrowLeft className="h-4 w-4" strokeWidth={1.75} />
             </Button>
           )}
           <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2">
-              <ShieldCheck className="h-6 w-6 text-primary" />
+            <h1 className="font-mono text-[26px] font-semibold leading-tight tracking-tight text-ink">
               {run.runId}
             </h1>
-            <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
-              <GitBranch className="h-3 w-3" />
+            <div className="mt-1.5 flex items-center gap-2 text-[13px] text-ink-secondary">
+              <GitBranch className="h-3.5 w-3.5" strokeWidth={1.75} />
               {run.branch ?? "main"}
-              <span>•</span>
-              <GitCommit className="h-3 w-3" />
-              {run.commitSha?.substring(0, 7)}
+              <span className="text-ink-muted">·</span>
+              <GitCommit className="h-3.5 w-3.5" strokeWidth={1.75} />
+              <span className="font-mono">{run.commitSha?.substring(0, 7)}</span>
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <RiskGradeBadge grade={run.riskGrade} />
           {run.qualityScore !== undefined && (
-            <Badge variant="outline" className="font-mono">
+            <StatusBadge tone="neutral" className="font-mono">
               Score: {run.qualityScore}
-            </Badge>
+            </StatusBadge>
           )}
         </div>
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <Card className="p-4">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Status</div>
-          <div className="mt-2 text-lg font-semibold">{run.status}</div>
+          <div className="text-[12.5px] font-medium text-ink-secondary">Status</div>
+          <div className="mt-2 text-[17px] font-semibold text-ink">{run.status}</div>
           {run.durationMs && (
-            <div className="mt-1 text-xs text-muted-foreground flex items-center gap-1">
-              <Clock className="h-3 w-3" />
+            <div className="mt-1 flex items-center gap-1 text-[12px] text-ink-muted">
+              <Clock className="h-3 w-3" strokeWidth={1.75} />
               {Math.round(run.durationMs / 1000)}s
             </div>
           )}
         </Card>
 
         <Card className="p-4">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Findings</div>
-          <div className="mt-2 flex items-center gap-2">
+          <div className="text-[12.5px] font-medium text-ink-secondary">Findings</div>
+          <div className="mt-2 flex items-center gap-2 font-mono text-[15px]">
             {run.findingCounts ? (
               <>
-                <span className="text-red-600 font-medium">{run.findingCounts.red}</span>
-                <span className="text-yellow-600 font-medium">{run.findingCounts.yellow}</span>
-                <span className="text-primary font-medium">{run.findingCounts.green}</span>
-                <span className="text-blue-600 font-medium">{run.findingCounts.info}</span>
+                <span className="font-medium text-err">{run.findingCounts.red}</span>
+                <span className="font-medium text-warn">{run.findingCounts.yellow}</span>
+                <span className="font-medium text-ok">{run.findingCounts.green}</span>
+                <span className="font-medium text-info-accent">{run.findingCounts.info}</span>
               </>
             ) : (
-              <span className="text-lg font-semibold">--</span>
+              <span className="text-[17px] font-semibold text-ink">--</span>
             )}
           </div>
-          <div className="mt-1 text-xs text-muted-foreground">
+          <div className="mt-1 text-[12px] text-ink-muted">
             RED / YELLOW / GREEN / INFO
           </div>
         </Card>
 
         <Card className="p-4">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Gate Status</div>
+          <div className="text-[12.5px] font-medium text-ink-secondary">Gate Status</div>
           <div className="mt-2 flex items-center gap-2">
             {run.gatePassed === true && (
               <>
-                <CheckCircle2 className="h-5 w-5 text-primary" />
-                <span className="text-lg font-semibold text-primary">PASSED</span>
+                <CheckCircle2 className="h-4 w-4 text-ok" strokeWidth={1.75} />
+                <span className="text-[17px] font-semibold text-ok">PASSED</span>
               </>
             )}
             {run.gatePassed === false && (
               <>
-                <AlertTriangle className="h-5 w-5 text-red-500" />
-                <span className="text-lg font-semibold text-red-600">FAILED</span>
+                <AlertTriangle className="h-4 w-4 text-err" strokeWidth={1.75} />
+                <span className="text-[17px] font-semibold text-err">FAILED</span>
               </>
             )}
             {run.gatePassed === undefined && (
-              <span className="text-lg font-semibold text-muted-foreground">N/A</span>
+              <span className="text-[17px] font-semibold text-ink-muted">N/A</span>
             )}
           </div>
         </Card>
@@ -186,37 +157,37 @@ export function QcRunDetailView({ runId, onBack }: QcRunDetailViewProps) {
           <TabsTrigger value="details">Details</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="findings" className="space-y-4 mt-4">
+        <TabsContent value="findings" className="mt-4 space-y-4">
           {Object.entries(findingsByCategory).map(([category, categoryFindings]) => (
             <Card key={category} className="p-4">
-              <h3 className="text-sm font-semibold mb-3">
+              <h3 className="mb-3 text-[15px] font-semibold text-ink">
                 {category.replace(/_/g, " ")} ({categoryFindings.length})
               </h3>
               <div className="space-y-3">
                 {categoryFindings.map((finding) => (
-                  <div key={finding._id} className="border-l-2 border-border pl-3">
+                  <div key={finding._id} className="border-l border-line pl-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
+                        <div className="mb-1 flex items-center gap-2">
                           <SeverityBadge severity={finding.severity} />
-                          <span className="font-medium text-sm">{finding.title}</span>
+                          <span className="text-[13.5px] font-medium text-ink">{finding.title}</span>
                         </div>
-                        <p className="text-sm text-muted-foreground">{finding.description}</p>
+                        <p className="text-[13px] text-ink-secondary">{finding.description}</p>
                         {finding.filePaths && finding.filePaths.length > 0 && (
-                          <div className="mt-2 text-xs text-muted-foreground font-mono">
+                          <div className="mt-2 font-mono text-[12px] text-ink-muted">
                             {finding.filePaths.join(", ")}
                           </div>
                         )}
                         {finding.suggestedFix && (
-                          <div className="mt-2 p-2 rounded bg-accent/50 text-xs">
-                            <span className="font-medium">Suggested fix:</span> {finding.suggestedFix}
+                          <div className="mt-2 rounded-lg bg-surface-2 p-2 text-[12px] text-ink-secondary">
+                            <span className="font-medium text-ink">Suggested fix:</span> {finding.suggestedFix}
                           </div>
                         )}
                       </div>
                       {finding.confidence !== undefined && (
-                        <Badge variant="outline" className="text-xs">
+                        <StatusBadge tone="neutral" className="font-mono">
                           {Math.round(finding.confidence * 100)}%
-                        </Badge>
+                        </StatusBadge>
                       )}
                     </div>
                   </div>
@@ -225,32 +196,32 @@ export function QcRunDetailView({ runId, onBack }: QcRunDetailViewProps) {
             </Card>
           ))}
           {findings.length === 0 && (
-            <div className="text-center py-12 text-muted-foreground">
+            <div className="py-12 text-center text-[13px] text-ink-muted">
               No findings for this run
             </div>
           )}
         </TabsContent>
 
-        <TabsContent value="artifacts" className="space-y-3 mt-4">
+        <TabsContent value="artifacts" className="mt-4 space-y-3">
           {artifacts.map((artifact) => (
-            <Card key={artifact._id} className="p-4 flex items-center justify-between">
+            <Card key={artifact._id} className="flex items-center justify-between p-4">
               <div className="flex items-center gap-3">
-                <FileText className="h-5 w-5 text-muted-foreground" />
+                <FileText className="h-4 w-4 text-ink-muted" strokeWidth={1.75} />
                 <div>
-                  <div className="font-medium text-sm">{artifact.name}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {artifact.type} • {artifact.mimeType}
+                  <div className="text-[13.5px] font-medium text-ink">{artifact.name}</div>
+                  <div className="text-[12.5px] text-ink-muted">
+                    {artifact.type} · {artifact.mimeType}
                   </div>
                 </div>
               </div>
               <Button variant="ghost" size="sm" className="gap-2">
-                <Download className="h-4 w-4" />
+                <Download className="h-4 w-4" strokeWidth={1.75} />
                 Download
               </Button>
             </Card>
           ))}
           {artifacts.length === 0 && (
-            <div className="text-center py-12 text-muted-foreground">
+            <div className="py-12 text-center text-[13px] text-ink-muted">
               No artifacts for this run
             </div>
           )}
@@ -260,25 +231,25 @@ export function QcRunDetailView({ runId, onBack }: QcRunDetailViewProps) {
           <Card className="p-6">
             <dl className="space-y-3">
               <div>
-                <dt className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Run ID</dt>
-                <dd className="mt-1 font-mono text-sm">{run.runId}</dd>
+                <dt className="text-[12.5px] font-medium text-ink-secondary">Run ID</dt>
+                <dd className="mt-1 font-mono text-[13px] text-ink">{run.runId}</dd>
               </div>
               <div>
-                <dt className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Repo URL</dt>
-                <dd className="mt-1 text-sm">{run.repoUrl}</dd>
+                <dt className="text-[12.5px] font-medium text-ink-secondary">Repo URL</dt>
+                <dd className="mt-1 text-[13px] text-ink">{run.repoUrl}</dd>
               </div>
               <div>
-                <dt className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Scope</dt>
-                <dd className="mt-1 text-sm">{run.scopeType}</dd>
+                <dt className="text-[12.5px] font-medium text-ink-secondary">Scope</dt>
+                <dd className="mt-1 text-[13px] text-ink">{run.scopeType}</dd>
               </div>
               <div>
-                <dt className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Initiator</dt>
-                <dd className="mt-1 text-sm">{run.initiatorType}</dd>
+                <dt className="text-[12.5px] font-medium text-ink-secondary">Initiator</dt>
+                <dd className="mt-1 text-[13px] text-ink">{run.initiatorType}</dd>
               </div>
               {run.evidenceHash && (
                 <div>
-                  <dt className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Evidence Hash</dt>
-                  <dd className="mt-1 font-mono text-xs break-all">{run.evidenceHash}</dd>
+                  <dt className="text-[12.5px] font-medium text-ink-secondary">Evidence Hash</dt>
+                  <dd className="mt-1 break-all font-mono text-[12px] text-ink">{run.evidenceHash}</dd>
                 </div>
               )}
             </dl>

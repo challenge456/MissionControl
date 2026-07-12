@@ -4,7 +4,8 @@ import { api } from "../../../convex/_generated/api";
 import type { Id, Doc } from "../../../convex/_generated/dataModel";
 import { useToast } from "./Toast";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/factory/badges";
+import { PriorityChip } from "@/components/PriorityChip";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -50,70 +51,28 @@ import { PlanningModal } from "./PlanningModal";
 type TaskStatus = Doc<"tasks">["status"];
 
 const COLUMNS: { status: TaskStatus; label: string; color: string; icon: LucideIcon }[] = [
-  { status: "INBOX", label: "Inbox", color: "text-blue-400", icon: Inbox },
-  { status: "ASSIGNED", label: "Assigned", color: "text-amber-400", icon: UserCheck },
-  { status: "IN_PROGRESS", label: "In Progress", color: "text-blue-400", icon: Play },
-  { status: "REVIEW", label: "Review", color: "text-blue-400", icon: Eye },
-  { status: "NEEDS_APPROVAL", label: "Needs Approval", color: "text-red-400", icon: ShieldAlert },
-  { status: "BLOCKED", label: "Blocked", color: "text-orange-400", icon: Ban },
-  { status: "FAILED", label: "Failed", color: "text-red-400", icon: AlertTriangle },
-  { status: "DONE", label: "Done", color: "text-primary", icon: CheckCircle2 },
-  { status: "CANCELED", label: "Canceled", color: "text-gray-400", icon: XCircle },
+  { status: "INBOX", label: "Inbox", color: "text-ink-muted", icon: Inbox },
+  { status: "ASSIGNED", label: "Assigned", color: "text-ink-muted", icon: UserCheck },
+  { status: "IN_PROGRESS", label: "In Progress", color: "text-ink-muted", icon: Play },
+  { status: "REVIEW", label: "Review", color: "text-ink-muted", icon: Eye },
+  { status: "NEEDS_APPROVAL", label: "Needs Approval", color: "text-ink-muted", icon: ShieldAlert },
+  { status: "BLOCKED", label: "Blocked", color: "text-ink-muted", icon: Ban },
+  { status: "FAILED", label: "Failed", color: "text-ink-muted", icon: AlertTriangle },
+  { status: "DONE", label: "Done", color: "text-ink-muted", icon: CheckCircle2 },
+  { status: "CANCELED", label: "Canceled", color: "text-ink-muted", icon: XCircle },
 ];
 
-const COLUMN_BG: Record<string, string> = {
-  INBOX: "bg-blue-500/5",
-  ASSIGNED: "bg-amber-500/5",
-  IN_PROGRESS: "bg-blue-500/5",
-  REVIEW: "bg-blue-500/5",
-  NEEDS_APPROVAL: "bg-red-500/5",
-  BLOCKED: "bg-orange-500/5",
-  FAILED: "bg-red-500/5",
-  DONE: "bg-primary/5",
-  CANCELED: "bg-gray-500/5",
-};
-
+/** Flat status-dot colors per UI_STYLE_GUIDE task-state mapping. */
 const COLUMN_DOT: Record<string, string> = {
-  INBOX: "bg-blue-400",
-  ASSIGNED: "bg-amber-400",
-  IN_PROGRESS: "bg-blue-400",
-  REVIEW: "bg-blue-400",
-  NEEDS_APPROVAL: "bg-red-400",
-  BLOCKED: "bg-orange-400",
-  FAILED: "bg-red-400",
-  DONE: "bg-primary",
-  CANCELED: "bg-gray-400",
-};
-
-const COLUMN_TOP_STRIP: Record<string, string> = {
-  INBOX:           "bg-blue-500/50",
-  ASSIGNED:        "bg-amber-500/50",
-  IN_PROGRESS:     "bg-blue-500/50",
-  REVIEW:          "bg-sky-500/50",
-  NEEDS_APPROVAL:  "bg-red-500/50",
-  BLOCKED:         "bg-orange-500/50",
-  FAILED:          "bg-red-500/50",
-  DONE:            "bg-primary/50",
-  CANCELED:        "bg-gray-500/40",
-};
-
-const COLUMN_BADGE_COLOR: Record<string, string> = {
-  INBOX:           "bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30",
-  ASSIGNED:        "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30",
-  IN_PROGRESS:     "bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30",
-  REVIEW:          "bg-sky-500/15 text-sky-600 dark:text-sky-400 border-sky-500/30",
-  NEEDS_APPROVAL:  "bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30",
-  BLOCKED:         "bg-orange-500/15 text-orange-600 dark:text-orange-400 border-orange-500/30",
-  FAILED:          "bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30",
-  DONE:            "bg-primary/15 text-primary/70 dark:text-primary border-primary/30",
-  CANCELED:        "bg-gray-500/15 text-gray-500 dark:text-gray-400 border-gray-500/30",
-};
-
-const PRIORITY_LABELS: Record<number, { label: string; variant: "destructive" | "default" | "secondary" | "outline" }> = {
-  1: { label: "Critical", variant: "destructive" },
-  2: { label: "High", variant: "default" },
-  3: { label: "Normal", variant: "secondary" },
-  4: { label: "Low", variant: "outline" },
+  INBOX: "bg-ink-muted",
+  ASSIGNED: "bg-ink-muted",
+  IN_PROGRESS: "bg-info-accent",
+  REVIEW: "bg-info-accent",
+  NEEDS_APPROVAL: "bg-warn",
+  BLOCKED: "bg-warn",
+  FAILED: "bg-err",
+  DONE: "bg-ok",
+  CANCELED: "bg-ink-muted",
 };
 
 type Task = {
@@ -132,16 +91,16 @@ type Task = {
   identifier?: string;
 };
 
-const SOURCE_CONFIG: Record<string, { icon: string; label: string; isSpecial?: boolean }> = {
-  DASHBOARD: { icon: "🖥️", label: "Dashboard" },
-  TELEGRAM:  { icon: "✈️", label: "Telegram" },
-  GITHUB:    { icon: "🐙", label: "GitHub" },
-  AGENT:     { icon: "🤖", label: "Agent" },
-  API:       { icon: "🔌", label: "API" },
-  TRELLO:    { icon: "📋", label: "Trello" },
-  SEED:      { icon: "🌱", label: "Seed" },
-  MISSION_PROMPT: { icon: "✨", label: "Mission", isSpecial: true },
-  UNKNOWN:   { icon: "❓", label: "Unknown" },
+const SOURCE_CONFIG: Record<string, { label: string; isSpecial?: boolean }> = {
+  DASHBOARD: { label: "Dashboard" },
+  TELEGRAM:  { label: "Telegram" },
+  GITHUB:    { label: "GitHub" },
+  AGENT:     { label: "Agent" },
+  API:       { label: "API" },
+  TRELLO:    { label: "Trello" },
+  SEED:      { label: "Seed" },
+  MISSION_PROMPT: { label: "Mission", isSpecial: true },
+  UNKNOWN:   { label: "Unknown" },
 };
 
 const STATUS_LABELS: Record<TaskStatus, string> = {
@@ -194,8 +153,10 @@ export function Kanban({
 
   if (tasks === undefined || agents === undefined) {
     return (
-      <div className="flex items-center justify-center p-12 text-muted-foreground">
-        Loading tasks...
+      <div className="flex flex-col gap-3 p-6" aria-label="Loading tasks">
+        <div className="h-4 w-48 animate-pulse rounded bg-surface-2" />
+        <div className="h-4 w-72 animate-pulse rounded bg-surface-2" />
+        <div className="h-4 w-56 animate-pulse rounded bg-surface-2" />
       </div>
     );
   }
@@ -292,7 +253,7 @@ export function Kanban({
         {/* Undo toast */}
         {lastMove && (
           <div className="fixed bottom-6 right-6 z-50">
-            <Button onClick={handleUndo} className="shadow-lg gap-2">
+            <Button onClick={handleUndo} className="shadow-[var(--shadow-elevation-2)] gap-2">
               <Undo2 className="h-4 w-4" />
               Undo
             </Button>
@@ -321,12 +282,12 @@ export function Kanban({
       {/* Drag overlay */}
       <DragOverlay>
         {activeTask ? (
-          <div className="min-w-[240px] rounded-lg border-2 border-primary bg-card p-3 shadow-xl opacity-95">
-            <div className="font-medium text-sm text-card-foreground mb-1 line-clamp-2">
+          <div className="min-w-[240px] rounded-xl border border-line-strong bg-surface-3 p-3 shadow-[var(--shadow-elevation-2)] opacity-95">
+            <div className="font-medium text-[13.5px] text-ink mb-1 line-clamp-2">
               {activeTask.title}
             </div>
-            <div className="text-xs text-muted-foreground">
-              {activeTask.type} • P{activeTask.priority}
+            <div className="text-[12.5px] text-ink-muted">
+              {activeTask.type} · P{activeTask.priority}
             </div>
           </div>
         ) : null}
@@ -369,23 +330,17 @@ function Column({
     <div
       ref={setNodeRef}
       className={cn(
-        "flex min-w-[264px] max-w-[264px] flex-col rounded-lg border transition-colors overflow-hidden",
-        COLUMN_BG[status],
-        isOver
-          ? "border-primary/50 bg-primary/10"
-          : "border-border"
+        "flex min-w-[264px] max-w-[264px] flex-col rounded-xl border bg-surface-1 transition-colors duration-150 overflow-hidden",
+        isOver ? "border-line-strong bg-surface-2" : "border-line"
       )}
     >
-      {/* Colored top accent strip */}
-      <div className={cn("h-[3px] w-full shrink-0", COLUMN_TOP_STRIP[status])} />
-
       {/* Lane header */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-border/50 bg-muted/20">
-        <Icon className={cn("h-3.5 w-3.5 shrink-0", colorClass)} />
-        <span className="text-[11px] font-bold uppercase tracking-wider text-foreground/80">{label}</span>
-        <Badge variant="outline" className={cn("ml-auto h-5 text-[11px] font-bold px-1.5 border", COLUMN_BADGE_COLOR[status])}>
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-line">
+        <Icon size={14} strokeWidth={1.6} className={cn("shrink-0", colorClass)} />
+        <span className="text-[12.5px] font-medium text-ink-secondary">{label}</span>
+        <StatusBadge tone="neutral" className="ml-auto">
           {tasks.length}
-        </Badge>
+        </StatusBadge>
       </div>
       
       {/* Cards */}
@@ -403,11 +358,8 @@ function Column({
             />
           ))}
           {tasks.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-              <span className="text-2xl mb-2">
-                {status === "BLOCKED" ? "🎉" : status === "DONE" ? "✨" : "📭"}
-              </span>
-              <span className="text-xs">
+            <div className="flex flex-col items-center justify-center py-8 text-ink-muted">
+              <span className="text-[12.5px]">
                 {status === "BLOCKED"
                   ? "No blocked tasks"
                   : status === "DONE"
@@ -443,7 +395,6 @@ function Card({
     disabled: allowedToStatuses.length === 0,
   });
   
-  const priority = PRIORITY_LABELS[task.priority] || PRIORITY_LABELS[3];
   const assignees = task.assigneeIds
     .map((id) => agentMap.get(id))
     .filter(Boolean);
@@ -461,8 +412,8 @@ function Card({
       {...listeners}
       style={style}
       className={cn(
-        "group rounded-lg border bg-card p-3 transition-all",
-        isDragging ? "opacity-50 shadow-lg border-primary" : "border-border hover:border-muted-foreground/30 hover:shadow-sm",
+        "group rounded-xl border bg-surface-1 p-3 transition-colors duration-150",
+        isDragging ? "opacity-50 border-line-strong" : "border-line hover:border-line-strong hover:bg-surface-2",
         allowedToStatuses.length > 0 ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
       )}
     >
@@ -475,35 +426,21 @@ function Card({
       >
         {/* Identifier + Title */}
         {task.identifier && (
-          <div className="text-[11px] font-mono text-muted-foreground mb-1">{task.identifier}</div>
+          <div className="text-[11.5px] font-mono text-ink-muted mb-1">{task.identifier}</div>
         )}
-        <div className="font-medium text-sm text-card-foreground leading-snug line-clamp-2 mb-2">
+        <div className="font-medium text-[13.5px] text-ink leading-snug line-clamp-2 mb-2">
           {task.title}
         </div>
 
         {/* Metadata chips */}
         <div className="flex flex-wrap gap-1 mb-2">
-          <Badge variant="outline" className="text-[11px] h-5 px-1.5 font-normal">
-            {task.type}
-          </Badge>
-          <Badge variant={priority.variant} className="text-[11px] h-5 px-1.5 font-medium">
-            {priority.label}
-          </Badge>
+          <StatusBadge tone="neutral">{task.type}</StatusBadge>
+          <PriorityChip priority={task.priority} />
           {src && (
-            <Badge
-              variant="outline"
-              className={cn(
-                "text-[11px] h-5 px-1.5 font-normal gap-1",
-                src.isSpecial && "bg-primary/10 border-primary/20 text-primary"
-              )}
-            >
-              {src.isSpecial ? (
-                <Sparkles className="h-2.5 w-2.5" strokeWidth={2} />
-              ) : (
-                <span className="text-[11px]">{src.icon}</span>
-              )}
+            <StatusBadge tone={src.isSpecial ? "info" : "neutral"}>
+              {src.isSpecial && <Sparkles size={11} strokeWidth={1.75} aria-hidden />}
               {src.label}
-            </Badge>
+            </StatusBadge>
           )}
         </div>
 
@@ -513,13 +450,13 @@ function Card({
             {task.labels.slice(0, 3).map((label) => (
               <span
                 key={label}
-                className="text-[11px] px-1.5 py-0.5 bg-muted text-muted-foreground rounded-md"
+                className="text-[11.5px] px-1.5 py-0.5 bg-surface-2 text-ink-secondary rounded-md"
               >
                 {label}
               </span>
             ))}
             {task.labels.length > 3 && (
-              <span className="text-[11px] text-muted-foreground">
+              <span className="text-[11.5px] text-ink-muted">
                 +{task.labels.length - 3}
               </span>
             )}
@@ -528,19 +465,19 @@ function Card({
 
         {/* Blocked reason */}
         {task.blockedReason && (
-          <div className="text-xs px-2 py-1.5 bg-destructive/10 text-destructive rounded-md mb-2 flex items-start gap-1.5">
-            <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
+          <div className="text-[12.5px] px-2 py-1.5 bg-err-soft text-err rounded-md mb-2 flex items-start gap-1.5">
+            <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" strokeWidth={1.75} />
             <span className="line-clamp-2">{task.blockedReason}</span>
           </div>
         )}
 
         {/* Footer: Cost & Assignees */}
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <div className="flex items-center justify-between text-[12.5px] text-ink-muted">
           <span className="flex items-center gap-1">
-            <DollarSign className="h-3 w-3" />
+            <DollarSign className="h-3 w-3" strokeWidth={1.75} />
             {task.actualCost.toFixed(2)}
             {task.estimatedCost != null && (
-              <span className="text-muted-foreground/60"> / ${task.estimatedCost.toFixed(2)}</span>
+              <span className="text-ink-muted/60"> / ${task.estimatedCost.toFixed(2)}</span>
             )}
           </span>
           <div className="flex -space-x-1.5">
@@ -548,13 +485,13 @@ function Card({
               <span
                 key={i}
                 title={agent!.name}
-                className="flex h-5 w-5 items-center justify-center rounded-full bg-muted text-[11px] border-2 border-card"
+                className="flex h-5 w-5 items-center justify-center rounded-full bg-surface-2 text-[11px] text-ink-secondary border border-line"
               >
                 {agent!.emoji || agent!.name.charAt(0)}
               </span>
             ))}
             {assignees.length > 3 && (
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-muted text-[11px] border-2 border-card">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-surface-2 text-[11px] text-ink-secondary border border-line">
                 +{assignees.length - 3}
               </span>
             )}
@@ -564,23 +501,23 @@ function Card({
 
       {/* Hover actions */}
       {(allowedToStatuses.length > 0 || onPlanTask) && (
-        <div className="mt-2 pt-2 border-t border-border/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+        <div className="mt-2 pt-2 border-t border-line opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex items-center gap-1">
           {onPlanTask && (
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 text-[11px] px-2 text-muted-foreground"
+              className="h-6 text-[11px] px-2"
               onClick={(e) => { e.stopPropagation(); onPlanTask(task._id); }}
             >
-              <Sparkles className="h-3 w-3 mr-1" />
+              <Sparkles className="h-3 w-3 mr-1" strokeWidth={1.75} />
               Plan with AI
             </Button>
           )}
           {allowedToStatuses.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2 text-muted-foreground">
-                  <ArrowRight className="h-3 w-3 mr-1" />
+                <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2">
+                  <ArrowRight className="h-3 w-3 mr-1" strokeWidth={1.75} />
                   Move
                 </Button>
               </DropdownMenuTrigger>
@@ -590,7 +527,7 @@ function Card({
                     key={s}
                     onClick={(e) => { e.stopPropagation(); onMoveTo(s); }}
                   >
-                    <span className={cn("h-2 w-2 rounded-full mr-2", COLUMN_DOT[s])} />
+                    <span className={cn("h-1.5 w-1.5 rounded-full mr-2", COLUMN_DOT[s])} />
                     {STATUS_LABELS[s]}
                   </DropdownMenuItem>
                 ))}
@@ -600,7 +537,7 @@ function Card({
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 text-[11px] px-2 text-muted-foreground ml-auto"
+            className="h-6 text-[11px] px-2 ml-auto"
             onClick={onSelect}
           >
             <ExternalLink className="h-3 w-3 mr-1" />

@@ -34,8 +34,8 @@ export function AgentSettingsPanel({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Settings className="h-4 w-4" />
-            {agent.emoji ?? "🤖"} {agent.name}
+            <Settings size={16} strokeWidth={1.7} aria-hidden />
+            {agent.emoji ? `${agent.emoji} ` : ""}{agent.name}
           </DialogTitle>
           <DialogDescription>Personality, capabilities, and advanced options.</DialogDescription>
         </DialogHeader>
@@ -43,11 +43,11 @@ export function AgentSettingsPanel({
         <div className="space-y-4 pt-2">
           {/* Personality */}
           <section>
-            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2 mb-2">
-              <User className="h-3.5 w-3.5" />
+            <h4 className="text-[11.5px] font-medium uppercase tracking-[0.06em] text-ink-muted flex items-center gap-2 mb-2">
+              <User size={14} strokeWidth={1.7} aria-hidden />
               Personality
             </h4>
-            <p className="text-sm text-muted-foreground mb-2">
+            <p className="text-[13.5px] text-ink-secondary mb-2">
               Soul (SOUL.md), identity, and instructions. Edit in Identity Directory.
             </p>
             {onNavigateToIdentity && (
@@ -59,18 +59,18 @@ export function AgentSettingsPanel({
 
           {/* Capabilities */}
           <section>
-            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2 mb-2">
-              <Shield className="h-3.5 w-3.5" />
+            <h4 className="text-[11.5px] font-medium uppercase tracking-[0.06em] text-ink-muted flex items-center gap-2 mb-2">
+              <Shield size={14} strokeWidth={1.7} aria-hidden />
               Capabilities
             </h4>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-[13.5px] text-ink-secondary">
               Run commands (Off / Ask / Auto), Web access, File tools. When using an OpenClaw Gateway, configure these on the Gateway or in OpenClaw Studio (Capabilities tab). Mission Control policy engine applies to task-based runs.
             </p>
           </section>
 
           {/* Advanced */}
           <section>
-            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+            <h4 className="text-[11.5px] font-medium uppercase tracking-[0.06em] text-ink-muted mb-2">
               Advanced
             </h4>
             <div className="flex flex-col gap-2">
@@ -78,9 +78,9 @@ export function AgentSettingsPanel({
                 href="https://github.com/grp06/openclaw-studio"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 text-sm text-primary hover:underline"
+                className="inline-flex items-center gap-2 text-[13.5px] text-ink-secondary hover:text-ink hover:underline transition-colors duration-150"
               >
-                <ExternalLink className="h-3.5 w-3.5" />
+                <ExternalLink size={14} strokeWidth={1.7} aria-hidden />
                 OpenClaw Studio (Gateway UI)
               </a>
               {onDelete && (

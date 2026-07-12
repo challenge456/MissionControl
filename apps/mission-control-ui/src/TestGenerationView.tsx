@@ -8,6 +8,9 @@ interface TestGenerationViewProps {
   projectId: Id<"projects"> | null;
 }
 
+const INPUT_CLASS =
+  "h-9 rounded-lg border border-line bg-surface-1 px-3 text-[13.5px] text-ink placeholder:text-ink-muted";
+
 export function TestGenerationView({ projectId }: TestGenerationViewProps) {
   const [testType, setTestType] = useState("api_functional");
   const [suiteName, setSuiteName] = useState("Generated Suite");
@@ -21,22 +24,22 @@ export function TestGenerationView({ projectId }: TestGenerationViewProps) {
   const storeExecution = useMutation((api as any).execution.storeResult);
 
   return (
-    <main className="flex-1 overflow-auto p-6 space-y-4">
+    <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-6 py-6">
       <header>
-        <h2 className="text-lg font-semibold">Test Generation</h2>
-        <p className="text-sm text-muted-foreground">Generate API/UI/Hybrid test suites from source payloads and execute them.</p>
+        <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-ink">Test Generation</h1>
+        <p className="mt-1.5 text-[14px] text-ink-secondary">Generate API/UI/Hybrid test suites from source payloads and execute them.</p>
       </header>
 
-      <section className="rounded-lg border border-border p-4 space-y-3">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+      <section className="flex flex-col gap-3 rounded-xl border border-line bg-surface-1 p-5">
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
           <input
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+            className={INPUT_CLASS}
             value={suiteName}
             onChange={(e) => setSuiteName(e.target.value)}
             placeholder="Suite name"
           />
           <select
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+            className={INPUT_CLASS}
             value={testType}
             onChange={(e) => setTestType(e.target.value)}
           >
@@ -63,19 +66,22 @@ export function TestGenerationView({ projectId }: TestGenerationViewProps) {
           </Button>
         </div>
         <textarea
-          className="min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-xs"
+          className="min-h-[120px] w-full rounded-lg border border-line bg-surface-1 px-3 py-2 font-mono text-[12px] text-ink placeholder:text-ink-muted"
           value={sourceText}
           onChange={(e) => setSourceText(e.target.value)}
         />
       </section>
 
       {suite && (
-        <section className="rounded-lg border border-border p-4 space-y-2">
-          <h3 className="font-medium">Selected Suite</h3>
-          <p className="text-sm text-muted-foreground">{suite.name} · {suite.testType}</p>
-          {suite.gherkinFeature && <pre className="rounded-md bg-muted/40 p-3 text-xs overflow-auto">{suite.gherkinFeature}</pre>}
+        <section className="flex flex-col gap-3 rounded-xl border border-line bg-surface-1 p-5">
+          <h2 className="text-[15px] font-semibold text-ink">Selected Suite</h2>
+          <p className="text-[13.5px] text-ink-secondary">{suite.name} · {suite.testType}</p>
+          {suite.gherkinFeature && (
+            <pre className="overflow-x-auto rounded-lg bg-surface-2 p-3 font-mono text-[12px] leading-relaxed text-ink-secondary">{suite.gherkinFeature}</pre>
+          )}
           <Button
             size="sm"
+            className="self-start"
             onClick={async () => {
               const result = await execute({ id: suite._id, executedBy: "operator" });
               await storeExecution({
@@ -97,20 +103,23 @@ export function TestGenerationView({ projectId }: TestGenerationViewProps) {
         </section>
       )}
 
-      <section className="rounded-lg border border-border p-4 space-y-2">
-        <h3 className="font-medium">Suites</h3>
-        <div className="space-y-2">
+      <section className="flex flex-col gap-3 rounded-xl border border-line bg-surface-1 p-5">
+        <h2 className="text-[15px] font-semibold text-ink">Suites</h2>
+        <div className="flex flex-col gap-2">
           {(suites ?? []).map((row: any) => (
-            <div key={row._id} className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2">
-              <div>
-                <div className="text-sm font-medium">{row.name}</div>
-                <div className="text-xs text-muted-foreground">{row.testType} · {row.status}</div>
+            <div
+              key={row._id}
+              className="flex items-center justify-between rounded-lg border border-line px-3 py-2 transition-colors duration-150 hover:bg-surface-2"
+            >
+              <div className="min-w-0">
+                <div className="text-[13.5px] font-medium text-ink">{row.name}</div>
+                <div className="text-[12.5px] text-ink-muted">{row.testType} · {row.status}</div>
               </div>
               <Button size="sm" variant="outline" onClick={() => setSelectedSuiteId(row._id)}>Select</Button>
             </div>
           ))}
         </div>
       </section>
-    </main>
+    </div>
   );
 }

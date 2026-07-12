@@ -1,12 +1,16 @@
-import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { PageHeader } from "./components/PageHeader";
+import {
+  RiskBadge,
+  ScoreBadge,
+  StatusBadge,
+  TrendBadge,
+} from "./components/factory/badges";
 import {
   SwatchBook,
   Type,
   PanelsTopLeft,
-  Sparkles,
-  ArrowRight,
+  Tags,
   Workflow,
   Wand2,
 } from "lucide-react";
@@ -26,19 +30,48 @@ const VISUAL_PILLARS = [
   },
 ];
 
-const COLOR_TOKENS = [
-  { label: "Background", value: "Deep command deck", swatch: "bg-[#06101b]" },
-  { label: "Panel", value: "Dark glass surface", swatch: "bg-[#0a1726]" },
-  { label: "Primary", value: "Emerald action", swatch: "bg-emerald-400" },
-  { label: "Secondary", value: "Cyan signal", swatch: "bg-cyan-300" },
-  { label: "Warning", value: "Amber review", swatch: "bg-amber-300" },
-  { label: "Danger", value: "Restrained red", swatch: "bg-rose-400" },
+interface TokenSwatch {
+  label: string;
+  token: string;
+  swatch: string;
+}
+
+const SURFACE_TOKENS: TokenSwatch[] = [
+  { label: "App", token: "app", swatch: "bg-app" },
+  { label: "Rail", token: "rail", swatch: "bg-rail" },
+  { label: "Surface 1", token: "surface-1", swatch: "bg-surface-1" },
+  { label: "Surface 2", token: "surface-2", swatch: "bg-surface-2" },
+  { label: "Surface 3", token: "surface-3", swatch: "bg-surface-3" },
+  { label: "Line", token: "line", swatch: "bg-line" },
+  { label: "Line strong", token: "line-strong", swatch: "bg-line-strong" },
+];
+
+const INK_TOKENS: TokenSwatch[] = [
+  { label: "Ink", token: "ink", swatch: "bg-ink" },
+  { label: "Ink secondary", token: "ink-secondary", swatch: "bg-ink-secondary" },
+  { label: "Ink muted", token: "ink-muted", swatch: "bg-ink-muted" },
+  { label: "Action", token: "act", swatch: "bg-act" },
+  { label: "Action ink", token: "act-ink", swatch: "bg-act-ink" },
+];
+
+const STATUS_TOKENS: TokenSwatch[] = [
+  { label: "OK", token: "ok / ok-soft", swatch: "bg-ok" },
+  { label: "Warn", token: "warn / warn-soft", swatch: "bg-warn" },
+  { label: "Error", token: "err / err-soft", swatch: "bg-err" },
+  { label: "Info", token: "info-accent / info-soft", swatch: "bg-info-accent" },
+];
+
+const RISK_TOKENS: TokenSwatch[] = [
+  { label: "Risk low", token: "risk-low", swatch: "bg-risk-low" },
+  { label: "Risk medium", token: "risk-medium", swatch: "bg-risk-medium" },
+  { label: "Risk high", token: "risk-high", swatch: "bg-risk-high" },
+  { label: "Risk critical", token: "risk-critical", swatch: "bg-risk-critical" },
 ];
 
 const WORKFLOW_STEPS = [
   {
     title: "Lock the visual contract",
-    detail: "Use root `design.md` as the shared source of truth for colors, typography, motion, and anti-patterns.",
+    detail: "Use docs/software-factory/UI_STYLE_GUIDE.md as the shared source of truth for surfaces, typography, status color, and anti-patterns.",
   },
   {
     title: "Generate or redesign from references",
@@ -49,49 +82,63 @@ const WORKFLOW_STEPS = [
     detail: "Do not let backend work race ahead of a visual direction that still feels generic or unstable.",
   },
   {
-    title: "Implement with shadcn primitives",
-    detail: "Use accessible, interactive primitives as the base layer and apply Mission Control’s styling through tokens and wrappers.",
+    title: "Implement with factory primitives",
+    detail: "PageHeader, DataTable, MetricBlock, EmptyState, and the badge set are the base layer; views style through v2 tokens only.",
   },
 ];
 
+function SwatchGrid({ tokens }: { tokens: TokenSwatch[] }) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {tokens.map((token) => (
+        <div key={token.label} className="rounded-lg border border-line bg-surface-2 px-3 py-3">
+          <div className="flex items-center gap-3">
+            <div className={`h-9 w-9 shrink-0 rounded-lg border border-line ${token.swatch}`} />
+            <div className="min-w-0">
+              <div className="text-[13.5px] font-medium text-ink">{token.label}</div>
+              <div className="truncate font-mono text-[11.5px] text-ink-muted">{token.token}</div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function DesignSystemView() {
   return (
-    <main className="mc-page">
+    <main className="flex-1 overflow-auto bg-app">
       <PageHeader
         title="Design DNA"
-        description="Mission Control’s shared visual contract. This is the source design language that keeps redesigns, generated pages, and component work consistent."
-        icon={<SwatchBook className="h-4.5 w-4.5" strokeWidth={1.7} />}
-        status={
-          <Badge variant="outline" className="border-cyan-300/20 text-cyan-100">
-            Powered by root `design.md`
-          </Badge>
-        }
+        description="Mission Control's shared visual contract. The v2 token system and factory primitives keep redesigns, generated pages, and component work consistent."
+        icon={<SwatchBook size={16} strokeWidth={1.7} aria-hidden />}
+        status={<StatusBadge tone="neutral">v2 tokens</StatusBadge>}
       />
 
-      <div className="mc-page-body mc-page-stack">
+      <div className="mx-auto flex max-w-[1200px] flex-col gap-6 px-6 py-6">
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
           <Card className="p-5">
-            <div className="mc-kicker">Why this exists</div>
-            <div className="mt-2 text-xl font-semibold text-foreground">
+            <div className="text-[15px] font-semibold text-ink">
               Generated apps look the same when design intent stays implicit.
             </div>
-            <div className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-              Mission Control now has an explicit design contract so new pages, redesigns, and agent-generated UI all inherit the same visual language instead of drifting into generic AI dashboards.
+            <div className="mt-2 max-w-3xl text-[13.5px] leading-relaxed text-ink-secondary">
+              Mission Control has an explicit design contract so new pages, redesigns, and agent-generated UI all inherit the same visual language instead of drifting into generic AI dashboards.
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
-              <Badge variant="outline" className="border-cyan-300/20 text-cyan-100">Design contract</Badge>
-              <Badge variant="outline" className="border-emerald-300/20 text-emerald-100">Transferable between agents</Badge>
-              <Badge variant="outline" className="border-amber-300/20 text-amber-100">Prototype-first</Badge>
+              <StatusBadge tone="neutral">Design contract</StatusBadge>
+              <StatusBadge tone="neutral">Transferable between agents</StatusBadge>
+              <StatusBadge tone="neutral">Prototype-first</StatusBadge>
             </div>
           </Card>
 
           <Card className="p-5">
-            <div className="mc-kicker">Repo artifact</div>
-            <div className="mt-2 text-sm font-semibold text-foreground">`design.md` is now the source of truth.</div>
-            <div className="mt-2 text-sm leading-relaxed text-muted-foreground">
-              It captures product intent, brand posture, layout rules, motion, color roles, component direction, reference-handling rules, and shadcn implementation guidance in agent-readable form. `docs/design.md` remains the extended companion reference.
+            <div className="text-[15px] font-semibold text-ink">
+              <code className="font-mono text-[13px]">UI_STYLE_GUIDE.md</code> is the source of truth.
             </div>
-            <div className="mt-4 inline-flex rounded-full border border-cyan-300/20 bg-cyan-400/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-100">
+            <div className="mt-2 text-[13.5px] leading-relaxed text-ink-secondary">
+              It captures surfaces, typography scale, status and badge rules, table density, control styles, motion limits, and accessibility requirements in agent-readable form. Tokens live in <code className="font-mono text-[12px]">src/index.css</code>; primitives in <code className="font-mono text-[12px]">src/components/factory/</code>.
+            </div>
+            <div className="mt-4 inline-flex rounded-lg border border-line bg-surface-2 px-3 py-1.5 text-[12.5px] font-medium text-ink-secondary">
               Shared with future generators and redesign flows
             </div>
           </Card>
@@ -100,9 +147,8 @@ export function DesignSystemView() {
         <div className="grid gap-4 md:grid-cols-3">
           {VISUAL_PILLARS.map((pillar) => (
             <Card key={pillar.title} className="p-5">
-              <div className="mc-kicker">Principle</div>
-              <div className="mt-2 text-sm font-semibold text-foreground">{pillar.title}</div>
-              <div className="mt-2 text-sm leading-relaxed text-muted-foreground">{pillar.description}</div>
+              <div className="text-[15px] font-semibold text-ink">{pillar.title}</div>
+              <div className="mt-2 text-[13.5px] leading-relaxed text-ink-secondary">{pillar.description}</div>
             </Card>
           ))}
         </div>
@@ -110,23 +156,26 @@ export function DesignSystemView() {
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <Card className="p-5">
             <div className="flex items-center gap-2">
-              <Type className="h-4 w-4 text-cyan-100" />
-              <div className="mc-kicker">Typography and atmosphere</div>
+              <Type size={15} strokeWidth={1.7} aria-hidden className="text-ink-secondary" />
+              <div className="text-[15px] font-semibold text-ink">Typography</div>
             </div>
             <div className="mt-4 space-y-3">
-              <div className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-4">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Display tone</div>
-                <div className="mt-2 font-[family:var(--font-display)] text-2xl font-semibold tracking-[0.08em] text-foreground">
+              <div className="rounded-lg border border-line bg-surface-2 px-4 py-4">
+                <div className="text-[12.5px] font-medium text-ink-secondary">Sans — Inter</div>
+                <div className="mt-2 font-sans-v2 text-[26px] font-semibold leading-tight tracking-tight text-ink">
                   Mission Control
                 </div>
-                <div className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                  Geometric, futuristic, legible. Strong enough for command surfaces without turning theatrical.
+                <div className="mt-2 text-[13.5px] leading-relaxed text-ink-secondary">
+                  <code className="font-mono text-[12px]">font-sans-v2</code> — UI copy at 26 / 19 / 15 / 13.5 / 12.5 / 11.5px. Calm, readable, dense when needed.
                 </div>
               </div>
-              <div className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-4">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Body tone</div>
-                <div className="mt-2 text-sm leading-relaxed text-foreground">
-                  Calm, readable, dense when needed. The UI should feel like an operating system, not ad copy.
+              <div className="rounded-lg border border-line bg-surface-2 px-4 py-4">
+                <div className="text-[12.5px] font-medium text-ink-secondary">Mono — JetBrains Mono</div>
+                <div className="mt-2 font-mono-v2 text-[15px] text-ink">
+                  task_9f3a · score 92 · sha 8af1dff
+                </div>
+                <div className="mt-2 text-[13.5px] leading-relaxed text-ink-secondary">
+                  <code className="font-mono text-[12px]">font-mono-v2</code> — reserved for code, hashes, ids, keys, scores, and terminal output.
                 </div>
               </div>
             </div>
@@ -134,78 +183,106 @@ export function DesignSystemView() {
 
           <Card className="p-5">
             <div className="flex items-center gap-2">
-              <PanelsTopLeft className="h-4 w-4 text-cyan-100" />
-              <div className="mc-kicker">Color system</div>
+              <PanelsTopLeft size={15} strokeWidth={1.7} aria-hidden className="text-ink-secondary" />
+              <div className="text-[15px] font-semibold text-ink">Surfaces and lines</div>
             </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              {COLOR_TOKENS.map((token) => (
-                <div key={token.label} className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-4">
-                  <div className="flex items-center gap-3">
-                    <div className={`h-10 w-10 rounded-lg border border-white/10 ${token.swatch}`} />
-                    <div>
-                      <div className="text-sm font-semibold text-foreground">{token.label}</div>
-                      <div className="text-xs text-muted-foreground">{token.value}</div>
-                    </div>
-                  </div>
-                </div>
-              ))}
+            <div className="mt-4">
+              <SwatchGrid tokens={SURFACE_TOKENS} />
             </div>
           </Card>
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <Card className="p-5">
-            <div className="flex items-center gap-2">
-              <Workflow className="h-4 w-4 text-cyan-100" />
-              <div className="mc-kicker">Stitch-inspired workflow</div>
-            </div>
-            <div className="mt-4 space-y-3">
-              {WORKFLOW_STEPS.map((step, index) => (
-                <div key={step.title} className="flex items-start gap-3">
-                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-cyan-300/20 bg-cyan-400/10 text-xs font-semibold text-cyan-100">
-                    {index + 1}
-                  </div>
-                  <div className="min-w-0 rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-3">
-                    <div className="text-sm font-semibold text-foreground">{step.title}</div>
-                    <div className="mt-1 text-sm leading-relaxed text-muted-foreground">{step.detail}</div>
-                  </div>
-                </div>
-              ))}
+            <div className="text-[15px] font-semibold text-ink">Ink and action</div>
+            <div className="mt-4">
+              <SwatchGrid tokens={INK_TOKENS} />
             </div>
           </Card>
 
           <Card className="p-5">
-            <div className="flex items-center gap-2">
-              <Wand2 className="h-4 w-4 text-cyan-100" />
-              <div className="mc-kicker">Applied to Mission Control</div>
-            </div>
-            <div className="mt-4 space-y-3 text-sm leading-relaxed text-muted-foreground">
-              <div className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-3">
-                The shell, home, pipeline, docs, projects, and chat surfaces now inherit a shared visual language instead of evolving independently.
-              </div>
-              <div className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-3">
-                The UI now has a reviewable design contract, which means future redesigns can be original without becoming inconsistent.
-              </div>
-              <div className="rounded-xl border border-[var(--panel-line)] bg-[color:var(--shell-panel)] px-4 py-3">
-                The next maturity step is to let skills and generators consume root `design.md` automatically when creating new pages or features.
-              </div>
+            <div className="text-[15px] font-semibold text-ink">Status and risk</div>
+            <div className="mt-4 space-y-3">
+              <SwatchGrid tokens={STATUS_TOKENS} />
+              <SwatchGrid tokens={RISK_TOKENS} />
             </div>
           </Card>
         </div>
 
         <Card className="p-5">
           <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-cyan-100" />
-            <div className="mc-kicker">Recommendation</div>
+            <Tags size={15} strokeWidth={1.7} aria-hidden className="text-ink-secondary" />
+            <div className="text-[15px] font-semibold text-ink">Factory badges</div>
           </div>
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-4">
-            <div className="max-w-3xl text-sm leading-relaxed text-muted-foreground">
-              Any new screen, redesign prompt, or shadcn conversion should reference root `design.md` first. That is how we keep Mission Control from drifting into whatever the model has seen most recently.
+          <div className="mt-2 text-[13.5px] leading-relaxed text-ink-secondary">
+            StatusBadge, RiskBadge, ScoreBadge, and TrendBadge from <code className="font-mono text-[12px]">components/factory/badges</code> replace the legacy chip and neon badge variants.
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <StatusBadge tone="neutral">neutral</StatusBadge>
+            <StatusBadge tone="success">success</StatusBadge>
+            <StatusBadge tone="warning">warning</StatusBadge>
+            <StatusBadge tone="error">error</StatusBadge>
+            <StatusBadge tone="info">info</StatusBadge>
+            <RiskBadge level="LOW" />
+            <RiskBadge level="MEDIUM" />
+            <RiskBadge level="HIGH" />
+            <RiskBadge level="CRITICAL" />
+            <ScoreBadge score={94} />
+            <ScoreBadge score={78} />
+            <ScoreBadge score={52} />
+            <TrendBadge multiplier={1.33} />
+            <TrendBadge multiplier={0.82} />
+          </div>
+        </Card>
+
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+          <Card className="p-5">
+            <div className="flex items-center gap-2">
+              <Workflow size={15} strokeWidth={1.7} aria-hidden className="text-ink-secondary" />
+              <div className="text-[15px] font-semibold text-ink">Migration workflow</div>
             </div>
-            <div className="flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-400/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-100">
-              Design contract first
-              <ArrowRight className="h-3.5 w-3.5" />
-              UI generation second
+            <div className="mt-4 space-y-3">
+              {WORKFLOW_STEPS.map((step, index) => (
+                <div key={step.title} className="flex items-start gap-3">
+                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-line bg-surface-2 font-mono text-[12.5px] font-medium text-ink-secondary">
+                    {index + 1}
+                  </div>
+                  <div className="min-w-0 rounded-lg border border-line bg-surface-2 px-4 py-3">
+                    <div className="text-[13.5px] font-semibold text-ink">{step.title}</div>
+                    <div className="mt-1 text-[13.5px] leading-relaxed text-ink-secondary">{step.detail}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card className="p-5">
+            <div className="flex items-center gap-2">
+              <Wand2 size={15} strokeWidth={1.7} aria-hidden className="text-ink-secondary" />
+              <div className="text-[15px] font-semibold text-ink">Applied to Mission Control</div>
+            </div>
+            <div className="mt-4 space-y-3 text-[13.5px] leading-relaxed text-ink-secondary">
+              <div className="rounded-lg border border-line bg-surface-2 px-4 py-3">
+                The shell, home, pipeline, docs, projects, and chat surfaces inherit one shared visual language instead of evolving independently.
+              </div>
+              <div className="rounded-lg border border-line bg-surface-2 px-4 py-3">
+                The UI has a reviewable design contract, which means future redesigns can be original without becoming inconsistent.
+              </div>
+              <div className="rounded-lg border border-line bg-surface-2 px-4 py-3">
+                The next maturity step is to let skills and generators consume the style guide automatically when creating new pages or features.
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        <Card className="p-5">
+          <div className="text-[15px] font-semibold text-ink">Recommendation</div>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-4">
+            <div className="max-w-3xl text-[13.5px] leading-relaxed text-ink-secondary">
+              Any new screen, redesign prompt, or component conversion should reference the UI style guide first. That is how we keep Mission Control from drifting into whatever the model has seen most recently.
+            </div>
+            <div className="rounded-lg border border-line bg-surface-2 px-3 py-1.5 text-[12.5px] font-medium text-ink-secondary">
+              Design contract first, UI generation second
             </div>
           </div>
         </Card>

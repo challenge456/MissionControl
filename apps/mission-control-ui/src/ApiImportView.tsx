@@ -8,6 +8,9 @@ interface ApiImportViewProps {
   projectId: Id<"projects"> | null;
 }
 
+const INPUT_CLASS =
+  "h-9 rounded-lg border border-line bg-surface-1 px-3 text-[13.5px] text-ink placeholder:text-ink-muted";
+
 export function ApiImportView({ projectId }: ApiImportViewProps) {
   const [name, setName] = useState("Sample Collection");
   const [collectionType, setCollectionType] = useState("postman");
@@ -19,21 +22,21 @@ export function ApiImportView({ projectId }: ApiImportViewProps) {
   const remove = useMutation((api as any).apiCollections.remove);
 
   return (
-    <main className="flex-1 overflow-auto p-6 space-y-4">
+    <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-6 py-6">
       <header>
-        <h2 className="text-lg font-semibold">API Import</h2>
-        <p className="text-sm text-muted-foreground">Import Postman/Bruno/SoapUI/OpenAPI payloads and convert to test suites.</p>
+        <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-ink">API Import</h1>
+        <p className="mt-1.5 text-[14px] text-ink-secondary">Import Postman/Bruno/SoapUI/OpenAPI payloads and convert to test suites.</p>
       </header>
 
-      <section className="rounded-lg border border-border p-4 space-y-3">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+      <section className="flex flex-col gap-3 rounded-xl border border-line bg-surface-1 p-5">
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
           <input
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+            className={INPUT_CLASS}
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
           <select
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+            className={INPUT_CLASS}
             value={collectionType}
             onChange={(e) => setCollectionType(e.target.value)}
           >
@@ -57,20 +60,23 @@ export function ApiImportView({ projectId }: ApiImportViewProps) {
           </Button>
         </div>
         <textarea
-          className="min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-xs"
+          className="min-h-[120px] w-full rounded-lg border border-line bg-surface-1 px-3 py-2 font-mono text-[12px] text-ink placeholder:text-ink-muted"
           value={rawText}
           onChange={(e) => setRawText(e.target.value)}
         />
       </section>
 
-      <section className="rounded-lg border border-border p-4 space-y-2">
-        <h3 className="font-medium">Imported Collections</h3>
-        <div className="space-y-2">
+      <section className="flex flex-col gap-3 rounded-xl border border-line bg-surface-1 p-5">
+        <h2 className="text-[15px] font-semibold text-ink">Imported Collections</h2>
+        <div className="flex flex-col gap-2">
           {(list ?? []).map((row: any) => (
-            <div key={row._id} className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2">
-              <div>
-                <div className="text-sm font-medium">{row.name}</div>
-                <div className="text-xs text-muted-foreground">{row.collectionType} · {row.totalSteps} steps</div>
+            <div
+              key={row._id}
+              className="flex items-center justify-between rounded-lg border border-line px-3 py-2 transition-colors duration-150 hover:bg-surface-2"
+            >
+              <div className="min-w-0">
+                <div className="text-[13.5px] font-medium text-ink">{row.name}</div>
+                <div className="text-[12.5px] text-ink-muted">{row.collectionType} · {row.totalSteps} steps</div>
               </div>
               <div className="flex gap-2">
                 <Button size="sm" variant="outline" onClick={() => convert({ id: row._id, createdBy: "operator" })}>
@@ -84,6 +90,6 @@ export function ApiImportView({ projectId }: ApiImportViewProps) {
           ))}
         </div>
       </section>
-    </main>
+    </div>
   );
 }

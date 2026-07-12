@@ -28,7 +28,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge, type StatusBadgeProps } from "@/components/factory/badges";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Clock, Play, Trash2, Plus, ToggleLeft, ToggleRight, Pencil } from "lucide-react";
 import { PageHeader } from "./components/PageHeader";
 
@@ -64,11 +65,11 @@ function formatNextRun(ts: number): string {
   return `in ${hours}h`;
 }
 
-function priorityVariant(p: number): "destructive" | "default" | "secondary" | "outline" {
-  if (p === 1) return "destructive";
-  if (p === 2) return "default";
-  if (p === 4) return "secondary";
-  return "outline";
+function priorityTone(p: number): StatusBadgeProps["tone"] {
+  if (p === 1) return "error";
+  if (p === 2) return "warning";
+  if (p === 4) return "neutral";
+  return "info";
 }
 
 function JobCard({
@@ -92,32 +93,32 @@ function JobCard({
     <Card className="p-4 flex items-center justify-between gap-4">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
-          <p className="font-medium text-foreground truncate">{job.name}</p>
-          <Badge variant="secondary" className="text-xs font-normal">
+          <p className="font-medium text-[13.5px] text-ink truncate">{job.name}</p>
+          <StatusBadge tone="neutral">
             {RUN_POLICY_LABELS[policy] ?? policy}
-          </Badge>
-          <Badge variant={priorityVariant(priority)} className="text-xs font-normal">
+          </StatusBadge>
+          <StatusBadge tone={priorityTone(priority)}>
             {PRIORITY_LABELS[priority] ?? `P${priority}`}
-          </Badge>
+          </StatusBadge>
           {job.conflictGroup && (
-            <span className="text-xs text-muted-foreground">Group: {job.conflictGroup}</span>
+            <span className="text-xs text-ink-muted">Group: {job.conflictGroup}</span>
           )}
         </div>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          {JOB_TYPE_LABELS[job.jobType] ?? job.jobType} · {job.cronExpression}
+        <p className="text-[12.5px] text-ink-muted mt-0.5">
+          {JOB_TYPE_LABELS[job.jobType] ?? job.jobType} · <span className="font-mono">{job.cronExpression}</span>
           {job.lastRun != null && (
             <> · Last run {new Date(job.lastRun).toLocaleString()}</>
           )}
         </p>
         {policyResult && !policyResult.allowed && policy !== "standard" && (
-          <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5" title={policyResult.reason}>
+          <p className="text-[12.5px] text-warn mt-0.5" title={policyResult.reason}>
             Policy: {policyResult.reason}
           </p>
         )}
       </div>
       <div className="flex items-center gap-2 shrink-0">
-        <span className="text-xs text-muted-foreground flex items-center gap-1">
-          <Clock className="h-3 w-3" />
+        <span className="text-xs text-ink-muted flex items-center gap-1">
+          <Clock className="h-3 w-3" strokeWidth={1.75} />
           {formatNextRun(job.nextRun)}
         </span>
         <Button size="sm" variant="outline" className="h-7" onClick={onToggleEnabled} title={job.enabled ? "Disable" : "Enable"}>
@@ -129,7 +130,7 @@ function JobCard({
         <Button size="sm" variant="outline" className="h-7" onClick={onEdit} title="Edit">
           <Pencil className="h-3.5 w-3.5" />
         </Button>
-        <Button size="sm" variant="outline" className="h-7 text-red-600 hover:bg-red-500/10" onClick={onRemove} title="Remove">
+        <Button size="sm" variant="outline" className="h-7 text-err hover:bg-err-soft hover:text-err" onClick={onRemove} title="Remove">
           <Trash2 className="h-3.5 w-3.5" />
         </Button>
       </div>
@@ -212,35 +213,44 @@ export function SchedulesView({ projectId }: { projectId: Id<"projects"> | null 
 
   if (!jobs) {
     return (
-      <main className="flex-1 overflow-auto p-6">
+      <main className="flex-1 overflow-auto bg-app">
         <PageHeader title="Schedules" />
-        <p className="text-muted-foreground text-sm">Loading…</p>
+        <div className="mx-auto max-w-[1200px] px-6 py-6 flex flex-col gap-3" aria-label="Loading schedules">
+          <div className="h-3.5 w-2/3 animate-pulse rounded bg-surface-2" />
+          <div className="h-3.5 w-1/2 animate-pulse rounded bg-surface-2" />
+          <div className="h-3.5 w-3/5 animate-pulse rounded bg-surface-2" />
+        </div>
       </main>
     );
   }
 
   return (
-    <main className="flex-1 overflow-auto p-6">
+    <main className="flex-1 overflow-auto bg-app">
       <PageHeader
         title="Schedules"
         description="Convex scheduled jobs. For per-agent cron (OpenClaw Gateway), use OpenClaw Studio."
+        actions={
+          <Button size="sm" onClick={() => setCreateOpen(true)}>
+            <Plus className="h-3.5 w-3.5 mr-1.5" strokeWidth={1.7} />
+            Add schedule
+          </Button>
+        }
       />
-      <div className="mb-4 flex items-center gap-2">
-        <Button size="sm" onClick={() => setCreateOpen(true)}>
-          <Plus className="h-3.5 w-3.5 mr-1.5" />
-          Add schedule
-        </Button>
-      </div>
+      <div className="mx-auto max-w-[1200px] px-6 py-6 flex flex-col gap-6">
 
       <div className="space-y-3">
         {jobs.length === 0 && (
-          <Card className="p-8 text-center">
-            <p className="text-muted-foreground text-sm mb-4">No schedules yet. Add one to run mission prompts or other jobs on a cron.</p>
-            <Button onClick={() => setCreateOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add schedule
-            </Button>
-          </Card>
+          <EmptyState
+            icon={Clock}
+            title="No schedules yet"
+            description="Add one to run mission prompts or other jobs on a cron."
+            action={
+              <Button onClick={() => setCreateOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" strokeWidth={1.7} />
+                Add schedule
+              </Button>
+            }
+          />
         )}
         {jobs.map((job) => (
           <JobCard
@@ -406,6 +416,7 @@ export function SchedulesView({ projectId }: { projectId: Id<"projects"> | null 
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </div>
     </main>
   );
 }

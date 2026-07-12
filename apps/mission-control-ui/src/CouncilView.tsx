@@ -4,6 +4,9 @@ import { api } from "../../../convex/_generated/api";
 import type { Id, Doc } from "../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "./components/PageHeader";
+import { StatusBadge, RiskBadge, type RiskLevel } from "./components/factory/badges";
+import { EmptyState } from "./components/ui/empty-state";
+import { Bot, CheckCircle2, Landmark } from "lucide-react";
 
 interface CouncilViewProps {
   projectId: Id<"projects"> | null;
@@ -30,10 +33,13 @@ export function CouncilView({ projectId }: CouncilViewProps) {
 
   if (approvals === undefined || activities === undefined || agents === undefined) {
     return (
-      <main className="flex-1 overflow-auto bg-background p-6">
+      <main className="flex-1 overflow-auto bg-app p-6">
         <div className="mb-6">
-          <h1 className="mb-1 text-3xl font-semibold text-foreground">Council</h1>
-          <p className="mt-0 text-base text-muted-foreground">Loading...</p>
+          <h1 className="mb-1 text-[26px] font-semibold leading-tight tracking-tight text-ink">Council</h1>
+          <div className="mt-3 space-y-3">
+            <div className="h-16 animate-pulse rounded-xl bg-surface-2" />
+            <div className="h-40 animate-pulse rounded-xl bg-surface-2" />
+          </div>
         </div>
       </main>
     );
@@ -55,7 +61,7 @@ export function CouncilView({ projectId }: CouncilViewProps) {
   const pending = pendingApprovals ?? [];
 
   return (
-    <main className="flex-1 overflow-auto bg-background">
+    <main className="flex-1 overflow-auto bg-app">
       <PageHeader
         title="Council"
         description={
@@ -70,32 +76,32 @@ export function CouncilView({ projectId }: CouncilViewProps) {
         <MetricCard
           value={decisions.length}
           label="Decisions Made"
-          colorClass="text-primary"
+          colorClass="text-ink"
         />
         <MetricCard
           value={decisions.filter((d) => d.status === "APPROVED").length}
           label="Approved"
-          colorClass="text-primary"
+          colorClass="text-ok"
         />
         <MetricCard
           value={decisions.filter((d) => d.status === "DENIED").length}
           label="Denied"
-          colorClass="text-red-500"
+          colorClass="text-err"
         />
         <MetricCard
           value={pending.length}
           label="Awaiting Decision"
-          colorClass={pending.length > 0 ? "text-amber-500" : "text-muted-foreground"}
+          colorClass={pending.length > 0 ? "text-warn" : "text-ink-muted"}
           pulse={pending.length > 0}
         />
         <MetricCard
           value={coordinatorActivities.length}
           label="Coordinator Actions"
-          colorClass="text-blue-400"
+          colorClass="text-ink"
         />
       </div>
 
-      <div className="mb-5 flex gap-1 border-b border-border pt-1">
+      <div className="mb-5 flex gap-1 border-b border-line pt-1" role="tablist">
         <TabButton
           active={activeTab === "decisions"}
           label={`Decisions (${decisions.length})`}
@@ -118,7 +124,7 @@ export function CouncilView({ projectId }: CouncilViewProps) {
         <div className="mb-8">
           {decisions.length === 0 ? (
             <EmptyState
-              icon="🏛️"
+              icon={Landmark}
               title="No decisions yet"
               description="When agents request approval for risky actions (YELLOW/RED risk level), decisions will appear here after they are approved or denied."
             />
@@ -140,7 +146,7 @@ export function CouncilView({ projectId }: CouncilViewProps) {
         <div className="mb-8">
           {pending.length === 0 ? (
             <EmptyState
-              icon="✅"
+              icon={CheckCircle2}
               title="No pending approvals"
               description="All clear! No agents are currently waiting for approval to proceed."
             />
@@ -162,7 +168,7 @@ export function CouncilView({ projectId }: CouncilViewProps) {
         <div className="mb-8">
           {coordinatorActivities.length === 0 ? (
             <EmptyState
-              icon="🤖"
+              icon={Bot}
               title="No coordinator activity"
               description="The coordinator handles task decomposition, agent delegation, conflict resolution, and loop detection. Activity will appear here as the system orchestrates work."
             />
@@ -196,19 +202,19 @@ function MetricCard({
   pulse?: boolean;
 }) {
   return (
-    <div className="min-w-[130px] flex-1 rounded-lg border border-border bg-card p-4 text-center">
+    <div className="min-w-[130px] flex-1 rounded-xl border border-line bg-surface-1 p-4 text-center">
       <div
         className={cn(
-          "relative mb-1 inline-flex items-center gap-1.5 text-3xl font-semibold",
-          value > 0 ? colorClass : "text-muted-foreground"
+          "relative mb-1.5 inline-flex items-center gap-1.5 text-[20px] font-semibold leading-none",
+          value > 0 ? colorClass : "text-ink-muted"
         )}
       >
         {value}
         {pulse && (
-          <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-amber-500" />
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-warn" />
         )}
       </div>
-      <div className="text-xs uppercase tracking-wide text-muted-foreground">
+      <div className="text-[12.5px] text-ink-muted">
         {label}
       </div>
     </div>
@@ -229,38 +235,20 @@ function TabButton({
   return (
     <button
       onClick={onClick}
+      role="tab"
+      aria-selected={active}
       className={cn(
-        "flex items-center gap-2 border-b-2 border-transparent bg-transparent px-4 py-2.5 font-[inherit] text-sm font-medium text-muted-foreground transition-colors",
-        active && "border-b-primary text-foreground"
+        "flex items-center gap-2 border-b-2 border-transparent bg-transparent px-4 py-2.5 font-[inherit] text-[13px] font-medium text-ink-muted transition-colors duration-150 hover:text-ink-secondary",
+        active && "border-b-act text-ink"
       )}
     >
       {label}
       {badge !== undefined && badge > 0 && (
-        <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-500 px-1.5 text-[0.7rem] font-bold text-white">
+        <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-md bg-warn-soft px-1.5 text-[11px] font-medium text-warn">
           {badge}
         </span>
       )}
     </button>
-  );
-}
-
-function EmptyState({
-  icon,
-  title,
-  description,
-}: {
-  icon: string;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="flex flex-col items-center justify-center rounded-lg border border-border bg-card px-6 py-12 text-center">
-      <div className="mb-3 text-5xl">{icon}</div>
-      <div className="mb-2 text-lg font-semibold text-foreground">{title}</div>
-      <div className="max-w-[420px] text-sm leading-relaxed text-muted-foreground">
-        {description}
-      </div>
-    </div>
   );
 }
 
@@ -277,69 +265,50 @@ function DecisionCard({ decision, agentMap }: DecisionCardProps) {
     : null;
 
   return (
-    <div
-      className={cn(
-        "rounded-lg border border-border bg-card px-5 py-4 border-l-4",
-        isApproved ? "border-l-primary" : "border-l-red-500"
-      )}
-    >
+    <div className="rounded-xl border border-line bg-surface-1 px-5 py-4 transition-colors duration-150 hover:border-line-strong">
       <div className="mb-2.5 flex items-center justify-between">
-        <div
-          className={cn(
-            "text-xs font-bold tracking-wide",
-            isApproved ? "text-primary" : "text-red-500"
-          )}
-        >
-          {isApproved ? "✓ APPROVED" : "✗ DENIED"}
-        </div>
-        <div className="text-xs text-muted-foreground/70">
+        <StatusBadge tone={isApproved ? "success" : "error"}>
+          {isApproved ? "APPROVED" : "DENIED"}
+        </StatusBadge>
+        <div className="text-[12.5px] text-ink-muted">
           {decision.decidedAt
             ? formatTimeAgo(decision.decidedAt)
             : "Pending"}
         </div>
       </div>
 
-      <div className="mb-2.5 text-base font-semibold leading-snug text-foreground">
+      <div className="mb-2.5 text-[15px] font-semibold leading-snug text-ink">
         {decision.actionSummary}
       </div>
 
       <div className="mb-2.5 flex flex-wrap gap-2">
-        <span className="whitespace-nowrap rounded-xl bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
-          {requestor ? `${requestor.emoji || "🤖"} ${requestor.name}` : "Unknown agent"}
-        </span>
-        <span
-          className={cn(
-            "whitespace-nowrap rounded-xl px-2.5 py-0.5 text-xs",
-            decision.riskLevel === "RED"
-              ? "bg-red-500/10 text-red-500"
-              : "bg-amber-500/10 text-amber-500"
-          )}
-        >
-          {decision.riskLevel === "RED" ? "🔴" : "🟡"} {decision.riskLevel}
-        </span>
-        <span className="whitespace-nowrap rounded-xl bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
+        <StatusBadge tone="neutral" className="whitespace-nowrap">
+          {requestor ? `${requestor.emoji ? `${requestor.emoji} ` : ""}${requestor.name}` : "Unknown agent"}
+        </StatusBadge>
+        <RiskBadge level={decision.riskLevel as RiskLevel} className="whitespace-nowrap" />
+        <StatusBadge tone="neutral" className="whitespace-nowrap">
           {decision.actionType}
-        </span>
+        </StatusBadge>
         {decision.estimatedCost !== undefined && (
-          <span className="whitespace-nowrap rounded-xl bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
+          <StatusBadge tone="neutral" className="whitespace-nowrap font-mono">
             ${decision.estimatedCost.toFixed(2)}
-          </span>
+          </StatusBadge>
         )}
       </div>
 
       {decision.justification && (
-        <div className="mb-2 text-sm leading-relaxed text-muted-foreground">
-          <strong>Justification:</strong> {decision.justification}
+        <div className="mb-2 text-[13.5px] leading-relaxed text-ink-secondary">
+          <strong className="text-ink">Justification:</strong> {decision.justification}
         </div>
       )}
 
       {decision.decisionReason && (
-        <div className="rounded-md bg-muted px-3.5 py-2.5 text-sm leading-relaxed text-foreground">
+        <div className="rounded-lg border border-line bg-surface-2 px-3.5 py-2.5 text-[13.5px] leading-relaxed text-ink">
           <strong>
             {decider
-              ? `${decider.emoji || "🤖"} ${decider.name}`
+              ? `${decider.emoji ? `${decider.emoji} ` : ""}${decider.name}`
               : decision.decidedByUserId
-                ? `👤 ${decision.decidedByUserId}`
+                ? decision.decidedByUserId
                 : "Decision"}
             :
           </strong>{" "}
@@ -396,58 +365,46 @@ function PendingApprovalCard({ approval, agentMap }: PendingApprovalCardProps) {
   };
 
   return (
-    <div className="rounded-lg border border-border border-l-4 border-l-amber-500 bg-card px-5 py-4">
+    <div className="rounded-xl border border-line bg-surface-1 px-5 py-4">
       <div className="mb-2.5 flex items-center justify-between">
-        <div className="text-xs font-bold tracking-wide text-amber-500">
-          ⏳ AWAITING DECISION
-        </div>
+        <StatusBadge tone="warning">AWAITING DECISION</StatusBadge>
         <div
           className={cn(
-            "text-xs",
-            isExpiringSoon ? "text-red-500" : "text-muted-foreground/70"
+            "text-[12.5px]",
+            isExpiringSoon ? "text-err" : "text-ink-muted"
           )}
         >
-          {isExpiringSoon ? "⚠️ " : ""}
           Expires {formatTimeAgo(approval.expiresAt, true)}
         </div>
       </div>
 
-      <div className="mb-2.5 text-base font-semibold leading-snug text-foreground">
+      <div className="mb-2.5 text-[15px] font-semibold leading-snug text-ink">
         {approval.actionSummary}
       </div>
 
       <div className="mb-2.5 flex flex-wrap gap-2">
-        <span className="whitespace-nowrap rounded-xl bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
-          {requestor ? `${requestor.emoji || "🤖"} ${requestor.name}` : "Unknown agent"}
-        </span>
-        <span
-          className={cn(
-            "whitespace-nowrap rounded-xl px-2.5 py-0.5 text-xs",
-            approval.riskLevel === "RED"
-              ? "bg-red-500/10 text-red-500"
-              : "bg-amber-500/10 text-amber-500"
-          )}
-        >
-          {approval.riskLevel === "RED" ? "🔴" : "🟡"} {approval.riskLevel}
-        </span>
-        <span className="whitespace-nowrap rounded-xl bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
+        <StatusBadge tone="neutral" className="whitespace-nowrap">
+          {requestor ? `${requestor.emoji ? `${requestor.emoji} ` : ""}${requestor.name}` : "Unknown agent"}
+        </StatusBadge>
+        <RiskBadge level={approval.riskLevel as RiskLevel} className="whitespace-nowrap" />
+        <StatusBadge tone="neutral" className="whitespace-nowrap">
           {approval.actionType}
-        </span>
+        </StatusBadge>
         {approval.estimatedCost !== undefined && (
-          <span className="whitespace-nowrap rounded-xl bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
+          <StatusBadge tone="neutral" className="whitespace-nowrap font-mono">
             ${approval.estimatedCost.toFixed(2)}
-          </span>
+          </StatusBadge>
         )}
       </div>
 
-      <div className="mb-2 text-sm leading-relaxed text-muted-foreground">
-        <strong>Justification:</strong> {approval.justification}
+      <div className="mb-2 text-[13.5px] leading-relaxed text-ink-secondary">
+        <strong className="text-ink">Justification:</strong> {approval.justification}
       </div>
 
       {!showActions ? (
         <button
           onClick={() => setShowActions(true)}
-          className="mt-2 rounded-md bg-primary px-5 py-2 font-[inherit] text-sm font-semibold text-white"
+          className="mt-2 h-9 rounded-lg bg-act px-3 font-[inherit] text-[13px] font-medium text-act-ink transition-opacity duration-150 hover:opacity-90"
         >
           Review &amp; Decide
         </button>
@@ -458,29 +415,29 @@ function PendingApprovalCard({ approval, agentMap }: PendingApprovalCardProps) {
             placeholder="Reason (required for deny, optional for approve)"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            className="rounded-md border border-border bg-background px-3 py-2 font-[inherit] text-sm text-foreground outline-none"
+            className="h-9 rounded-lg border border-line bg-surface-1 px-3 font-[inherit] text-[13.5px] text-ink placeholder:text-ink-muted"
           />
           <div className="flex gap-2">
             <button
               onClick={handleApprove}
               disabled={isActing}
-              className="rounded-md bg-primary px-4.5 py-2 font-[inherit] text-sm font-semibold text-white"
+              className="h-9 rounded-lg bg-act px-3 font-[inherit] text-[13px] font-medium text-act-ink transition-opacity duration-150 hover:opacity-90 disabled:opacity-50"
             >
-              {isActing ? "..." : "✓ Approve"}
+              {isActing ? "..." : "Approve"}
             </button>
             <button
               onClick={handleDeny}
               disabled={isActing || !reason.trim()}
               className={cn(
-                "rounded-md bg-red-500 px-4.5 py-2 font-[inherit] text-sm font-semibold text-white",
+                "h-9 rounded-lg bg-err-soft px-3 font-[inherit] text-[13px] font-medium text-err transition-opacity duration-150 hover:opacity-90",
                 !reason.trim() && "opacity-50"
               )}
             >
-              {isActing ? "..." : "✗ Deny"}
+              {isActing ? "..." : "Deny"}
             </button>
             <button
               onClick={() => setShowActions(false)}
-              className="rounded-md border border-border bg-transparent px-3.5 py-2 font-[inherit] text-sm text-muted-foreground"
+              className="h-9 rounded-lg border border-line bg-transparent px-3 font-[inherit] text-[13px] text-ink-secondary transition-colors duration-150 hover:border-line-strong hover:text-ink"
             >
               Cancel
             </button>
@@ -497,19 +454,6 @@ interface ActivityCardProps {
 }
 
 function ActivityCard({ activity, agentMap }: ActivityCardProps) {
-  const actionIcons: Record<string, string> = {
-    COORDINATOR_TASK_DECOMPOSED: "🧩",
-    COORDINATOR_DELEGATED: "📋",
-    COORDINATOR_CONFLICT_RESOLVED: "⚖️",
-    COORDINATOR_ESCALATED: "🚨",
-    COORDINATOR_REBALANCED: "⚖️",
-    COORDINATOR_LOOP_DETECTED: "🔄",
-    COORDINATOR_BUDGET_WARNING: "💰",
-    COORDINATOR_AGENT_RECOVERED: "💚",
-    COORDINATOR_STANDUP_COMPILED: "📊",
-  };
-
-  const icon = actionIcons[activity.action] || "🤖";
   const actionLabel = activity.action
     .replace("COORDINATOR_", "")
     .replace(/_/g, " ");
@@ -519,22 +463,21 @@ function ActivityCard({ activity, agentMap }: ActivityCardProps) {
     : undefined;
 
   return (
-    <div className="rounded-lg border border-border bg-card px-4.5 py-3.5">
+    <div className="rounded-xl border border-line bg-surface-1 px-4 py-3.5 transition-colors duration-150 hover:border-line-strong">
       <div className="mb-2 flex items-center justify-between">
-        <div className="flex items-center gap-1 text-sm font-semibold capitalize text-foreground">
-          <span className="mr-1.5">{icon}</span>
+        <div className="flex items-center gap-1 text-[13.5px] font-semibold capitalize text-ink">
           {actionLabel}
           {relatedAgent && (
-            <span className="ml-2 rounded-xl bg-primary/10 px-2 py-0.5 text-xs text-primary">
-              {relatedAgent.emoji || "🤖"} {relatedAgent.name}
-            </span>
+            <StatusBadge tone="neutral" className="ml-2">
+              {relatedAgent.emoji ? `${relatedAgent.emoji} ` : ""}{relatedAgent.name}
+            </StatusBadge>
           )}
         </div>
-        <div className="text-xs text-muted-foreground/70">
+        <div className="text-[12.5px] text-ink-muted">
           {formatTimeAgo(activity._creationTime)}
         </div>
       </div>
-      <div className="text-sm leading-relaxed text-muted-foreground">
+      <div className="text-[13.5px] leading-relaxed text-ink-secondary">
         {activity.description}
       </div>
     </div>

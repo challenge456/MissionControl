@@ -6,7 +6,7 @@ const Table = React.forwardRef<
   HTMLTableElement,
   React.TableHTMLAttributes<HTMLTableElement>
 >(({ className, ...props }, ref) => (
-  <div className="relative w-full overflow-auto rounded-2xl border border-[var(--panel-line)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--shell-panel)_98%,transparent),color-mix(in_srgb,var(--background)_92%,transparent))] shadow-[var(--card-shadow)]">
+  <div className="relative w-full overflow-auto rounded-xl border border-line bg-surface-1">
     <table
       ref={ref}
       className={cn("w-full caption-bottom text-sm", className)}
@@ -22,7 +22,7 @@ const TableHeader = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <thead
     ref={ref}
-    className={cn("sticky top-0 z-[1] bg-[color:var(--shell-panel-strong)] [&_tr]:border-b [&_tr]:border-[var(--panel-line)]", className)}
+    className={cn("sticky top-0 z-[1] bg-surface-2 [&_tr]:border-b [&_tr]:border-line", className)}
     {...props}
   />
 ))
@@ -73,7 +73,7 @@ const TableHead = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <th
     ref={ref}
-    className={cn("h-10 px-4 text-left align-middle font-[family:var(--font-display)] text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground", className)}
+    className={cn("h-10 px-4 text-left align-middle font-[family:var(--font-medium)] text-[0.7rem] font-semibold uppercase tracking-[0.06em] text-muted-foreground", className)}
     {...props}
   />
 ))

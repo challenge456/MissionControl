@@ -10,17 +10,18 @@ export type StatusDotVariant =
   | "live";
 
 const variantStyles: Record<StatusDotVariant, string> = {
-  healthy: "bg-primary",
-  warning: "bg-amber-500",
-  error: "bg-red-500",
-  offline: "bg-zinc-500",
-  active: "bg-primary",
-  paused: "bg-amber-500",
-  live: "bg-primary",
+  healthy: "bg-ok",
+  warning: "bg-warn",
+  error: "bg-err",
+  offline: "bg-ink-muted",
+  active: "bg-ok",
+  paused: "bg-warn",
+  live: "bg-ok",
 };
 
 export interface StatusDotProps {
   variant?: StatusDotVariant;
+  /** Legacy prop, ignored — v2 status dots are flat (no pulse/halo). */
   pulse?: boolean;
   size?: "sm" | "md" | "lg";
   className?: string;
@@ -35,7 +36,7 @@ const sizeMap = {
 
 export function StatusDot({
   variant = "healthy",
-  pulse = false,
+  pulse: _pulse = false,
   size = "md",
   className,
   label,
@@ -46,13 +47,12 @@ export function StatusDot({
         className={cn(
           "rounded-full shrink-0",
           sizeMap[size],
-          variantStyles[variant],
-          pulse && "status-dot-pulse"
+          variantStyles[variant]
         )}
         aria-hidden="true"
       />
       {label && (
-        <span className="text-[0.7rem] font-medium uppercase tracking-wider text-muted-foreground">
+        <span className="text-[12px] font-medium text-ink-secondary">
           {label}
         </span>
       )}

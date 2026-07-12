@@ -1,239 +1,143 @@
 /**
  * Workflow Dashboard
- * 
+ *
  * Overview of all workflow runs with filtering and search.
  * Inspired by Antfarm's dashboard command.
  */
 
 import { useState } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+import { cn } from "@/lib/utils";
 import { WorkflowRunPanel } from "./WorkflowRunPanel";
+import { PageHeader } from "./components/factory/DetailLayout";
+import { StatusBadge, type StatusBadgeProps } from "./components/factory/badges";
+
+const RUN_STATUS_TONE: Record<string, StatusBadgeProps["tone"]> = {
+  PENDING: "neutral",
+  RUNNING: "info",
+  COMPLETED: "success",
+  FAILED: "error",
+  PAUSED: "warning",
+};
+
+const RUN_BAR_CLASS: Record<string, string> = {
+  PENDING: "bg-ink-muted",
+  RUNNING: "bg-info-accent",
+  COMPLETED: "bg-ok",
+  FAILED: "bg-err",
+  PAUSED: "bg-warn",
+};
 
 export function WorkflowDashboard() {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
-  
+
   const runs = useQuery(api.workflowRuns.list, {
     status: statusFilter,
     limit: 50,
   });
-  
+
   const workflows = useQuery(api.workflows.list, {});
-  
-  const statusColors = {
-    PENDING: "#6b7280",
-    RUNNING: "#3b82f6",
-    COMPLETED: "#10b981",
-    FAILED: "#ef4444",
-    PAUSED: "#f59e0b",
-  };
-  
+
   const workflowMap = new Map(workflows?.map((w) => [w.workflowId, w]) ?? []);
-  
+
+  const filters: { label: string; value: string | undefined }[] = [
+    { label: "All", value: undefined },
+    { label: "Running", value: "RUNNING" },
+    { label: "Completed", value: "COMPLETED" },
+    { label: "Failed", value: "FAILED" },
+    { label: "Paused", value: "PAUSED" },
+  ];
+
   return (
-    <div style={{
-      display: "flex",
-      height: "100vh",
-      backgroundColor: "#0a0a0a",
-      color: "#fff",
-    }}>
+    <div className="flex h-full flex-1 bg-app text-ink">
       {/* Main content */}
-      <div style={{
-        flex: 1,
-        display: "flex",
-        flexDirection: "column",
-        overflow: "hidden",
-      }}>
-        {/* Header */}
-        <div style={{
-          padding: "24px",
-          borderBottom: "1px solid #333",
-        }}>
-          <h1 style={{ margin: 0, fontSize: "24px", fontWeight: 600 }}>
-            Workflow Runs
-          </h1>
-          <p style={{ margin: "8px 0 0 0", fontSize: "14px", color: "#888" }}>
-            Multi-agent workflow execution dashboard
-          </p>
-        </div>
-        
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <PageHeader
+          title="Workflow runs"
+          description="Multi-agent workflow execution dashboard"
+        />
+
         {/* Filters */}
-        <div style={{
-          padding: "16px 24px",
-          borderBottom: "1px solid #333",
-          display: "flex",
-          gap: "12px",
-        }}>
-          <button
-            onClick={() => setStatusFilter(undefined)}
-            style={{
-              padding: "8px 16px",
-              borderRadius: "6px",
-              border: "1px solid #333",
-              backgroundColor: !statusFilter ? "#3b82f6" : "transparent",
-              color: !statusFilter ? "#fff" : "#888",
-              cursor: "pointer",
-              fontSize: "14px",
-            }}
-          >
-            All
-          </button>
-          {["RUNNING", "COMPLETED", "FAILED", "PAUSED"].map((status) => (
-            <button
-              key={status}
-              onClick={() => setStatusFilter(status)}
-              style={{
-                padding: "8px 16px",
-                borderRadius: "6px",
-                border: "1px solid #333",
-                backgroundColor: statusFilter === status ? statusColors[status as keyof typeof statusColors] : "transparent",
-                color: statusFilter === status ? "#fff" : "#888",
-                cursor: "pointer",
-                fontSize: "14px",
-              }}
-            >
-              {status}
-            </button>
-          ))}
+        <div className="border-b border-line px-6 pb-4">
+          <div className="inline-flex items-center rounded-lg border border-line p-0.5">
+            {filters.map((f) => (
+              <button
+                key={f.label}
+                onClick={() => setStatusFilter(f.value)}
+                className={cn(
+                  "rounded-md px-2.5 py-1 text-[12.5px] font-medium transition-colors duration-150",
+                  statusFilter === f.value
+                    ? "bg-surface-2 text-ink"
+                    : "text-ink-muted hover:text-ink-secondary"
+                )}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
         </div>
-        
+
         {/* Runs list */}
-        <div style={{
-          flex: 1,
-          overflowY: "auto",
-          padding: "24px",
-        }}>
+        <div className="flex-1 overflow-y-auto p-6">
           {!runs || runs.length === 0 ? (
-            <div style={{
-              textAlign: "center",
-              padding: "60px 20px",
-              color: "#666",
-            }}>
-              <div style={{ fontSize: "48px", marginBottom: "16px" }}>🤖</div>
-              <div style={{ fontSize: "16px", marginBottom: "8px" }}>
-                No workflow runs yet
-              </div>
-              <div style={{ fontSize: "14px" }}>
-                Start a workflow to see it here
-              </div>
+            <div className="rounded-xl border border-line bg-surface-1 px-5 py-14 text-center">
+              <div className="text-[15px] font-semibold text-ink">No workflow runs yet</div>
+              <div className="mt-1 text-[13px] text-ink-muted">Start a workflow to see it here</div>
             </div>
           ) : (
-            <div style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(350px, 1fr))",
-              gap: "16px",
-            }}>
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(350px,1fr))] gap-4">
               {runs.map((run) => {
                 const workflow = workflowMap.get(run.workflowId);
                 const completedSteps = run.steps.filter((s) => s.status === "DONE").length;
-                
+
                 return (
-                  <div
+                  <button
                     key={run._id}
+                    type="button"
                     onClick={() => setSelectedRunId(run.runId)}
-                    style={{
-                      padding: "16px",
-                      backgroundColor: "#1a1a1a",
-                      border: "1px solid #333",
-                      borderRadius: "8px",
-                      cursor: "pointer",
-                      transition: "all 0.2s",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = "#555";
-                      e.currentTarget.style.backgroundColor = "#222";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = "#333";
-                      e.currentTarget.style.backgroundColor = "#1a1a1a";
-                    }}
+                    className="rounded-xl border border-line bg-surface-1 p-4 text-left transition-colors duration-150 hover:border-line-strong hover:bg-surface-2"
                   >
-                    {/* Status badge */}
-                    <div style={{
-                      display: "inline-block",
-                      padding: "4px 8px",
-                      borderRadius: "4px",
-                      backgroundColor: statusColors[run.status] + "20",
-                      color: statusColors[run.status],
-                      fontSize: "11px",
-                      fontWeight: 600,
-                      textTransform: "uppercase",
-                      marginBottom: "12px",
-                    }}>
+                    <StatusBadge tone={RUN_STATUS_TONE[run.status] ?? "neutral"}>
                       {run.status}
-                    </div>
-                    
-                    {/* Workflow name */}
-                    <div style={{
-                      fontSize: "16px",
-                      fontWeight: 600,
-                      marginBottom: "4px",
-                    }}>
+                    </StatusBadge>
+
+                    <div className="mt-3 text-[15px] font-semibold text-ink">
                       {workflow?.name ?? run.workflowId}
                     </div>
-                    
-                    {/* Run ID */}
-                    <div style={{
-                      fontSize: "12px",
-                      color: "#666",
-                      marginBottom: "12px",
-                    }}>
-                      {run.runId}
-                    </div>
-                    
-                    {/* Initial input (truncated) */}
-                    <div style={{
-                      fontSize: "13px",
-                      color: "#888",
-                      marginBottom: "12px",
-                      maxHeight: "40px",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}>
+
+                    <div className="mt-0.5 font-mono text-[11.5px] text-ink-muted">{run.runId}</div>
+
+                    <div className="mt-3 max-h-10 overflow-hidden text-ellipsis text-[13px] text-ink-secondary">
                       {run.initialInput}
                     </div>
-                    
-                    {/* Progress */}
-                    <div style={{
-                      fontSize: "12px",
-                      color: "#666",
-                      marginBottom: "8px",
-                    }}>
+
+                    <div className="mt-3 text-[12px] text-ink-muted">
                       {completedSteps} / {run.totalSteps} steps completed
                     </div>
-                    
-                    {/* Progress bar */}
-                    <div style={{
-                      height: "4px",
-                      backgroundColor: "#333",
-                      borderRadius: "2px",
-                      overflow: "hidden",
-                    }}>
-                      <div style={{
-                        width: `${(completedSteps / run.totalSteps) * 100}%`,
-                        height: "100%",
-                        backgroundColor: statusColors[run.status],
-                        transition: "width 0.3s ease",
-                      }} />
+
+                    <div className="mt-2 h-1 overflow-hidden rounded-full bg-surface-2">
+                      <div
+                        className={cn(
+                          "h-full rounded-full transition-[width] duration-200",
+                          RUN_BAR_CLASS[run.status] ?? "bg-ink-muted"
+                        )}
+                        style={{ width: `${(completedSteps / run.totalSteps) * 100}%` }}
+                      />
                     </div>
-                    
-                    {/* Timestamp */}
-                    <div style={{
-                      fontSize: "11px",
-                      color: "#555",
-                      marginTop: "12px",
-                    }}>
+
+                    <div className="mt-3 text-[11.5px] text-ink-muted">
                       {new Date(run.startedAt).toLocaleString()}
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
           )}
         </div>
       </div>
-      
+
       {/* Side panel */}
       {selectedRunId && (
         <WorkflowRunPanel

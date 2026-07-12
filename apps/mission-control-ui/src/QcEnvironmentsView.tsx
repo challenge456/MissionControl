@@ -9,9 +9,9 @@ import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import type { MainView } from "./TopNav";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, Activity } from "lucide-react";
+import { RiskBadge, StatusBadge } from "@/components/factory/badges";
+import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const ENV_ORDER = ["local", "dev", "staging", "pilot", "production"] as const;
@@ -21,13 +21,20 @@ interface QcEnvironmentsViewProps {
   onNavigate?: (view: MainView) => void;
 }
 
+function gradeDotClass(grade: "GREEN" | "YELLOW" | "RED" | null | undefined): string {
+  if (grade === "RED") return "bg-err";
+  if (grade === "YELLOW") return "bg-warn";
+  if (grade === "GREEN") return "bg-ok";
+  return "bg-ink-muted";
+}
+
 export function QcEnvironmentsView({ projectId, onNavigate }: QcEnvironmentsViewProps) {
   const summary = useQuery(api.qcRuns.environmentSummary, { projectId: projectId ?? undefined });
 
   if (!summary) {
     return (
-      <div className="flex-1 overflow-auto p-6">
-        <div className="text-sm text-muted-foreground">Loading environment summary…</div>
+      <div className="mx-auto flex w-full max-w-[1200px] flex-col px-6 py-6">
+        <div className="text-[13.5px] text-ink-muted">Loading environment summary…</div>
       </div>
     );
   }
@@ -35,75 +42,53 @@ export function QcEnvironmentsView({ projectId, onNavigate }: QcEnvironmentsView
   const ordered = ENV_ORDER.map((env) => summary.find((s) => s.environment === env)).filter(Boolean);
 
   return (
-    <div className="flex-1 overflow-auto p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Activity className="h-6 w-6 text-primary" />
-          Environments
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
+    <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-6 py-6">
+      <header>
+        <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-ink">Environments</h1>
+        <p className="mt-1.5 text-[14px] text-ink-secondary">
           Quality status across local, dev, staging, pilot, and production
         </p>
-      </div>
+      </header>
 
       {/* Pipeline view: left-to-right flow */}
-      <div className="flex items-stretch gap-2 flex-wrap">
+      <div className="flex flex-wrap items-stretch gap-2">
         {ordered.map((s, i) => (
           <div key={s!.environment} className="flex items-center gap-1">
-            <Card
-              className={cn(
-                "p-4 min-w-[140px] flex flex-col gap-2",
-                s!.latestGrade === "RED" && "border-red-500/30",
-                s!.latestGrade === "YELLOW" && "border-yellow-500/30",
-                s!.latestGrade === "GREEN" && "border-primary/30"
-              )}
-            >
-              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            <Card className="flex min-w-[140px] flex-col gap-2 p-4">
+              <div className="text-[12.5px] font-medium text-ink-secondary">
                 {s!.environment}
               </div>
               <div className="flex items-center gap-2">
-                <div
-                  className={cn(
-                    "h-3 w-3 rounded-full",
-                    s!.latestGrade === "RED" && "bg-red-500",
-                    s!.latestGrade === "YELLOW" && "bg-yellow-500",
-                    s!.latestGrade === "GREEN" && "bg-green-500",
-                    !s!.latestGrade && "bg-muted-foreground/50"
-                  )}
+                <span
+                  aria-hidden
+                  className={cn("h-2 w-2 shrink-0 rounded-full", gradeDotClass(s!.latestGrade))}
                 />
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    "text-xs",
-                    s!.latestGrade === "RED" && "bg-red-500/10 text-red-600 border-red-500/20",
-                    s!.latestGrade === "YELLOW" && "bg-yellow-500/10 text-yellow-600 border-yellow-500/20",
-                    s!.latestGrade === "GREEN" && "bg-primary/10 text-primary border-primary/20",
-                    !s!.latestGrade && "text-muted-foreground"
-                  )}
-                >
-                  {s!.latestGrade ?? "—"}
-                </Badge>
+                {s!.latestGrade ? (
+                  <RiskBadge level={s!.latestGrade} />
+                ) : (
+                  <StatusBadge tone="neutral">—</StatusBadge>
+                )}
               </div>
-              <div className="text-2xl font-bold">
+              <div className="text-[20px] font-semibold leading-none text-ink">
                 {s!.latestScore != null ? s!.latestScore : "—"}
               </div>
-              <div className="text-xs text-muted-foreground">
+              <div className="text-[12px] text-ink-muted">
                 Gate: {s!.gatePassed === true ? "PASSED" : s!.gatePassed === false ? "FAILED" : "—"}
               </div>
-              <div className="text-xs text-muted-foreground">
+              <div className="text-[12px] text-ink-muted">
                 {s!.runCount} runs · {s!.completedCount} completed
               </div>
               <Button
                 variant="ghost"
                 size="sm"
-                className="mt-1 text-xs"
+                className="mt-1 self-start text-[12.5px]"
                 onClick={() => onNavigate?.("qc-dashboard")}
               >
                 View runs
               </Button>
             </Card>
             {i < ordered.length - 1 && (
-              <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+              <ChevronRight className="h-4 w-4 flex-shrink-0 text-ink-muted" strokeWidth={1.75} />
             )}
           </div>
         ))}
@@ -111,29 +96,24 @@ export function QcEnvironmentsView({ projectId, onNavigate }: QcEnvironmentsView
 
       {/* Grid of same cards (alternative layout) */}
       <div>
-        <h2 className="text-sm font-semibold mb-3">Health by environment</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <h2 className="mb-3 text-[19px] font-semibold tracking-tight text-ink">Health by environment</h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
           {ordered.map((s) => (
             <Card key={s!.environment} className="p-4">
-              <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              <div className="text-[12.5px] font-medium text-ink-secondary">
                 {s!.environment}
               </div>
               <div className="mt-2 flex items-center gap-2">
-                <div
-                  className={cn(
-                    "h-2 w-2 rounded-full",
-                    s!.latestGrade === "RED" && "bg-red-500",
-                    s!.latestGrade === "YELLOW" && "bg-yellow-500",
-                    s!.latestGrade === "GREEN" && "bg-green-500",
-                    !s!.latestGrade && "bg-muted-foreground/50"
-                  )}
+                <span
+                  aria-hidden
+                  className={cn("h-2 w-2 shrink-0 rounded-full", gradeDotClass(s!.latestGrade))}
                 />
-                <span className="text-sm font-medium">{s!.latestScore ?? "—"}</span>
+                <span className="text-[13.5px] font-medium text-ink">{s!.latestScore ?? "—"}</span>
               </div>
-              <div className="mt-1 text-xs text-muted-foreground">
+              <div className="mt-1 text-[12px] text-ink-muted">
                 Pass rate: {s!.completedCount ? Math.round(s!.passRate * 100) : 0}%
               </div>
-              <div className="mt-1 text-xs text-muted-foreground">
+              <div className="mt-1 text-[12px] text-ink-muted">
                 R · Y · G: {s!.redCount} · {s!.yellowCount} · {s!.greenCount}
               </div>
             </Card>

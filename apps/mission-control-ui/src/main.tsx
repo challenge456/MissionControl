@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
+import { BrowserRouter } from "react-router-dom";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { SetupMessage } from "./SetupMessage";
 import { ToastProvider } from "./Toast";
@@ -22,7 +23,9 @@ if (!rootEl) {
         ) : (
           <ConvexProvider client={new ConvexReactClient(convexUrl)}>
             <ToastProvider>
-              <App />
+              <BrowserRouter>
+                <App />
+              </BrowserRouter>
             </ToastProvider>
           </ConvexProvider>
         )}

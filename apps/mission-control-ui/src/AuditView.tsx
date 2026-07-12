@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { PageHeader } from "./components/PageHeader";
 import { FileText, ShieldCheck, Clock, XCircle, Filter, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { StatusBadge, type StatusBadgeProps } from "@/components/factory/badges";
 import { cn } from "@/lib/utils";
 
 function fmtTime(ts?: number) {
@@ -13,27 +14,26 @@ function fmtTime(ts?: number) {
   return new Date(ts).toLocaleString();
 }
 
-const PILL_VARIANTS: Record<string, string> = {
-  ACTIVE:           "bg-primary/15 text-primary border-primary/30",
-  APPROVED:         "bg-primary/15 text-primary border-primary/30",
-  ALLOW:            "bg-primary/15 text-primary border-primary/30",
-  GREEN:            "bg-primary/15 text-primary border-primary/30",
-  PENDING:          "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30",
-  YELLOW:           "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30",
-  NEEDS_APPROVAL:   "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30",
-  DENIED:           "bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/30",
-  RED:              "bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/30",
-  FAILED:           "bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/30",
-  TASK_TRANSITIONED:"bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30",
-  APPROVAL_REQUESTED:"bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/30",
+const PILL_TONES: Record<string, StatusBadgeProps["tone"]> = {
+  ACTIVE:            "success",
+  APPROVED:          "success",
+  ALLOW:             "success",
+  GREEN:             "success",
+  PENDING:           "warning",
+  YELLOW:            "warning",
+  NEEDS_APPROVAL:    "warning",
+  DENIED:            "error",
+  RED:               "error",
+  FAILED:            "error",
+  TASK_TRANSITIONED: "info",
+  APPROVAL_REQUESTED:"info",
 };
 
 function StatusPill({ value }: { value: string }) {
-  const cls = PILL_VARIANTS[value.toUpperCase()] ?? "bg-muted text-foreground border-border";
   return (
-    <span className={cn("inline-flex items-center rounded-md border px-1.5 py-0.5 text-[11px] font-semibold whitespace-nowrap", cls)}>
+    <StatusBadge tone={PILL_TONES[value.toUpperCase()] ?? "neutral"} className="whitespace-nowrap">
       {value}
-    </span>
+    </StatusBadge>
   );
 }
 
@@ -42,11 +42,11 @@ function StatCard({ icon: Icon, label, value, accent }: {
 }) {
   return (
     <Card className="p-4">
-      <div className="flex items-center gap-2 mb-2">
-        <Icon className="h-3.5 w-3.5 text-muted-foreground" strokeWidth={1.5} />
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</span>
+      <div className="flex items-center gap-2 mb-1.5">
+        <Icon className="h-3.5 w-3.5 text-ink-muted" strokeWidth={1.6} />
+        <span className="text-[12.5px] font-medium text-ink-secondary">{label}</span>
       </div>
-      <p className={cn("text-2xl font-bold tracking-tight tabular-nums", accent ?? "text-foreground")}>{value}</p>
+      <p className={cn("text-[20px] font-semibold leading-none tabular-nums", accent ?? "text-ink")}>{value}</p>
     </Card>
   );
 }
@@ -64,12 +64,12 @@ function TableSection({
 }) {
   return (
     <Card className="overflow-hidden">
-      <div className="px-5 py-3 border-b border-border flex items-center justify-between gap-3 flex-wrap bg-muted/30">
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</p>
+      <div className="px-5 py-3 border-b border-line flex items-center justify-between gap-3 flex-wrap">
+        <p className="text-[15px] font-semibold text-ink">{title}</p>
         {controls}
       </div>
       {empty ? (
-        <div className="py-12 text-center text-sm text-muted-foreground">No records found.</div>
+        <div className="py-10 text-center text-[13.5px] text-ink-muted">No records found.</div>
       ) : (
         <div className="overflow-auto">{children}</div>
       )}
@@ -107,26 +107,26 @@ export function AuditView({ projectId: _projectId }: { projectId: Id<"projects">
   };
 
   return (
-    <main className="mc-page">
+    <main className="flex-1 overflow-auto bg-app">
       <PageHeader
         title="ARM Audit"
         description="Governance trail for approvals, lifecycle transitions, deployments, and policy decisions."
         eyebrow="Operations"
         actions={
           <Button size="sm" variant="outline" onClick={handleExport}>
-            <Download className="h-3.5 w-3.5 mr-1.5" />
+            <Download className="h-3.5 w-3.5 mr-1.5" strokeWidth={1.7} />
             Export CSV
           </Button>
         }
       />
 
       {/* Stats */}
-      <div className="mc-page-body mc-page-stack">
+      <div className="mx-auto max-w-[1200px] px-6 py-6 flex flex-col gap-6">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatCard icon={FileText}   label="Change Records"   value={(changes ?? []).length} />
         <StatCard icon={ShieldCheck} label="Approval Records" value={(approvals ?? []).length} />
-        <StatCard icon={Clock}      label="Pending Approvals" value={pendingCount} accent={pendingCount > 0 ? "text-amber-500" : undefined} />
-        <StatCard icon={XCircle}    label="Denied Decisions"  value={deniedCount}  accent={deniedCount  > 0 ? "text-red-500"   : undefined} />
+        <StatCard icon={Clock}      label="Pending Approvals" value={pendingCount} accent={pendingCount > 0 ? "text-warn" : undefined} />
+        <StatCard icon={XCircle}    label="Denied Decisions"  value={deniedCount}  accent={deniedCount  > 0 ? "text-err"  : undefined} />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
@@ -138,16 +138,18 @@ export function AuditView({ projectId: _projectId }: { projectId: Id<"projects">
           controls={
             <div className="flex items-center gap-3 flex-wrap">
               <div className="flex items-center gap-2">
-                <Filter className="h-3 w-3 text-muted-foreground" />
+                <Filter className="h-3 w-3 text-ink-muted" strokeWidth={1.6} />
                 <input
-                  className="rounded-md border border-border bg-background px-2.5 py-1 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring w-44"
+                  className="h-9 rounded-lg border border-line bg-surface-1 px-3 text-[13.5px] text-ink placeholder:text-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring w-44"
                   placeholder="Filter by type…"
+                  aria-label="Filter change records by type"
                   value={changeTypeFilter}
                   onChange={(e) => setChangeTypeFilter(e.target.value)}
                 />
               </div>
               <select
-                className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="h-9 rounded-lg border border-line bg-surface-1 px-3 text-[13.5px] text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label="Row limit"
                 value={limit}
                 onChange={(e) => setLimit(Number(e.target.value))}
               >
@@ -158,30 +160,27 @@ export function AuditView({ projectId: _projectId }: { projectId: Id<"projects">
             </div>
           }
         >
-          <table className="w-full min-w-[980px] text-left text-xs">
+          <table className="w-full min-w-[980px] border-collapse text-left text-[13px]">
             <thead>
-              <tr className="bg-muted/50 border-b border-border">
+              <tr className="border-b border-line">
                 {["Time", "Type", "Summary", "Project", "Instance", "Version", "Related"].map((h) => (
-                  <th key={h} className="px-3 py-2.5 font-semibold text-muted-foreground uppercase tracking-wider text-[11px]">{h}</th>
+                  <th key={h} className="px-4 py-2.5 text-[11.5px] font-medium uppercase tracking-[0.06em] text-ink-muted">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {(changes ?? []).map((change, i) => (
+              {(changes ?? []).map((change) => (
                 <tr
                   key={change._id}
-                  className={cn(
-                    "border-b border-border/50 hover:bg-muted/40 transition-colors",
-                    i % 2 === 0 ? "" : "bg-muted/20"
-                  )}
+                  className="border-b border-line last:border-b-0 hover:bg-surface-2 transition-colors duration-150"
                 >
-                  <td className="px-3 py-2.5 text-muted-foreground whitespace-nowrap font-mono">{fmtTime(change.timestamp)}</td>
-                  <td className="px-3 py-2.5"><StatusPill value={change.type} /></td>
-                  <td className="px-3 py-2.5 text-foreground/80 max-w-[280px] truncate">{change.summary}</td>
-                  <td className="px-3 py-2.5 font-mono text-muted-foreground truncate max-w-[140px]">{change.projectId ?? "n/a"}</td>
-                  <td className="px-3 py-2.5 font-mono text-muted-foreground truncate max-w-[120px]">{change.instanceId ?? "n/a"}</td>
-                  <td className="px-3 py-2.5 font-mono text-muted-foreground truncate max-w-[120px]">{change.versionId ?? "n/a"}</td>
-                  <td className="px-3 py-2.5 text-muted-foreground truncate max-w-[180px]">
+                  <td className="px-4 py-3.5 text-ink-muted whitespace-nowrap font-mono">{fmtTime(change.timestamp)}</td>
+                  <td className="px-4 py-3.5"><StatusPill value={change.type} /></td>
+                  <td className="px-4 py-3.5 text-ink-secondary max-w-[280px] truncate">{change.summary}</td>
+                  <td className="px-4 py-3.5 font-mono text-ink-muted truncate max-w-[140px]">{change.projectId ?? "n/a"}</td>
+                  <td className="px-4 py-3.5 font-mono text-ink-muted truncate max-w-[120px]">{change.instanceId ?? "n/a"}</td>
+                  <td className="px-4 py-3.5 font-mono text-ink-muted truncate max-w-[120px]">{change.versionId ?? "n/a"}</td>
+                  <td className="px-4 py-3.5 text-ink-muted truncate max-w-[180px]">
                     {change.relatedTable ?? "n/a"}{change.relatedId ? ` · ${change.relatedId}` : ""}
                   </td>
                 </tr>
@@ -192,29 +191,26 @@ export function AuditView({ projectId: _projectId }: { projectId: Id<"projects">
 
         {/* Approval records */}
         <TableSection title="Approval Records" empty={(approvals ?? []).length === 0}>
-          <table className="w-full min-w-[840px] text-left text-xs">
+          <table className="w-full min-w-[840px] border-collapse text-left text-[13px]">
             <thead>
-              <tr className="bg-muted/50 border-b border-border">
+              <tr className="border-b border-line">
                 {["Requested", "Action", "Risk", "Status", "Decided", "Reason"].map((h) => (
-                  <th key={h} className="px-3 py-2.5 font-semibold text-muted-foreground uppercase tracking-wider text-[11px]">{h}</th>
+                  <th key={h} className="px-4 py-2.5 text-[11.5px] font-medium uppercase tracking-[0.06em] text-ink-muted">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {(approvals ?? []).map((approval, i) => (
+              {(approvals ?? []).map((approval) => (
                 <tr
                   key={approval._id}
-                  className={cn(
-                    "border-b border-border/50 hover:bg-muted/40 transition-colors",
-                    i % 2 === 0 ? "" : "bg-muted/20"
-                  )}
+                  className="border-b border-line last:border-b-0 hover:bg-surface-2 transition-colors duration-150"
                 >
-                  <td className="px-3 py-2.5 text-muted-foreground whitespace-nowrap font-mono">{fmtTime(approval.requestedAt)}</td>
-                  <td className="px-3 py-2.5 text-foreground/80">{approval.actionType}</td>
-                  <td className="px-3 py-2.5"><StatusPill value={approval.riskLevel} /></td>
-                  <td className="px-3 py-2.5"><StatusPill value={approval.status} /></td>
-                  <td className="px-3 py-2.5 text-muted-foreground whitespace-nowrap font-mono">{fmtTime(approval.decidedAt)}</td>
-                  <td className="px-3 py-2.5 text-muted-foreground truncate max-w-[200px]">
+                  <td className="px-4 py-3.5 text-ink-muted whitespace-nowrap font-mono">{fmtTime(approval.requestedAt)}</td>
+                  <td className="px-4 py-3.5 text-ink-secondary">{approval.actionType}</td>
+                  <td className="px-4 py-3.5"><StatusPill value={approval.riskLevel} /></td>
+                  <td className="px-4 py-3.5"><StatusPill value={approval.status} /></td>
+                  <td className="px-4 py-3.5 text-ink-muted whitespace-nowrap font-mono">{fmtTime(approval.decidedAt)}</td>
+                  <td className="px-4 py-3.5 text-ink-muted truncate max-w-[200px]">
                     {approval.decisionReason ?? approval.justification ?? "—"}
                   </td>
                 </tr>
@@ -225,8 +221,8 @@ export function AuditView({ projectId: _projectId }: { projectId: Id<"projects">
       </div>
 
       <Card className="p-5">
-        <div className="mc-kicker">Audit guidance</div>
-        <div className="mt-2 space-y-3 text-sm leading-relaxed text-muted-foreground">
+        <div className="text-[15px] font-semibold text-ink">Audit guidance</div>
+        <div className="mt-2 space-y-3 text-[13.5px] leading-relaxed text-ink-secondary">
           <p>Use this surface to confirm that risky actions were reviewed and that the decision trail still makes sense after the fact.</p>
           <p>If audit volume becomes noisy, the real fix is tighter routing and better change summaries upstream, not more rows here.</p>
         </div>

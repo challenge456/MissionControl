@@ -1,29 +1,12 @@
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
-import { Shield, ShieldAlert, ShieldCheck, type LucideIcon } from "lucide-react";
+import { StatusBadge, type StatusBadgeProps } from "@/components/factory/badges";
 
 type RiskLevel = "GREEN" | "YELLOW" | "RED";
 
-const RISK_CONFIG: Record<RiskLevel, {
-  label: string;
-  icon: LucideIcon;
-  classes: string;
-}> = {
-  GREEN: {
-    label: "Low Risk",
-    icon: ShieldCheck,
-    classes: "bg-primary/10 text-primary border-primary/20",
-  },
-  YELLOW: {
-    label: "Medium Risk",
-    icon: Shield,
-    classes: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-  },
-  RED: {
-    label: "High Risk",
-    icon: ShieldAlert,
-    classes: "bg-red-500/10 text-red-400 border-red-500/20",
-  },
+const RISK_CONFIG: Record<RiskLevel, { label: string; tone: StatusBadgeProps["tone"] }> = {
+  GREEN: { label: "Low Risk", tone: "success" },
+  YELLOW: { label: "Medium Risk", tone: "warning" },
+  RED: { label: "High Risk", tone: "error" },
 };
 
 interface RiskChipProps {
@@ -32,31 +15,21 @@ interface RiskChipProps {
   className?: string;
 }
 
-export function RiskChip({ level, size = "sm", className }: RiskChipProps) {
+export function RiskChip({ level, size = "sm", className }: RiskChipProps): JSX.Element {
   const config = RISK_CONFIG[level as RiskLevel];
+  const sizeClass = size === "md" ? "text-[12.5px]" : undefined;
+
   if (!config) {
     return (
-      <Badge variant="outline" className={cn("text-[10px]", className)}>
+      <StatusBadge tone="neutral" className={cn(sizeClass, className)}>
         {level}
-      </Badge>
+      </StatusBadge>
     );
   }
 
-  const Icon = config.icon;
-  const isSm = size === "sm";
-
   return (
-    <Badge
-      variant="outline"
-      className={cn(
-        "font-medium border gap-1",
-        config.classes,
-        isSm ? "text-[10px] h-5 px-1.5" : "text-xs h-6 px-2",
-        className
-      )}
-    >
-      <Icon className={isSm ? "h-3 w-3" : "h-3.5 w-3.5"} />
+    <StatusBadge tone={config.tone} className={cn(sizeClass, className)}>
       {config.label}
-    </Badge>
+    </StatusBadge>
   );
 }

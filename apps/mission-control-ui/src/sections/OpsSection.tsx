@@ -65,7 +65,7 @@ export function OpsSection({
 }: OpsSectionProps) {
   if (currentView === "tasks") {
     return (
-      <>
+      <div className="flex h-full min-h-0 w-full flex-1 overflow-hidden">
         <Sidebar
           projectId={projectId}
           onOpenApprovals={onOpenApprovals}
@@ -152,7 +152,7 @@ export function OpsSection({
           expanded={liveFeedExpanded}
           onToggle={onToggleLiveFeed}
         />
-      </>
+      </div>
     );
   }
 

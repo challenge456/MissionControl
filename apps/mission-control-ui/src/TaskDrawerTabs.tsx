@@ -8,9 +8,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id, Doc } from "../../../convex/_generated/dataModel";
 import { useEffect, useState } from "react";
-import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -30,12 +28,47 @@ import {
 import { PeerReviewPanel } from "./PeerReviewPanel";
 import { ExportReportButton } from "./ExportReportButton";
 import { TaskEditMode } from "./TaskEditMode";
-import { StatusChip } from "./components/StatusChip";
-import { PriorityChip } from "./components/PriorityChip";
-import { RiskChip } from "./components/RiskChip";
+import { RiskBadge, StatusBadge, type StatusBadgeProps } from "./components/factory/badges";
 
 type Tab = "overview" | "timeline" | "artifacts" | "approvals" | "cost" | "reviews" | "why";
 type TaskStatus = Doc<"tasks">["status"];
+
+/** UI_STYLE_GUIDE task-state → badge tone mapping. */
+function taskStatusTone(status: string): StatusBadgeProps["tone"] {
+  switch (status) {
+    case "DONE":
+      return "success";
+    case "IN_PROGRESS":
+    case "REVIEW":
+      return "info";
+    case "NEEDS_APPROVAL":
+    case "BLOCKED":
+      return "warning";
+    case "FAILED":
+      return "error";
+    default:
+      return "neutral";
+  }
+}
+
+function approvalStatusTone(status: string): StatusBadgeProps["tone"] {
+  switch (status) {
+    case "APPROVED":
+      return "success";
+    case "DENIED":
+    case "EXPIRED":
+      return "error";
+    case "PENDING":
+    case "ESCALATED":
+      return "warning";
+    default:
+      return "neutral";
+  }
+}
+
+function formatStatusLabel(status: string): string {
+  return status.replace(/_/g, " ");
+}
 
 export function TaskDrawerTabs({
   taskId,
@@ -66,11 +99,11 @@ export function TaskDrawerTabs({
 
   return (
     <Sheet open={!!taskId} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <SheetContent side="right" className="w-[600px] max-w-[90vw] p-0 flex flex-col">
+      <SheetContent side="right" className="w-[600px] max-w-[90vw] p-0 flex flex-col bg-surface-1 border-l border-line">
         {isLoading ? (
-          <div className="p-6 text-sm text-muted-foreground">Loading...</div>
+          <div className="p-6 text-sm text-ink-muted">Loading...</div>
         ) : !data ? (
-          <div className="p-6 text-sm text-muted-foreground">Task not found</div>
+          <div className="p-6 text-sm text-ink-muted">Task not found</div>
         ) : (() => {
           const { task, transitions, messages, runs, toolCalls, approvals, activities, taskEvents } = data;
           const agentMap = new Map<Id<"agents">, Doc<"agents">>(
@@ -120,32 +153,32 @@ export function TaskDrawerTabs({
           return (
             <>
               {/* Header */}
-              <div className="px-5 py-4 border-b border-border">
+              <div className="px-5 py-4 border-b border-line">
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
                     <SheetHeader className="space-y-0">
                       {task.identifier && (
-                        <span className="text-[11px] font-mono text-muted-foreground mb-0.5 block">{task.identifier}</span>
+                        <span className="text-[11px] font-mono text-ink-muted mb-0.5 block">{task.identifier}</span>
                       )}
                       <SheetTitle className="text-base font-semibold leading-snug">
                         {task.title}
                       </SheetTitle>
                     </SheetHeader>
                     <div className="flex gap-2 mt-2 flex-wrap items-center">
-                      <StatusChip status={task.status} size="md" />
-                      <PriorityChip priority={task.priority} size="md" />
-                      <Badge variant="outline" className="text-xs">{task.type}</Badge>
+                      <StatusBadge tone={taskStatusTone(task.status)}>
+                        {formatStatusLabel(task.status)}
+                      </StatusBadge>
+                      <StatusBadge tone="neutral">P{task.priority}</StatusBadge>
+                      <StatusBadge tone="neutral">{task.type}</StatusBadge>
                       {task.source && (() => {
                         const src = SOURCE_CONFIG[task.source] || SOURCE_CONFIG.UNKNOWN;
                         return (
-                          <Badge
-                            variant="secondary"
-                            className="text-xs gap-1"
+                          <span
+                            className="text-[11.5px] text-ink-muted"
                             title={task.sourceRef ? `${src.label}: ${task.sourceRef}` : src.label}
                           >
-                            <span className="text-[10px]">{src.icon}</span>
                             {src.label}
-                          </Badge>
+                          </span>
                         );
                       })()}
                     </div>
@@ -163,12 +196,12 @@ export function TaskDrawerTabs({
                         });
                       }}
                     >
-                      👁 {isWatchingTask ? "Watching" : "Watch"}
+                      {isWatchingTask ? "Watching" : "Watch"}
                     </Button>
                     {!isEditMode && (
                       <>
                         <Button size="sm" onClick={() => setIsEditMode(true)}>
-                          ✏️ Edit
+                          Edit
                         </Button>
                         <ExportReportButton taskId={taskId} />
                       </>
@@ -186,7 +219,7 @@ export function TaskDrawerTabs({
               ) : (
                 <>
                   {/* Tabs */}
-                  <div className="flex border-b border-border px-5" role="tablist">
+                  <div className="flex border-b border-line px-5" role="tablist">
                     {(["overview", "timeline", "artifacts", "approvals", "cost", "reviews", "why"] as Tab[]).map((tab) => (
                       <TabButton
                         key={tab}
@@ -247,13 +280,13 @@ export function TaskDrawerTabs({
                   </div>
 
                   {/* Comment Box */}
-                  <div className="p-5 border-t border-border">
+                  <div className="p-5 border-t border-line">
                     <textarea
                       value={comment}
                       onChange={(e) => setComment(e.target.value)}
                       placeholder="Add a comment..."
                       rows={3}
-                      className="w-full p-3 bg-background border border-border rounded-md text-sm text-foreground placeholder:text-muted-foreground resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+                      className="w-full p-3 bg-surface-1 border border-line rounded-md text-sm text-ink placeholder:text-ink-muted resize-y focus:outline-none focus:ring-2 focus:ring-ring"
                     />
                     <Button
                       size="sm"
@@ -310,7 +343,7 @@ function OverviewTab({
     <div className="space-y-6">
       {task.description && (
         <Section title="Description">
-          <p className="text-sm text-foreground/80 leading-relaxed">{task.description}</p>
+          <p className="text-sm text-ink-secondary leading-relaxed">{task.description}</p>
         </Section>
       )}
 
@@ -324,7 +357,7 @@ function OverviewTab({
               ) : null;
             })
           ) : (
-            <span className="text-sm text-muted-foreground">Unassigned</span>
+            <span className="text-sm text-ink-muted">Unassigned</span>
           )}
           <ReassignDropdown
             taskId={taskId}
@@ -338,8 +371,8 @@ function OverviewTab({
 
       {task.dueAt != null && (
         <Section title="Due Date">
-          <div className="inline-flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
-            <span className="text-foreground">
+          <div className="inline-flex items-center gap-2 rounded-md border border-line bg-surface-2 px-3 py-2 text-sm">
+            <span className="text-ink">
               {new Date(task.dueAt).toLocaleDateString(undefined, {
                 weekday: "short",
                 month: "short",
@@ -351,10 +384,10 @@ function OverviewTab({
               className={cn(
                 "text-xs",
                 task.dueAt < Date.now()
-                  ? "text-destructive"
+                  ? "text-err"
                   : task.dueAt < Date.now() + 86400000 * 2
-                    ? "text-amber-500"
-                    : "text-muted-foreground"
+                    ? "text-warn"
+                    : "text-ink-muted"
               )}
             >
               {task.dueAt < Date.now()
@@ -376,8 +409,8 @@ function OverviewTab({
           <dl className="space-y-2 text-sm">
             {task.planningQa.map((qa: { question: string; answer: string }, i: number) => (
               <div key={i}>
-                <dt className="font-medium text-foreground/90">{qa.question}</dt>
-                <dd className="text-foreground/80 pl-2 mt-0.5">{qa.answer}</dd>
+                <dt className="font-medium text-ink">{qa.question}</dt>
+                <dd className="text-ink-secondary pl-2 mt-0.5">{qa.answer}</dd>
               </div>
             ))}
           </dl>
@@ -386,13 +419,13 @@ function OverviewTab({
 
       {task.workPlan && (
         <Section title="Work Plan">
-          <ul className="list-disc pl-5 text-sm text-foreground/80 space-y-1.5">
+          <ul className="list-disc pl-5 text-sm text-ink-secondary space-y-1.5">
             {task.workPlan.bullets.map((bullet: string, i: number) => (
               <li key={i}>{bullet}</li>
             ))}
           </ul>
           {task.workPlan.estimatedCost && (
-            <p className="mt-3 text-xs text-muted-foreground">
+            <p className="mt-3 text-xs text-ink-muted">
               Estimated: ${task.workPlan.estimatedCost.toFixed(2)}
             </p>
           )}
@@ -402,12 +435,12 @@ function OverviewTab({
       {task.deliverable && (
         <Section title="Deliverable">
           {task.deliverable.summary && (
-            <p className="text-sm text-foreground/80 mb-2">{task.deliverable.summary}</p>
+            <p className="text-sm text-ink-secondary mb-2">{task.deliverable.summary}</p>
           )}
           {task.deliverable.artifactIds && task.deliverable.artifactIds.length > 0 && (
             <div className="flex gap-1.5 flex-wrap">
               {task.deliverable.artifactIds.map((id: string) => (
-                <Badge key={id} variant="secondary" className="text-xs">📎 {id}</Badge>
+                <StatusBadge key={id} tone="neutral" className="font-mono">{id}</StatusBadge>
               ))}
             </div>
           )}
@@ -416,7 +449,7 @@ function OverviewTab({
 
       {task.blockedReason && (
         <Section title="Blocked Reason">
-          <p className="text-sm text-destructive">{task.blockedReason}</p>
+          <p className="text-sm text-err">{task.blockedReason}</p>
         </Section>
       )}
 
@@ -507,7 +540,7 @@ function ReassignDropdown({
             onCheckedChange={() => toggleAgent(agent._id)}
             onSelect={(event) => event.preventDefault()}
           >
-            <span>{agent.emoji || "🤖"} {agent.name}</span>
+            <span>{agent.name}</span>
           </DropdownMenuCheckboxItem>
         ))}
         <DropdownMenuSeparator />
@@ -579,7 +612,7 @@ function RedirectForm({
         value={redirectText}
         onChange={(event) => setRedirectText(event.target.value)}
         placeholder="Instruction for the agent..."
-        className="flex-1 min-w-0 px-3 py-2 rounded-md border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+        className="flex-1 min-w-0 px-3 py-2 rounded-md border border-line bg-surface-1 text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-ring"
       />
       <Button size="sm" onClick={handleRedirect} disabled={loading || !redirectText.trim()}>
         Send redirect
@@ -590,10 +623,9 @@ function RedirectForm({
 
 function AgentChip({ agent }: { agent: Doc<"agents"> }) {
   return (
-    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-muted rounded-full text-xs text-foreground">
-      <span>{agent.emoji || "🤖"}</span>
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-surface-2 rounded-md text-xs text-ink">
       <span>{agent.name}</span>
-      <span className="text-muted-foreground">{agent.role}</span>
+      <span className="text-ink-muted">{agent.role}</span>
     </span>
   );
 }
@@ -601,6 +633,10 @@ function AgentChip({ agent }: { agent: Doc<"agents"> }) {
 // ============================================================================
 // TIMELINE TAB
 // ============================================================================
+
+/** Flat timeline entry: hairline separator + flat dot marker (no boxed cards). */
+const TIMELINE_ENTRY_CLASS =
+  "relative border-b border-line pb-3 pl-4 last:border-b-0 before:absolute before:left-0 before:top-[7px] before:h-1.5 before:w-1.5 before:rounded-full before:bg-ink-muted";
 
 function TimelineTab({
   taskEvents,
@@ -674,37 +710,20 @@ function TimelineItem({
     case "taskEvent": {
       const event = item.data as Doc<"taskEvents">;
       const actor = formatActorName(event.actorType, event.actorId);
-      const eventConfig: Record<string, { icon: string }> = {
-        TASK_CREATED: { icon: "📝" },
-        TASK_TRANSITION: { icon: "🔁" },
-        APPROVAL_REQUESTED: { icon: "🛡️" },
-        APPROVAL_ESCALATED: { icon: "⏫" },
-        APPROVAL_APPROVED: { icon: "✅" },
-        APPROVAL_DENIED: { icon: "⛔" },
-        APPROVAL_EXPIRED: { icon: "⌛" },
-        RUN_STARTED: { icon: "▶" },
-        RUN_COMPLETED: { icon: "✔" },
-        RUN_FAILED: { icon: "✖" },
-        OPERATOR_CONTROL: { icon: "🚨" },
-        POLICY_DECISION: { icon: "⚖" },
-        TOOL_CALL: { icon: "🧰" },
-      };
-      const config = eventConfig[event.eventType] ?? { icon: "•" };
       return (
-        <div className="p-3 bg-muted/50 border border-border rounded-md">
-          <div className="text-xs text-muted-foreground">{time}</div>
-          <div className="font-medium text-sm text-foreground flex items-center gap-1.5">
-            <span>{config.icon}</span>
-            <span>{event.eventType}</span>
+        <div className={TIMELINE_ENTRY_CLASS}>
+          <div className="text-xs text-ink-muted">{time}</div>
+          <div className="font-medium text-sm text-ink">
+            {formatStatusLabel(event.eventType)}
           </div>
-          <div className="text-xs text-muted-foreground mt-0.5">Actor: {actor}</div>
+          <div className="text-xs text-ink-muted mt-0.5">Actor: {actor}</div>
           {event.beforeState && event.afterState && (
-            <div className="text-xs text-foreground/70 mt-1">
+            <div className="text-xs text-ink-secondary mt-1">
               {JSON.stringify(event.beforeState)} → {JSON.stringify(event.afterState)}
             </div>
           )}
           {event.metadata && (
-            <div className="text-xs text-muted-foreground mt-1">
+            <div className="text-xs text-ink-muted mt-1">
               {JSON.stringify(event.metadata)}
             </div>
           )}
@@ -716,12 +735,12 @@ function TimelineItem({
       const t = item.data as Doc<"taskTransitions">;
       const actor = formatActorName(t.actorType, t.actorUserId || (t.actorAgentId as unknown as string));
       return (
-        <div className="p-3 bg-muted/50 border border-border rounded-md">
-          <div className="text-xs text-muted-foreground">{time}</div>
-          <div className="text-sm font-medium text-foreground">
+        <div className={TIMELINE_ENTRY_CLASS}>
+          <div className="text-xs text-ink-muted">{time}</div>
+          <div className="text-sm font-medium text-ink">
             {t.fromStatus} → {t.toStatus} · {actor}
           </div>
-          {t.reason && <div className="text-xs text-muted-foreground mt-0.5">{t.reason}</div>}
+          {t.reason && <div className="text-xs text-ink-muted mt-0.5">{t.reason}</div>}
         </div>
       );
     }
@@ -730,10 +749,10 @@ function TimelineItem({
       const m = item.data as Doc<"messages">;
       const author = m.authorUserId || (m.authorAgentId ? agentMap.get(m.authorAgentId)?.name : null) || "Unknown";
       return (
-        <div className="p-3 bg-muted/50 border border-border rounded-md">
-          <div className="text-xs text-muted-foreground">{time}</div>
-          <div className="text-sm font-medium text-foreground">{author} · {m.type}</div>
-          <div className="text-xs text-foreground/70 whitespace-pre-wrap mt-0.5">
+        <div className={TIMELINE_ENTRY_CLASS}>
+          <div className="text-xs text-ink-muted">{time}</div>
+          <div className="text-sm font-medium text-ink">{author} · {m.type}</div>
+          <div className="text-xs text-ink-secondary whitespace-pre-wrap mt-0.5">
             {m.content.slice(0, 200)}{m.content.length > 200 ? "..." : ""}
           </div>
         </div>
@@ -745,12 +764,12 @@ function TimelineItem({
       const agent = agentMap.get(r.agentId);
       const duration = r.durationMs ? `${(r.durationMs / 1000).toFixed(1)}s` : "running";
       return (
-        <div className="p-3 bg-muted/50 border border-border rounded-md">
-          <div className="text-xs text-muted-foreground">{time}</div>
-          <div className="text-sm font-medium text-foreground">
+        <div className={TIMELINE_ENTRY_CLASS}>
+          <div className="text-xs text-ink-muted">{time}</div>
+          <div className="text-sm font-medium text-ink">
             Run by {agent?.name || "Agent"} · {r.status}
           </div>
-          <div className="text-xs text-muted-foreground mt-0.5">
+          <div className="text-xs text-ink-muted mt-0.5">
             {r.model} · {duration} · Δ ${r.costUsd.toFixed(3)}
           </div>
         </div>
@@ -761,13 +780,13 @@ function TimelineItem({
       const tc = item.data as Doc<"toolCalls">;
       const agent = agentMap.get(tc.agentId);
       return (
-        <div className="p-3 bg-muted/50 border border-border rounded-md">
-          <div className="text-xs text-muted-foreground">{time}</div>
-          <div className="text-sm font-medium text-foreground">
+        <div className={TIMELINE_ENTRY_CLASS}>
+          <div className="text-xs text-ink-muted">{time}</div>
+          <div className="text-sm font-medium text-ink">
             {agent?.name || "Agent"} · {tc.toolName}
           </div>
-          <div className="text-xs text-muted-foreground mt-0.5">
-            <RiskChip level={tc.riskLevel} /> · {tc.status}
+          <div className="text-xs text-ink-muted mt-0.5">
+            <RiskBadge level={tc.riskLevel} /> · {tc.status}
             {tc.inputPreview && ` · ${tc.inputPreview.slice(0, 50)}...`}
           </div>
         </div>
@@ -778,12 +797,12 @@ function TimelineItem({
       const a = item.data as Doc<"approvals">;
       const agent = agentMap.get(a.requestorAgentId);
       return (
-        <div className="p-3 bg-muted/50 border border-border rounded-md">
-          <div className="text-xs text-muted-foreground">{time}</div>
-          <div className="text-sm font-medium text-foreground">
-            Approval · <StatusChip status={a.status} size="sm" />
+        <div className={TIMELINE_ENTRY_CLASS}>
+          <div className="text-xs text-ink-muted">{time}</div>
+          <div className="text-sm font-medium text-ink">
+            Approval · <StatusBadge tone={approvalStatusTone(a.status)}>{formatStatusLabel(a.status)}</StatusBadge>
           </div>
-          <div className="text-xs text-muted-foreground mt-0.5">
+          <div className="text-xs text-ink-muted mt-0.5">
             {a.actionSummary} · {agent?.name || "Agent"}
           </div>
         </div>
@@ -794,12 +813,12 @@ function TimelineItem({
       const activity = item.data as Doc<"activities">;
       const actor = formatActorName(activity.actorType, activity.actorId);
       return (
-        <div className="p-3 bg-muted/50 border border-border rounded-md">
-          <div className="text-xs text-muted-foreground">{time}</div>
-          <div className="text-sm font-medium text-foreground">
+        <div className={TIMELINE_ENTRY_CLASS}>
+          <div className="text-xs text-ink-muted">{time}</div>
+          <div className="text-sm font-medium text-ink">
             Audit · {activity.action} · {actor}
           </div>
-          <div className="text-xs text-muted-foreground whitespace-pre-wrap mt-0.5">
+          <div className="text-xs text-ink-muted whitespace-pre-wrap mt-0.5">
             {activity.description}
           </div>
         </div>
@@ -829,12 +848,12 @@ function ArtifactsTab({
       {task.deliverable && (
         <Section title="Deliverable">
           {task.deliverable.summary && (
-            <p className="text-sm text-foreground/80 mb-3">{task.deliverable.summary}</p>
+            <p className="text-sm text-ink-secondary mb-3">{task.deliverable.summary}</p>
           )}
           {task.deliverable.artifactIds && task.deliverable.artifactIds.length > 0 && (
             <div className="flex gap-2 flex-wrap">
               {task.deliverable.artifactIds.map((id: string) => (
-                <Badge key={id} variant="secondary" className="text-xs">📎 {id}</Badge>
+                <StatusBadge key={id} tone="neutral" className="font-mono">{id}</StatusBadge>
               ))}
             </div>
           )}
@@ -844,14 +863,14 @@ function ArtifactsTab({
       {artifactMessages.length > 0 && (
         <Section title="Artifact Messages">
           {artifactMessages.map((m) => (
-            <div key={m._id} className="mb-4 p-3 bg-muted/50 border border-border rounded-md">
-              <div className="text-xs text-muted-foreground mb-1.5">
+            <div key={m._id} className="mb-4 p-3 bg-surface-2 border border-line rounded-md">
+              <div className="text-xs text-ink-muted mb-1.5">
                 {new Date((m as any)._creationTime).toLocaleString()}
               </div>
               {m.artifacts && m.artifacts.length > 0 && (
                 <div className="flex gap-1.5 flex-wrap mt-2">
                   {m.artifacts.map((a: any, i: number) => (
-                    <Badge key={i} variant="secondary" className="text-xs">📎 {a.name}</Badge>
+                    <StatusBadge key={i} tone="neutral">{a.name}</StatusBadge>
                   ))}
                 </div>
               )}
@@ -861,7 +880,7 @@ function ArtifactsTab({
       )}
 
       {!task.deliverable && artifactMessages.length === 0 && (
-        <p className="text-sm text-muted-foreground">No artifacts yet</p>
+        <p className="text-sm text-ink-muted">No artifacts yet</p>
       )}
     </div>
   );
@@ -879,7 +898,7 @@ function ApprovalsTab({
   agentMap: Map<Id<"agents">, Doc<"agents">>;
 }) {
   if (approvals.length === 0) {
-    return <p className="text-sm text-muted-foreground">No approvals for this task</p>;
+    return <p className="text-sm text-ink-muted">No approvals for this task</p>;
   }
 
   return (
@@ -887,19 +906,19 @@ function ApprovalsTab({
       {approvals.map((a) => {
         const agent = agentMap.get(a.requestorAgentId);
         return (
-          <div key={a._id} className="p-3 bg-muted/50 border border-border rounded-md">
+          <div key={a._id} className="p-3 bg-surface-2 border border-line rounded-md">
             <div className="flex justify-between mb-2">
-              <span className="text-xs text-muted-foreground">
-                {agent?.name || "Agent"} · {a.actionType} · <RiskChip level={a.riskLevel} />
+              <span className="text-xs text-ink-muted">
+                {agent?.name || "Agent"} · {a.actionType} · <RiskBadge level={a.riskLevel} />
               </span>
-              <StatusChip status={a.status} size="sm" />
+              <StatusBadge tone={approvalStatusTone(a.status)}>{formatStatusLabel(a.status)}</StatusBadge>
             </div>
-            <div className="text-sm font-medium text-foreground mb-1.5">{a.actionSummary}</div>
+            <div className="text-sm font-medium text-ink mb-1.5">{a.actionSummary}</div>
             {a.justification && (
-              <div className="text-xs text-muted-foreground mb-2">{a.justification}</div>
+              <div className="text-xs text-ink-muted mb-2">{a.justification}</div>
             )}
             {a.decisionReason && (
-              <div className="text-xs text-foreground/70 pt-2 border-t border-border">
+              <div className="text-xs text-ink-secondary pt-2 border-t border-line">
                 <strong>Decision:</strong> {a.decisionReason}
               </div>
             )}
@@ -954,12 +973,12 @@ function CostTab({
         {runs.length > 0 && (
           <div className="space-y-2">
             {runs.slice(-10).reverse().map((r) => (
-              <div key={r._id} className="p-3 bg-muted/50 border border-border rounded-md text-sm">
+              <div key={r._id} className="p-3 bg-surface-2 border border-line rounded-md text-sm">
                 <div className="flex justify-between mb-1">
-                  <span className="text-muted-foreground">{r.model}</span>
-                  <span className="text-foreground font-medium">${r.costUsd.toFixed(3)}</span>
+                  <span className="text-ink-muted">{r.model}</span>
+                  <span className="text-ink font-medium">${r.costUsd.toFixed(3)}</span>
                 </div>
-                <div className="text-xs text-muted-foreground">
+                <div className="text-xs text-ink-muted">
                   {r.inputTokens.toLocaleString()} in · {r.outputTokens.toLocaleString()} out
                   {r.durationMs && ` · ${(r.durationMs / 1000).toFixed(1)}s`}
                 </div>
@@ -1023,35 +1042,34 @@ function WhyTab({
   return (
     <div className="space-y-6">
       <section>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Policy Decision Viewer</h3>
-        <div className="p-4 bg-muted/50 border border-border rounded-md">
+        <h3 className="text-sm font-semibold text-ink mb-3">Policy Decision Viewer</h3>
+        <div className="p-4 bg-surface-2 border border-line rounded-md">
           <div className="flex items-center gap-2 flex-wrap">
-            <RiskChip level={riskLevel} />
-            <Badge
-              variant={policyDecision?.decision === "ALLOW" ? "default" : policyDecision?.decision === "DENY" ? "destructive" : "secondary"}
-              className="text-xs"
+            <RiskBadge level={riskLevel} />
+            <StatusBadge
+              tone={policyDecision?.decision === "ALLOW" ? "success" : policyDecision?.decision === "DENY" ? "error" : "neutral"}
             >
               {policyDecision?.decision ?? "Analyzing..."}
-            </Badge>
+            </StatusBadge>
           </div>
-          <p className="mt-2 text-sm text-foreground/80">
+          <p className="mt-2 text-sm text-ink-secondary">
             {policyDecision?.reason ?? "Calculating policy outcome..."}
           </p>
           {policyDecision?.triggeredRules && policyDecision.triggeredRules.length > 0 && (
             <div className="mt-3">
-              <div className="text-xs text-muted-foreground mb-1.5">Triggered rules</div>
+              <div className="text-xs text-ink-muted mb-1.5">Triggered rules</div>
               <div className="flex gap-1.5 flex-wrap">
                 {policyDecision.triggeredRules.map((rule: string) => (
-                  <Badge key={rule} variant="outline" className="text-xs">{rule}</Badge>
+                  <StatusBadge key={rule} tone="neutral" className="font-mono">{rule}</StatusBadge>
                 ))}
               </div>
             </div>
           )}
           {policyDecision?.requiredApprovals?.length ? (
             <div className="mt-3">
-              <div className="text-xs text-muted-foreground mb-1.5">Required approvals</div>
+              <div className="text-xs text-ink-muted mb-1.5">Required approvals</div>
               {policyDecision.requiredApprovals.map((approval: { type: string; reason: string }, index: number) => (
-                <div key={`${approval.type}-${index}`} className="text-xs text-foreground/70 mb-1">
+                <div key={`${approval.type}-${index}`} className="text-xs text-ink-secondary mb-1">
                   • {approval.type}: {approval.reason}
                 </div>
               ))}
@@ -1059,9 +1077,9 @@ function WhyTab({
           ) : null}
           {policyDecision?.remediationHints?.length ? (
             <div className="mt-3">
-              <div className="text-xs text-muted-foreground mb-1.5">Remediation hints</div>
+              <div className="text-xs text-ink-muted mb-1.5">Remediation hints</div>
               {policyDecision.remediationHints.map((hint: string, index: number) => (
-                <div key={`${hint}-${index}`} className="text-xs text-foreground/70 mb-1">
+                <div key={`${hint}-${index}`} className="text-xs text-ink-secondary mb-1">
                   • {hint}
                 </div>
               ))}
@@ -1071,16 +1089,16 @@ function WhyTab({
       </section>
 
       <section>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Dry Run Simulation</h3>
-        <div className="p-4 bg-muted/50 border border-border rounded-md">
+        <h3 className="text-sm font-semibold text-ink mb-3">Dry Run Simulation</h3>
+        <div className="p-4 bg-surface-2 border border-line rounded-md">
           {transitionChoices.length > 0 ? (
             <>
               <div className="flex items-center gap-2 mb-3">
-                <span className="text-xs text-muted-foreground">Simulate transition</span>
+                <span className="text-xs text-ink-muted">Simulate transition</span>
                 <select
                   value={simulateToStatus}
                   onChange={(event) => setSimulateToStatus(event.target.value as TaskStatus)}
-                  className="px-2 py-1 bg-background border border-border rounded-md text-sm text-foreground"
+                  className="px-2 py-1 bg-surface-1 border border-line rounded-md text-sm text-ink"
                 >
                   {transitionChoices.map((choice: TaskStatus) => (
                     <option key={choice} value={choice}>
@@ -1118,7 +1136,7 @@ function WhyTab({
                   {transitionSimulation.errors?.length ? (
                     <div className="mt-2">
                       {transitionSimulation.errors.map((error: { field: string; message: string }) => (
-                        <div key={`${error.field}-${error.message}`} className="text-xs text-destructive mb-1">
+                        <div key={`${error.field}-${error.message}`} className="text-xs text-err mb-1">
                           • {error.field}: {error.message}
                         </div>
                       ))}
@@ -1126,11 +1144,11 @@ function WhyTab({
                   ) : null}
                 </>
               ) : (
-                <div className="text-xs text-muted-foreground">Running simulation...</div>
+                <div className="text-xs text-ink-muted">Running simulation...</div>
               )}
             </>
           ) : (
-            <div className="text-xs text-muted-foreground">
+            <div className="text-xs text-ink-muted">
               No human transitions available from {task.status}.
             </div>
           )}
@@ -1138,12 +1156,12 @@ function WhyTab({
       </section>
 
       <section>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Assignment Context</h3>
-        <div className="p-4 bg-muted/50 border border-border rounded-md">
+        <h3 className="text-sm font-semibold text-ink mb-3">Assignment Context</h3>
+        <div className="p-4 bg-surface-2 border border-line rounded-md">
           {assignees.length ? (
             assignees.map((agent: Doc<"agents">) => (
               <div key={agent._id} className="mb-2.5">
-                <ExplainRow label="Agent" value={`${agent.emoji || "🤖"} ${agent.name}`} />
+                <ExplainRow label="Agent" value={agent.name} />
                 <ExplainRow label="Role" value={agent.role} />
                 <ExplainRow label="Status" value={agent.status} />
                 <ExplainRow
@@ -1154,7 +1172,7 @@ function WhyTab({
               </div>
             ))
           ) : (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-ink-muted">
               No assignee yet. Assigning an active agent improves policy confidence and simulation accuracy.
             </p>
           )}
@@ -1162,13 +1180,13 @@ function WhyTab({
       </section>
 
       <section>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Task Properties</h3>
-        <div className="p-4 bg-muted/50 border border-border rounded-md space-y-1.5">
+        <h3 className="text-sm font-semibold text-ink mb-3">Task Properties</h3>
+        <div className="p-4 bg-surface-2 border border-line rounded-md space-y-1.5">
           <ExplainRow label="Type" value={task.type} detail="Determines decomposition strategy and agent matching" />
           <ExplainRow label="Priority" value={`P${task.priority}`} detail="Higher priority = higher score for agent selection" />
           <ExplainRow
             label="Source"
-            value={`${(SOURCE_CONFIG[task.source ?? ""] || SOURCE_CONFIG.UNKNOWN).icon} ${(SOURCE_CONFIG[task.source ?? ""] || SOURCE_CONFIG.UNKNOWN).label}`}
+            value={(SOURCE_CONFIG[task.source ?? ""] || SOURCE_CONFIG.UNKNOWN).label}
             detail={task.sourceRef ? `Ref: ${task.sourceRef}` : (task.createdBy ? `Created by: ${CREATED_BY_LABELS[task.createdBy] || task.createdBy}` : "How the task entered the system")}
           />
           <ExplainRow
@@ -1212,10 +1230,10 @@ function TabButton({
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        "px-3 py-2.5 text-sm font-medium border-b-2 transition-colors",
+        "-mb-px flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-[13px] transition-colors duration-150",
         active
-          ? "border-primary text-primary"
-          : "border-transparent text-muted-foreground hover:text-foreground"
+          ? "border-ink text-ink"
+          : "border-transparent text-ink-muted hover:text-ink-secondary"
       )}
     >
       {children}
@@ -1226,7 +1244,7 @@ function TabButton({
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+      <h3 className="text-xs font-semibold text-ink-muted uppercase tracking-wider mb-3">
         {title}
       </h3>
       {children}
@@ -1245,10 +1263,10 @@ function ExplainRow({
 }) {
   return (
     <div className="flex gap-2 items-baseline">
-      <span className="text-xs text-muted-foreground w-[100px] shrink-0">{label}</span>
-      <span className="text-sm text-foreground font-medium">{value}</span>
+      <span className="text-xs text-ink-muted w-[100px] shrink-0">{label}</span>
+      <span className="text-sm text-ink font-medium">{value}</span>
       {detail && (
-        <span className="text-xs text-muted-foreground/60 italic">— {detail}</span>
+        <span className="text-xs text-ink-muted italic">— {detail}</span>
       )}
     </div>
   );
@@ -1264,9 +1282,9 @@ function Stat({
   negative?: boolean;
 }) {
   return (
-    <div className="p-3 bg-muted/50 border border-border rounded-md">
-      <span className="text-xs text-muted-foreground block">{label}</span>
-      <span className={cn("text-lg font-semibold", negative ? "text-destructive" : "text-foreground")}>
+    <div className="p-3 bg-surface-2 border border-line rounded-md">
+      <span className="text-xs text-ink-muted block">{label}</span>
+      <span className={cn("text-lg font-semibold", negative ? "text-err" : "text-ink")}>
         {value}
       </span>
     </div>
@@ -1277,16 +1295,16 @@ function Stat({
 // SOURCE BADGE
 // ============================================================================
 
-const SOURCE_CONFIG: Record<string, { icon: string; label: string }> = {
-  DASHBOARD: { icon: "🖥️", label: "Dashboard" },
-  TELEGRAM:  { icon: "✈️", label: "Telegram" },
-  GITHUB:    { icon: "🐙", label: "GitHub" },
-  AGENT:     { icon: "🤖", label: "Agent" },
-  API:       { icon: "🔌", label: "API" },
-  TRELLO:    { icon: "📋", label: "Trello" },
-  SEED:      { icon: "🌱", label: "Seed Data" },
-  MISSION_PROMPT: { icon: "🎯", label: "Mission" },
-  UNKNOWN:   { icon: "❓", label: "Unknown" },
+const SOURCE_CONFIG: Record<string, { label: string }> = {
+  DASHBOARD: { label: "Dashboard" },
+  TELEGRAM: { label: "Telegram" },
+  GITHUB: { label: "GitHub" },
+  AGENT: { label: "Agent" },
+  API: { label: "API" },
+  TRELLO: { label: "Trello" },
+  SEED: { label: "Seed Data" },
+  MISSION_PROMPT: { label: "Mission" },
+  UNKNOWN: { label: "Unknown" },
 };
 
 const CREATED_BY_LABELS: Record<string, string> = {
@@ -1310,17 +1328,14 @@ function SourceBadge({
   return (
     <div className="space-y-1.5">
       <div className="flex items-center gap-2">
-        <Badge variant="secondary" className="text-xs gap-1.5">
-          <span>{src.icon}</span>
-          {src.label}
-        </Badge>
+        <StatusBadge tone="neutral">{src.label}</StatusBadge>
         {creatorLabel && (
-          <span className="text-xs text-muted-foreground">by {creatorLabel}</span>
+          <span className="text-xs text-ink-muted">by {creatorLabel}</span>
         )}
       </div>
       {sourceRef && (
-        <div className="text-xs text-muted-foreground">
-          Ref: <span className="font-mono text-foreground/70">{sourceRef}</span>
+        <div className="text-xs text-ink-muted">
+          Ref: <span className="font-mono text-ink-secondary">{sourceRef}</span>
         </div>
       )}
     </div>
