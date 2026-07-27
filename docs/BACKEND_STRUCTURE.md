@@ -68,6 +68,9 @@ The backend is entirely Convex. There is no Express server, no REST API, and no 
 | Table | Purpose | Key Fields |
 |---|---|---|
 | `agentDocuments` | Agent session docs | agentId, type (WORKING_MD/DAILY_NOTE/SESSION_MEMORY), content |
+| `knowledgeGraphNodes` | Knowledge graph nodes (Agentic-KB / Obsidian overlay) | projectId, source, externalId, label, fileType, sourceFile, community |
+| `knowledgeGraphEdges` | Knowledge graph edges | projectId, source, externalId, fromExternalId, toExternalId, relation, confidenceScore |
+| `knowledgeGraphHyperedges` | Multi-node knowledge clusters | projectId, source, externalId, label, nodeExternalIds, relation |
 
 ### System
 
@@ -249,10 +252,14 @@ All tables use indexes for efficient querying. Common patterns:
 | `notifications` | listByAgent, create, markRead, markAllReadForAgent |
 | `reviews` | listByTask, create, respond, supersede, remove |
 | `agentDocuments` | get, listByAgent, getWorkingMd, getDailyNote, set |
+| `knowledgeGraph` | getSnapshot, getNeighborhood, importSnapshot, importGraphifyJson |
+| `analytics` | kpiSummary, dailyModelCost, activityHeatmap |
 | `executionRequests` | get, listPending, enqueue, updateStatus, cancel |
 | `webhooks` | list, create, update, remove, deliverPending (action) |
 | `standup` | generate (query), save, runDaily (mutations) |
 | `loops` | detectLoops (internal mutation, called by cron) |
+| `eos/projections` | getHealthSignals, getFactoryTraits, getEffectivenessMetrics, getFrictionSummary, getReadinessAssessments, getMissionSummaries, getRecommendations (queries — live EOS intelligence) |
+| `factory/piBridge` | ingestReceiptPacket (mutation — Pi runtime receipt packet ingestion, gated on `executor.pi-bridge`) |
 
 ---
 
