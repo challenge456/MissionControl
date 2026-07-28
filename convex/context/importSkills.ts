@@ -21,6 +21,7 @@ import { mutation } from "../_generated/server";
 import { requireContextRegistryEnabled } from "../lib/contextRegistryGate";
 import {
   compareSemver,
+  findVersionByContentHash,
   isValidContentHash,
   isValidPackageSlug,
   nextPatchVersion,
@@ -126,6 +127,21 @@ export const importSkillMarkdown = mutation({
       .query("contextPackageVersions")
       .withIndex("by_package", (q) => q.eq("packageId", packageId))
       .collect();
+
+    const unchangedVersion = findVersionByContentHash(
+      existingVersions,
+      args.contentHash
+    );
+    if (unchangedVersion) {
+      return {
+        packageId,
+        versionId: unchangedVersion._id,
+        version: unchangedVersion.version,
+        createdPackage,
+        imported: false,
+      };
+    }
+
     let version = "0.1.0";
     if (existingVersions.length > 0) {
       const latest = existingVersions.reduce((max, row) =>
@@ -162,6 +178,6 @@ export const importSkillMarkdown = mutation({
       afterState: { slug: args.slug, version, status: "DRAFT" },
     });
 
-    return { packageId, versionId, version, createdPackage };
+    return { packageId, versionId, version, createdPackage, imported: true };
   },
 });

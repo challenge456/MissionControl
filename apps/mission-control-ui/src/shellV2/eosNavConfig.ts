@@ -45,6 +45,13 @@ export const EOS_NAV_GROUPS: NavGroup[] = [
     { view: "recommendations" as MainView, label: "Recommendations", icon: Sparkles },
     { view: "dossier" as MainView, label: "Evidence Dossiers", icon: Scale },
   ]},
+  { id: "quality-automation", label: "Quality & Automation", icon: Shield, items: [
+    { view: "harness-code-review-wizard" as MainView, label: "Code Review Setup", icon: CheckCircle2 },
+    { view: "harness-change-review" as MainView, label: "Change Review", icon: FileSearch },
+    { view: "registry-runs" as MainView, label: "Agent Code Quality", icon: FlaskConical },
+    { view: "harness-automations" as MainView, label: "Automations", icon: Sparkles },
+    { view: "harness-meta-loop" as MainView, label: "Improvement Loop", icon: GitBranch },
+  ]},
   { id: "knowledge", label: "Knowledge", icon: BookOpen, items: [
     { view: "skills" as MainView, label: "Context Catalog", icon: Sparkles },
     { view: "registry-lifecycle" as MainView, label: "Context CDL", icon: BookOpen },

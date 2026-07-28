@@ -863,9 +863,153 @@ export default defineSchema({
   // -------------------------------------------------------------------------
   // SOFTWARE FACTORY: WORK ORDERS
   // -------------------------------------------------------------------------
+  missions: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.optional(v.id("projects")),
+    idempotencyKey: v.optional(v.string()),
+    title: v.string(),
+    objective: v.string(),
+    context: v.optional(v.string()),
+    constraints: v.optional(v.array(v.string())),
+    sourceOfTruthRefs: v.optional(v.array(v.object({
+      kind: v.union(v.literal("REPO"), v.literal("DOC"), v.literal("PRD"), v.literal("ISSUE"), v.literal("URL")),
+      label: v.string(),
+      location: v.string(),
+    }))),
+    owner: v.optional(v.string()),
+    state: v.union(
+      v.literal("DRAFT"), v.literal("PLANNING"), v.literal("AWAITING_PLAN_APPROVAL"),
+      v.literal("READY"), v.literal("IN_PROGRESS"), v.literal("BLOCKED"),
+      v.literal("AWAITING_VALIDATION"), v.literal("AWAITING_ACCEPTANCE"),
+      v.literal("DONE"), v.literal("CANCELED"), v.literal("SUPERSEDED")
+    ),
+    executionPolicy: v.literal("SERIAL_MUTATIONS"),
+    maxReadOnlyConcurrency: v.number(),
+    maxCorrectiveIterations: v.number(),
+    correctiveIterations: v.number(),
+    stopCondition: v.string(),
+    budgetUsd: v.optional(v.number()),
+    spentUsd: v.number(),
+    currentPlanId: v.optional(v.id("missionPlans")),
+    activeWorkOrderId: v.optional(v.id("workOrders")),
+    blockingReason: v.optional(v.string()),
+    requiredHumanAction: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    acceptedAt: v.optional(v.number()),
+    metadata: v.optional(v.any()),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_state", ["projectId", "state"])
+    .index("by_owner_state", ["owner", "state"])
+    .index("by_idempotency", ["idempotencyKey"]),
+
+  missionPlans: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.optional(v.id("projects")),
+    missionId: v.id("missions"),
+    idempotencyKey: v.optional(v.string()),
+    revisionNumber: v.number(),
+    status: v.union(v.literal("DRAFT"), v.literal("PROPOSED"), v.literal("APPROVED"), v.literal("REJECTED"), v.literal("SUPERSEDED")),
+    summary: v.string(),
+    createdBy: v.string(),
+    approvedBy: v.optional(v.string()),
+    approvedAt: v.optional(v.number()),
+    workOrderBlueprints: v.array(v.object({
+      id: v.string(),
+      title: v.string(),
+      desiredOutcome: v.string(),
+      workflowId: v.optional(v.string()),
+      sequence: v.number(),
+      role: v.union(v.literal("WORKER"), v.literal("VALIDATOR")),
+      isMutating: v.boolean(),
+      dependsOnBlueprintIds: v.array(v.string()),
+      assertionIds: v.array(v.string()),
+    })),
+    createdAt: v.number(),
+    metadata: v.optional(v.any()),
+  })
+    .index("by_mission", ["missionId"])
+    .index("by_mission_revision", ["missionId", "revisionNumber"])
+    .index("by_idempotency", ["idempotencyKey"]),
+
+  validationAssertions: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.optional(v.id("projects")),
+    missionId: v.id("missions"),
+    missionPlanId: v.id("missionPlans"),
+    assertionId: v.string(),
+    title: v.string(),
+    outcome: v.string(),
+    verificationMethod: v.union(v.literal("COMMAND"), v.literal("TEST"), v.literal("BROWSER"), v.literal("MANUAL"), v.literal("CHECKLIST")),
+    passCondition: v.string(),
+    requiredEvidence: v.string(),
+    requiresIndependentValidation: v.boolean(),
+    waiverAllowed: v.boolean(),
+    linkedWorkOrderIds: v.array(v.id("workOrders")),
+    status: v.union(v.literal("PENDING"), v.literal("PASS"), v.literal("FAIL"), v.literal("WAIVED"), v.literal("STALE"), v.literal("UNKNOWN")),
+    validatorWorkflowRunId: v.optional(v.id("workflowRuns")),
+    verificationReceiptId: v.optional(v.id("verificationReceipts")),
+    waiverApprovalDecisionId: v.optional(v.id("approvalDecisions")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_mission", ["missionId"])
+    .index("by_plan", ["missionPlanId"])
+    .index("by_mission_assertion", ["missionId", "assertionId"]),
+
+  missionHandoffs: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.optional(v.id("projects")),
+    missionId: v.id("missions"),
+    workOrderId: v.id("workOrders"),
+    workflowRunId: v.id("workflowRuns"),
+    producingRole: v.union(v.literal("WORKER"), v.literal("VALIDATOR")),
+    consumingRole: v.union(v.literal("WORKER"), v.literal("VALIDATOR"), v.literal("ORCHESTRATOR"), v.literal("OPERATOR")),
+    outcome: v.union(v.literal("COMPLETE"), v.literal("INCOMPLETE"), v.literal("NEEDS_HUMAN_INPUT")),
+    completedAssertionIds: v.array(v.string()),
+    incompleteAssertionIds: v.array(v.string()),
+    unknownAssertionIds: v.array(v.string()),
+    commands: v.array(v.object({ command: v.string(), exitCode: v.number() })),
+    artifactIds: v.array(v.id("runArtifacts")),
+    knownRisks: v.array(v.string()),
+    nextAction: v.string(),
+    nextOwner: v.optional(v.string()),
+    idempotencyKey: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_mission", ["missionId"])
+    .index("by_work_order", ["workOrderId"])
+    .index("by_run", ["workflowRunId"])
+    .index("by_idempotency", ["idempotencyKey"]),
+
+  missionEvents: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.optional(v.id("projects")),
+    missionId: v.id("missions"),
+    workOrderId: v.optional(v.id("workOrders")),
+    workflowRunId: v.optional(v.id("workflowRuns")),
+    eventType: v.string(),
+    actorType: actorType,
+    actorId: v.optional(v.string()),
+    summary: v.string(),
+    idempotencyKey: v.optional(v.string()),
+    timestamp: v.number(),
+    metadata: v.optional(v.any()),
+  })
+    .index("by_mission", ["missionId"])
+    .index("by_mission_timestamp", ["missionId", "timestamp"])
+    .index("by_idempotency", ["idempotencyKey"]),
+
   workOrders: defineTable({
     tenantId: v.optional(v.id("tenants")),
     projectId: v.optional(v.id("projects")),
+    missionId: v.optional(v.id("missions")),
+    missionPlanId: v.optional(v.id("missionPlans")),
+    missionSequence: v.optional(v.number()),
+    missionRole: v.optional(v.union(v.literal("WORKER"), v.literal("VALIDATOR"))),
+    isMutating: v.optional(v.boolean()),
+    releasedAt: v.optional(v.number()),
     legacyTaskId: v.optional(v.id("tasks")),
     idempotencyKey: v.optional(v.string()),
 
@@ -927,6 +1071,7 @@ export default defineSchema({
     metadata: v.optional(v.any()),
   })
     .index("by_project", ["projectId"])
+    .index("by_mission", ["missionId"])
     .index("by_project_state", ["projectId", "state"])
     .index("by_project_risk", ["projectId", "riskLevel"])
     .index("by_idempotency", ["idempotencyKey"]),
@@ -1112,6 +1257,8 @@ export default defineSchema({
   verificationReceipts: defineTable({
     tenantId: v.optional(v.id("tenants")),
     projectId: v.optional(v.id("projects")),
+    missionId: v.optional(v.id("missions")),
+    validationAssertionId: v.optional(v.id("validationAssertions")),
     workOrderId: v.id("workOrders"),
     acceptanceCriterionId: v.string(),
     workflowRunId: v.id("workflowRuns"),
@@ -1120,7 +1267,8 @@ export default defineSchema({
       v.literal("MANUAL"),
       v.literal("COMMAND"),
       v.literal("TEST"),
-      v.literal("CHECKLIST")
+      v.literal("CHECKLIST"),
+      v.literal("BROWSER")
     )),
     commandOrCheck: v.optional(v.string()),
     result: v.optional(v.string()),
@@ -1141,6 +1289,8 @@ export default defineSchema({
     metadata: v.optional(v.any()),
   })
     .index("by_work_order", ["workOrderId"])
+    .index("by_project", ["projectId"])
+    .index("by_mission", ["missionId"])
     .index("by_work_order_criterion", ["workOrderId", "acceptanceCriterionId"])
     .index("by_run", ["workflowRunId"])
     .index("by_idempotency", ["idempotencyKey"]),
@@ -1178,6 +1328,7 @@ export default defineSchema({
   runArtifacts: defineTable({
     tenantId: v.optional(v.id("tenants")),
     projectId: v.optional(v.id("projects")),
+    missionId: v.optional(v.id("missions")),
     workOrderId: v.optional(v.id("workOrders")),
     workflowRunId: v.id("workflowRuns"),
     idempotencyKey: v.optional(v.string()),
@@ -1197,6 +1348,7 @@ export default defineSchema({
     metadata: v.optional(v.any()),
   })
     .index("by_run", ["workflowRunId"])
+    .index("by_mission", ["missionId"])
     .index("by_run_type", ["workflowRunId", "artifactType"])
     .index("by_receipt", ["verificationReceiptId"])
     .index("by_event", ["producingEventId"])
@@ -2804,6 +2956,8 @@ export default defineSchema({
     runId: v.string(), // Short ID for CLI/UI display
     workflowId: v.string(),
     projectId: v.optional(v.id("projects")),
+    missionId: v.optional(v.id("missions")),
+    missionRole: v.optional(v.union(v.literal("ORCHESTRATOR"), v.literal("WORKER"), v.literal("VALIDATOR"))),
     workOrderId: v.optional(v.id("workOrders")),
     workOrderRevisionNumber: v.optional(v.number()),
     workOrderRevisionId: v.optional(v.id("workOrderRevisions")),
@@ -2896,6 +3050,7 @@ export default defineSchema({
     .index("by_run_id", ["runId"])
     .index("by_workflow_id", ["workflowId"])
     .index("by_project", ["projectId"])
+    .index("by_mission", ["missionId"])
     .index("by_work_order", ["workOrderId"])
     .index("by_status", ["status"])
     .index("by_parent_task", ["parentTaskId"])

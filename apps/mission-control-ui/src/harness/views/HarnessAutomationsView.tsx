@@ -25,7 +25,7 @@ export function HarnessAutomationsView({
           projectId={projectId}
           onScheduled={() => onNavigate("harness-launch")}
         />
-        <HarnessRepetitiveTasksPanel />
+        <HarnessRepetitiveTasksPanel projectId={projectId} />
         <HarnessAutomatePanel projectId={projectId} onNavigate={onNavigate} />
       </div>
     </HarnessPage>

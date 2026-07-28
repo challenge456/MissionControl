@@ -6,15 +6,12 @@
 import { SchematicSectionTitle } from "./SchematicSectionTitle";
 
 export interface FactoryArchitectureStats {
-  gateAuto: number;
-  gateGated: number;
-  skillCount: number;
-  factCount: number;
-  episodeCount: number;
-  consolidateEvery: number;
-  consolidatePending: number;
-  traceFiles: number;
-  evalPass: string | null;
+  pendingApprovals: number;
+  blockedTasks: number;
+  contextPackageCount: number;
+  knowledgeNodeCount: number;
+  completedRunCount: number;
+  recordedRunCount: number;
 }
 
 interface ArchNodeProps {
@@ -122,7 +119,7 @@ export function FactoryArchitectureDiagram({
   return (
     <section aria-label="Factory architecture">
       <SchematicSectionTitle className="mt-[26px] mb-2.5 flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.09em] text-ink-secondary">
-        <span>Architecture — click any box</span>
+        <span>Architecture map — click any box</span>
         {statusLabel ? (
           <span className="font-mono text-[11px] font-semibold normal-case tracking-normal text-schematic-accent">
             {statusLabel}
@@ -152,7 +149,7 @@ export function FactoryArchitectureDiagram({
 
           <rect className="schematic-container" x={12} y={20} width={1020} height={628} rx={16} />
           <GrpLabel x={16} y={4}>
-            HARNESS — runs in your factory · each turn is ephemeral
+            REFERENCE MODEL — measured records are labeled · planned flows are called out
           </GrpLabel>
 
           <ArchNode
@@ -173,7 +170,7 @@ export function FactoryArchitectureDiagram({
             w={144}
             h={56}
             title="Working memory"
-            sub="assembled per turn"
+            sub="per-turn context (reference)"
             view="skills"
             nodeId="wm"
             onNavigate={nav}
@@ -253,14 +250,14 @@ export function FactoryArchitectureDiagram({
             style={{ cursor: "pointer" }}
           />
           <text className="schematic-nt" x={264} y={292} textAnchor="middle" style={{ pointerEvents: "none" }}>
-            Context gate
+            Work state
           </text>
           <text className="schematic-ns" x={264} y={310} textAnchor="middle" style={{ pointerEvents: "none" }}>
-            {stats.gateAuto} auto · {stats.gateGated} gated
+            {stats.pendingApprovals} approvals · {stats.blockedTasks} blocked
           </text>
           <FlowPath d="M264 250 L264 128" dashed edgeId="e-gate-wm" />
           <FlowLabel x={274} y={196}>
-            only if needed
+            planned context selection
           </FlowLabel>
 
           <GrpLabel x={40} y={404}>
@@ -279,7 +276,7 @@ export function FactoryArchitectureDiagram({
             w={208}
             h={72}
             title="Procedural"
-            sub={`how to act · registry · ${stats.skillCount} skill(s)`}
+            sub={`${stats.contextPackageCount} context package(s)`}
             view="skills"
             nodeId="procedural"
             onNavigate={nav}
@@ -290,7 +287,7 @@ export function FactoryArchitectureDiagram({
             w={204}
             h={72}
             title="Semantic"
-            sub={`durable facts · ${stats.factCount} facts`}
+            sub={`${stats.knowledgeNodeCount} knowledge node(s)`}
             view="memory"
             nodeId="semantic"
             onNavigate={nav}
@@ -301,7 +298,7 @@ export function FactoryArchitectureDiagram({
             w={132}
             h={72}
             title="Episodic"
-            sub={`${stats.episodeCount} episodes`}
+            sub={`${stats.completedRunCount} completed run(s)`}
             view="telemetry"
             nodeId="episodic"
             onNavigate={nav}
@@ -312,8 +309,8 @@ export function FactoryArchitectureDiagram({
             y={576}
             w={384}
             h={52}
-            title={`Consolidation · every ${stats.consolidateEvery} exchanges`}
-            sub={`${stats.consolidatePending}/${stats.consolidateEvery * 2} queued → distilled into facts`}
+            title="Consolidation · planned"
+            sub="No scheduled consolidation job"
             view="skills"
             nodeId="consolidation"
             onNavigate={nav}
@@ -325,10 +322,10 @@ export function FactoryArchitectureDiagram({
 
           <rect className="schematic-container schematic-container-ops" x={736} y={40} width={280} height={372} rx={14} />
           <GrpLabel x={752} y={64}>
-            LLM OPS — offline improvement loop
+            OFFLINE IMPROVEMENT — planned operating model
           </GrpLabel>
           <FlowLabel x={752} y={80}>
-            observes each run · improves the agent
+            Drill-down views exist; no automated release path is active
           </FlowLabel>
           <path
             className="schematic-flow"
@@ -345,7 +342,7 @@ export function FactoryArchitectureDiagram({
             w={250}
             h={50}
             title="Trace"
-            sub={`${stats.traceFiles} file(s) · always on`}
+            sub={`${stats.recordedRunCount} recorded run(s)`}
             view="audit"
             nodeId="trace"
             onNavigate={nav}
@@ -357,7 +354,7 @@ export function FactoryArchitectureDiagram({
             w={250}
             h={50}
             title="Eval"
-            sub="deterministic + judge"
+            sub="quality dashboard"
             view="qc-dashboard"
             nodeId="eval"
             onNavigate={nav}
@@ -369,7 +366,7 @@ export function FactoryArchitectureDiagram({
             w={250}
             h={50}
             title="Release gate"
-            sub={stats.evalPass ?? "run eval suite"}
+            sub="not enforced"
             view="qc-runs"
             nodeId="release-gate"
             onNavigate={nav}
@@ -381,7 +378,7 @@ export function FactoryArchitectureDiagram({
             w={250}
             h={50}
             title="Release"
-            sub="new prompt · model · config"
+            sub="operator deployment flow"
             view="deployments"
             nodeId="release"
             onNavigate={nav}

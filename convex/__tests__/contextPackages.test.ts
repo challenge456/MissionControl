@@ -3,6 +3,7 @@ import {
   canTransitionPackageStatus,
   canTransitionVersionStatus,
   compareSemver,
+  findVersionByContentHash,
   isValidContentHash,
   isValidPackageSlug,
   isValidSemver,
@@ -117,6 +118,27 @@ describe("isValidContentHash", () => {
     expect(isValidContentHash(`sha256:${"a".repeat(65)}`)).toBe(false);
     expect(isValidContentHash(`sha256:${"A".repeat(64)}`)).toBe(false);
     expect(isValidContentHash(`sha256:${"g".repeat(64)}`)).toBe(false);
+  });
+});
+
+describe("findVersionByContentHash", () => {
+  const HASH_A = `sha256:${"a".repeat(64)}`;
+  const HASH_B = `sha256:${"b".repeat(64)}`;
+
+  it("reuses the matching version instead of creating a synthetic patch", () => {
+    const versions = [
+      { version: "0.1.0", contentHash: HASH_A },
+      { version: "0.1.1", contentHash: HASH_B },
+    ];
+
+    expect(findVersionByContentHash(versions, HASH_A)).toEqual(versions[0]);
+  });
+
+  it("does not match when content is new or hashing is unavailable", () => {
+    const versions = [{ version: "0.1.0", contentHash: HASH_A }];
+
+    expect(findVersionByContentHash(versions, HASH_B)).toBeUndefined();
+    expect(findVersionByContentHash(versions, undefined)).toBeUndefined();
   });
 });
 

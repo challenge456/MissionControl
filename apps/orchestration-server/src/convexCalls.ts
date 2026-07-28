@@ -26,6 +26,9 @@ export const ConvexQueries = {
     listExpiredApprovals: "workOrders:listExpiredApprovals",
     listStaleEvidence: "workOrders:listStaleEvidence",
   },
+  missions: {
+    get: "missions:get",
+  },
 } as const;
 
 export const ConvexMutations = {
@@ -43,6 +46,11 @@ export const ConvexMutations = {
     reopenWorkOrder: "workOrders:reopenWorkOrder",
     supersedeWorkOrder: "workOrders:supersedeWorkOrder",
     expireGovernanceRecords: "workOrders:expireGovernanceRecords",
+  },
+  missions: {
+    recordHandoff: "missions:recordHandoff",
+    recordValidationResult: "missions:recordValidationResult",
+    accept: "missions:accept",
   },
   factory: {
     ingestReceiptPacket: "factory/piBridge:ingestReceiptPacket",

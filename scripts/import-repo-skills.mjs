@@ -62,6 +62,7 @@ const targets = [
 ];
 
 let imported = 0;
+let unchanged = 0;
 for (const target of targets) {
   if (!existsSync(target.path)) continue;
   const content = readFileSync(target.path, "utf8");
@@ -92,9 +93,12 @@ for (const target of targets) {
     sourceCommitSha: commitSha,
     actorId: "import-repo-skills",
   });
-  console.log(
-    `✓ ${fm.name} — score ${lint.score}, version ${result?.version ?? "?"}`
-  );
-  imported++;
+  if (result?.imported === false) {
+    console.log(`= ${fm.name} — unchanged, version ${result.version}`);
+    unchanged++;
+  } else {
+    console.log(`✓ ${fm.name} — score ${lint.score}, version ${result?.version ?? "?"}`);
+    imported++;
+  }
 }
-console.log(`\n${imported}/${targets.length} skills imported.`);
+console.log(`\n${imported} imported, ${unchanged} unchanged (${targets.length} skills scanned).`);

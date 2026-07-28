@@ -109,9 +109,9 @@ jobs:
         run: |
           pnpm run ci:prepare
 
-      - name: Lint skills
+      - name: Gate skill quality (minimum 80)
         run: |
-          node scripts/skill-lint.mjs
+          node scripts/skill-lint.mjs --min-score 80
 
       - name: Run unit tests
         run: |

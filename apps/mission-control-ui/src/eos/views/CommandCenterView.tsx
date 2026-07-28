@@ -576,7 +576,6 @@ export function CommandCenterView({
           onNavigate={onNavigate}
           projectId={projectId}
           scannedAt={scannedAt}
-          evalPass={null}
           title="Factory overview"
         />
 

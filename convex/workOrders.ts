@@ -26,6 +26,7 @@ import {
   verificationValidUntil,
 } from "./lib/workOrderRevision";
 import { planAcceptedWorkOrderParentSync } from "./lib/workOrderParentSync";
+import { validateMissionWorkOrderDispatch } from "./lib/missionGovernance";
 import { resolveFlag, type FlagRow } from "./lib/flags";
 import {
   fallbackRoutingPolicy,
@@ -1185,6 +1186,11 @@ export const listStaleEvidence = query({
 export const create = mutation({
   args: {
     projectId: v.optional(v.id("projects")),
+    missionId: v.optional(v.id("missions")),
+    missionPlanId: v.optional(v.id("missionPlans")),
+    missionBlueprintId: v.optional(v.string()),
+    missionRole: v.optional(v.union(v.literal("WORKER"), v.literal("VALIDATOR"))),
+    isMutating: v.optional(v.boolean()),
     legacyTaskId: v.optional(v.id("tasks")),
     idempotencyKey: v.optional(v.string()),
     title: v.string(),
@@ -1219,6 +1225,27 @@ export const create = mutation({
     }
 
     const project = args.projectId ? await ctx.db.get(args.projectId) : null;
+    let mission: any = null;
+    let missionPlan: any = null;
+    let missionBlueprint: any = null;
+    if (args.missionId) {
+      mission = await ctx.db.get(args.missionId);
+      if (!mission) throw new Error("Mission not found");
+      if (mission.projectId !== args.projectId) throw new Error("Mission and WorkOrder project scopes must match");
+      if (!args.missionPlanId || !args.missionBlueprintId) throw new Error("Mission WorkOrders require an approved plan and blueprint");
+      missionPlan = await ctx.db.get(args.missionPlanId);
+      if (!missionPlan || missionPlan.missionId !== mission._id || mission.currentPlanId !== missionPlan._id || missionPlan.status !== "APPROVED") {
+        throw new Error("Mission WorkOrder must use the current approved plan");
+      }
+      missionBlueprint = missionPlan.workOrderBlueprints.find((blueprint: any) => blueprint.id === args.missionBlueprintId);
+      if (!missionBlueprint) throw new Error("Mission WorkOrder blueprint not found");
+      if (missionBlueprint.title !== args.title || missionBlueprint.desiredOutcome !== args.desiredOutcome) {
+        throw new Error("Mission WorkOrder must match its approved blueprint");
+      }
+      if ((args.missionRole ?? "WORKER") !== missionBlueprint.role) {
+        throw new Error("Mission WorkOrder role must match its approved blueprint");
+      }
+    }
     const now = Date.now();
     const finalCriteria = args.acceptanceCriteria.map((criterion) => ({
       ...criterion,
@@ -1228,6 +1255,12 @@ export const create = mutation({
     const workOrderId = await ctx.db.insert("workOrders", {
       tenantId: project?.tenantId,
       projectId: args.projectId,
+      missionId: args.missionId,
+      missionPlanId: args.missionPlanId,
+      missionSequence: missionBlueprint?.sequence,
+      missionRole: args.missionId ? (args.missionRole ?? "WORKER") : undefined,
+      isMutating: args.missionId ? missionBlueprint?.isMutating : args.isMutating,
+      releasedAt: args.missionId ? now : undefined,
       legacyTaskId: args.legacyTaskId,
       idempotencyKey: args.idempotencyKey,
       title: args.title,
@@ -1255,8 +1288,22 @@ export const create = mutation({
       acceptedRevisionNumber: undefined,
       createdAt: now,
       updatedAt: now,
-      metadata: args.metadata,
+      metadata: args.missionId ? { ...(args.metadata ?? {}), missionBlueprintId: args.missionBlueprintId } : args.metadata,
     });
+
+    if (mission && missionBlueprint) {
+      await Promise.all(missionBlueprint.assertionIds.map(async (assertionId: string) => {
+        const assertion = await ctx.db
+          .query("validationAssertions")
+          .withIndex("by_mission_assertion", (q: any) => q.eq("missionId", mission._id).eq("assertionId", assertionId))
+          .first();
+        if (!assertion) throw new Error(`Mission WorkOrder references an assertion that is not in the approved contract: ${assertionId}`);
+        await ctx.db.patch(assertion._id, {
+          linkedWorkOrderIds: [...assertion.linkedWorkOrderIds, workOrderId],
+          updatedAt: now,
+        });
+      }));
+    }
 
     const initialSnapshot = snapshotRevisionFields({
       ...args,
@@ -1407,6 +1454,51 @@ export const dispatch = mutation({
       .withIndex("by_work_order", (q) => q.eq("workOrderId", args.workOrderId))
       .collect();
 
+    if (refreshedWorkOrder.missionId) {
+      const mission = await ctx.db.get(refreshedWorkOrder.missionId);
+      const missionPlan = refreshedWorkOrder.missionPlanId
+        ? await ctx.db.get(refreshedWorkOrder.missionPlanId)
+        : null;
+      if (!mission || !missionPlan) throw new Error("Mission WorkOrder is missing its Mission plan");
+      const blueprintId = (refreshedWorkOrder.metadata as { missionBlueprintId?: string } | undefined)?.missionBlueprintId;
+      const blueprint = missionPlan.workOrderBlueprints.find((candidate: any) => candidate.id === blueprintId);
+      if (!blueprint) throw new Error("Mission WorkOrder blueprint not found");
+      const missionWorkOrders = await ctx.db
+        .query("workOrders")
+        .withIndex("by_mission", (q) => q.eq("missionId", mission._id))
+        .collect();
+      const dependencyWorkOrders = blueprint.dependsOnBlueprintIds.map((dependencyId: string) =>
+        missionWorkOrders.find((candidate: any) => candidate.metadata?.missionBlueprintId === dependencyId)
+      );
+      const predecessorHandoffResults = await Promise.all(dependencyWorkOrders.map(async (dependency: any) => {
+          if (!dependency) return false;
+          const handoff = await ctx.db
+            .query("missionHandoffs")
+            .withIndex("by_work_order", (q) => q.eq("workOrderId", dependency._id))
+            .order("desc")
+            .first();
+          return handoff?.outcome === "COMPLETE" && handoff.incompleteAssertionIds.length === 0 && handoff.unknownAssertionIds.length === 0;
+        }));
+      const predecessorHandoffValid =
+        dependencyWorkOrders.length === blueprint.dependsOnBlueprintIds.length &&
+        predecessorHandoffResults.every(Boolean);
+      const hasActiveMutatingWorkOrder = missionWorkOrders.some((candidate: any) =>
+        candidate._id !== refreshedWorkOrder._id && candidate.isMutating && ["DISPATCHED", "IN_PROGRESS"].includes(candidate.state)
+      );
+      const missionDispatch = validateMissionWorkOrderDispatch({
+        missionState: mission.state,
+        planApproved: missionPlan.status === "APPROVED" && mission.currentPlanId === missionPlan._id,
+        executionPolicy: mission.executionPolicy,
+        workOrderReleased: !!refreshedWorkOrder.releasedAt,
+        isMutating: refreshedWorkOrder.isMutating ?? true,
+        hasActiveMutatingWorkOrder,
+        predecessorHandoffValid,
+        budgetRemaining: mission.budgetUsd === undefined || mission.spentUsd < mission.budgetUsd,
+        correctiveIterationsRemaining: mission.correctiveIterations < mission.maxCorrectiveIterations,
+      });
+      if (!missionDispatch.ok) throw new Error(`Mission WorkOrder is not dispatchable (${missionDispatch.reason})`);
+    }
+
     const dispatchable = validateDispatchable({
       state: refreshedWorkOrder.state,
       riskLevel: refreshedWorkOrder.riskLevel,
@@ -1500,6 +1592,8 @@ export const dispatch = mutation({
       runId,
       workflowId: resolvedWorkflowId,
       projectId: refreshedWorkOrder.projectId,
+      missionId: refreshedWorkOrder.missionId,
+      missionRole: refreshedWorkOrder.missionId ? (refreshedWorkOrder.missionRole ?? "WORKER") : undefined,
       workOrderId: refreshedWorkOrder._id,
       workOrderRevisionNumber: refreshedWorkOrder.currentRevisionNumber ?? 1,
       workOrderRevisionId: refreshedWorkOrder.currentRevisionId,

@@ -1,8 +1,8 @@
 import { SchematicSectionTitle } from "./SchematicSectionTitle";
 
 interface DispatchGateBarProps {
-  autoRouted: number;
-  gated: number;
+  pendingApprovals: number;
+  blockedTasks: number;
   emptyCaption?: string;
 }
 
@@ -31,37 +31,37 @@ function GateSegment({
 }
 
 /**
- * Hero decision bar — adapted from waku-agent retrieval gate (gateSplit).
- * Shows auto-routed (green path) vs gated (policy/approval) turns.
+ * Measured work-state bar. It intentionally avoids inferring routing decisions
+ * from run and task totals.
  */
 export function DispatchGateBar({
-  autoRouted,
-  gated,
-  emptyCaption = "no runs yet — dispatch starts when agents claim work",
+  pendingApprovals,
+  blockedTasks,
+  emptyCaption = "no approvals or blocked work",
 }: DispatchGateBarProps): JSX.Element {
-  const total = autoRouted + gated;
-  const autoPct = total > 0 ? Math.round((autoRouted / total) * 100) : 100;
-  const gatedPct = total > 0 ? 100 - autoPct : 0;
+  const total = pendingApprovals + blockedTasks;
+  const approvalPct = total > 0 ? Math.round((pendingApprovals / total) * 100) : 0;
+  const blockedPct = total > 0 ? 100 - approvalPct : 0;
 
   return (
     <section aria-label="Dispatch gate">
-      <SchematicSectionTitle>Dispatch gate — the hero decision</SchematicSectionTitle>
+      <SchematicSectionTitle>Work state</SchematicSectionTitle>
       <div className="flex h-[26px] overflow-hidden rounded-md border border-line">
         {total === 0 ? (
-          <div className="w-full bg-schematic-accent opacity-35" />
+          <div className="w-full bg-surface-2" />
         ) : (
           <>
             <GateSegment
               className="flex min-w-0 items-center justify-center overflow-hidden whitespace-nowrap bg-schematic-accent text-[11px] font-semibold text-white"
-              widthPct={autoPct}
-              count={autoRouted}
-              label="auto"
+              widthPct={approvalPct}
+              count={pendingApprovals}
+              label="awaiting approval"
             />
             <GateSegment
               className="flex min-w-0 items-center justify-center overflow-hidden whitespace-nowrap bg-schematic-gate-retrieve text-[11px] font-semibold text-white"
-              widthPct={gatedPct}
-              count={gated}
-              label="gated"
+              widthPct={blockedPct}
+              count={blockedTasks}
+              label="blocked"
             />
           </>
         )}
@@ -69,7 +69,7 @@ export function DispatchGateBar({
       <p className="mt-1.5 text-[11.5px] tabular-nums text-ink-muted">
         {total === 0
           ? emptyCaption
-          : `the dispatch gate auto-routed ${autoPct}% of turns — policy only when risk demands it`}
+          : `${pendingApprovals} awaiting approval · ${blockedTasks} blocked`}
       </p>
     </section>
   );

@@ -338,9 +338,9 @@ export const schematicOverview = query({
       pendingApprovals = pending.length;
     }
 
-    const gated =
-      pendingApprovals +
-      scopedTasks.filter((t) => t.status === "NEEDS_APPROVAL" || t.status === "BLOCKED").length;
+    const blockedTasks = scopedTasks.filter((t) => t.status === "BLOCKED").length;
+    const approvalTasks = scopedTasks.filter((t) => t.status === "NEEDS_APPROVAL").length;
+    const gated = pendingApprovals + approvalTasks + blockedTasks;
     const autoRouted = Math.max(0, runs.length - gated);
 
     return {
@@ -348,13 +348,15 @@ export const schematicOverview = query({
       avgTurnMs,
       turns: runs.length,
       toolCalls: toolCallCount,
-      facts: factCount || skillCount,
+      facts: factCount,
       events: activities.length,
       gateAuto: autoRouted,
       gateGated: gated,
+      pendingApprovals,
+      blockedTasks,
       skillCount,
       episodeCount: runs.filter((r) => r.status === "COMPLETED").length,
-      traceFiles: Math.min(runs.length, 7),
+      traceFiles: runs.length,
       taskCount: scopedTasks.length,
       opEventCount: opEvents.length,
       alertCount,

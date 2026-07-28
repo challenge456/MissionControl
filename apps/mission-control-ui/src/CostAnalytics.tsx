@@ -16,17 +16,17 @@ const CARD_CLASS = "rounded-xl border border-line bg-surface-1 p-4";
 export function CostAnalytics({ projectId, onClose }: CostAnalyticsProps) {
   const runs = useQuery(
     api.runs.listRecent,
-    { limit: 1000 }
+    projectId ? { projectId, limit: 1000 } : "skip"
   );
 
   const agents = useQuery(
     api.agents.listAll,
-    projectId ? { projectId } : {}
+    projectId ? { projectId } : "skip"
   );
 
   const tasks = useQuery(
     api.tasks.listAll,
-    projectId ? { projectId } : {}
+    projectId ? { projectId } : "skip"
   );
 
   if (!runs || !agents || !tasks) {
