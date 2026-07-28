@@ -9,6 +9,7 @@ import { FeedbackView } from "../FeedbackView";
 import { AnalyticsView } from "../AnalyticsView";
 import { DataExplorerView } from "../eos/views/DataExplorerView";
 import { useFlag } from "../hooks/useFlag";
+import { ModelRoutingView } from "../ModelRoutingView";
 
 export interface PlatformSectionProps {
   currentView: MainView;
@@ -81,6 +82,9 @@ export function PlatformSection({
   }
   if (currentView === "analytics") {
     return projectId ? <AnalyticsView projectId={projectId} /> : null;
+  }
+  if (currentView === "model-routing") {
+    return projectId ? <ModelRoutingView projectId={projectId} /> : null;
   }
   return null;
 }

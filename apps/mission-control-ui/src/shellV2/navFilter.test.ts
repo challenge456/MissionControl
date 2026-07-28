@@ -29,9 +29,25 @@ describe("filterNavGroups", () => {
     const views = items.map((item) => item.view);
 
     expect(views).toContain("agents");
+    expect(views).toContain("model-routing");
     expect(views).not.toContain("agent-catalog");
     expect(views).not.toContain("dossier");
     expect(items.find((item) => item.view === "docs")?.badge).toBe("Global");
+    expect(views).toEqual([
+      "command-center",
+      "control-work-orders",
+      "tasks",
+      "agents",
+      "atc",
+      "audit",
+      "telemetry",
+      "skills",
+      "memory",
+      "docs",
+      "identity",
+      "projects",
+      "model-routing",
+    ]);
   });
 
   it("exposes preview and demo routes only through their explicit flags", () => {

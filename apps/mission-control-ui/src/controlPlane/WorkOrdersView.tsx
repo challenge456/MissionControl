@@ -699,7 +699,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                         try {
                           setDispatchError(null);
                           setDispatchingId(selected.workOrder._id);
-                          await dispatchWorkOrder({
+                          const result = await dispatchWorkOrder({
                             workOrderId: selected.workOrder._id,
                             workflowId: selected.workOrder.workflowId,
                             actorType: "HUMAN",
@@ -707,6 +707,9 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                             idempotencyKey: `ui-dispatch:${selected.workOrder._id}:${selected.workOrder.updatedAt}`,
                             runtime: "Mission Control UI",
                           });
+                          if (result.reason === "routing-exhausted") {
+                            throw new Error("Dispatch blocked: no safe model route satisfies this Work Order.");
+                          }
                         } catch (err) {
                           setDispatchError(err instanceof Error ? err.message : "Dispatch failed");
                         } finally {
@@ -1003,7 +1006,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
               setDispatchError(null);
               setDispatchingId(selected.workOrder._id);
               try {
-                await dispatchWorkOrder({
+                const result = await dispatchWorkOrder({
                   workOrderId: selected.workOrder._id,
                   workflowId: selected.workOrder.workflowId,
                   actorType: "HUMAN",
@@ -1015,6 +1018,9 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                   retryOfWorkflowRunId: workflowRunId,
                   retryReason: reason,
                 });
+                if (result.reason === "routing-exhausted") {
+                  throw new Error("Retry blocked: no safe model route satisfies this Work Order.");
+                }
               } finally {
                 setDispatchingId(null);
               }

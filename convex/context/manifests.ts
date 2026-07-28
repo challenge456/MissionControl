@@ -191,9 +191,9 @@ export const listInstallationOverview = query({
 
 /** Per-repository rollups for the Installations dashboard. */
 export const listRepoSummaries = query({
-  args: {},
-  handler: async (ctx): Promise<RepoInstallationSummary[]> => {
-    const overview = await buildInstallationOverview(ctx);
+  args: { repoSlug: v.optional(v.string()) },
+  handler: async (ctx, args): Promise<RepoInstallationSummary[]> => {
+    const overview = await buildInstallationOverview(ctx, { repoSlug: args.repoSlug });
     const byRepo = new Map<string, EnrichedInstallation[]>();
     for (const row of overview) {
       const list = byRepo.get(row.repoSlug);

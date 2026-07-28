@@ -31,6 +31,7 @@ export const ROUTE_CAPABILITIES: Partial<Record<MainView, RouteCapability>> = {
   identity: { scope: "workspace", maturity: "live" },
   deployments: { scope: "workspace", maturity: "preview" },
   projects: { scope: "workspace", maturity: "live" },
+  "model-routing": { scope: "workspace", maturity: "live" },
 
   goals: { scope: "workspace", maturity: "preview" },
   factory: { scope: "workspace", maturity: "preview" },

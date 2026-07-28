@@ -162,6 +162,7 @@ export function Sidebar({
             onClick={onHide}
             className="rounded p-1 text-ink-muted hover:text-ink"
             title="Hide sidebar"
+            aria-label="Hide sidebar"
           >
             <ChevronLeft size={14} aria-hidden />
           </button>

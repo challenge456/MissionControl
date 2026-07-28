@@ -3,7 +3,7 @@ import {
   Activity, BarChart3, Bot, BookOpen, Brain, Building2, CheckCircle2,
   ClipboardList, Cog, FileSearch, FlaskConical, Gauge, GitBranch, Landmark,
   LayoutDashboard, ListChecks, Radar, ScrollText, Shield, Sparkles, Target,
-  TrendingUp, Wrench, Scale,
+  TrendingUp, Wrench, Scale, Route,
 } from "lucide-react";
 import type { MainView } from "../TopNav";
 import type { NavGroup } from "./navConfig";
@@ -63,14 +63,18 @@ export const EOS_NAV_GROUPS: NavGroup[] = [
   ]},
   { id: "administration", label: "Settings", icon: Building2, items: [
     { view: "projects" as MainView, label: "Workspaces & Repositories", icon: Building2 },
+    { view: "model-routing" as MainView, label: "Model Routing", icon: Route },
     { view: "gateway" as MainView, label: "Gateway", icon: Cog },
     { view: "system" as MainView, label: "Database", icon: Cog },
+  ]},
+  { id: "developer-tools", label: "Developer Tools", icon: Wrench, items: [
     { view: "design-system" as MainView, label: "Design DNA", icon: Sparkles },
     { view: "recorder" as MainView, label: "Recorder", icon: Activity },
     { view: "test-generation" as MainView, label: "Test Generation", icon: FlaskConical },
     { view: "api-import" as MainView, label: "API Import", icon: FileSearch },
   ]},
   { id: "labs", label: "Labs", icon: FlaskConical, items: [
+    { view: "agent-catalog" as MainView, label: "Agent Capability Catalog", icon: Bot },
     { view: "flaky-steps" as MainView, label: "Flaky Steps", icon: Activity },
     { view: "gherkin" as MainView, label: "Gherkin Studio", icon: ScrollText },
     { view: "hybrid-workflows" as MainView, label: "Hybrid Workflows", icon: GitBranch },

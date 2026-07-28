@@ -9,7 +9,7 @@ import { useResizableColumns } from "./useResizableColumns";
 import { groupForView, itemForView, allNavViews, NAV_GROUPS } from "./navConfig";
 import { EOS_NAV_GROUPS } from "./eosNavConfig";
 import { filterNavGroups } from "./navFilter";
-import { isRouteVisible } from "./routeCapabilities";
+import { isRouteVisible, routeBadge } from "./routeCapabilities";
 import { useNavGroupsWithCounts } from "./useNavGroupsWithCounts";
 import { useFlag } from "../hooks/useFlag";
 import { Breadcrumbs } from "../components/factory/Breadcrumbs";
@@ -94,6 +94,7 @@ export function AppShellV2({
     ...(group ? [{ label: group.label }] : []),
     ...(item ? [{ label: item.label, current: true }] : []),
   ];
+  const activeRouteBadge = eosPreview ? routeBadge(activeView) : undefined;
 
   useEffect(() => {
     const pathView = viewFromPath(location.pathname, validViews);
@@ -105,6 +106,13 @@ export function AppShellV2({
   }, [location.pathname, validViews.join(",")]);
 
   useEffect(() => {
+    const pathView = viewFromPath(location.pathname, validViews);
+    // Let the URL → state effect settle before writing state back to the URL.
+    // Without this guard a persisted view can replace a direct deep link on
+    // initial render (for example /v2/agents becoming /v2/command-center).
+    if (pathView && pathView !== activeView) {
+      return;
+    }
     if (
       eosPreview &&
       !isRouteVisible(activeView, { showPreviewRoutes, showDemoRoutes })
@@ -215,6 +223,7 @@ export function AppShellV2({
           onClick={() => columns.setNavHidden(false)}
           className="fixed left-3 top-3 z-30 flex h-[30px] w-[34px] items-center justify-center rounded-lg border border-line bg-surface-1 text-ink-secondary shadow-sm hover:text-ink"
           title="Show sidebar"
+          aria-label="Show sidebar"
         >
           <Menu size={16} aria-hidden />
         </button>
@@ -237,6 +246,11 @@ export function AppShellV2({
             <div className="min-w-0 overflow-hidden">
               <Breadcrumbs items={crumbs} />
             </div>
+            {activeRouteBadge ? (
+              <span className="shrink-0 rounded border border-line bg-surface-1 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.06em] text-ink-muted">
+                {activeRouteBadge}
+              </span>
+            ) : null}
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {headerActions}
@@ -301,6 +315,7 @@ export function AppShellV2({
               onClick={() => columns.setDockClosed(false)}
               className="fixed right-3 top-14 z-30 flex items-center gap-1 rounded-lg border border-line bg-surface-1 px-3 py-1.5 text-[12px] text-ink-secondary shadow-sm hover:text-ink"
               title="Open chat"
+              aria-label="Open chat"
             >
               <MessageSquare size={14} aria-hidden />
               Chat

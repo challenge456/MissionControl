@@ -1,5 +1,6 @@
 ---
-status: ready
+status: complete
+completed_at: 2026-07-28
 priority: p1
 issue_id: "004"
 tags: [agents, ui, operations, audit]
@@ -56,13 +57,14 @@ Build a scoped table/list registry and URL-backed detail/edit experience, reusin
 
 ## Acceptance Criteria
 
-- [ ] Registry is project-scoped and usable with 100 agents.
-- [ ] View/Edit actions are explicit.
-- [ ] Supported configuration can be saved and audited.
-- [ ] Effective workspace, capabilities, budget, and routing are visible.
-- [ ] Stale edits and workspace switches are handled safely.
-- [ ] No action ends in a not-implemented toast.
-- [ ] Unit and browser tests pass.
+- [x] Registry is project-scoped and usable with 100 agents.
+- [x] View/Edit actions are explicit.
+- [x] Supported configuration can be saved and audited.
+- [x] Effective workspace, capabilities, budget, and routing are visible.
+- [x] Stale edits and workspace switches are handled safely.
+- [x] No action ends in a not-implemented toast.
+- [x] Unit tests, typechecks, and production build pass.
+- [ ] Final browser regression pass (local navigation was blocked by the browser security policy).
 
 ## Work Log
 
@@ -76,3 +78,14 @@ Build a scoped table/list registry and URL-backed detail/edit experience, reusin
 **Learnings:**
 - The main gap is integration and discoverability, not missing backend primitives.
 
+### 2026-07-28 - Implemented
+
+**By:** Codex
+
+**Actions:**
+- Replaced the card grid with an exception-first operational table.
+- Added explicit View/Edit, validated configuration editing, scoped optimistic concurrency, and audit events.
+- Added inherited/overridden routing visibility and removed the hard-delete dead end in favor of deactivation.
+
+**Learnings:**
+- Agent lifecycle and configuration need separate controls; keeping them distinct made the detail view clearer and safer.

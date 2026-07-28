@@ -169,7 +169,7 @@ function readRequestedProjectId(): Id<"projects"> | null {
 
 const VALID_MAIN_VIEWS: MainView[] = [
   "home", "atc", "tasks", "agents", "directory", "policies", "deployments", "audit", "telemetry",
-  "dag", "chat", "council", "calendar", "projects", "memory", "captures", "docs", "skills", "people", "org",
+  "dag", "chat", "council", "calendar", "projects", "model-routing", "memory", "captures", "docs", "skills", "people", "org",
   "design-system",
   "office", "live-office", "search", "identity", "telegraph", "meetings", "voice", "content-pipeline",
   "crm", "command", "code", "recorder", "test-generation", "api-import", "execution", "flaky-steps",
@@ -362,7 +362,7 @@ function viewToSection(view: MainView): CommandSection {
     ].includes(view)
   )
     return "knowledge";
-  if (["system", "radar", "factory", "pipeline", "feedback", "analytics", "command-center", "missions", "mission-detail", "trace-inspector", "effectiveness", "factory-health", "readiness", "friction", "agent-catalog", "dossier", "recommendations"].includes(view)) return "platform";
+  if (["system", "radar", "factory", "pipeline", "feedback", "analytics", "model-routing", "command-center", "missions", "mission-detail", "trace-inspector", "effectiveness", "factory-health", "readiness", "friction", "agent-catalog", "dossier", "recommendations"].includes(view)) return "platform";
   if ([
     "code", "recorder", "test-generation", "api-import", "execution",
     "flaky-steps", "hybrid-workflows", "schedule", "codegen", "gherkin", "metrics",

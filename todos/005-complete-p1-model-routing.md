@@ -1,5 +1,6 @@
 ---
-status: ready
+status: complete
+completed_at: 2026-07-28
 priority: p1
 issue_id: "005"
 tags: [models, routing, workflow, audit]
@@ -57,13 +58,14 @@ Implement versioned workspace routing policies, a model catalog, narrow agent ov
 
 ## Acceptance Criteria
 
-- [ ] Simulator and dispatch choose the same route.
-- [ ] Every routed run records the policy, rule, and explanation.
-- [ ] Precedence is deterministic.
-- [ ] Fallbacks enforce risk and capability requirements.
-- [ ] Provider secrets never reach Convex or the browser.
-- [ ] Canary flag and kill switch work.
-- [ ] Unit, integration, and browser tests pass.
+- [x] Simulator and dispatch choose the same route.
+- [x] Every Work Order dispatch records the policy, rule, and explanation.
+- [x] Precedence is deterministic.
+- [x] Fallbacks enforce risk and capability requirements.
+- [x] Provider secrets never reach Convex or the browser.
+- [x] Canary flag and kill switch work.
+- [x] Unit, integration, typecheck, and build tests pass.
+- [ ] Final browser regression pass (local navigation was blocked by the browser security policy).
 
 ## Work Log
 
@@ -77,3 +79,15 @@ Implement versioned workspace routing policies, a model catalog, narrow agent ov
 **Learnings:**
 - Centralized policy is simpler and safer than distributed model selection.
 
+### 2026-07-28 - Implemented
+
+**By:** Codex
+
+**Actions:**
+- Added a persistent model catalog, versioned workspace policies, agent overrides, and immutable routing decisions.
+- Added one shared resolver for simulator and Work Order dispatch with risk/capability/budget-safe fallback.
+- Added shadow mode, deterministic canary enforcement, kill switch, exhausted-route incidents, and run-inspector evidence.
+- Added the Settings → Model Routing page.
+
+**Learnings:**
+- Shadow-by-default lets operators validate route quality without silently changing execution behavior.

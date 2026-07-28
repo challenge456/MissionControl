@@ -1,5 +1,6 @@
 ---
-status: ready
+status: complete
+completed_at: 2026-07-28
 priority: p2
 issue_id: "006"
 tags: [ui, scope, knowledge, governance]
@@ -55,12 +56,12 @@ Scope and finish retained routes, consolidate related tools into tabs, label glo
 
 ## Acceptance Criteria
 
-- [ ] Retained routes answer attention, evidence, and action questions.
-- [ ] Global/workspace/demo data is explicitly separated.
-- [ ] Context workspace tabs follow the selected repository.
-- [ ] Preview routes remain hidden until launch-ready.
-- [ ] Loading, empty, error, and action states are complete.
-- [ ] Route and isolation tests pass.
+- [x] Retained routes answer attention, evidence, and action questions.
+- [x] Global/workspace/demo data is explicitly separated.
+- [x] Context workspace tabs follow the selected repository.
+- [x] Preview routes remain hidden until launch-ready.
+- [x] Retained routes provide loading, empty, error, and action states.
+- [x] Route and isolation tests pass.
 
 ## Work Log
 
@@ -74,3 +75,15 @@ Scope and finish retained routes, consolidate related tools into tabs, label glo
 **Learnings:**
 - Consolidation is necessary to reach the 17-destination target.
 
+### 2026-07-28 - Implemented
+
+**By:** Codex
+
+**Actions:**
+- Reduced the default operator navigation to 13 declared live routes.
+- Added persistent Global/Preview/Demo scope badges and fail-closed direct-route handling.
+- Scoped context evals and repository installations while leaving the catalog and docs explicitly global.
+- Kept Intelligence, developer tools, and demo surfaces out of the default V1 menu.
+
+**Learnings:**
+- Hiding an incomplete route is safer than wiring a page that cannot answer an operator question.

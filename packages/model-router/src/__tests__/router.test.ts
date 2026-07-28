@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { CostEstimator } from "../cost-estimator";
 import { ModelRouter } from "../router";
 import type { ModelConfig } from "../types";
+import { resolveModelRoute } from "../policy";
 
 const STANDARD_MODEL: ModelConfig = {
   id: "standard-test",
@@ -69,5 +70,74 @@ describe("ModelRouter", () => {
     router.initialize({ openaiApiKey: "test-key" });
 
     expect(router.selectModel({ messages: [], riskLevel: "RED" })).toBe("gpt-4o");
+  });
+});
+
+describe("resolveModelRoute", () => {
+  const catalog = [
+    {
+      modelId: "fast",
+      provider: "test",
+      displayName: "Fast",
+      tier: "FAST" as const,
+      capabilities: ["text"],
+      supportsTools: false,
+      riskApproved: false,
+      availability: "HEALTHY" as const,
+      deprecated: false,
+      estimatedCostPerRunUsd: 0.02,
+    },
+    {
+      modelId: "safe",
+      provider: "test",
+      displayName: "Safe",
+      tier: "POWERFUL" as const,
+      capabilities: ["text", "code"],
+      supportsTools: true,
+      riskApproved: true,
+      availability: "HEALTHY" as const,
+      deprecated: false,
+      estimatedCostPerRunUsd: 0.2,
+    },
+  ];
+  const policy = {
+    version: 3,
+    defaultModelId: "fast",
+    safeFallbackModelId: "safe",
+    fallbackChain: ["safe"],
+    rules: [],
+    killSwitch: false,
+  };
+
+  it("uses the safe fallback instead of an unsafe downgrade", () => {
+    const result = resolveModelRoute(catalog, policy, {
+      riskLevel: "HIGH",
+      requiredCapabilities: ["tools"],
+    });
+    expect(result).toMatchObject({
+      status: "SELECTED",
+      selectedModelId: "safe",
+    });
+  });
+
+  it("uses workflow tier before an agent override", () => {
+    const result = resolveModelRoute(catalog, policy, {
+      riskLevel: "LOW",
+      requestedTier: "FAST",
+      requiredCapabilities: [],
+      agentOverrideModelId: "safe",
+    });
+    expect(result).toMatchObject({
+      selectedModelId: "fast",
+      source: "WORKFLOW_TIER",
+    });
+  });
+
+  it("reports exhausted routes instead of choosing an unsafe model", () => {
+    const result = resolveModelRoute(catalog, policy, {
+      riskLevel: "CRITICAL",
+      requiredCapabilities: ["vision"],
+    });
+    expect(result.status).toBe("EXHAUSTED");
   });
 });

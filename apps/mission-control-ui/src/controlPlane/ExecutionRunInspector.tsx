@@ -43,6 +43,10 @@ export function ExecutionRunInspector({
         }
       : "skip"
   );
+  const routingDecision = useQuery(
+    api.modelRoutingDecisions.getForWorkflowRun,
+    open && workflowRunId ? { workflowRunId } : "skip"
+  );
 
   const orderedEvents = useMemo(() => orderTimelineEvents((inspector?.events ?? []) as any), [inspector?.events]);
   const attention = useMemo(() => latestHumanAttention((inspector?.events ?? []) as any), [inspector?.events]);
@@ -92,6 +96,35 @@ export function ExecutionRunInspector({
                   <Meta label="Blocking issue" value={inspector.summary.blockingIssue ?? "—"} />
                   <Meta label="Human intervention" value={attention ?? (inspector.summary.humanInterventionRequired ? "Required" : "Not required")} />
                 </div>
+              </Card>
+
+              <Card className="p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-medium text-foreground">Model routing evidence</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      The exact policy decision captured before provider execution.
+                    </div>
+                  </div>
+                  <Badge variant="outline">
+                    {routingDecision?.mode ?? "Route unknown (legacy)"}
+                  </Badge>
+                </div>
+                {routingDecision ? (
+                  <div className="mt-4 grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
+                    <Meta label="Selected model" value={routingDecision.selectedModelId ?? "No safe route"} />
+                    <Meta label="Provider" value={routingDecision.selectedProvider ?? "—"} />
+                    <Meta label="Source" value={routingDecision.source} />
+                    <Meta label="Policy version" value={`v${routingDecision.policyVersion}`} />
+                    <div className="md:col-span-2 xl:col-span-4">
+                      <Meta label="Explanation" value={routingDecision.explanation} />
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mt-3 text-sm text-muted-foreground">
+                    This run predates routing evidence or was created outside Work Order dispatch.
+                  </p>
+                )}
               </Card>
 
               {inspector.run.status === "FAILED" ? (
