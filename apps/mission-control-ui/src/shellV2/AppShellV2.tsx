@@ -168,6 +168,10 @@ export function AppShellV2({
 
   const navigateFromSidebar = (view: MainView) => {
     onNavigate(view);
+    const expected = `${ROUTE_PREFIX}/${view}`;
+    if (location.pathname !== expected) {
+      navigate({ pathname: expected, search: location.search });
+    }
     setMobileNavOpen(false);
   };
 
@@ -212,7 +216,7 @@ export function AppShellV2({
             width={columns.navWidth}
             groups={navGroups}
             activeView={activeView}
-            onNavigate={onNavigate}
+            onNavigate={navigateFromSidebar}
             onOpenSearch={onOpenSearch}
             workspaceSwitcher={workspaceSwitcher}
             footer={footer}

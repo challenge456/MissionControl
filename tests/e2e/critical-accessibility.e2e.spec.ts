@@ -4,7 +4,7 @@ import { expect, test, type Page, type TestInfo } from "@playwright/test";
 const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 
 const CRITICAL_ROUTES = [
-  { route: "/v2/home", heading: "Overview" },
+  { route: "/v2/home", heading: "Command Center" },
   { route: "/v2/tasks", heading: "Tasks" },
   { route: "/v2/control-work-orders", heading: "Work Orders" },
   { route: "/v2/control-approvals", heading: "Approval Center" },
@@ -83,6 +83,7 @@ for (const entry of CRITICAL_ROUTES) {
       await expect(
         page.getByRole("heading", { name: entry.heading, exact: true }).first()
       ).toBeVisible({ timeout: 15_000 });
+      await expect(page).toHaveURL((url) => url.pathname === entry.route);
 
       await assertNoCriticalAccessibilityViolations(
         page,

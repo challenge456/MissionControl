@@ -18,6 +18,7 @@ export interface RouteCapability {
 export const ROUTE_CAPABILITIES: Partial<Record<MainView, RouteCapability>> = {
   "command-center": { scope: "workspace", maturity: "live" },
   "control-work-orders": { scope: "workspace", maturity: "live" },
+  "control-approvals": { scope: "workspace", maturity: "live" },
   tasks: { scope: "workspace", maturity: "live" },
   "trace-inspector": { scope: "workspace", maturity: "preview" },
   agents: { scope: "workspace", maturity: "live" },
