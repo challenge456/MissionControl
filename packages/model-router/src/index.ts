@@ -12,6 +12,7 @@
 
 export { ModelRouter } from "./router";
 export { CostEstimator } from "./cost-estimator";
+export { resolveModelRoute } from "./policy";
 export { ClaudeProvider, CLAUDE_MODELS } from "./providers/claude";
 export { OpenAIProvider, OPENAI_MODELS } from "./providers/openai";
 export type {
@@ -26,3 +27,13 @@ export type {
   FallbackConfig,
   RouterConfig,
 } from "./types";
+export type {
+  CatalogModel,
+  ModelRoutingResult,
+  RouteModelInput,
+  RoutingPolicyInput,
+  RoutingRisk,
+  RoutingRule,
+  RoutingSource,
+  RoutingTier,
+} from "./policy";

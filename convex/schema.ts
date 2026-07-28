@@ -677,6 +677,17 @@ export default defineSchema({
     githubRepo: v.optional(v.string()), // e.g., "owner/repo"
     githubBranch: v.optional(v.string()),
     githubWebhookSecret: v.optional(v.string()),
+    repositoryStatus: v.optional(
+      v.union(
+        v.literal("UNCONFIGURED"),
+        v.literal("CONFIGURED"),
+        v.literal("READY"),
+        v.literal("DEGRADED"),
+        v.literal("ERROR")
+      )
+    ),
+    repositoryValidatedAt: v.optional(v.number()),
+    repositoryValidationError: v.optional(v.string()),
     
     // Agent swarm configuration
     swarmConfig: v.optional(v.object({
@@ -702,6 +713,152 @@ export default defineSchema({
     .index("by_slug", ["slug"])
     .index("by_github_repo", ["githubRepo"])
     .index("by_tenant_slug", ["tenantId", "slug"]),
+
+  // Executor-local checkout reports for a project repository. A checkout path
+  // belongs to one host and is never treated as a portable project property.
+  workspaceHostBindings: defineTable({
+    projectId: v.id("projects"),
+    hostId: v.string(),
+    repository: v.string(),
+    checkoutRoot: v.string(),
+    observedBranch: v.optional(v.string()),
+    observedCommit: v.optional(v.string()),
+    dirty: v.boolean(),
+    status: v.union(
+      v.literal("READY"),
+      v.literal("MISSING"),
+      v.literal("STALE"),
+      v.literal("DIRTY"),
+      v.literal("ERROR")
+    ),
+    error: v.optional(v.string()),
+    checkedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_host", ["projectId", "hostId"])
+    .index("by_host", ["hostId"]),
+
+  // -------------------------------------------------------------------------
+  // MODEL ROUTING CONTROL PLANE
+  // -------------------------------------------------------------------------
+  modelCatalog: defineTable({
+    provider: v.string(),
+    modelId: v.string(),
+    displayName: v.string(),
+    tier: v.union(
+      v.literal("FAST"),
+      v.literal("BALANCED"),
+      v.literal("POWERFUL")
+    ),
+    capabilities: v.array(v.string()),
+    supportsTools: v.boolean(),
+    riskApproved: v.boolean(),
+    contextWindow: v.number(),
+    availability: v.union(
+      v.literal("HEALTHY"),
+      v.literal("DEGRADED"),
+      v.literal("RATE_LIMITED"),
+      v.literal("UNAVAILABLE")
+    ),
+    estimatedCostPerRunUsd: v.optional(v.number()),
+    deprecated: v.boolean(),
+    updatedAt: v.number(),
+  })
+    .index("by_model_id", ["modelId"])
+    .index("by_provider", ["provider"])
+    .index("by_availability", ["availability"]),
+
+  modelRoutingPolicies: defineTable({
+    projectId: v.id("projects"),
+    name: v.string(),
+    status: v.union(
+      v.literal("ACTIVE"),
+      v.literal("DRAFT"),
+      v.literal("ARCHIVED")
+    ),
+    defaultModelId: v.optional(v.string()),
+    safeFallbackModelId: v.optional(v.string()),
+    rules: v.array(v.object({
+      id: v.string(),
+      order: v.number(),
+      taskType: v.optional(v.string()),
+      riskLevel: v.optional(workOrderRiskLevel),
+      requiredCapabilities: v.optional(v.array(v.string())),
+      modelId: v.string(),
+    })),
+    fallbackChain: v.array(v.string()),
+    budgetLimitUsd: v.optional(v.number()),
+    latencyTargetMs: v.optional(v.number()),
+    canaryPercent: v.number(),
+    killSwitch: v.boolean(),
+    version: v.number(),
+    createdBy: v.optional(v.string()),
+    updatedBy: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_status", ["projectId", "status"]),
+
+  agentModelOverrides: defineTable({
+    projectId: v.id("projects"),
+    agentId: v.id("agents"),
+    modelId: v.string(),
+    reason: v.string(),
+    expiresAt: v.optional(v.number()),
+    createdBy: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_agent", ["agentId"])
+    .index("by_project_agent", ["projectId", "agentId"]),
+
+  modelRoutingDecisions: defineTable({
+    projectId: v.id("projects"),
+    policyId: v.optional(v.id("modelRoutingPolicies")),
+    policyVersion: v.number(),
+    workOrderId: v.optional(v.id("workOrders")),
+    taskId: v.optional(v.id("tasks")),
+    workflowRunId: v.optional(v.id("workflowRuns")),
+    agentId: v.optional(v.id("agents")),
+    taskType: v.optional(v.string()),
+    riskLevel: workOrderRiskLevel,
+    requestedTier: v.optional(v.union(
+      v.literal("FAST"),
+      v.literal("BALANCED"),
+      v.literal("POWERFUL")
+    )),
+    requiredCapabilities: v.array(v.string()),
+    selectedProvider: v.optional(v.string()),
+    selectedModelId: v.optional(v.string()),
+    source: v.union(
+      v.literal("RUN_OVERRIDE"),
+      v.literal("WORKFLOW_TIER"),
+      v.literal("AGENT_OVERRIDE"),
+      v.literal("POLICY_RULE"),
+      v.literal("WORKSPACE_DEFAULT"),
+      v.literal("SYSTEM_DEFAULT")
+    ),
+    ruleId: v.optional(v.string()),
+    explanation: v.string(),
+    alternativesConsidered: v.array(v.object({
+      modelId: v.string(),
+      eligible: v.boolean(),
+      reason: v.string(),
+    })),
+    mode: v.union(
+      v.literal("SHADOW"),
+      v.literal("ENFORCED"),
+      v.literal("KILLED"),
+      v.literal("EXHAUSTED")
+    ),
+    createdAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_created", ["projectId", "createdAt"])
+    .index("by_work_order", ["workOrderId"])
+    .index("by_workflow_run", ["workflowRunId"]),
 
   // -------------------------------------------------------------------------
   // SOFTWARE FACTORY: WORK ORDERS
@@ -1077,6 +1234,7 @@ export default defineSchema({
     canSpawn: v.boolean(),
     maxSubAgents: v.number(),
     parentAgentId: v.optional(v.id("agents")),
+    configVersion: v.optional(v.number()),
     
     // State
     currentTaskId: v.optional(v.id("tasks")),
@@ -2723,6 +2881,7 @@ export default defineSchema({
     // Execution environment
     runtime: v.optional(v.string()),
     model: v.optional(v.string()),
+    routingDecisionId: v.optional(v.id("modelRoutingDecisions")),
     worktree: v.optional(v.string()),
     failureReason: v.optional(v.string()),
     humanInterventions: v.optional(v.number()),

@@ -11,6 +11,8 @@ import { AgentCatalogView } from "./views/AgentCatalogView";
 import { DossierView } from "./views/DossierView";
 import { RecommendationsView } from "./views/RecommendationsView";
 import { DemoTourBar } from "./components";
+import { useFlag } from "../hooks/useFlag";
+import type { Id } from "../../../../convex/_generated/dataModel";
 
 export const EOS_VIEWS = [
   "command-center", "missions", "mission-detail", "trace-inspector",
@@ -24,26 +26,43 @@ export function isEosView(view: string): view is EosView {
   return (EOS_VIEWS as readonly string[]).includes(view);
 }
 
-export function EosViewRenderer({ view, onNavigate }: { view: EosView; onNavigate: (v: string) => void }): JSX.Element {
+export function EosViewRenderer({
+  view,
+  projectId,
+  onNavigate,
+}: {
+  view: EosView;
+  projectId: Id<"projects">;
+  onNavigate: (v: string) => void;
+}): JSX.Element {
+  const showDemoTour = useFlag("ui.navigation.demo-routes");
   return (
     <>
-      <EosViewBody view={view} onNavigate={onNavigate} />
-      <DemoTourBar currentView={view} onNavigate={onNavigate} />
+      <EosViewBody view={view} projectId={projectId} onNavigate={onNavigate} />
+      {showDemoTour ? <DemoTourBar currentView={view} onNavigate={onNavigate} /> : null}
     </>
   );
 }
 
-function EosViewBody({ view, onNavigate }: { view: EosView; onNavigate: (v: string) => void }): JSX.Element {
+function EosViewBody({
+  view,
+  projectId,
+  onNavigate,
+}: {
+  view: EosView;
+  projectId: Id<"projects">;
+  onNavigate: (v: string) => void;
+}): JSX.Element {
   switch (view) {
-    case "command-center": return <CommandCenterView onNavigate={onNavigate} />;
+    case "command-center": return <CommandCenterView projectId={projectId} onNavigate={onNavigate} />;
     case "missions": return <MissionPortfolioView onNavigate={onNavigate} />;
     case "mission-detail": return <MissionDetailView onNavigate={onNavigate} />;
-    case "trace-inspector": return <ExecutionInspectorView onNavigate={onNavigate} />;
+    case "trace-inspector": return <ExecutionInspectorView projectId={projectId} onNavigate={onNavigate} />;
     case "effectiveness": return <EffectivenessView onNavigate={onNavigate} />;
     case "factory-health":
       return (
         <>
-          <FactoryOpsView onNavigate={onNavigate} />
+          <FactoryOpsView projectId={projectId} onNavigate={onNavigate} />
           <FactoryHealthView onNavigate={onNavigate} />
         </>
       );

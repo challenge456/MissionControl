@@ -370,6 +370,16 @@ app.post("/workorders/:workOrderId/dispatch", async (c) => {
       model: body.model,
       worktree: body.worktree,
     });
+    if ((result as any)?.reason === "routing-exhausted") {
+      return c.json(
+        {
+          success: false,
+          error: "No safe model route satisfies this Work Order",
+          result,
+        },
+        409
+      );
+    }
     return c.json({ success: true, result });
   } catch (err: any) {
     return c.json({ error: err.message }, 400);

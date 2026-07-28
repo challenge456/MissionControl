@@ -387,6 +387,7 @@ export const request = mutation({
 export const approve = mutation({
   args: {
     approvalId: v.id("approvals"),
+    projectId: v.optional(v.id("projects")),
     decidedByAgentId: v.optional(v.id("agents")),
     decidedByUserId: v.optional(v.string()),
     reason: v.optional(v.string()),
@@ -395,6 +396,9 @@ export const approve = mutation({
     const approval = await ctx.db.get(args.approvalId);
     if (!approval) {
       return { success: false, error: "Approval not found" };
+    }
+    if (args.projectId && approval.projectId !== args.projectId) {
+      return { success: false, error: "Approval does not belong to the selected workspace" };
     }
 
     if (!["PENDING", "ESCALATED"].includes(approval.status)) {

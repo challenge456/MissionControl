@@ -9,6 +9,7 @@ import { FeedbackView } from "../FeedbackView";
 import { AnalyticsView } from "../AnalyticsView";
 import { DataExplorerView } from "../eos/views/DataExplorerView";
 import { useFlag } from "../hooks/useFlag";
+import { ModelRoutingView } from "../ModelRoutingView";
 
 export interface PlatformSectionProps {
   currentView: MainView;
@@ -29,8 +30,13 @@ export function PlatformSection({
 }: PlatformSectionProps) {
   const eosPreview = useFlag("eos.command-center-preview");
   if (isEosView(currentView)) {
+    if (!projectId) return null;
     return (
-      <EosViewRenderer view={currentView} onNavigate={onNavigate as (v: string) => void} />
+      <EosViewRenderer
+        view={currentView}
+        projectId={projectId}
+        onNavigate={onNavigate as (v: string) => void}
+      />
     );
   }
   if (currentView === "system") {
@@ -75,7 +81,10 @@ export function PlatformSection({
     return <FeedbackView projectId={projectId} onNavigate={onNavigate} />;
   }
   if (currentView === "analytics") {
-    return <AnalyticsView />;
+    return projectId ? <AnalyticsView projectId={projectId} /> : null;
+  }
+  if (currentView === "model-routing") {
+    return projectId ? <ModelRoutingView projectId={projectId} /> : null;
   }
   return null;
 }

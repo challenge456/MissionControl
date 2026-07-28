@@ -9,6 +9,7 @@ import { useResizableColumns } from "./useResizableColumns";
 import { groupForView, itemForView, allNavViews, NAV_GROUPS } from "./navConfig";
 import { EOS_NAV_GROUPS } from "./eosNavConfig";
 import { filterNavGroups } from "./navFilter";
+import { isRouteVisible, routeBadge } from "./routeCapabilities";
 import { useNavGroupsWithCounts } from "./useNavGroupsWithCounts";
 import { useFlag } from "../hooks/useFlag";
 import { Breadcrumbs } from "../components/factory/Breadcrumbs";
@@ -19,10 +20,19 @@ import type { Id } from "../../../../convex/_generated/dataModel";
 const ROUTE_PREFIX = "/v2";
 const COMPACT_SHELL_QUERY = "(max-width: 899px)";
 
-function viewFromPath(pathname: string, validViews: string[]): MainView | null {
+export function viewFromPath(pathname: string, validViews: string[]): MainView | null {
   if (!pathname.startsWith(`${ROUTE_PREFIX}/`)) return null;
   const candidate = pathname.slice(ROUTE_PREFIX.length + 1).split("/")[0];
   return validViews.includes(candidate) ? (candidate as MainView) : null;
+}
+
+export function shouldDeferRouteWrite(
+  pathname: string,
+  validViews: string[],
+  activeView: MainView
+): boolean {
+  const pathView = viewFromPath(pathname, validViews);
+  return pathView !== null && pathView !== activeView;
 }
 
 interface AppShellV2Props {
@@ -67,8 +77,15 @@ export function AppShellV2({
 
   const eosPreview = useFlag("eos.command-center-preview");
   const showControlStubs = useFlag("ui.control.stubs");
+  const showPreviewRoutes = useFlag("ui.navigation.previews");
+  const showDemoRoutes = useFlag("ui.navigation.demo-routes");
   const baseNavGroups = eosPreview ? EOS_NAV_GROUPS : NAV_GROUPS;
-  const filteredGroups = filterNavGroups(baseNavGroups, { showControlStubs });
+  const filteredGroups = filterNavGroups(baseNavGroups, {
+    showControlStubs,
+    enforceRouteCapabilities: eosPreview,
+    showPreviewRoutes,
+    showDemoRoutes,
+  });
   const navGroups = useNavGroupsWithCounts(filteredGroups, projectId);
   const validViews = [
     ...new Set([
@@ -86,6 +103,7 @@ export function AppShellV2({
     ...(group ? [{ label: group.label }] : []),
     ...(item ? [{ label: item.label, current: true }] : []),
   ];
+  const activeRouteBadge = eosPreview ? routeBadge(activeView) : undefined;
 
   useEffect(() => {
     const pathView = viewFromPath(location.pathname, validViews);
@@ -97,14 +115,36 @@ export function AppShellV2({
   }, [location.pathname, validViews.join(",")]);
 
   useEffect(() => {
+    // Let the URL → state effect settle before writing state back to the URL.
+    // Without this guard a persisted view can replace a direct deep link on
+    // initial render (for example /v2/agents becoming /v2/command-center).
+    if (shouldDeferRouteWrite(location.pathname, validViews, activeView)) {
+      return;
+    }
+    if (
+      eosPreview &&
+      !isRouteVisible(activeView, { showPreviewRoutes, showDemoRoutes })
+    ) {
+      onNavigate("command-center");
+      return;
+    }
     if (syncingFromUrl.current) {
       syncingFromUrl.current = false;
       return;
     }
     const expected = `${ROUTE_PREFIX}/${activeView}`;
-    if (location.pathname !== expected) navigate(expected);
+    if (location.pathname !== expected) {
+      navigate({ pathname: expected, search: location.search }, { replace: true });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeView]);
+  }, [
+    activeView,
+    eosPreview,
+    location.pathname,
+    location.search,
+    showDemoRoutes,
+    showPreviewRoutes,
+  ]);
 
   useEffect(() => {
     document.body.classList.toggle("shell-resizing", columns.resizing);
@@ -191,6 +231,7 @@ export function AppShellV2({
           onClick={() => columns.setNavHidden(false)}
           className="fixed left-3 top-3 z-30 flex h-[30px] w-[34px] items-center justify-center rounded-lg border border-line bg-surface-1 text-ink-secondary shadow-sm hover:text-ink"
           title="Show sidebar"
+          aria-label="Show sidebar"
         >
           <Menu size={16} aria-hidden />
         </button>
@@ -213,6 +254,11 @@ export function AppShellV2({
             <div className="min-w-0 overflow-hidden">
               <Breadcrumbs items={crumbs} />
             </div>
+            {activeRouteBadge ? (
+              <span className="shrink-0 rounded border border-line bg-surface-1 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.06em] text-ink-muted">
+                {activeRouteBadge}
+              </span>
+            ) : null}
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {headerActions}
@@ -277,6 +323,7 @@ export function AppShellV2({
               onClick={() => columns.setDockClosed(false)}
               className="fixed right-3 top-14 z-30 flex items-center gap-1 rounded-lg border border-line bg-surface-1 px-3 py-1.5 text-[12px] text-ink-secondary shadow-sm hover:text-ink"
               title="Open chat"
+              aria-label="Open chat"
             >
               <MessageSquare size={14} aria-hidden />
               Chat

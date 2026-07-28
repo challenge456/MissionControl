@@ -29,11 +29,11 @@ export function FactorySchematicOverview({
 }: FactorySchematicOverviewProps): JSX.Element {
   const stats = useQuery(
     api.analytics.schematicOverview,
-    projectId ? { projectId } : {}
+    projectId ? { projectId } : "skip"
   );
   const latestTurn = useQuery(
     api.analytics.recentRunTurns,
-    projectId ? { projectId, limit: 1 } : { limit: 1 }
+    projectId ? { projectId, limit: 1 } : "skip"
   );
 
   const loading = stats === undefined;

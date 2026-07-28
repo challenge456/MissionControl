@@ -90,6 +90,7 @@ import type * as lib_knowledgeGraph from "../lib/knowledgeGraph.js";
 import type * as lib_legacyToolPolicy from "../lib/legacyToolPolicy.js";
 import type * as lib_loopEngineering from "../lib/loopEngineering.js";
 import type * as lib_mergeGates from "../lib/mergeGates.js";
+import type * as lib_modelRouting from "../lib/modelRouting.js";
 import type * as lib_operatorControls from "../lib/operatorControls.js";
 import type * as lib_outputValidation from "../lib/outputValidation.js";
 import type * as lib_piBridgeEnvelope from "../lib/piBridgeEnvelope.js";
@@ -106,7 +107,9 @@ import type * as lib_workOrderParentSync from "../lib/workOrderParentSync.js";
 import type * as lib_workOrderRevision from "../lib/workOrderRevision.js";
 import type * as lib_workOrders from "../lib/workOrders.js";
 import type * as lib_workflowObservability from "../lib/workflowObservability.js";
+import type * as lib_workflowRunState from "../lib/workflowRunState.js";
 import type * as lib_workflowTaskGuards from "../lib/workflowTaskGuards.js";
+import type * as lib_workspaceBindings from "../lib/workspaceBindings.js";
 import type * as loopEngineering from "../loopEngineering.js";
 import type * as loops from "../loops.js";
 import type * as meetings from "../meetings.js";
@@ -115,6 +118,9 @@ import type * as metrics from "../metrics.js";
 import type * as migrations_backfillInstanceRefs from "../migrations/backfillInstanceRefs.js";
 import type * as mission from "../mission.js";
 import type * as missionChat from "../missionChat.js";
+import type * as modelCatalog from "../modelCatalog.js";
+import type * as modelRoutingDecisions from "../modelRoutingDecisions.js";
+import type * as modelRoutingPolicies from "../modelRoutingPolicies.js";
 import type * as monitoring from "../monitoring.js";
 import type * as notifications from "../notifications.js";
 import type * as openclawDiscovery from "../openclawDiscovery.js";
@@ -174,6 +180,7 @@ import type * as workOrders from "../workOrders.js";
 import type * as workflowMetrics from "../workflowMetrics.js";
 import type * as workflowRuns from "../workflowRuns.js";
 import type * as workflows from "../workflows.js";
+import type * as workspaceHostBindings from "../workspaceHostBindings.js";
 
 import type {
   ApiFromModules,
@@ -264,6 +271,7 @@ declare const fullApi: ApiFromModules<{
   "lib/legacyToolPolicy": typeof lib_legacyToolPolicy;
   "lib/loopEngineering": typeof lib_loopEngineering;
   "lib/mergeGates": typeof lib_mergeGates;
+  "lib/modelRouting": typeof lib_modelRouting;
   "lib/operatorControls": typeof lib_operatorControls;
   "lib/outputValidation": typeof lib_outputValidation;
   "lib/piBridgeEnvelope": typeof lib_piBridgeEnvelope;
@@ -280,7 +288,9 @@ declare const fullApi: ApiFromModules<{
   "lib/workOrderRevision": typeof lib_workOrderRevision;
   "lib/workOrders": typeof lib_workOrders;
   "lib/workflowObservability": typeof lib_workflowObservability;
+  "lib/workflowRunState": typeof lib_workflowRunState;
   "lib/workflowTaskGuards": typeof lib_workflowTaskGuards;
+  "lib/workspaceBindings": typeof lib_workspaceBindings;
   loopEngineering: typeof loopEngineering;
   loops: typeof loops;
   meetings: typeof meetings;
@@ -289,6 +299,9 @@ declare const fullApi: ApiFromModules<{
   "migrations/backfillInstanceRefs": typeof migrations_backfillInstanceRefs;
   mission: typeof mission;
   missionChat: typeof missionChat;
+  modelCatalog: typeof modelCatalog;
+  modelRoutingDecisions: typeof modelRoutingDecisions;
+  modelRoutingPolicies: typeof modelRoutingPolicies;
   monitoring: typeof monitoring;
   notifications: typeof notifications;
   openclawDiscovery: typeof openclawDiscovery;
@@ -348,6 +361,7 @@ declare const fullApi: ApiFromModules<{
   workflowMetrics: typeof workflowMetrics;
   workflowRuns: typeof workflowRuns;
   workflows: typeof workflows;
+  workspaceHostBindings: typeof workspaceHostBindings;
 }>;
 
 /**

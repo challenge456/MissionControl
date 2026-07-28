@@ -16,6 +16,7 @@ export type MainView =
   | "council"
   | "calendar"
   | "projects"
+  | "model-routing"
   | "memory"
   | "captures"
   | "docs"

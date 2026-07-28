@@ -9,6 +9,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { buildFactoryProjectSeed } from "./lib/factoryProjectSeed";
 import { deriveVerificationStatus } from "./lib/workOrders";
+import { isValidRepositorySlug } from "./lib/workspaceBindings";
 
 // ============================================================================
 // QUERIES
@@ -281,9 +282,8 @@ export const connectRepository = mutation({
 
     const repository = args.repository.trim();
     const defaultBranch = args.defaultBranch.trim();
-    const repositoryPattern = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
-    if (!repositoryPattern.test(repository)) {
+    if (!isValidRepositorySlug(repository)) {
       return {
         success: false,
         error: "Use the repository format owner/repository.",
@@ -297,6 +297,9 @@ export const connectRepository = mutation({
     await ctx.db.patch(args.projectId, {
       githubRepo: repository,
       githubBranch: defaultBranch,
+      repositoryStatus: "CONFIGURED",
+      repositoryValidatedAt: undefined,
+      repositoryValidationError: undefined,
     });
 
     await ctx.db.insert("activities", {
@@ -320,6 +323,51 @@ export const connectRepository = mutation({
       success: true,
       project: await ctx.db.get(args.projectId),
     };
+  },
+});
+
+/**
+ * Record remote repository validation performed by an orchestration host.
+ * Credentials remain on the host; Convex stores only the result.
+ */
+export const reportRepositoryValidation = mutation({
+  args: {
+    projectId: v.id("projects"),
+    status: v.union(
+      v.literal("READY"),
+      v.literal("DEGRADED"),
+      v.literal("ERROR")
+    ),
+    error: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const project = await ctx.db.get(args.projectId);
+    if (!project) return { success: false, error: "Workspace not found" };
+    if (!project.githubRepo) {
+      return { success: false, error: "Connect a repository before reporting validation" };
+    }
+
+    const validatedAt = Date.now();
+    await ctx.db.patch(args.projectId, {
+      repositoryStatus: args.status,
+      repositoryValidatedAt: validatedAt,
+      repositoryValidationError: args.error,
+    });
+    await ctx.db.insert("activities", {
+      projectId: args.projectId,
+      actorType: "SYSTEM",
+      action: "REPOSITORY_VALIDATED",
+      description: `${project.githubRepo} validation reported ${args.status.toLowerCase()}`,
+      targetType: "PROJECT",
+      targetId: args.projectId,
+      metadata: {
+        status: args.status,
+        error: args.error,
+        validatedAt,
+      },
+    });
+
+    return { success: true, project: await ctx.db.get(args.projectId) };
   },
 });
 

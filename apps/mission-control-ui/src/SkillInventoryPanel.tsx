@@ -111,8 +111,8 @@ function buildTriageItems(
 }
 
 /** Skill inventory triage view (Tessl estate / Skill Inventory pattern). */
-export function SkillInventoryPanel(): JSX.Element {
-  const installations = useQuery(api.context.manifests.listInstallationOverview, {});
+export function SkillInventoryPanel({ repoSlug }: { repoSlug?: string }): JSX.Element {
+  const installations = useQuery(api.context.manifests.listInstallationOverview, { repoSlug });
   const packages = useQuery(api.context.packages.listWithCurrentVersions, {});
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -163,7 +163,9 @@ export function SkillInventoryPanel(): JSX.Element {
         <div>
           <h2 className="text-[22px] font-semibold text-ink">Skill inventory</h2>
           <p className="mt-1 text-[13px] text-ink-muted">
-            Cross-repo context resolution — triage duplicates, stale locks, and outdated packages.
+            {repoSlug
+              ? `Context resolution for ${repoSlug} — triage stale locks and outdated packages.`
+              : "Cross-repo context resolution — triage duplicates, stale locks, and outdated packages."}
           </p>
         </div>
         <button

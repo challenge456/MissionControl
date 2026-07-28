@@ -51,6 +51,9 @@ export const KNOWN_FLAGS: FlagDefinition[] = [
   { key: "executor.pi-bridge", description: "Pi runtime receipt packet ingestion and dispatch envelope", defaultEnabled: false },
   { key: "eos.command-center-preview", description: "Engineering OS demo experience — Command Center, missions, lineage, intelligence views", defaultEnabled: false },
   { key: "ui.control.stubs", description: "Show preview-only Control plane stubs (Portfolio, Fleet) in navigation", defaultEnabled: false },
+  { key: "ui.navigation.previews", description: "Show preview routes in the v2 operator navigation", defaultEnabled: false },
+  { key: "ui.navigation.demo-routes", description: "Show explicitly demo-only routes and EOS demo tour controls", defaultEnabled: false },
+  { key: "model-routing.enabled", description: "Enforce workspace model routing decisions at Work Order dispatch", defaultEnabled: false },
 ];
 
 const KNOWN_FLAG_MAP: Map<string, FlagDefinition> = new Map(

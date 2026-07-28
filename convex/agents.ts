@@ -224,6 +224,7 @@ export const register = mutation({
       canSpawn: args.canSpawn ?? false,
       maxSubAgents: args.maxSubAgents ?? 0,
       parentAgentId: args.parentAgentId,
+      configVersion: 1,
       errorStreak: 0,
       lastHeartbeatAt: Date.now(),
       metadata: args.metadata,
@@ -379,6 +380,7 @@ export const heartbeat = mutation({
 export const updateStatus = mutation({
   args: {
     agentId: v.id("agents"),
+    projectId: v.optional(v.id("projects")),
     status: v.string(),
     reason: v.optional(v.string()),
   },
@@ -386,6 +388,9 @@ export const updateStatus = mutation({
     const agent = await ctx.db.get(args.agentId);
     if (!agent) {
       return { success: false, error: "Agent not found" };
+    }
+    if (args.projectId && agent.projectId !== args.projectId) {
+      return { success: false, error: "Agent does not belong to the selected workspace" };
     }
     
     const oldStatus = agent.status;
@@ -395,6 +400,7 @@ export const updateStatus = mutation({
     
     // Log activity
     await ctx.db.insert("activities", {
+      projectId: agent.projectId,
       actorType: "SYSTEM",
       actorId: undefined,
       action: "AGENT_STATUS_CHANGED",
@@ -499,27 +505,75 @@ export const resumeAll = mutation({
 export const update = mutation({
   args: {
     agentId: v.id("agents"),
+    projectId: v.optional(v.id("projects")),
+    expectedConfigVersion: v.optional(v.number()),
     name: v.optional(v.string()),
     emoji: v.optional(v.string()),
+    role: v.optional(
+      v.union(
+        v.literal("INTERN"),
+        v.literal("SPECIALIST"),
+        v.literal("LEAD"),
+        v.literal("CEO")
+      )
+    ),
+    workspacePath: v.optional(v.string()),
     allowedTaskTypes: v.optional(v.array(v.string())),
     allowedTools: v.optional(v.array(v.string())),
     budgetDaily: v.optional(v.number()),
     budgetPerRun: v.optional(v.number()),
+    canSpawn: v.optional(v.boolean()),
+    maxSubAgents: v.optional(v.number()),
     metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
-    const { agentId, ...updates } = args;
+    const { agentId, projectId, expectedConfigVersion, ...updates } = args;
     const agent = await ctx.db.get(agentId);
     if (!agent) throw new Error("Agent not found");
+    if (projectId && agent.projectId !== projectId) {
+      throw new Error("Agent does not belong to the selected workspace");
+    }
+    if (
+      expectedConfigVersion !== undefined &&
+      expectedConfigVersion !== (agent.configVersion ?? 0)
+    ) {
+      throw new Error("This agent changed after you opened it. Review the latest values and try again.");
+    }
+
+    const name = args.name?.trim();
+    const workspacePath = args.workspacePath?.trim();
+    if (args.name !== undefined && !name) throw new Error("Agent name is required");
+    if (args.workspacePath !== undefined && !workspacePath) {
+      throw new Error("Workspace path is required");
+    }
+    if (args.budgetDaily !== undefined && args.budgetDaily < 0) {
+      throw new Error("Daily budget cannot be negative");
+    }
+    if (args.budgetPerRun !== undefined && args.budgetPerRun < 0) {
+      throw new Error("Per-run budget cannot be negative");
+    }
+    if (
+      args.maxSubAgents !== undefined &&
+      (!Number.isInteger(args.maxSubAgents) || args.maxSubAgents < 0)
+    ) {
+      throw new Error("Maximum sub-agents must be a non-negative whole number");
+    }
 
     // Check name uniqueness when renaming
-    if (args.name !== undefined && args.name !== agent.name) {
-      const nameConflict = await ctx.db
-        .query("agents")
-        .withIndex("by_name", (q) => q.eq("name", args.name!))
-        .first();
+    if (name !== undefined && name !== agent.name) {
+      const nameConflict = agent.projectId
+        ? await ctx.db
+            .query("agents")
+            .withIndex("by_project_name", (q) =>
+              q.eq("projectId", agent.projectId).eq("name", name)
+            )
+            .first()
+        : await ctx.db
+            .query("agents")
+            .withIndex("by_name", (q) => q.eq("name", name))
+            .first();
       if (nameConflict && nameConflict._id !== agentId) {
-        throw new Error(`An agent with the name "${args.name}" already exists`);
+        throw new Error(`An agent with the name "${name}" already exists in this workspace`);
       }
     }
 
@@ -529,11 +583,14 @@ export const update = mutation({
         filtered[key] = value;
       }
     }
+    if (name !== undefined) filtered.name = name;
+    if (workspacePath !== undefined) filtered.workspacePath = workspacePath;
 
     if (Object.keys(filtered).length === 0) {
       return agent;
     }
 
+    filtered.configVersion = (agent.configVersion ?? 0) + 1;
     await ctx.db.patch(agentId, filtered);
 
     await ctx.db.insert("activities", {

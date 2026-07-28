@@ -316,6 +316,7 @@ export const getAllowedTransitionsForHuman = query({
 export const updateThreadRef = mutation({
   args: {
     taskId: v.id("tasks"),
+    projectId: v.optional(v.id("projects")),
     chatId: v.string(),
     threadId: v.string(),
   },
@@ -1114,6 +1115,7 @@ export const create = mutation({
 export const transition = mutation({
   args: {
     taskId: v.id("tasks"),
+    projectId: v.optional(v.id("projects")),
     toStatus: taskStatusValidator,
     actorType: v.union(v.literal("AGENT"), v.literal("HUMAN"), v.literal("SYSTEM")),
     actorAgentId: v.optional(v.id("agents")),
@@ -1151,6 +1153,15 @@ export const transition = mutation({
     
     if (existingTransition) {
       const task = await ctx.db.get(args.taskId);
+      if (args.projectId && task?.projectId !== args.projectId) {
+        return {
+          success: false,
+          errors: [{
+            field: "projectId",
+            message: "Task does not belong to the selected workspace",
+          }],
+        };
+      }
       return {
         success: true,
         task,
@@ -1165,6 +1176,15 @@ export const transition = mutation({
       return {
         success: false,
         errors: [{ field: "taskId", message: "Task not found" }],
+      };
+    }
+    if (args.projectId && task.projectId !== args.projectId) {
+      return {
+        success: false,
+        errors: [{
+          field: "projectId",
+          message: "Task does not belong to the selected workspace",
+        }],
       };
     }
     

@@ -580,15 +580,18 @@ export function MemoryView({ projectId }: MemoryViewProps) {
   const [journalSearch, setJournalSearch] = useState("");
   const [selectedJournalDocId, setSelectedJournalDocId] = useState<Id<"agentDocuments"> | null>(null);
 
-  const agentDocs = useQuery(api.agentDocuments.list, {
-    projectId: projectId ?? undefined,
-  });
-  const agentPatterns = useQuery(api.agentLearning.listPatterns, {
-    projectId: projectId ?? undefined,
-  });
-  const agents = useQuery(api.agents.list, {
-    projectId: projectId ?? undefined,
-  });
+  const agentDocs = useQuery(
+    api.agentDocuments.list,
+    projectId ? { projectId } : "skip"
+  );
+  const agentPatterns = useQuery(
+    api.agentLearning.listPatterns,
+    projectId ? { projectId } : "skip"
+  );
+  const agents = useQuery(
+    api.agents.list,
+    projectId ? { projectId } : "skip"
+  );
 
   const removeDoc = useMutation(api.agentDocuments.remove);
   const removePattern = useMutation(api.agentLearning.removePattern);

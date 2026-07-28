@@ -41,6 +41,8 @@ export interface NavItem {
   icon: LucideIcon;
   /** Optional count badge (waku-agent nav pattern) */
   count?: number;
+  /** Scope or maturity label applied by the route capability registry. */
+  badge?: "Global" | "Preview" | "Demo";
 }
 
 export interface NavGroup {
