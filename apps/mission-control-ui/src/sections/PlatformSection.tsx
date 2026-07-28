@@ -29,8 +29,13 @@ export function PlatformSection({
 }: PlatformSectionProps) {
   const eosPreview = useFlag("eos.command-center-preview");
   if (isEosView(currentView)) {
+    if (!projectId) return null;
     return (
-      <EosViewRenderer view={currentView} onNavigate={onNavigate as (v: string) => void} />
+      <EosViewRenderer
+        view={currentView}
+        projectId={projectId}
+        onNavigate={onNavigate as (v: string) => void}
+      />
     );
   }
   if (currentView === "system") {
@@ -75,7 +80,7 @@ export function PlatformSection({
     return <FeedbackView projectId={projectId} onNavigate={onNavigate} />;
   }
   if (currentView === "analytics") {
-    return <AnalyticsView />;
+    return projectId ? <AnalyticsView projectId={projectId} /> : null;
   }
   return null;
 }

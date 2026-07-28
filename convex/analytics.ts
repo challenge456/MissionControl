@@ -22,7 +22,10 @@ interface KpiDatum {
 }
 
 export const kpiSummary = query({
-  args: { periodDays: v.number() },
+  args: {
+    projectId: v.id("projects"),
+    periodDays: v.number(),
+  },
   handler: async (
     ctx,
     args
@@ -38,10 +41,11 @@ export const kpiSummary = query({
     const priorStart = now - 2 * periodMs;
 
     // Runs + cost (local scale — full collect is fine).
-    const runs = await ctx.db
+    const runs = (await ctx.db
       .query("runs")
-      .filter((q) => q.gte(q.field("startedAt"), priorStart))
-      .collect();
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect())
+      .filter((run) => run.startedAt >= priorStart);
     let runsCurrent = 0;
     let runsPrior = 0;
     let costCurrent = 0;
@@ -58,10 +62,11 @@ export const kpiSummary = query({
 
     // Tasks completed — approximated by DONE tasks whose completion timestamp
     // (completedAt, falling back to _creationTime) lands in the window.
-    const doneTasks = await ctx.db
+    const doneTasks = (await ctx.db
       .query("tasks")
-      .withIndex("by_status", (q) => q.eq("status", "DONE"))
-      .collect();
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect())
+      .filter((task) => task.status === "DONE");
     let tasksCurrent = 0;
     let tasksPrior = 0;
     for (const task of doneTasks) {
@@ -71,15 +76,11 @@ export const kpiSummary = query({
     }
 
     // Policy denials — DENIED tool calls in each window.
-    const deniedCalls = await ctx.db
+    const deniedCalls = (await ctx.db
       .query("toolCalls")
-      .filter((q) =>
-        q.and(
-          q.eq(q.field("status"), "DENIED"),
-          q.gte(q.field("startedAt"), priorStart)
-        )
-      )
-      .collect();
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect())
+      .filter((call) => call.status === "DENIED" && call.startedAt >= priorStart);
     let denialsCurrent = 0;
     let denialsPrior = 0;
     for (const call of deniedCalls) {
@@ -105,7 +106,10 @@ export const kpiSummary = query({
 const MAX_MODELS = 4;
 
 export const dailyModelCost = query({
-  args: { periodDays: v.number() },
+  args: {
+    projectId: v.id("projects"),
+    periodDays: v.number(),
+  },
   handler: async (
     ctx,
     args
@@ -117,10 +121,11 @@ export const dailyModelCost = query({
     const periodDays = Math.max(1, Math.floor(args.periodDays));
     const start = now - periodDays * DAY_MS;
 
-    const runs = await ctx.db
+    const runs = (await ctx.db
       .query("runs")
-      .filter((q) => q.gte(q.field("startedAt"), start))
-      .collect();
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect())
+      .filter((run) => run.startedAt >= start);
 
     // Total cost per model → keep the top MAX_MODELS, fold the rest into "other".
     const totals = new Map<string, number>();
@@ -166,9 +171,10 @@ const WEEKDAY_NAMES = [
 ];
 
 export const activityHeatmap = query({
-  args: {},
+  args: { projectId: v.id("projects") },
   handler: async (
-    ctx
+    ctx,
+    args
   ): Promise<{
     days: Array<{ date: string; count: number }>;
     stats: {
@@ -181,10 +187,11 @@ export const activityHeatmap = query({
     const now = Date.now();
     const cutoff = now - HEATMAP_DAYS * DAY_MS;
 
-    const activities = await ctx.db
+    const activities = (await ctx.db
       .query("activities")
-      .filter((q) => q.gte(q.field("_creationTime"), cutoff))
-      .collect();
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect())
+      .filter((activity) => activity._creationTime >= cutoff);
 
     // Zero-filled counts for the past 365 days, oldest first.
     const counts = new Map<string, number>();

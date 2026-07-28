@@ -379,6 +379,7 @@ export const heartbeat = mutation({
 export const updateStatus = mutation({
   args: {
     agentId: v.id("agents"),
+    projectId: v.optional(v.id("projects")),
     status: v.string(),
     reason: v.optional(v.string()),
   },
@@ -386,6 +387,9 @@ export const updateStatus = mutation({
     const agent = await ctx.db.get(args.agentId);
     if (!agent) {
       return { success: false, error: "Agent not found" };
+    }
+    if (args.projectId && agent.projectId !== args.projectId) {
+      return { success: false, error: "Agent does not belong to the selected workspace" };
     }
     
     const oldStatus = agent.status;
@@ -395,6 +399,7 @@ export const updateStatus = mutation({
     
     // Log activity
     await ctx.db.insert("activities", {
+      projectId: agent.projectId,
       actorType: "SYSTEM",
       actorId: undefined,
       action: "AGENT_STATUS_CHANGED",

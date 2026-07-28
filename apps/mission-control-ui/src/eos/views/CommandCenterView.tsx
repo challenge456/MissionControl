@@ -21,6 +21,7 @@ import { QuotaFuelGauge } from "../../components/QuotaFuelGauge";
 import { cn } from "../../lib/utils";
 import { buildAttentionItems, exceptionCounts } from "../../lib/attentionQueue";
 import { loadGatewayStatus } from "../../lib/gatewayStatus";
+import { useFlag } from "../../hooks/useFlag";
 import {
   EosSection,
   HealthSignalCard,
@@ -40,6 +41,7 @@ import { adaptHealthSignals, adaptRecommendations } from "../liveAdapters";
 import type { HealthStatus, HealthSignal, Insight } from "../types";
 
 export interface CommandCenterViewProps {
+  projectId: Id<"projects">;
   onNavigate: (view: string) => void;
 }
 
@@ -390,16 +392,18 @@ function FactoryReadinessCard({
   gatewayConfigured,
   agents,
   nextJobLabel,
+  showDemoContent,
 }: {
   gatewayConfigured: boolean | null;
   agents: Doc<"agents">[];
   nextJobLabel: string;
+  showDemoContent: boolean;
 }): JSX.Element {
   const activeAgents = agents.filter((a) => a.status === "ACTIVE").length;
   const quarantined = agents.filter((a) => a.status === "QUARANTINED").length;
   const rows: { label: string; value: React.ReactNode }[] = [
     {
-      label: "Gateway",
+      label: "Gateway (Global)",
       value:
         gatewayConfigured == null ? (
           <span className="text-ink-muted">Checking…</span>
@@ -414,8 +418,12 @@ function FactoryReadinessCard({
       value: `${activeAgents} active / ${agents.length}${quarantined > 0 ? ` · ${quarantined} quarantined` : ""}`,
     },
     { label: "Scheduler", value: nextJobLabel },
-    { label: "GitHub", value: <ProvenanceBadge provenance="disconnected" /> },
-    { label: "CI", value: <ProvenanceBadge provenance="disconnected" /> },
+    ...(showDemoContent
+      ? [
+          { label: "GitHub", value: <ProvenanceBadge provenance="disconnected" /> },
+          { label: "CI", value: <ProvenanceBadge provenance="disconnected" /> },
+        ]
+      : []),
   ];
   return (
     <div className={cn(CARD_CLASS, "p-4")}>
@@ -435,10 +443,14 @@ function FactoryReadinessCard({
 // Main view
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function CommandCenterView({ onNavigate }: CommandCenterViewProps): JSX.Element {
+export function CommandCenterView({
+  projectId,
+  onNavigate,
+}: CommandCenterViewProps): JSX.Element {
   const [gatewayConfigured, setGatewayConfigured] = useState<boolean | null>(null);
   const approveApproval = useMutation(api.approvals.approve);
   const transitionTask = useMutation(api.tasks.transition);
+  const showDemoContent = useFlag("ui.navigation.demo-routes");
 
   useEffect(() => {
     let cancelled = false;
@@ -453,21 +465,27 @@ export function CommandCenterView({ onNavigate }: CommandCenterViewProps): JSX.E
   }, []);
 
   // ── Live Convex data ───────────────────────────────────────────────────────
-  const approvals = useQuery(api.approvals.listPending, { limit: 25 });
-  const tasks = useQuery(api.tasks.listAll, {});
-  const openAlerts = useQuery(api.alerts.listOpen, { limit: 10 });
-  const agents = useQuery(api.agents.listAll, {});
-  const scheduledJobs = useQuery(api.scheduledJobs.list, {});
+  const approvals = useQuery(api.approvals.listPending, { projectId, limit: 25 });
+  const tasks = useQuery(api.tasks.listAll, { projectId });
+  const openAlerts = useQuery(api.alerts.listOpen, { projectId, limit: 10 });
+  const agents = useQuery(api.agents.listAll, { projectId });
+  const scheduledJobs = useQuery(api.scheduledJobs.list, { projectId });
   const quotaSnapshot = useQuery(api.quotaTracking.getLatestSnapshot, {});
-  const liveSignals = useQuery(api.eos.projections.getHealthSignals, {});
-  const liveRecs = useQuery(api.eos.projections.getRecommendations, {});
+  const liveSignals = useQuery(api.eos.projections.getHealthSignals, { projectId });
+  const liveRecs = useQuery(api.eos.projections.getRecommendations, { projectId });
 
   const healthSignals: HealthSignal[] =
     liveSignals && liveSignals.length > 0
       ? adaptHealthSignals(liveSignals as HealthSignal[])
-      : demoHealthSignals;
+      : showDemoContent
+        ? demoHealthSignals
+        : [];
   const insights: Insight[] =
-    liveRecs && liveRecs.length > 0 ? adaptRecommendations(liveRecs as Insight[]) : demoInsights;
+    liveRecs && liveRecs.length > 0
+      ? adaptRecommendations(liveRecs as Insight[])
+      : showDemoContent
+        ? demoInsights
+        : [];
 
   const alertsList = openAlerts ?? [];
   const blockedTasksList = (tasks ?? []).filter((t) => t.status === "BLOCKED");
@@ -493,6 +511,7 @@ export function CommandCenterView({ onNavigate }: CommandCenterViewProps): JSX.E
     approveApproval: async (approvalId) => {
       await approveApproval({
         approvalId,
+        projectId,
         decidedByUserId: "operator",
         reason: "Approved from Command Center",
       });
@@ -500,6 +519,7 @@ export function CommandCenterView({ onNavigate }: CommandCenterViewProps): JSX.E
     unblockTask: async (taskId) => {
       await transitionTask({
         taskId,
+        projectId,
         toStatus: "ASSIGNED",
         actorType: "HUMAN",
         actorUserId: "operator",
@@ -541,25 +561,26 @@ export function CommandCenterView({ onNavigate }: CommandCenterViewProps): JSX.E
           actions={
             <button
               type="button"
-              onClick={() => onNavigate("goals")}
+              onClick={() => onNavigate("control-work-orders")}
               className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-act px-3 text-[13px] font-medium text-act-ink transition-opacity duration-150 hover:opacity-90"
             >
               <Plus size={14} strokeWidth={1.75} aria-hidden />
-              New mission
+              Open work orders
             </button>
           }
         />
 
-        <PageProvenanceNote />
+        {showDemoContent ? <PageProvenanceNote /> : null}
 
         <FactorySchematicOverview
           onNavigate={onNavigate}
+          projectId={projectId}
           scannedAt={scannedAt}
           evalPass={null}
           title="Factory overview"
         />
 
-        <section className={cn(CARD_CLASS, "flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between")}>
+        {showDemoContent ? <section className={cn(CARD_CLASS, "flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between")}>
           <div>
             <div className="text-[15px] font-semibold text-ink">Run the demo</div>
             <p className="mt-1 max-w-xl text-[13px] text-ink-secondary">
@@ -573,7 +594,7 @@ export function CommandCenterView({ onNavigate }: CommandCenterViewProps): JSX.E
           >
             Open docs → Run the demo
           </button>
-        </section>
+        </section> : null}
 
         {attentionLoading ? (
           <LoadingRows count={4} />
@@ -588,16 +609,22 @@ export function CommandCenterView({ onNavigate }: CommandCenterViewProps): JSX.E
           />
         )}
 
-        <MissionAnchorCard onNavigate={onNavigate} />
+        {showDemoContent ? <MissionAnchorCard onNavigate={onNavigate} /> : null}
 
-        <div
-          className="grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-6"
-          aria-label="Factory health signals"
-        >
-          {healthSignals.map((signal) => (
-            <HealthSignalCard key={signal.id} signal={signal} onNavigate={onNavigate} />
-          ))}
-        </div>
+        {healthSignals.length > 0 ? (
+          <div
+            className="grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-6"
+            aria-label="Factory health signals"
+          >
+            {healthSignals.map((signal) => (
+              <HealthSignalCard key={signal.id} signal={signal} onNavigate={onNavigate} />
+            ))}
+          </div>
+        ) : (
+          <div className={cn(CARD_CLASS, "px-4 py-5 text-[13px] text-ink-secondary")}>
+            No workspace health exceptions are currently reported.
+          </div>
+        )}
 
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
           {/* Main column */}
@@ -605,16 +632,21 @@ export function CommandCenterView({ onNavigate }: CommandCenterViewProps): JSX.E
             <EosSection
               eyebrow="INTELLIGENCE"
               title="Recommended actions"
-              action={<ViewAllLink onClick={() => onNavigate("recommendations")} />}
             >
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                {insights.map((insight) => (
-                  <InsightCard key={insight.id} insight={insight} onNavigate={onNavigate} />
-                ))}
-              </div>
+              {insights.length > 0 ? (
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  {insights.map((insight) => (
+                    <InsightCard key={insight.id} insight={insight} onNavigate={onNavigate} />
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-line px-4 py-5 text-[13px] text-ink-secondary">
+                  No workspace recommendations are open.
+                </div>
+              )}
             </EosSection>
 
-            <EosSection
+            {showDemoContent ? <EosSection
               eyebrow="EXECUTION"
               title="Live factory activity"
               action={
@@ -625,7 +657,7 @@ export function CommandCenterView({ onNavigate }: CommandCenterViewProps): JSX.E
               }
             >
               <TimelineList onNavigate={onNavigate} />
-            </EosSection>
+            </EosSection> : null}
           </div>
 
           {/* Right rail */}
@@ -633,7 +665,7 @@ export function CommandCenterView({ onNavigate }: CommandCenterViewProps): JSX.E
             <EosSection
               eyebrow="WORKFORCE"
               title="AI workforce"
-              action={<ViewAllLink onClick={() => onNavigate("agent-catalog")} />}
+              action={<ViewAllLink onClick={() => onNavigate("agents")} />}
             >
               {!agents || !tasks ? (
                 <LoadingRows count={4} />
@@ -642,7 +674,7 @@ export function CommandCenterView({ onNavigate }: CommandCenterViewProps): JSX.E
               )}
             </EosSection>
 
-            <EosSection eyebrow="RESOURCES" title="Factory capacity">
+            <EosSection eyebrow="RESOURCES · GLOBAL" title="Provider capacity">
               <div className="flex flex-col gap-3">
                 <QuotaFuelGauge />
                 <CapacityPostureCard usagePct={quotaSnapshot?.usagePct ?? null} />
@@ -654,6 +686,7 @@ export function CommandCenterView({ onNavigate }: CommandCenterViewProps): JSX.E
                 gatewayConfigured={gatewayConfigured}
                 agents={agents ?? []}
                 nextJobLabel={nextJobLabel}
+                showDemoContent={showDemoContent}
               />
             </EosSection>
           </div>

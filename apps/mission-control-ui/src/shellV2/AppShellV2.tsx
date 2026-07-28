@@ -9,6 +9,7 @@ import { useResizableColumns } from "./useResizableColumns";
 import { groupForView, itemForView, allNavViews, NAV_GROUPS } from "./navConfig";
 import { EOS_NAV_GROUPS } from "./eosNavConfig";
 import { filterNavGroups } from "./navFilter";
+import { isRouteVisible } from "./routeCapabilities";
 import { useNavGroupsWithCounts } from "./useNavGroupsWithCounts";
 import { useFlag } from "../hooks/useFlag";
 import { Breadcrumbs } from "../components/factory/Breadcrumbs";
@@ -67,8 +68,15 @@ export function AppShellV2({
 
   const eosPreview = useFlag("eos.command-center-preview");
   const showControlStubs = useFlag("ui.control.stubs");
+  const showPreviewRoutes = useFlag("ui.navigation.previews");
+  const showDemoRoutes = useFlag("ui.navigation.demo-routes");
   const baseNavGroups = eosPreview ? EOS_NAV_GROUPS : NAV_GROUPS;
-  const filteredGroups = filterNavGroups(baseNavGroups, { showControlStubs });
+  const filteredGroups = filterNavGroups(baseNavGroups, {
+    showControlStubs,
+    enforceRouteCapabilities: eosPreview,
+    showPreviewRoutes,
+    showDemoRoutes,
+  });
   const navGroups = useNavGroupsWithCounts(filteredGroups, projectId);
   const validViews = [
     ...new Set([
@@ -97,14 +105,30 @@ export function AppShellV2({
   }, [location.pathname, validViews.join(",")]);
 
   useEffect(() => {
+    if (
+      eosPreview &&
+      !isRouteVisible(activeView, { showPreviewRoutes, showDemoRoutes })
+    ) {
+      onNavigate("command-center");
+      return;
+    }
     if (syncingFromUrl.current) {
       syncingFromUrl.current = false;
       return;
     }
     const expected = `${ROUTE_PREFIX}/${activeView}`;
-    if (location.pathname !== expected) navigate(expected);
+    if (location.pathname !== expected) {
+      navigate({ pathname: expected, search: location.search }, { replace: true });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeView]);
+  }, [
+    activeView,
+    eosPreview,
+    location.pathname,
+    location.search,
+    showDemoRoutes,
+    showPreviewRoutes,
+  ]);
 
   useEffect(() => {
     document.body.classList.toggle("shell-resizing", columns.resizing);

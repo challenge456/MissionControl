@@ -1,8 +1,8 @@
-import { useState, useEffect, createContext, useContext, useMemo, useCallback, lazy, Suspense } from "react";
+import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
 import { api } from "../../../convex/_generated/api";
-import type { Id, Doc } from "../../../convex/_generated/dataModel";
+import type { Id } from "../../../convex/_generated/dataModel";
 import { type MainView, type CommandSection } from "./TopNav";
 import { CommandNav } from "./components/CommandNav";
 import { TabBar, type TabItem } from "./components/TabBar";
@@ -15,6 +15,11 @@ import { useModalState } from "./hooks/useModalState";
 import { PrivacyProvider } from "./contexts/PrivacyContext";
 import { useFlag } from "./hooks/useFlag";
 import { AppShellV2 } from "./shellV2/AppShellV2";
+import { useSearchParams } from "react-router-dom";
+import {
+  WorkspaceScopeProvider,
+  useWorkspaceScope,
+} from "./workspace/WorkspaceScopeProvider";
 
 const DashboardOverview = lazy(() =>
   import("./DashboardOverview").then((module) => ({ default: module.DashboardOverview }))
@@ -59,16 +64,6 @@ const ControlSection = lazy(() =>
   import("./sections/ControlSection").then((module) => ({ default: module.ControlSection }))
 );
 
-// ============================================================================
-// PROJECT CONTEXT
-// ============================================================================
-
-interface ProjectContextType {
-  projectId: Id<"projects"> | null;
-  setProjectId: (id: Id<"projects"> | null) => void;
-  project: Doc<"projects"> | null | undefined;
-}
-
 type ShellAiTone = "active" | "thinking" | "idle" | "offline";
 
 interface ShellAiStatus {
@@ -80,23 +75,19 @@ interface ShellAiStatus {
   taskId: Id<"tasks"> | null;
 }
 
-const ProjectContext = createContext<ProjectContextType>({
-  projectId: null,
-  setProjectId: () => {},
-  project: null,
-});
-
-export function useProject() {
-  return useContext(ProjectContext);
-}
-
 // ============================================================================
 // PROJECT SWITCHER
 // ============================================================================
 
-function ProjectSwitcher() {
+function ProjectSwitcher({
+  onManage,
+  showDetails = false,
+}: {
+  onManage?: () => void;
+  showDetails?: boolean;
+}) {
   const projects = useQuery(api.projects.list);
-  const { projectId, setProjectId } = useProject();
+  const { projectId, setProjectId, project } = useWorkspaceScope();
 
   if (!projects) {
     return (
@@ -106,23 +97,54 @@ function ProjectSwitcher() {
     );
   }
 
+  const availableProjects = projects.filter((item) => item.status !== "ARCHIVED");
+  const repositoryStatus =
+    project?.repositoryStatus ?? (project?.githubRepo ? "CONFIGURED" : "UNCONFIGURED");
+
   return (
-    <select
-      aria-label="Workspace"
-      value={projectId ?? ""}
-      onChange={(e) => {
-        const value = e.target.value;
-        setProjectId(value ? (value as Id<"projects">) : null);
-      }}
-      className="h-9 min-w-[168px] rounded-lg border border-line bg-surface-1 px-3 text-[13.5px] font-medium text-ink transition-colors duration-150 cursor-pointer hover:border-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      <option value="">All Projects</option>
-      {projects.map((p) => (
-        <option key={p._id} value={p._id}>
-          {p.name}
+    <div className="space-y-2">
+      <select
+        aria-label="Workspace"
+        value={projectId ?? ""}
+        onChange={(e) => {
+          const value = e.target.value;
+          if (value) setProjectId(value as Id<"projects">);
+        }}
+        className="h-9 min-w-[168px] rounded-lg border border-line bg-surface-1 px-3 text-[13.5px] font-medium text-ink transition-colors duration-150 cursor-pointer hover:border-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <option value="" disabled>
+          {availableProjects.length === 0 ? "No workspaces" : "Select workspace"}
         </option>
-      ))}
-    </select>
+        {availableProjects.map((p) => (
+          <option key={p._id} value={p._id}>
+            {p.name}
+          </option>
+        ))}
+      </select>
+      {showDetails ? (
+        <div className="rounded-lg border border-line bg-surface-2 px-2.5 py-2">
+          <div className="truncate font-mono text-[10.5px] text-ink-secondary">
+            {project?.githubRepo ?? "No repository connected"}
+          </div>
+          <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-ink-muted">
+            <span className="truncate">
+              {project?.githubRepo
+                ? `${project.githubBranch || "main"} · ${repositoryStatus.toLowerCase()}`
+                : "Setup required"}
+            </span>
+            {onManage ? (
+              <button
+                type="button"
+                onClick={onManage}
+                className="shrink-0 font-medium text-ink-secondary hover:text-ink"
+              >
+                Manage
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -132,6 +154,18 @@ function ProjectSwitcher() {
 
 const STORAGE_KEY_VIEW = "mc.last_view";
 const STORAGE_KEY_PROJECT = "mc.last_project";
+
+function readRequestedProjectId(): Id<"projects"> | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const fromUrl = new URL(window.location.href).searchParams.get("workspace");
+    if (fromUrl) return fromUrl as Id<"projects">;
+    const persisted = window.localStorage.getItem(STORAGE_KEY_PROJECT);
+    return persisted ? (persisted as Id<"projects">) : null;
+  } catch {
+    return null;
+  }
+}
 
 const VALID_MAIN_VIEWS: MainView[] = [
   "home", "atc", "tasks", "agents", "directory", "policies", "deployments", "audit", "telemetry",
@@ -341,8 +375,8 @@ function viewToSection(view: MainView): CommandSection {
 // ============================================================================
 
 function useHeaderMetrics(projectId: Id<"projects"> | null) {
-  const agents = useQuery(api.agents.listAll, projectId ? { projectId } : {});
-  const tasks = useQuery(api.tasks.listAll, projectId ? { projectId } : {});
+  const agents = useQuery(api.agents.listAll, projectId ? { projectId } : "skip");
+  const tasks = useQuery(api.tasks.listAll, projectId ? { projectId } : "skip");
   const [statusTick, setStatusTick] = useState(() => Date.now());
   const activeCount = agents?.filter((a) => a.status === "ACTIVE").length ?? 0;
   const taskCount = tasks?.length ?? 0;
@@ -512,9 +546,12 @@ function SectionLoadingState() {
 // ============================================================================
 
 export default function App() {
+  const [searchParams, setSearchParams] = useSearchParams();
   // ── Navigation & selection (persist last view so UI reopens where operator left off) ─
   const [currentView, setCurrentView] = useState<MainView>(() => readPersistedView() ?? "home");
-  const [projectId, setProjectId] = useState<Id<"projects"> | null>(null);
+  const [projectId, setProjectId] = useState<Id<"projects"> | null>(
+    readRequestedProjectId
+  );
   const [selectedTaskId, setSelectedTaskId] = useState<Id<"tasks"> | null>(null);
   const [selectedQcRunId, setSelectedQcRunId] = useState<Id<"qcRuns"> | null>(null);
 
@@ -532,7 +569,7 @@ export default function App() {
   }>({ agents: [], priorities: [], types: [] });
 
   // ── Modal state (19 booleans extracted to hook) ──────────────────────────
-  const { modals, open, close } = useModalState();
+  const { modals, open, close, closeAll } = useModalState();
 
   // ── Derived ─────────────────────────────────────────────────────────────
   const activeSection = useMemo(() => viewToSection(currentView), [currentView]);
@@ -541,41 +578,57 @@ export default function App() {
   // ── Data ─────────────────────────────────────────────────────────────────
   const project = useQuery(api.projects.get, projectId ? { projectId } : "skip");
   const projects = useQuery(api.projects.list);
+  const availableProjects = useMemo(
+    () => projects?.filter((item) => item.status !== "ARCHIVED"),
+    [projects]
+  );
   const pendingApprovals = useQuery(
     api.approvals.listPending,
-    projectId ? { projectId, limit: 10 } : { limit: 10 }
+    projectId ? { projectId, limit: 10 } : "skip"
   );
 
   // ── Effects ──────────────────────────────────────────────────────────────
   useEffect(() => {
     if (
       projects &&
-      projects.length > 0 &&
-      (!projectId || !projects.some((item) => item._id === projectId))
+      availableProjects &&
+      availableProjects.length > 0 &&
+      (!projectId || !availableProjects.some((item) => item._id === projectId))
     ) {
-      let persistedProjectId: string | null = null;
-      try {
-        persistedProjectId = window.localStorage.getItem(STORAGE_KEY_PROJECT);
-      } catch {
-        // ignore
-      }
       const preferred =
-        projects.find((p) => p._id === persistedProjectId) ??
-        projects.find((p) => p.name.trim().toLowerCase() === "mission control") ??
-        projects.find((p) => p.name.toLowerCase().includes("mission control")) ??
-        projects[0];
+        availableProjects.find((p) => p._id === projectId) ??
+        availableProjects.find((p) => p.name.trim().toLowerCase() === "mission control") ??
+        availableProjects.find((p) => p.name.toLowerCase().includes("mission control")) ??
+        availableProjects[0];
       setProjectId(preferred._id);
+    } else if (availableProjects && availableProjects.length === 0 && projectId) {
+      setProjectId(null);
     }
-  }, [projectId, projects]);
+  }, [availableProjects, projectId]);
 
   useEffect(() => {
     if (!projectId || typeof window === "undefined") return;
     try {
       window.localStorage.setItem(STORAGE_KEY_PROJECT, projectId);
+      if (searchParams.get("workspace") !== projectId) {
+        setSearchParams((current) => {
+          const next = new URLSearchParams(current);
+          next.set("workspace", projectId);
+          return next;
+        }, { replace: true });
+      }
     } catch {
       // ignore
     }
-  }, [projectId]);
+  }, [projectId, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    setSelectedTaskId(null);
+    setSelectedQcRunId(null);
+    setSidebarSelectedAgentId(null);
+    setKanbanFilters({ agents: [], priorities: [], types: [] });
+    closeAll();
+  }, [projectId, closeAll]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -626,9 +679,13 @@ export default function App() {
   // ── Callbacks ────────────────────────────────────────────────────────────
   const handleConfirmPauseSquad = useCallback(async () => {
     close("pauseConfirm");
+    if (!projectId) {
+      toast("Select a workspace before pausing agents.", true);
+      return;
+    }
     try {
       const result = await pauseAll({
-        projectId: projectId ?? undefined,
+        projectId,
         reason: "Pause squad from Mission Control",
         userId: "operator",
       });
@@ -639,9 +696,13 @@ export default function App() {
   }, [pauseAll, projectId, toast, close]);
 
   const handleResumeSquad = useCallback(async () => {
+    if (!projectId) {
+      toast("Select a workspace before resuming agents.", true);
+      return;
+    }
     try {
       const result = await resumeAll({
-        projectId: projectId ?? undefined,
+        projectId,
         reason: "Resume squad from Mission Control",
         userId: "operator",
       });
@@ -671,6 +732,34 @@ export default function App() {
 
   // ── Section renderer ─────────────────────────────────────────────────────
   function renderSection() {
+    if (currentView !== "projects") {
+      if (!projects || (projectId && project === undefined)) {
+        return <SectionLoadingState />;
+      }
+      if (availableProjects.length === 0) {
+        return (
+          <main className="flex flex-1 items-center justify-center bg-app p-6">
+            <div className="max-w-md rounded-xl border border-line bg-surface-1 p-6 text-center">
+              <h1 className="text-lg font-semibold text-ink">Create a workspace</h1>
+              <p className="mt-2 text-sm text-ink-secondary">
+                Work Orders, agents, runs, and evidence require an explicit workspace boundary.
+              </p>
+              <button
+                type="button"
+                onClick={() => setCurrentView("projects")}
+                className="mt-4 h-9 rounded-lg bg-act px-3 text-[13px] font-medium text-act-ink"
+              >
+                Open workspace settings
+              </button>
+            </div>
+          </main>
+        );
+      }
+      if (!projectId || !project) {
+        return <SectionLoadingState />;
+      }
+    }
+
     if (
       [
         "harness-health",
@@ -863,12 +952,17 @@ export default function App() {
 
   if (!legacyShell) {
     return (
-      <ProjectContext.Provider value={{ projectId, setProjectId, project }}>
+      <WorkspaceScopeProvider value={{ projectId, setProjectId, project }}>
         <PrivacyProvider>
           <AppShellV2
             activeView={currentView}
             onNavigate={setCurrentView}
-            workspaceSwitcher={<ProjectSwitcher />}
+            workspaceSwitcher={
+              <ProjectSwitcher
+                showDetails
+                onManage={() => setCurrentView("projects")}
+              />
+            }
             onOpenSearch={() => open("commandPalette")}
             pendingApprovals={pendingApprovals?.length ?? 0}
             onOpenApprovals={() => open("approvals")}
@@ -901,12 +995,12 @@ export default function App() {
             />
           </Suspense>
         </PrivacyProvider>
-      </ProjectContext.Provider>
+      </WorkspaceScopeProvider>
     );
   }
 
   return (
-    <ProjectContext.Provider value={{ projectId, setProjectId, project }}>
+    <WorkspaceScopeProvider value={{ projectId, setProjectId, project }}>
       <PrivacyProvider>
       <div className="flex h-screen flex-col bg-background text-foreground">
         <AppTopBar
@@ -991,6 +1085,6 @@ export default function App() {
         </Suspense>
       </div>
       </PrivacyProvider>
-    </ProjectContext.Provider>
+    </WorkspaceScopeProvider>
   );
 }

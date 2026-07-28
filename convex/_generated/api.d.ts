@@ -107,6 +107,7 @@ import type * as lib_workOrderRevision from "../lib/workOrderRevision.js";
 import type * as lib_workOrders from "../lib/workOrders.js";
 import type * as lib_workflowObservability from "../lib/workflowObservability.js";
 import type * as lib_workflowTaskGuards from "../lib/workflowTaskGuards.js";
+import type * as lib_workspaceBindings from "../lib/workspaceBindings.js";
 import type * as loopEngineering from "../loopEngineering.js";
 import type * as loops from "../loops.js";
 import type * as meetings from "../meetings.js";
@@ -174,6 +175,7 @@ import type * as workOrders from "../workOrders.js";
 import type * as workflowMetrics from "../workflowMetrics.js";
 import type * as workflowRuns from "../workflowRuns.js";
 import type * as workflows from "../workflows.js";
+import type * as workspaceHostBindings from "../workspaceHostBindings.js";
 
 import type {
   ApiFromModules,
@@ -281,6 +283,7 @@ declare const fullApi: ApiFromModules<{
   "lib/workOrders": typeof lib_workOrders;
   "lib/workflowObservability": typeof lib_workflowObservability;
   "lib/workflowTaskGuards": typeof lib_workflowTaskGuards;
+  "lib/workspaceBindings": typeof lib_workspaceBindings;
   loopEngineering: typeof loopEngineering;
   loops: typeof loops;
   meetings: typeof meetings;
@@ -348,6 +351,7 @@ declare const fullApi: ApiFromModules<{
   workflowMetrics: typeof workflowMetrics;
   workflowRuns: typeof workflowRuns;
   workflows: typeof workflows;
+  workspaceHostBindings: typeof workspaceHostBindings;
 }>;
 
 /**

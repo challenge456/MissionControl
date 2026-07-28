@@ -677,6 +677,17 @@ export default defineSchema({
     githubRepo: v.optional(v.string()), // e.g., "owner/repo"
     githubBranch: v.optional(v.string()),
     githubWebhookSecret: v.optional(v.string()),
+    repositoryStatus: v.optional(
+      v.union(
+        v.literal("UNCONFIGURED"),
+        v.literal("CONFIGURED"),
+        v.literal("READY"),
+        v.literal("DEGRADED"),
+        v.literal("ERROR")
+      )
+    ),
+    repositoryValidatedAt: v.optional(v.number()),
+    repositoryValidationError: v.optional(v.string()),
     
     // Agent swarm configuration
     swarmConfig: v.optional(v.object({
@@ -702,6 +713,30 @@ export default defineSchema({
     .index("by_slug", ["slug"])
     .index("by_github_repo", ["githubRepo"])
     .index("by_tenant_slug", ["tenantId", "slug"]),
+
+  // Executor-local checkout reports for a project repository. A checkout path
+  // belongs to one host and is never treated as a portable project property.
+  workspaceHostBindings: defineTable({
+    projectId: v.id("projects"),
+    hostId: v.string(),
+    repository: v.string(),
+    checkoutRoot: v.string(),
+    observedBranch: v.optional(v.string()),
+    observedCommit: v.optional(v.string()),
+    dirty: v.boolean(),
+    status: v.union(
+      v.literal("READY"),
+      v.literal("MISSING"),
+      v.literal("STALE"),
+      v.literal("DIRTY"),
+      v.literal("ERROR")
+    ),
+    error: v.optional(v.string()),
+    checkedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_host", ["projectId", "hostId"])
+    .index("by_host", ["hostId"]),
 
   // -------------------------------------------------------------------------
   // SOFTWARE FACTORY: WORK ORDERS

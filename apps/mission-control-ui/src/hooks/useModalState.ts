@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 // ============================================================================
 // MODAL STATE HOOK
@@ -64,11 +64,17 @@ export type Modals = typeof INITIAL;
 export function useModalState() {
   const [modals, setModals] = useState<Modals>({ ...INITIAL });
 
-  const open = (key: ModalKey) =>
+  const open = useCallback((key: ModalKey) => {
     setModals((prev) => ({ ...prev, [key]: true }));
+  }, []);
 
-  const close = (key: ModalKey) =>
+  const close = useCallback((key: ModalKey) => {
     setModals((prev) => ({ ...prev, [key]: false }));
+  }, []);
 
-  return { modals, open, close };
+  const closeAll = useCallback(() => {
+    setModals({ ...INITIAL });
+  }, []);
+
+  return { modals, open, close, closeAll };
 }

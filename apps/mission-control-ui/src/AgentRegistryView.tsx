@@ -96,8 +96,8 @@ export function AgentRegistryView({
     };
   }, [orchestrationBase]);
 
-  const agents = useQuery(api.agents.listAll, projectId ? { projectId } : {});
-  const tasks = useQuery(api.tasks.listAll, projectId ? { projectId } : {});
+  const agents = useQuery(api.agents.listAll, projectId ? { projectId } : "skip");
+  const tasks = useQuery(api.tasks.listAll, projectId ? { projectId } : "skip");
   const updateStatus = useMutation(api.agents.updateStatus);
   const pauseAll = useMutation(api.agents.pauseAll);
   const resumeAll = useMutation(api.agents.resumeAll);
@@ -145,6 +145,10 @@ export function AgentRegistryView({
   const assignedCount = tasks.filter((t) => t.assigneeIds.length > 0).length;
 
   async function setStatus(agent: Doc<"agents">, status: string, reason: string) {
+    if (!projectId) {
+      toast("Select a workspace before changing an agent.", true);
+      return;
+    }
     const isDangerous = status === "QUARANTINED" || status === "DRAINED";
     if (isDangerous) {
       setConfirmState({
@@ -154,7 +158,7 @@ export function AgentRegistryView({
         danger: true,
         onConfirm: async () => {
           try {
-            await updateStatus({ agentId: agent._id, status, reason });
+            await updateStatus({ agentId: agent._id, projectId, status, reason });
             toast(`${agent.name} → ${status}`);
           } catch (e) {
             toast(e instanceof Error ? e.message : "Status update failed", true);
@@ -165,7 +169,7 @@ export function AgentRegistryView({
       return;
     }
     try {
-      await updateStatus({ agentId: agent._id, status, reason });
+      await updateStatus({ agentId: agent._id, projectId, status, reason });
       toast(`${agent.name} → ${status}`);
     } catch (e) {
       toast(e instanceof Error ? e.message : "Status update failed", true);
@@ -173,6 +177,10 @@ export function AgentRegistryView({
   }
 
   const handlePauseAll = () => {
+    if (!projectId) {
+      toast("Select a workspace before pausing agents.", true);
+      return;
+    }
     setConfirmState({
       open: true,
       title: "Pause all active agents?",
@@ -180,7 +188,7 @@ export function AgentRegistryView({
       danger: true,
       onConfirm: async () => {
         try {
-          const r = await pauseAll({ projectId: projectId ?? undefined, reason: "Operator pause", userId: "operator" });
+          const r = await pauseAll({ projectId, reason: "Operator pause", userId: "operator" });
           toast(`Paused ${(r as { paused: number }).paused} agent(s)`);
         } catch (e) {
           toast(e instanceof Error ? e.message : "Failed", true);
@@ -325,7 +333,8 @@ export function AgentRegistryView({
           className="h-7 text-xs"
           onClick={async () => {
             try {
-              const r = await resumeAll({ projectId: projectId ?? undefined, reason: "Operator resume", userId: "operator" });
+              if (!projectId) throw new Error("Select a workspace before resuming agents.");
+              const r = await resumeAll({ projectId, reason: "Operator resume", userId: "operator" });
               toast(`Resumed ${(r as { resumed: number }).resumed} agent(s)`);
             } catch (e) {
               toast(e instanceof Error ? e.message : "Failed", true);
@@ -341,7 +350,8 @@ export function AgentRegistryView({
           className="h-7 text-xs"
           onClick={async () => {
             try {
-              const r = await resetAll({ projectId: projectId ?? undefined });
+              if (!projectId) throw new Error("Select a workspace before resetting agents.");
+              const r = await resetAll({ projectId });
               toast(`Reset ${(r as { resetCount: number }).resetCount} agent(s)`);
             } catch (e) {
               toast(e instanceof Error ? e.message : "Failed", true);

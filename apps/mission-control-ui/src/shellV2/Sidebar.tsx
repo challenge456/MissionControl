@@ -28,6 +28,11 @@ export function SidebarItem({ item, active, onNavigate }: SidebarItemProps): JSX
     >
       <Icon size={15} strokeWidth={1.75} className="shrink-0" aria-hidden />
       <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>
+      {item.badge ? (
+        <span className="shrink-0 rounded border border-line px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.06em] text-ink-muted">
+          {item.badge}
+        </span>
+      ) : null}
       {item.count != null && item.count > 0 ? (
         <span className="shrink-0 font-mono text-[11px] tabular-nums text-ink-muted">
           {item.count}

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { EOS_NAV_GROUPS } from "./eosNavConfig";
 import { NAV_GROUPS } from "./navConfig";
 import { filterNavGroups } from "./navFilter";
+import { hasDeclaredRouteCapability } from "./routeCapabilities";
 
 describe("filterNavGroups", () => {
   it("hides control stub views by default", () => {
@@ -17,5 +19,41 @@ describe("filterNavGroups", () => {
     const views = filtered.flatMap((g) => g.items.map((i) => i.view));
     expect(views).toContain("control-portfolio");
     expect(views).toContain("control-fleet");
+  });
+
+  it("shows only declared live EOS routes by default", () => {
+    const filtered = filterNavGroups(EOS_NAV_GROUPS, {
+      enforceRouteCapabilities: true,
+    });
+    const items = filtered.flatMap((group) => group.items);
+    const views = items.map((item) => item.view);
+
+    expect(views).toContain("agents");
+    expect(views).not.toContain("agent-catalog");
+    expect(views).not.toContain("dossier");
+    expect(items.find((item) => item.view === "docs")?.badge).toBe("Global");
+  });
+
+  it("exposes preview and demo routes only through their explicit flags", () => {
+    const previewViews = filterNavGroups(EOS_NAV_GROUPS, {
+      enforceRouteCapabilities: true,
+      showPreviewRoutes: true,
+    }).flatMap((group) => group.items);
+    const demoViews = filterNavGroups(EOS_NAV_GROUPS, {
+      enforceRouteCapabilities: true,
+      showDemoRoutes: true,
+    }).flatMap((group) => group.items);
+
+    expect(previewViews.find((item) => item.view === "effectiveness")).toBeUndefined();
+    expect(previewViews.find((item) => item.view === "dag")?.badge).toBe("Preview");
+    expect(demoViews.find((item) => item.view === "dossier")?.badge).toBe("Demo");
+  });
+
+  it("requires an explicit capability declaration for every EOS navigation item", () => {
+    const undeclared = EOS_NAV_GROUPS.flatMap((group) => group.items)
+      .map((item) => item.view)
+      .filter((view) => !hasDeclaredRouteCapability(view));
+
+    expect(undeclared).toEqual([]);
   });
 });

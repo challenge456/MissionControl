@@ -42,6 +42,9 @@ vi.mock("../../../../../convex/_generated/api", () => ({
       schematicOverview: "analytics.schematicOverview",
       recentRunTurns: "analytics.recentRunTurns",
     },
+    featureFlags: {
+      isEnabled: "featureFlags.isEnabled",
+    },
   },
 }));
 
@@ -158,7 +161,12 @@ vi.mock("../../lib/gatewayStatus", () => ({
 
 function renderCommandCenter() {
   const onNavigate = vi.fn();
-  render(<CommandCenterView onNavigate={onNavigate} />);
+  render(
+    <CommandCenterView
+      projectId={"project-1" as never}
+      onNavigate={onNavigate}
+    />
+  );
   return { onNavigate };
 }
 
@@ -182,12 +190,12 @@ describe("CommandCenterView", () => {
     expect(screen.getByText("Unblock payment smoke test")).toBeInTheDocument();
     expect(screen.getByText("Repair fraud regression run")).toBeInTheDocument();
     expect(screen.getByText("Budget burn above threshold")).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Active mission" })).toBeInTheDocument();
-    expect(screen.getAllByText("Modernize Atlas Checkout").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("region", { name: "Active mission" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Modernize Atlas Checkout")).not.toBeInTheDocument();
     expect(screen.getByText("AI workforce")).toBeInTheDocument();
     expect(screen.getByText("Planner")).toBeInTheDocument();
     expect(screen.getByText("Working: Modernize checkout summary")).toBeInTheDocument();
-    expect(screen.getByText("Factory capacity")).toBeInTheDocument();
+    expect(screen.getByText("Provider capacity")).toBeInTheDocument();
     expect(screen.getByText("42.0%")).toBeInTheDocument();
     expect(screen.getByText(/Nightly verification sweep/)).toBeInTheDocument();
 
@@ -199,13 +207,9 @@ describe("CommandCenterView", () => {
 
     await screen.findByText("Connected");
 
-    fireEvent.click(screen.getByRole("button", { name: "New mission" }));
-    fireEvent.click(screen.getByRole("button", { name: "Modernize Atlas Checkout" }));
-    fireEvent.click(screen.getByRole("button", { name: "View all missions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open work orders" }));
 
-    expect(onNavigate).toHaveBeenCalledWith("goals");
-    expect(onNavigate).toHaveBeenCalledWith("mission-detail");
-    expect(onNavigate).toHaveBeenCalledWith("missions");
+    expect(onNavigate).toHaveBeenCalledWith("control-work-orders");
   });
 
   it("executes Command Center approval and unblock mutations with operator audit context", async () => {
@@ -219,12 +223,14 @@ describe("CommandCenterView", () => {
     await waitFor(() => {
       expect(mocks.approveApproval).toHaveBeenCalledWith({
         approvalId: "approval-1",
+        projectId: "project-1",
         decidedByUserId: "operator",
         reason: "Approved from Command Center",
       });
       expect(mocks.transitionTask).toHaveBeenCalledWith(
         expect.objectContaining({
           taskId: "task-blocked",
+          projectId: "project-1",
           toStatus: "ASSIGNED",
           actorType: "HUMAN",
           actorUserId: "operator",
