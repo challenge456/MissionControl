@@ -351,7 +351,7 @@ export function GoalsView({ projectId, onTaskSelect }: GoalsViewProps) {
 
   if (!projectId) {
     return (
-      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
+      <section className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
         <PageHeader
           title="Goals"
           description="Track the hierarchy between company goals, team goals, and task execution."
@@ -365,7 +365,7 @@ export function GoalsView({ projectId, onTaskSelect }: GoalsViewProps) {
             description="Select a project to view goals."
           />
         </div>
-      </main>
+      </section>
     );
   }
 
@@ -379,7 +379,7 @@ export function GoalsView({ projectId, onTaskSelect }: GoalsViewProps) {
   const plannedGoals = topLevelGoals.filter((goal) => goal.status === "PLANNED").length;
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-app">
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden bg-app">
       <PageHeader
         title="Goals"
         description="Every task should trace back to a real goal. If you cannot explain why it matters, it should not be in the system."
@@ -530,6 +530,6 @@ export function GoalsView({ projectId, onTaskSelect }: GoalsViewProps) {
           />
         )}
       </div>
-    </main>
+    </section>
   );
 }

@@ -20,7 +20,7 @@ import { EmptyState } from "../../components/ui/empty-state";
 import { QuotaFuelGauge } from "../../components/QuotaFuelGauge";
 import { cn } from "../../lib/utils";
 import { buildAttentionItems, exceptionCounts } from "../../lib/attentionQueue";
-import { getOrchestrationBaseUrl } from "../../lib/orchestrationUrl";
+import { loadGatewayStatus } from "../../lib/gatewayStatus";
 import {
   EosSection,
   HealthSignalCard,
@@ -442,18 +442,11 @@ export function CommandCenterView({ onNavigate }: CommandCenterViewProps): JSX.E
 
   useEffect(() => {
     let cancelled = false;
-    const base = getOrchestrationBaseUrl();
-    fetch(base ? `${base}/gateway/status` : "/gateway/status")
-      .then((r) => r.json())
-      .then((data: { configured?: boolean; urlConfigured?: boolean; tokenConfigured?: boolean }) => {
-        if (!cancelled)
-          setGatewayConfigured(
-            Boolean(data.configured ?? (data.urlConfigured && data.tokenConfigured))
-          );
-      })
-      .catch(() => {
-        if (!cancelled) setGatewayConfigured(false);
-      });
+    loadGatewayStatus().then((snapshot) => {
+      if (!cancelled) {
+        setGatewayConfigured(Boolean(snapshot.status?.configured));
+      }
+    });
     return () => {
       cancelled = true;
     };
@@ -563,7 +556,7 @@ export function CommandCenterView({ onNavigate }: CommandCenterViewProps): JSX.E
           onNavigate={onNavigate}
           scannedAt={scannedAt}
           evalPass={null}
-          title="Command Center"
+          title="Factory overview"
         />
 
         <section className={cn(CARD_CLASS, "flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between")}>

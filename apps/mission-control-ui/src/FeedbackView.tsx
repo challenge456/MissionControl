@@ -41,7 +41,7 @@ export function FeedbackView({ projectId, onNavigate }: FeedbackViewProps) {
   const hasAny = findingsList.length > 0 || approvalsList.length > 0 || alertsList.length > 0;
 
   return (
-    <main className="relative flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
+    <section className="relative flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
       <PageHeader
         title="Feedback"
         description="Feedback on runs and decisions. QC findings, approvals, and alerts that may need review."
@@ -210,6 +210,6 @@ export function FeedbackView({ projectId, onNavigate }: FeedbackViewProps) {
           </div>
         )}
       </div>
-    </main>
+    </section>
   );
 }

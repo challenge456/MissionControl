@@ -130,16 +130,16 @@ export function OfficeView({ projectId }: OfficeViewProps) {
 
   if (!agents) {
     return (
-      <main className="relative flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
+      <section className="relative flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
         <div className="mx-auto w-full max-w-[1200px] px-6 py-6">
           <div className="h-[640px] animate-pulse rounded-xl border border-line bg-surface-2" />
         </div>
-      </main>
+      </section>
     );
   }
 
   return (
-    <main className="relative flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
+    <section className="relative flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
       <PageHeader
         title="Office"
         description="Live workstation view for agent posture, task attachment, budget burn, and heartbeat quality."
@@ -307,7 +307,7 @@ export function OfficeView({ projectId }: OfficeViewProps) {
           onClose={() => setSelectedAgent(null)}
         />
       )}
-    </main>
+    </section>
   );
 }
 

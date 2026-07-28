@@ -28,7 +28,7 @@ import {
   buildAttentionItems,
   exceptionCounts,
 } from "@/lib/attentionQueue";
-import { getOrchestrationBaseUrl } from "@/lib/orchestrationUrl";
+import { loadGatewayStatus } from "@/lib/gatewayStatus";
 
 interface DashboardOverviewProps {
   projectId: Id<"projects"> | null;
@@ -364,16 +364,11 @@ export function DashboardOverview({
 
   useEffect(() => {
     let cancelled = false;
-    const base = getOrchestrationBaseUrl();
-    fetch(base ? `${base}/gateway/status` : "/gateway/status")
-      .then((r) => r.json())
-      .then((data: { configured?: boolean; urlConfigured?: boolean; tokenConfigured?: boolean }) => {
-        if (!cancelled)
-          setGatewayConfigured(Boolean(data.configured ?? (data.urlConfigured && data.tokenConfigured)));
-      })
-      .catch(() => {
-        if (!cancelled) setGatewayConfigured(false);
-      });
+    loadGatewayStatus().then((snapshot) => {
+      if (!cancelled) {
+        setGatewayConfigured(Boolean(snapshot.status?.configured));
+      }
+    });
     return () => {
       cancelled = true;
     };
@@ -418,7 +413,7 @@ export function DashboardOverview({
 
   if (isLoading) {
     return (
-      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
+      <section className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
         <PageHeader
           title="Overview"
           description="Exceptions, approvals, and proof of completion — then fleet context."
@@ -438,7 +433,7 @@ export function DashboardOverview({
             </div>
           </div>
         </div>
-      </main>
+      </section>
     );
   }
 
@@ -599,7 +594,7 @@ export function DashboardOverview({
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <main className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
+    <section className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
       <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-6 py-6 xl:px-8">
         {onOpenCreateTask && (
           <div className="flex justify-end">
@@ -733,6 +728,6 @@ export function DashboardOverview({
         )}
 
       </div>
-    </main>
+    </section>
   );
 }

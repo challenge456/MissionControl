@@ -68,7 +68,7 @@ describe("navConfig", () => {
   it("resolves group and item lookups", () => {
     expect(groupForView("tasks")?.id).toBe("operate");
     expect(groupForView("policies")?.id).toBe("govern");
-    expect(itemForView("skills")?.label).toBe("Registry Discover");
+    expect(itemForView("skills")?.label).toBe("Discover skills");
     expect(itemForView("nonexistent" as never)).toBeUndefined();
   });
 });

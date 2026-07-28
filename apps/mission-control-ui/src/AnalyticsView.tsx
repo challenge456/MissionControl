@@ -487,7 +487,7 @@ export function AnalyticsViewContent({
       heatmap.days.some((d) => d.count > 0));
 
   return (
-    <main className="relative flex-1 overflow-auto bg-app">
+    <section className="relative flex-1 overflow-auto bg-app">
       <PageHeader
         title="Analytics"
         description="Activity, governance, and execution across the factory."
@@ -514,7 +514,7 @@ export function AnalyticsViewContent({
           </>
         )}
       </div>
-    </main>
+    </section>
   );
 }
 

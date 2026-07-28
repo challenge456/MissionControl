@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Doc, Id } from "../../../convex/_generated/dataModel";
 import { getOrchestrationBaseUrl } from "@/lib/orchestrationUrl";
+import { loadGatewayStatus } from "@/lib/gatewayStatus";
 import { useToast } from "./Toast";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -87,15 +88,9 @@ export function AgentRegistryView({
 
   useEffect(() => {
     let cancelled = false;
-    fetch(orchestrationBase ? `${orchestrationBase}/gateway/status` : "/gateway/status")
-      .then((r) => r.json())
-      .then((data: { configured?: boolean; urlConfigured?: boolean; tokenConfigured?: boolean }) => {
-        if (!cancelled)
-          setGatewayConfigured(Boolean(data.configured ?? (data.urlConfigured && data.tokenConfigured)));
-      })
-      .catch(() => {
-        if (!cancelled) setGatewayConfigured(false);
-      });
+    loadGatewayStatus().then((snapshot) => {
+      if (!cancelled) setGatewayConfigured(Boolean(snapshot.status?.configured));
+    });
     return () => {
       cancelled = true;
     };
@@ -136,10 +131,10 @@ export function AgentRegistryView({
 
   if (!agents || !tasks) {
     return (
-      <main className="flex-1 overflow-auto p-6">
+      <section className="flex-1 overflow-auto p-6">
         <div className="h-6 w-40 rounded animate-pulse bg-surface-2 mb-2" />
         <div className="h-4 w-56 rounded animate-pulse bg-surface-2" />
-      </main>
+      </section>
     );
   }
 
@@ -196,7 +191,7 @@ export function AgentRegistryView({
   };
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-app">
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden bg-app">
       <PageHeader
         title="Agent Registry"
         description={`${agents.length} agents · ${activeCount} active`}
@@ -541,6 +536,6 @@ export function AgentRegistryView({
         </DialogContent>
       </Dialog>
       </div>
-    </main>
+    </section>
   );
 }

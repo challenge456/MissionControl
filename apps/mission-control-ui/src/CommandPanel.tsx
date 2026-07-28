@@ -499,7 +499,7 @@ export function CommandPanel({ projectId, onOpenSuggestionsDrawer }: CommandPane
   };
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
+    <section className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
       <PageHeader
         title="Command Panel"
         description="Orchestrate agents, tasks, and approvals in real-time"
@@ -617,6 +617,6 @@ export function CommandPanel({ projectId, onOpenSuggestionsDrawer }: CommandPane
         </div>
 
       </div>
-    </main>
+    </section>
   );
 }

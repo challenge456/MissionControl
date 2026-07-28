@@ -45,7 +45,7 @@ export const EOS_NAV_GROUPS: NavGroup[] = [
     { view: "dossier" as MainView, label: "Evidence Dossiers", icon: Scale },
   ]},
   { id: "knowledge", label: "Knowledge", icon: BookOpen, items: [
-    { view: "skills" as MainView, label: "Registry Discover", icon: Sparkles },
+    { view: "skills" as MainView, label: "Discover skills", icon: Sparkles },
     { view: "registry-lifecycle" as MainView, label: "Context CDL", icon: BookOpen },
     { view: "registry-evaluate" as MainView, label: "Evaluate Skill", icon: FlaskConical },
     { view: "registry-inventory" as MainView, label: "Skill Inventory", icon: ClipboardList },
@@ -61,8 +61,8 @@ export const EOS_NAV_GROUPS: NavGroup[] = [
     { view: "qc-rulesets" as MainView, label: "QC Rulesets", icon: ListChecks },
   ]},
   { id: "administration", label: "Administration", icon: Building2, items: [
-    { view: "gateway" as MainView, label: "Integrations", icon: Cog },
-    { view: "system" as MainView, label: "System", icon: Cog },
+    { view: "gateway" as MainView, label: "Gateway", icon: Cog },
+    { view: "system" as MainView, label: "Database", icon: Cog },
     { view: "design-system" as MainView, label: "Design DNA", icon: Sparkles },
     { view: "recorder" as MainView, label: "Recorder", icon: Activity },
     { view: "test-generation" as MainView, label: "Test Generation", icon: FlaskConical },

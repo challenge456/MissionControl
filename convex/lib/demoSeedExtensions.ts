@@ -210,7 +210,7 @@ export async function seedDemoExtensions(ctx: any, input: DemoSeedContext) {
           implementation: spec.qualityScore - 4,
           activation: spec.qualityScore,
         },
-        securityStatus: "PASS",
+        securityStatus: "PASSED",
         publishedAt: now - i * 3_600_000,
         createdAt: now - i * 3_600_000,
       });
@@ -219,7 +219,7 @@ export async function seedDemoExtensions(ctx: any, input: DemoSeedContext) {
     versionByPackage.set(spec.slug, versionId!);
     if (!pkg!.currentVersionId) {
       await ctx.db.patch(pkg!._id, {
-        status: "PUBLISHED",
+        status: "ACTIVE",
         currentVersionId: versionId,
         updatedAt: now,
       });

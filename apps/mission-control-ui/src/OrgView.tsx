@@ -306,17 +306,17 @@ export function OrgView({ projectId }: OrgViewProps) {
 
   if (!hierarchy) {
     return (
-      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
+      <section className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
         <div className="mx-auto max-w-[1440px] px-6 py-6">
           <div className="h-[640px] animate-pulse rounded-xl border border-line bg-surface-2" />
         </div>
-      </main>
+      </section>
     );
   }
 
   if (hierarchy.length === 0) {
     return (
-      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
+      <section className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
         <PageHeader
           title="Org Chart"
           description="Human and agent structure for the current project, including ownership, role posture, and organizational relationships."
@@ -343,7 +343,7 @@ export function OrgView({ projectId }: OrgViewProps) {
           onClose={handleCloseCreate}
           onCreate={handleCreateAgent}
         />
-      </main>
+      </section>
     );
   }
 
@@ -369,7 +369,7 @@ export function OrgView({ projectId }: OrgViewProps) {
   const drawerOpen = selectedNode !== null;
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-app">
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden bg-app">
       <PageHeader
         title="Org Chart"
         description="Human and agent reporting structure for the operating system behind this project."
@@ -478,7 +478,7 @@ export function OrgView({ projectId }: OrgViewProps) {
         onClose={handleCloseCreate}
         onCreate={handleCreateAgent}
       />
-    </main>
+    </section>
   );
 }
 

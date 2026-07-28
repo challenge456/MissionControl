@@ -76,7 +76,7 @@ export function TelemetryView({ projectId }: { projectId: Id<"projects"> | null 
   const inWindow    = stats?.inWindow ?? 0;
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-app">
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden bg-app">
       <PageHeader
         title="ARM Telemetry"
         description={
@@ -208,6 +208,6 @@ export function TelemetryView({ projectId }: { projectId: Id<"projects"> | null 
       </Card>
       </div>
       </div>
-    </main>
+    </section>
   );
 }

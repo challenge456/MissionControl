@@ -136,7 +136,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { view: "atc", label: "ATC Board", icon: Radar },
       { view: "directory", label: "Templates", icon: BookOpen },
       { view: "identity", label: "Identities", icon: Users },
-      { view: "skills", label: "Registry Discover", icon: Sparkles },
+      { view: "skills", label: "Discover skills", icon: Sparkles },
       { view: "registry-lifecycle", label: "Context CDL", icon: BookOpen },
       { view: "registry-evaluate", label: "Evaluate Skill", icon: FlaskConical },
       { view: "registry-inventory", label: "Skill Inventory", icon: ListChecks },
@@ -162,7 +162,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { view: "qc-metrics", label: "QC Metrics", icon: BarChart3 },
       { view: "qc-environments", label: "QC Environments", icon: Landmark },
       { view: "radar", label: "Radar", icon: Radar },
-      { view: "system", label: "System", icon: Cog },
+      { view: "system", label: "Database", icon: Cog },
     ],
   },
   {

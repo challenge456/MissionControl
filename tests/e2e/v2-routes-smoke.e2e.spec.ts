@@ -28,7 +28,7 @@ const ROUTES: Array<{ route: string; heading: string; text?: string | RegExp }> 
   { route: "atc", heading: "Air Traffic Control" },
   { route: "directory", heading: "Templates" },
   { route: "identity", heading: "Identity Directory" },
-  { route: "skills", heading: "Registry" },
+  { route: "skills", heading: "Discover skills" },
   { route: "memory", heading: "Memory" },
   { route: "docs", heading: "Documentation" },
   { route: "search", heading: "Search" },
@@ -41,11 +41,11 @@ const ROUTES: Array<{ route: string; heading: string; text?: string | RegExp }> 
   { route: "qc-metrics", heading: "Metrics" },
   { route: "qc-environments", heading: "Environments" },
   { route: "radar", heading: "Radar" },
-  { route: "system", heading: "System" },
+  { route: "system", heading: "Database" },
   { route: "policies", heading: "Policies" },
   { route: "deployments", heading: "Deployments" },
   { route: "qc-rulesets", heading: "Rulesets" },
-  { route: "gateway", heading: "OpenClaw Gateway" },
+  { route: "gateway", heading: "Gateway" },
   { route: "schedules", heading: "Schedules" },
   { route: "design-system", heading: "Design DNA" },
   { route: "chat", heading: "Chat" },
@@ -96,6 +96,7 @@ test("v2 routes render in the software-factory shell", async ({ page }) => {
       try {
         await page.goto(`/v2/${entry.route}`);
         await expect(page.getByRole("navigation", { name: "Primary" })).toBeVisible();
+        await expect(page.getByRole("main")).toHaveCount(1);
         await expect(page.getByRole("heading", { name: entry.heading, exact: true }).first()).toBeVisible();
 
         if (entry.text) {

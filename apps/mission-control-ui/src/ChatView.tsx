@@ -52,17 +52,17 @@ export function ChatView({ projectId }: ChatViewProps) {
 
   if (!tasks) {
     return (
-      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
+      <section className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
         <div className="mx-auto max-w-[1200px] px-6 py-6">
           <div className="h-[620px] animate-pulse rounded-xl border border-line bg-surface-2" />
         </div>
-      </main>
+      </section>
     );
   }
 
   if (availableTasks.length === 0) {
     return (
-      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
+      <section className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
         <PageHeader
           title="Chat"
           description="Task threads and agent conversations. Create a task from the Mission Queue to start."
@@ -76,12 +76,12 @@ export function ChatView({ projectId }: ChatViewProps) {
             className="min-h-[560px]"
           />
         </div>
-      </main>
+      </section>
     );
   }
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col overflow-auto bg-app">
+    <section className="flex min-h-0 flex-1 flex-col overflow-auto bg-app">
       <PageHeader
         title="Chat"
         description={`${availableTasks.length} task threads · Pick one to view or continue the conversation`}
@@ -240,7 +240,7 @@ export function ChatView({ projectId }: ChatViewProps) {
           </Card>
         </div>
       </div>
-    </main>
+    </section>
   );
 }
 

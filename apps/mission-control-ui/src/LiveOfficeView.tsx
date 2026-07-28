@@ -67,16 +67,16 @@ export function LiveOfficeView({ projectId }: LiveOfficeViewProps) {
 
   if (agents === undefined) {
     return (
-      <main className="relative flex min-h-0 flex-1 flex-col overflow-y-auto bg-app" role="region" aria-label="Live Office">
+      <section className="relative flex min-h-0 flex-1 flex-col overflow-y-auto bg-app" role="region" aria-label="Live Office">
         <div className="mx-auto w-full max-w-[1200px] px-6 py-6">
           <div className="h-[620px] animate-pulse rounded-xl border border-line bg-surface-2" />
         </div>
-      </main>
+      </section>
     );
   }
 
   return (
-    <main
+    <section
       className="relative flex min-h-0 flex-1 flex-col overflow-y-auto bg-app"
       role="region"
       aria-label="Live Office"
@@ -325,6 +325,6 @@ export function LiveOfficeView({ projectId }: LiveOfficeViewProps) {
           </time>
         </div>
       </footer>
-    </main>
+    </section>
   );
 }

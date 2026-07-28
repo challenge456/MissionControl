@@ -81,7 +81,7 @@ export function MeetingsView({ projectId }: { projectId: Id<"projects"> | null }
     const pendingActionItems = selectedActionItems.filter((item) => !item.taskId).length;
 
     return (
-      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
+      <section className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
         <PageHeader
           title={selectedMeeting.title}
           description="Review agenda, attendees, and follow-through before leaving the meeting thread."
@@ -225,12 +225,12 @@ export function MeetingsView({ projectId }: { projectId: Id<"projects"> | null }
             </Card>
           </div>
         </div>
-      </main>
+      </section>
     );
   }
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
+    <section className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
       <PageHeader
         title="Meetings"
         description="Scheduled conversations, review syncs, and agenda-driven operator sessions."
@@ -399,7 +399,7 @@ export function MeetingsView({ projectId }: { projectId: Id<"projects"> | null }
           </div>
         )}
       </div>
-    </main>
+    </section>
   );
 }
 

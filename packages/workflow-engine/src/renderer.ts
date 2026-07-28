@@ -5,10 +5,8 @@
  * Supports {{variable}} substitution for passing data between workflow steps.
  */
 
-import Mustache from "mustache";
-
 export interface RenderContext {
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 /**
@@ -28,9 +26,22 @@ export interface RenderContext {
  * })
  * // => "Stories defined\n\nImplement: Add OAuth"
  */
+function resolveVariable(context: RenderContext, variable: string): unknown {
+  return variable.split(".").reduce<unknown>((current, key) => {
+    if (current == null || typeof current !== "object") return undefined;
+    return (current as Record<string, unknown>)[key];
+  }, context);
+}
+
 export function render(template: string, context: RenderContext): string {
-  // Disable HTML escaping (we're not rendering HTML)
-  return Mustache.render(template, context, {}, { escape: (text) => text });
+  // Minimal Mustache-compatible variable substitution for workflow prompts.
+  // Missing variables render as an empty string, matching Mustache behavior.
+  // Dotted names are intentionally supported because workflow YAML uses
+  // nested context references such as {{coverageThresholds.unit}}.
+  return template.replace(/\{\{([^}]+)\}\}/g, (_match, variable: string) => {
+    const value = resolveVariable(context, variable.trim());
+    return value == null ? "" : String(value);
+  });
 }
 
 /**
@@ -67,7 +78,7 @@ export function validateContext(template: string, context: RenderContext): strin
   const missing: string[] = [];
   
   for (const variable of required) {
-    if (!(variable in context)) {
+    if (resolveVariable(context, variable) === undefined) {
       missing.push(variable);
     }
   }

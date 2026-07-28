@@ -10,7 +10,7 @@ export function FactoryPageShell({
   className?: string;
 }): JSX.Element {
   return (
-    <main
+    <section
       className={cn(
         "factory-page registry-page flex min-h-0 flex-1 flex-col overflow-hidden bg-app",
         className
@@ -19,7 +19,7 @@ export function FactoryPageShell({
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden px-6 pb-6 pt-4">
         {children}
       </div>
-    </main>
+    </section>
   );
 }
 

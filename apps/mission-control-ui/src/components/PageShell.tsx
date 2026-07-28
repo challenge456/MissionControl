@@ -10,9 +10,9 @@ export function PageScrollShell({
   className?: string;
 }) {
   return (
-    <main className={cn("flex min-h-0 flex-1 flex-col overflow-y-auto bg-app", className)}>
+    <section className={cn("flex min-h-0 flex-1 flex-col overflow-y-auto bg-app", className)}>
       {children}
-    </main>
+    </section>
   );
 }
 
@@ -25,9 +25,9 @@ export function PageBoardShell({
   className?: string;
 }) {
   return (
-    <main className={cn("flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden bg-app", className)}>
+    <section className={cn("flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden bg-app", className)}>
       {children}
-    </main>
+    </section>
   );
 }
 

@@ -17,14 +17,8 @@ import {
   type GatewayConnectionState,
   type GatewayFrame,
 } from "@/lib/gatewayClient";
-import { getOrchestrationBaseUrl } from "@/lib/orchestrationUrl";
+import { loadGatewayStatus, type GatewayStatus } from "@/lib/gatewayStatus";
 import { Loader2, Send, MessageSquare, AlertCircle } from "lucide-react";
-
-interface GatewayStatus {
-  configured: boolean;
-  urlConfigured: boolean;
-  tokenConfigured: boolean;
-}
 
 export function LiveAgentChatView({ projectId }: { projectId: Id<"projects"> | null }) {
   const { toast } = useToast();
@@ -48,24 +42,12 @@ export function LiveAgentChatView({ projectId }: { projectId: Id<"projects"> | n
   useEffect(() => {
     let cancelled = false;
     setStatusError(null);
-    const base = getOrchestrationBaseUrl();
-    fetch(base ? `${base}/gateway/status` : "/gateway/status")
-      .then((r) => {
-        if (!r.ok) throw new Error(`Server returned ${r.status}`);
-        return r.json();
-      })
-      .then((data: GatewayStatus) => {
-        if (!cancelled) {
-          setStatus(data);
-          setStatusError(null);
-        }
-      })
-      .catch((e) => {
-        if (!cancelled) {
-          setStatus(null);
-          setStatusError(e?.message ?? "Could not reach orchestration server.");
-        }
-      });
+    loadGatewayStatus().then((snapshot) => {
+      if (!cancelled) {
+        setStatus(snapshot.status);
+        setStatusError(snapshot.error);
+      }
+    });
     return () => {
       cancelled = true;
     };
@@ -176,7 +158,7 @@ export function LiveAgentChatView({ projectId }: { projectId: Id<"projects"> | n
 
   if (status === null && !statusError) {
     return (
-      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
+      <section className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
         <PageHeader
           title="Live Agent Chat"
           description="Connect to the OpenClaw Gateway for streaming chat with agents."
@@ -185,7 +167,7 @@ export function LiveAgentChatView({ projectId }: { projectId: Id<"projects"> | n
           <Loader2 className="h-5 w-5 animate-spin mb-4" strokeWidth={1.75} />
           <p className="text-[13.5px]">Checking gateway configuration…</p>
         </div>
-      </main>
+      </section>
     );
   }
 
@@ -212,7 +194,7 @@ export function LiveAgentChatView({ projectId }: { projectId: Id<"projects"> | n
 
   if (statusError) {
     return (
-      <main className="flex-1 overflow-auto flex flex-col bg-app">
+      <section className="flex-1 overflow-auto flex flex-col bg-app">
         <PageHeader
           title="Live Agent Chat"
           description="Connect to the OpenClaw Gateway for streaming chat with agents."
@@ -238,6 +220,12 @@ export function LiveAgentChatView({ projectId }: { projectId: Id<"projects"> | n
             ))}
           </div>
           <div className="flex-1 flex flex-col min-w-0 pl-4">
+            <Card className="mb-4 border-dashed border-warn/30 bg-warn-soft/40 p-4">
+              <div className="text-[12px] font-medium uppercase tracking-[0.06em] text-warn">Degraded mode</div>
+              <p className="mt-2 text-[13px] text-ink-secondary">
+                Live Gateway chat is offline, but you can still inspect the demo transcript and confirm the surrounding shell, navigation, and agent roster behavior.
+              </p>
+            </Card>
             <Card className="flex-1 flex flex-col min-h-0 p-4 overflow-hidden">
               <div className="flex-1 overflow-auto space-y-2 mb-4">
                 {fictitiousMessages.map((m, i) => (
@@ -268,13 +256,13 @@ export function LiveAgentChatView({ projectId }: { projectId: Id<"projects"> | n
             </Card>
           </div>
         </div>
-      </main>
+      </section>
     );
   }
 
   if (!status?.configured) {
     return (
-      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
+      <section className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
         <PageHeader
           title="Live Agent Chat"
           description="Connect to the OpenClaw Gateway for streaming chat with agents."
@@ -285,12 +273,12 @@ export function LiveAgentChatView({ projectId }: { projectId: Id<"projects"> | n
             Configure the Gateway (Agents → Gateway) with an upstream URL and set GATEWAY_TOKEN on the orchestration server, then return here to connect.
           </p>
         </div>
-      </main>
+      </section>
     );
   }
 
   return (
-    <main className="flex-1 overflow-auto flex flex-col bg-app">
+    <section className="flex-1 overflow-auto flex flex-col bg-app">
       <PageHeader
         title="Live Agent Chat"
         description={
@@ -402,6 +390,6 @@ export function LiveAgentChatView({ projectId }: { projectId: Id<"projects"> | n
           </div>
         )}
       </div>
-    </main>
+    </section>
   );
 }

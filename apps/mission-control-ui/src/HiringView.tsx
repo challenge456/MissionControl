@@ -89,7 +89,7 @@ export function HiringView({ projectId }: HiringViewProps) {
 
   if (!projectId) {
     return (
-      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <section className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <PageHeader
           title="Hiring"
           description="Define role specs, compare candidates, and record an explicit hire or no-hire decision."
@@ -103,12 +103,12 @@ export function HiringView({ projectId }: HiringViewProps) {
             description="Hiring is scoped to a project so role specs, candidates, and evaluation records stay attached to a real operating context."
           />
         </div>
-      </main>
+      </section>
     );
   }
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+    <section className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       <PageHeader
         title="Hiring"
         description="Role specs, candidates, and decision records for building a reliable operator-grade agent bench."
@@ -325,7 +325,7 @@ export function HiringView({ projectId }: HiringViewProps) {
           createCandidate={createCandidate}
         />
       )}
-    </main>
+    </section>
   );
 }
 

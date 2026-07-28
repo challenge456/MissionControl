@@ -53,6 +53,13 @@ Environment: {{setupOutput}}`;
     // Mustache renders missing variables as empty string
     expect(result).toBe("Hello !");
   });
+
+  it("should render dotted variables from nested context", () => {
+    const template = "Unit coverage threshold: {{coverageThresholds.unit}}%";
+    const context = { coverageThresholds: { unit: 80 } };
+
+    expect(render(template, context)).toBe("Unit coverage threshold: 80%");
+  });
 });
 
 describe("extractVariables", () => {
@@ -141,5 +148,12 @@ describe("validateContext", () => {
     const missing = validateContext(template, context);
     
     expect(missing).toEqual([]);
+  });
+
+  it("should validate dotted variables from nested context", () => {
+    const template = "Unit: {{coverageThresholds.unit}}, Branch: {{branch.name}}";
+    const context = { coverageThresholds: { unit: 80 }, branch: {} };
+
+    expect(validateContext(template, context)).toEqual(["branch.name"]);
   });
 });

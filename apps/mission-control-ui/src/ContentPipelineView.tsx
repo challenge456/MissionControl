@@ -524,7 +524,7 @@ export function ContentPipelineView({ projectId }: ContentPipelineViewProps) {
 
   if (isLoading) {
     return (
-      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
+      <section className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
         <div className="mx-auto grid max-w-[1200px] grid-cols-4 gap-4 px-6 py-6">
           {Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="rounded-xl border border-line bg-surface-1 p-5">
@@ -538,7 +538,7 @@ export function ContentPipelineView({ projectId }: ContentPipelineViewProps) {
             </div>
           ))}
         </div>
-      </main>
+      </section>
     );
   }
 
@@ -562,7 +562,7 @@ export function ContentPipelineView({ projectId }: ContentPipelineViewProps) {
   };
 
   return (
-    <main className="flex flex-1 flex-col overflow-hidden bg-app">
+    <section className="flex flex-1 flex-col overflow-hidden bg-app">
       <PageHeader
         title="Content Pipeline"
         description={
@@ -792,6 +792,6 @@ export function ContentPipelineView({ projectId }: ContentPipelineViewProps) {
         <CreateDropForm projectId={projectId} agents={agents} onClose={() => setShowCreate(false)} />
       )}
       </div>
-    </main>
+    </section>
   );
 }

@@ -39,7 +39,7 @@ export function ProjectsView({ projectId }: ProjectsViewProps) {
 
   if (!projects || !totals) {
     return (
-      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
+      <section className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
         <div className="mx-auto flex max-w-[1200px] flex-col gap-6 px-6 py-6">
           <div className="h-24 animate-pulse rounded-xl border border-line bg-surface-2" />
           <div className="grid gap-4 xl:grid-cols-[400px_minmax(0,1fr)]">
@@ -47,14 +47,14 @@ export function ProjectsView({ projectId }: ProjectsViewProps) {
             <div className="h-[520px] animate-pulse rounded-xl border border-line bg-surface-2" />
           </div>
         </div>
-      </main>
+      </section>
     );
   }
 
   const selectedProjectDoc = projects.find((project) => project._id === selectedProject) ?? null;
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
+    <section className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
       <PageHeader
         title="Projects"
         description="Operate every mission, repo, and swarm from a single view. Select a project to inspect readiness, agent staffing, and integration health."
@@ -124,7 +124,7 @@ export function ProjectsView({ projectId }: ProjectsViewProps) {
           )}
         </div>
       </div>
-    </main>
+    </section>
   );
 }
 

@@ -186,7 +186,7 @@ export function MissionDAGView({ projectId, onTaskSelect }: MissionDAGViewProps)
   const doneCount = statusCounts.DONE ?? 0;
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-app">
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden bg-app">
       <PageHeader
         title="Mission DAG"
         description="Visualize dependency structure, sequencing, and blockers across the mission graph."
@@ -408,6 +408,6 @@ export function MissionDAGView({ projectId, onTaskSelect }: MissionDAGViewProps)
         </Card>
         </div>
       </div>
-    </main>
+    </section>
   );
 }

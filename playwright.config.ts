@@ -16,6 +16,9 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     env: {
       VITE_CONVEX_URL: "http://127.0.0.1:3210",
+      // In local E2E, hit the orchestration server directly so an expected
+      // gateway-down state does not spam Vite proxy errors for /gateway/status.
+      VITE_ORCHESTRATION_URL: "http://127.0.0.1:4100",
       VITE_FLAG_UI_SHELL_V2: "true",
       VITE_FLAG_CONTEXT_REGISTRY: "true",
       VITE_FLAG_EOS_COMMAND_CENTER_PREVIEW: "true",

@@ -67,14 +67,14 @@ export function AtcBoardView({
 
   if (agents === undefined || tasks === undefined || runs === undefined) {
     return (
-      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <section className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <PageHeader title="Air Traffic Control" />
         <div className="mx-auto max-w-[1200px] px-6 py-6 flex flex-col gap-3">
           <div className="h-3.5 w-48 animate-pulse rounded bg-surface-2" />
           <div className="h-3.5 w-72 animate-pulse rounded bg-surface-2" />
           <div className="h-3.5 w-56 animate-pulse rounded bg-surface-2" />
         </div>
-      </main>
+      </section>
     );
   }
 
@@ -110,7 +110,7 @@ export function AtcBoardView({
   const busyCount = agents.length - idleCount;
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-app">
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden bg-app">
       <PageHeader
         title="Air Traffic Control"
         description="Real-time agent status. Idle agents are highlighted — assign work from Tasks."
@@ -216,6 +216,6 @@ export function AtcBoardView({
           />
         )}
       </div>
-    </main>
+    </section>
   );
 }

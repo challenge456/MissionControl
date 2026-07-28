@@ -5,6 +5,7 @@ import { CommandCenterView } from "./CommandCenterView";
 const mocks = vi.hoisted(() => ({
   approveApproval: vi.fn(),
   transitionTask: vi.fn(),
+  loadGatewayStatus: vi.fn(),
 }));
 
 vi.mock("../../../../../convex/_generated/api", () => ({
@@ -30,6 +31,16 @@ vi.mock("../../../../../convex/_generated/api", () => ({
       getLatestSnapshot: "quotaTracking.getLatestSnapshot",
       getProjectedBurnRate: "quotaTracking.getProjectedBurnRate",
       upsertQuotaSnapshot: "quotaTracking.upsertQuotaSnapshot",
+    },
+    eos: {
+      projections: {
+        getHealthSignals: "eos.projections.getHealthSignals",
+        getRecommendations: "eos.projections.getRecommendations",
+      },
+    },
+    analytics: {
+      schematicOverview: "analytics.schematicOverview",
+      recentRunTurns: "analytics.recentRunTurns",
     },
   },
 }));
@@ -141,6 +152,10 @@ vi.mock("convex/react", () => ({
   },
 }));
 
+vi.mock("../../lib/gatewayStatus", () => ({
+  loadGatewayStatus: mocks.loadGatewayStatus,
+}));
+
 function renderCommandCenter() {
   const onNavigate = vi.fn();
   render(<CommandCenterView onNavigate={onNavigate} />);
@@ -150,9 +165,11 @@ function renderCommandCenter() {
 describe("CommandCenterView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    global.fetch = vi.fn().mockResolvedValue({
-      json: () => Promise.resolve({ configured: true }),
-    }) as unknown as typeof fetch;
+    mocks.loadGatewayStatus.mockResolvedValue({
+      status: { configured: true, urlConfigured: true, tokenConfigured: true },
+      error: null,
+      checkedAt: Date.now(),
+    });
   });
 
   it("renders the EOS command center with live attention, workforce, capacity, and readiness data", async () => {
@@ -177,8 +194,10 @@ describe("CommandCenterView", () => {
     await waitFor(() => expect(screen.getByText("Connected")).toBeInTheDocument());
   });
 
-  it("routes primary operator actions to the right destination views", () => {
+  it("routes primary operator actions to the right destination views", async () => {
     const { onNavigate } = renderCommandCenter();
+
+    await screen.findByText("Connected");
 
     fireEvent.click(screen.getByRole("button", { name: "New mission" }));
     fireEvent.click(screen.getByRole("button", { name: "Modernize Atlas Checkout" }));
@@ -191,6 +210,8 @@ describe("CommandCenterView", () => {
 
   it("executes Command Center approval and unblock mutations with operator audit context", async () => {
     renderCommandCenter();
+
+    await screen.findByText("Connected");
 
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
     fireEvent.click(screen.getByRole("button", { name: "Unblock" }));

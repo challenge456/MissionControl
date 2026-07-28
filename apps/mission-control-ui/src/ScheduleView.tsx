@@ -53,7 +53,7 @@ export function ScheduleView({ projectId, onNavigate, onTaskSelect }: ScheduleVi
     .slice(0, 15);
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
+    <section className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
       <PageHeader
         title="Schedule"
         description="What's running and when. Upcoming tasks, scheduled jobs, and Convex crons in one place."
@@ -201,6 +201,6 @@ export function ScheduleView({ projectId, onNavigate, onTaskSelect }: ScheduleVi
           </ul>
         </Card>
       </div>
-    </main>
+    </section>
   );
 }

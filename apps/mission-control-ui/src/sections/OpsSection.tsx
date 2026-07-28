@@ -78,7 +78,7 @@ export function OpsSection({
           onAgentSelect={onAgentSelect}
           onWidthChange={onSidebarWidthChange}
         />
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <PageHeader
             title="Tasks"
             description="Execution queue for active work orders"
@@ -148,7 +148,7 @@ export function OpsSection({
             />
             <LoopDetectionPanel projectId={projectId} onTaskSelect={onTaskSelect} />
           </div>
-        </main>
+        </section>
         <LiveFeed
           projectId={projectId}
           expanded={liveFeedExpanded}

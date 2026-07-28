@@ -41,12 +41,12 @@ export function FactoryOverviewView({ projectId, onNavigate }: { projectId: Id<"
 
   if (!overview) {
     return (
-      <main className="flex flex-1 flex-col overflow-hidden">
+      <section className="flex flex-1 flex-col overflow-hidden">
         <PageHeader eyebrow="Control plane" title="Portfolio" description="Live factory overview backed by WorkOrders, approvals, and execution runs." icon={<Waypoints className="h-5 w-5" />} />
         <div className="flex flex-1 items-center justify-center p-6 text-sm text-muted-foreground">
           <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading factory overview…
         </div>
-      </main>
+      </section>
     );
   }
 
@@ -54,7 +54,7 @@ export function FactoryOverviewView({ projectId, onNavigate }: { projectId: Id<"
   const attentionLoad = summarizeAttentionLoad(overview.summary);
 
   return (
-    <main className="flex flex-1 flex-col overflow-hidden">
+    <section className="flex flex-1 flex-col overflow-hidden">
       <PageHeader
         eyebrow="Control plane"
         title="Portfolio"
@@ -177,7 +177,7 @@ export function FactoryOverviewView({ projectId, onNavigate }: { projectId: Id<"
           />
         </div>
       </div>
-    </main>
+    </section>
   );
 }
 

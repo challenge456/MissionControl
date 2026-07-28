@@ -644,7 +644,7 @@ export function MemoryView({ projectId }: MemoryViewProps) {
   ];
 
   return (
-    <main className="flex-1 overflow-auto bg-app p-6">
+    <section className="flex-1 overflow-auto bg-app p-6">
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-ink mt-0 mb-1">Memory</h1>
@@ -974,7 +974,7 @@ export function MemoryView({ projectId }: MemoryViewProps) {
           onCancel={() => setDeleteConfirm(null)}
         />
       )}
-    </main>
+    </section>
   );
 }
 

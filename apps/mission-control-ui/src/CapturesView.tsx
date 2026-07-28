@@ -41,7 +41,7 @@ export function CapturesView({ projectId }: CapturesViewProps) {
 
   if (captures === undefined) {
     return (
-      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
+      <section className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
         <PageHeader
           title="Captures"
           description="Visual artifacts and deliverables gallery"
@@ -57,12 +57,12 @@ export function CapturesView({ projectId }: CapturesViewProps) {
             ))}
           </div>
         </div>
-      </main>
+      </section>
     );
   }
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
+    <section className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
       <PageHeader
         title="Captures"
         description="Visual artifacts and deliverables gallery"
@@ -105,7 +105,7 @@ export function CapturesView({ projectId }: CapturesViewProps) {
           />
         )}
       </div>
-    </main>
+    </section>
   );
 }
 

@@ -101,7 +101,7 @@ const navGroups: NavGroup[] = [
   {
     label: "Platform",
     items: [
-      { id: "system", label: "System", icon: Settings },
+      { id: "system", label: "Database", icon: Settings },
       { id: "radar", label: "Radar", icon: Radar },
       { id: "factory", label: "Factory", icon: Factory },
       { id: "pipeline", label: "Pipeline", icon: GitMerge },

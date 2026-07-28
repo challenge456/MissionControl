@@ -26,10 +26,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { PageHeader } from "@/components/PageHeader";
 import { ClipboardList, ExternalLink, PlayCircle, Plus, ShieldCheck, Sparkles, TriangleAlert } from "lucide-react";
 import {
+  countByQuickFilter,
   DEFAULT_WORK_ORDER_FILTERS,
+  deriveNextAction,
   filterWorkOrders,
   summarizeRequiredAttention,
   type WorkOrderQueueFilters,
+  type WorkOrderQuickFilter,
 } from "./workOrdersModel";
 import { ExecutionRunInspector } from "./ExecutionRunInspector";
 import { splitCurrentAndHistoricalRevisions, summarizeRevisionEffects } from "./workOrderLifecycleModel";
@@ -54,6 +57,14 @@ const STATE_STYLES: Record<string, string> = {
   CANCELED: "border-border text-muted-foreground",
   SUPERSEDED: "border-slate-500/30 text-slate-300",
 };
+
+const QUICK_FILTERS: Array<{ id: WorkOrderQuickFilter; label: string }> = [
+  { id: "all", label: "All" },
+  { id: "needs_attention", label: "Needs attention" },
+  { id: "blocked", label: "Blocked" },
+  { id: "awaiting_approval", label: "Awaiting approval" },
+  { id: "ready_to_dispatch", label: "Ready to dispatch" },
+];
 
 function prettyLabel(value: string | undefined | null) {
   if (!value) return "—";
@@ -164,6 +175,13 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
     };
   }, [workOrders]);
 
+  const quickFilterCounts = useMemo(() => {
+    const rows = workOrders ?? [];
+    return Object.fromEntries(
+      QUICK_FILTERS.map((filter) => [filter.id, filter.id === "all" ? rows.length : countByQuickFilter(rows, filter.id)])
+    ) as Record<WorkOrderQuickFilter, number>;
+  }, [workOrders]);
+
   async function handleSeed() {
     setSeeding(true);
     try {
@@ -228,6 +246,26 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
           <StatCard label="Needs attention" value={counts.attention} tone={counts.attention > 0 ? "warn" : "good"} />
         </div>
 
+        <div className="mt-4 flex flex-wrap gap-2">
+          {QUICK_FILTERS.map((filter) => {
+            const active = filters.quickFilter === filter.id;
+            return (
+              <Button
+                key={filter.id}
+                size="sm"
+                variant={active ? "default" : "outline"}
+                onClick={() => setFilters((current) => ({ ...current, quickFilter: filter.id }))}
+                className="gap-2"
+              >
+                {filter.label}
+                <span className="rounded-full bg-background/20 px-1.5 py-0.5 text-[11px] leading-none">
+                  {quickFilterCounts[filter.id] ?? 0}
+                </span>
+              </Button>
+            );
+          })}
+        </div>
+
         <div className="mt-4 grid gap-3 rounded-xl border border-[var(--panel-line)] bg-card/40 p-4 lg:grid-cols-6">
           <FilterSelect label="Repository" value={filters.repository} onChange={(value) => setFilters((current) => ({ ...current, repository: value }))} options={repositories} />
           <FilterSelect label="State" value={filters.state} onChange={(value) => setFilters((current) => ({ ...current, state: value }))} options={["READY", "DISPATCHED", "IN_PROGRESS", "BLOCKED", "AWAITING_APPROVAL", "AWAITING_VERIFICATION", "REOPENED", "DONE", "SUPERSEDED"]} />
@@ -251,6 +289,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                     key={item._id}
                     type="button"
                     onClick={() => setSelectedId(item._id)}
+                    aria-label={`${item.title} — next action: ${deriveNextAction(item)}`}
                     className={`w-full rounded-xl border p-4 text-left transition-colors ${selectedRow ? "border-registry-accent/40 bg-registry-accent-soft" : "border-[var(--panel-line)] bg-card/40 hover:border-registry-accent/20"}`}
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -279,6 +318,9 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                       </div>
                       <div>
                         <span className="text-foreground/80">Requestor:</span> {item.requestedBy ?? "Unknown"}
+                      </div>
+                      <div>
+                        <span className="text-foreground/80">Next action:</span> {deriveNextAction(item)}
                       </div>
                       <div className="md:col-span-2 truncate">
                         <span className="text-foreground/80">Attention:</span> {summarizeRequiredAttention(item)}

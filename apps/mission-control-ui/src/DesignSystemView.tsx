@@ -107,7 +107,7 @@ function SwatchGrid({ tokens }: { tokens: TokenSwatch[] }) {
 
 export function DesignSystemView() {
   return (
-    <main className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
+    <section className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
       <PageHeader
         title="Design DNA"
         description="Mission Control's shared visual contract. The v2 token system and factory primitives keep redesigns, generated pages, and component work consistent."
@@ -287,6 +287,6 @@ export function DesignSystemView() {
           </div>
         </Card>
       </div>
-    </main>
+    </section>
   );
 }

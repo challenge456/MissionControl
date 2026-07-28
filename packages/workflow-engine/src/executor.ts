@@ -6,8 +6,7 @@
  */
 
 import { ConvexHttpClient } from "convex/browser";
-import { api } from "../../../convex/_generated/api";
-import { Id } from "../../../convex/_generated/dataModel";
+import { anyApi as api } from "convex/server";
 import { render, validateContext } from "./renderer";
 import { parse, meetsExpectations } from "./parser";
 
@@ -172,7 +171,7 @@ export class WorkflowExecutor {
     const renderedInput = render(stepDef.input, run.context);
     
     // Find agent persona
-    const agentDef = workflow.agents.find((a) => a.id === stepDef.agent);
+    const agentDef = workflow.agents.find((a: any) => a.id === stepDef.agent);
     if (!agentDef) {
       throw new Error(`Agent not found in workflow: ${stepDef.agent}`);
     }

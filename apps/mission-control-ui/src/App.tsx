@@ -233,7 +233,7 @@ const SECTION_TABS: Record<CommandSection, TabItem[] | null> = {
   knowledge: [
     { id: "docs", label: "Knowledge" },
     { id: "design-system", label: "Design DNA" },
-    { id: "skills", label: "Skills" },
+    { id: "skills", label: "Discover skills" },
     { id: "memory", label: "Memory" },
     { id: "search", label: "Search" },
   ],
@@ -259,7 +259,7 @@ const SECTION_TABS: Record<CommandSection, TabItem[] | null> = {
     { id: "qc-rulesets", label: "Rulesets" },
   ],
   platform: [
-    { id: "system", label: "System" },
+    { id: "system", label: "Database" },
     { id: "radar", label: "Radar" },
     { id: "factory", label: "Factory" },
     { id: "pipeline", label: "Build Pipeline" },

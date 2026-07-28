@@ -49,7 +49,7 @@ export function IdentityDirectoryView({ projectId }: { projectId: Id<"projects">
   });
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+    <section className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       <PageHeader
         title="Identity Directory"
         description={
@@ -282,6 +282,6 @@ export function IdentityDirectoryView({ projectId }: { projectId: Id<"projects">
         </div>
       )}
       </div>
-    </main>
+    </section>
   );
 }

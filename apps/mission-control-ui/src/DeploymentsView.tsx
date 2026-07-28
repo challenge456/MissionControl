@@ -133,7 +133,7 @@ export function DeploymentsView({ projectId }: { projectId: Id<"projects"> | nul
   };
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+    <section className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       <PageHeader
         title="Deployments"
         description="Promote approved versions through environments. Activate and rollback from the board."
@@ -288,6 +288,6 @@ export function DeploymentsView({ projectId }: { projectId: Id<"projects"> | nul
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </main>
+    </section>
   );
 }

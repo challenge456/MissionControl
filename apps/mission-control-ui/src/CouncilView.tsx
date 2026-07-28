@@ -33,7 +33,7 @@ export function CouncilView({ projectId }: CouncilViewProps) {
 
   if (approvals === undefined || activities === undefined || agents === undefined) {
     return (
-      <main className="flex-1 overflow-auto bg-app p-6">
+      <section className="flex-1 overflow-auto bg-app p-6">
         <div className="mb-6">
           <h1 className="mb-1 text-[26px] font-semibold leading-tight tracking-tight text-ink">Council</h1>
           <div className="mt-3 space-y-3">
@@ -41,7 +41,7 @@ export function CouncilView({ projectId }: CouncilViewProps) {
             <div className="h-40 animate-pulse rounded-xl bg-surface-2" />
           </div>
         </div>
-      </main>
+      </section>
     );
   }
 
@@ -61,7 +61,7 @@ export function CouncilView({ projectId }: CouncilViewProps) {
   const pending = pendingApprovals ?? [];
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
+    <section className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
       <PageHeader
         title="Council"
         description={
@@ -186,7 +186,7 @@ export function CouncilView({ projectId }: CouncilViewProps) {
         </div>
       )}
       </div>
-    </main>
+    </section>
   );
 }
 

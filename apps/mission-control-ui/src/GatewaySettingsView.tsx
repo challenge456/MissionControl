@@ -10,14 +10,9 @@ import { PageHeader } from "./components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { getOrchestrationBaseUrl } from "@/lib/orchestrationUrl";
+import { loadGatewayStatus, type GatewayStatus } from "@/lib/gatewayStatus";
 import { useToast } from "./Toast";
 import { Loader2, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
-
-interface GatewayStatus {
-  configured: boolean;
-  urlConfigured: boolean;
-  tokenConfigured: boolean;
-}
 
 export function GatewaySettingsView() {
   const { toast } = useToast();
@@ -35,11 +30,9 @@ export function GatewaySettingsView() {
   useEffect(() => {
     let cancelled = false;
     setStatusLoading(true);
-    const base = getOrchestrationBaseUrl();
-    fetch(base ? `${base}/gateway/status` : "/gateway/status")
-      .then((r) => r.json())
-      .then((data: GatewayStatus) => {
-        if (!cancelled) setStatus(data);
+    loadGatewayStatus({ force: true })
+      .then((snapshot) => {
+        if (!cancelled) setStatus(snapshot.status);
       })
       .catch(() => {
         if (!cancelled) setStatus(null);
@@ -70,9 +63,9 @@ export function GatewaySettingsView() {
   };
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+    <section className="flex min-h-0 flex-1 flex-col overflow-y-auto">
       <PageHeader
-        title="OpenClaw Gateway"
+        title="Gateway"
         description="Connect Mission Control to an OpenClaw Gateway for live agent chat and streaming. URL is stored here; token is set on the server (GATEWAY_TOKEN)."
       />
 
@@ -138,9 +131,14 @@ export function GatewaySettingsView() {
               </div>
             </div>
           ) : (
-            <div className="flex items-center gap-2 text-[13.5px] text-warn">
-              <AlertCircle size={15} strokeWidth={1.7} className="shrink-0" aria-hidden />
-              Cannot reach orchestration server. Ensure it is running at {getOrchestrationBaseUrl() || "same origin (proxied)"} and CORS allows this origin.
+            <div className="space-y-3 text-[13.5px] text-warn">
+              <div className="flex items-center gap-2">
+                <AlertCircle size={15} strokeWidth={1.7} className="shrink-0" aria-hidden />
+                Cannot reach orchestration server. Ensure it is running at {getOrchestrationBaseUrl() || "same origin (proxied)"}.
+              </div>
+              <div className="rounded-lg border border-warn/20 bg-warn-soft/40 px-3 py-3 text-[12.5px] leading-relaxed text-ink-secondary">
+                What still works: Mission Control can render the shell and demo-backed live chat fallback. What does not work until the server is up: live Gateway status, WebSocket chat, and server-side token injection.
+              </div>
             </div>
           )}
         </Card>
@@ -152,6 +150,6 @@ export function GatewaySettingsView() {
           </p>
         </Card>
       </div>
-    </main>
+    </section>
   );
 }

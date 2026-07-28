@@ -107,7 +107,7 @@ export function AuditView({ projectId: _projectId }: { projectId: Id<"projects">
   };
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-app">
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden bg-app">
       <PageHeader
         title="ARM Audit"
         description="Governance trail for approvals, lifecycle transitions, deployments, and policy decisions."
@@ -229,6 +229,6 @@ export function AuditView({ projectId: _projectId }: { projectId: Id<"projects">
       </Card>
       </div>
       </div>
-    </main>
+    </section>
   );
 }

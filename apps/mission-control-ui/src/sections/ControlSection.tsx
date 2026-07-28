@@ -65,7 +65,7 @@ export function ControlSection({ currentView, projectId, onNavigate }: ControlSe
   const activeCopy = VIEW_COPY[activeView];
 
   return (
-    <main className="flex flex-1 flex-col overflow-hidden">
+    <section className="flex flex-1 flex-col overflow-hidden">
       <PageHeader
         eyebrow="Control plane"
         title="Control"
@@ -130,7 +130,7 @@ export function ControlSection({ currentView, projectId, onNavigate }: ControlSe
           </Card>
         </div>
       </div>
-    </main>
+    </section>
   );
 }
 

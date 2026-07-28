@@ -395,7 +395,7 @@ export function DocsView() {
   const [activeTab, setActiveTab] = useState("documentation");
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-app">
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden bg-app">
       <PageHeader
         title="Documentation"
         description="Agentic software factory guides — Tessl-style docs for Mission Control, plus semantic search and repo chat."
@@ -419,6 +419,6 @@ export function DocsView() {
           <ChatTab />
         </div>
       )}
-    </main>
+    </section>
   );
 }

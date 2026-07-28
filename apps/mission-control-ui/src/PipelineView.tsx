@@ -8,7 +8,7 @@ import { Button } from "./components/ui/button";
 import { StatusBadge, type StatusBadgeProps } from "@/components/factory/badges";
 import { cn } from "@/lib/utils";
 import { getBuildPipelineStages, getCurrentBuildStage } from "@/lib/buildPipeline";
-import { getOrchestrationBaseUrl } from "@/lib/orchestrationUrl";
+import { loadGatewayStatus } from "@/lib/gatewayStatus";
 import {
   ArrowRight,
   Users,
@@ -49,17 +49,11 @@ export function PipelineView({ projectId, onNavigate }: PipelineViewProps) {
 
   useEffect(() => {
     let cancelled = false;
-    const base = getOrchestrationBaseUrl();
-    fetch(base ? `${base}/gateway/status` : "/gateway/status")
-      .then((response) => response.json())
-      .then((data: { configured?: boolean; urlConfigured?: boolean; tokenConfigured?: boolean }) => {
-        if (!cancelled) {
-          setGatewayConfigured(Boolean(data.configured ?? (data.urlConfigured && data.tokenConfigured)));
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setGatewayConfigured(false);
-      });
+    loadGatewayStatus().then((snapshot) => {
+      if (!cancelled) {
+        setGatewayConfigured(Boolean(snapshot.status?.configured));
+      }
+    });
 
     return () => {
       cancelled = true;

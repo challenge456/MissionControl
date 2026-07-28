@@ -63,10 +63,10 @@ export function SystemView({
   const isHealthy = issues.length === 0;
 
   return (
-    <main className="relative flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
+    <section className="relative flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
       <PageHeader
-        title="System"
-        description="System health, gateway status, and scheduled crons. One place for platform status."
+        title="Database"
+        description="Database and platform health, gateway status, and scheduled crons in one operator view."
         icon={<Settings className="h-4 w-4" />}
         eyebrow="Platform"
         actions={
@@ -167,7 +167,7 @@ export function SystemView({
         <Card className="p-5">
           <h3 className="text-[15px] font-semibold text-ink">Operator brief</h3>
           <div className="mt-3 space-y-3 text-[13.5px] leading-relaxed text-ink-secondary">
-            <p>Use System for trust checks and routing, not deep investigation. If something is noisy here, jump into Radar or Feedback immediately.</p>
+            <p>Use Database for trust checks and routing, not deep investigation. If something is noisy here, jump into Radar or Feedback immediately.</p>
             <p>The platform is healthy only when alerts are controlled, approvals are not stale, and quarantines are explained rather than ignored.</p>
           </div>
           <div className="mt-4 rounded-lg border border-line bg-surface-2 px-4 py-3">
@@ -258,6 +258,6 @@ export function SystemView({
           </ul>
         </Card>
       </div>
-    </main>
+    </section>
   );
 }

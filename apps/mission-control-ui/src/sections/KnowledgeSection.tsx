@@ -42,7 +42,7 @@ export function KnowledgeSection({ currentView, projectId, onTaskSelect, onNavig
   }
   if (currentView === "search") {
     return (
-      <main className="relative flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
+      <section className="relative flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
         <PageHeader
           title="Search"
           description="Find tasks, agents, and context across Mission Control. Results open in the Mission Queue."
@@ -76,7 +76,7 @@ export function KnowledgeSection({ currentView, projectId, onTaskSelect, onNavig
             </div>
           </Card>
         </div>
-      </main>
+      </section>
     );
   }
   return null;

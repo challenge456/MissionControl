@@ -13,7 +13,7 @@ import { ConvexHttpClient } from "convex/browser";
 import chalk from "chalk";
 import ora from "ora";
 import Table from "cli-table3";
-import { api } from "../../../../convex/_generated/api";
+import { anyApi as api } from "convex/server";
 
 const CONVEX_URL = process.env.CONVEX_URL || process.env.VITE_CONVEX_URL;
 
@@ -236,7 +236,7 @@ function statusCommand() {
         console.log(table.toString());
         
         // Error details
-        const failedSteps = run.steps.filter((s) => s.status === "FAILED");
+        const failedSteps = run.steps.filter((s: any) => s.status === "FAILED");
         if (failedSteps.length > 0) {
           console.log("");
           console.log(chalk.red.bold("Errors:"));
@@ -309,7 +309,7 @@ function runsCommand() {
         
         for (const run of runs) {
           const statusColor = statusColors[run.status] || chalk.white;
-          const completedSteps = run.steps.filter((s) => s.status === "DONE").length;
+          const completedSteps = run.steps.filter((s: any) => s.status === "DONE").length;
           const startedAt = new Date(run.startedAt).toLocaleString();
           
           table.push([
