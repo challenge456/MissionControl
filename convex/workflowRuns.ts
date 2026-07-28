@@ -11,6 +11,7 @@ import { appendOpEvent } from "./lib/armAudit";
 import { resolveAgentRef } from "./lib/agentResolver";
 import { buildContinuousEvidenceLineage, buildEvidenceLineage, buildFileChanges, buildRetryTimeline, orderRunEvents, summarizeRunEvents } from "./lib/runInspector";
 import { summarizeWorkflowObservability } from "./lib/workflowObservability";
+import { reconcileTerminalWorkflowSteps } from "./lib/workflowRunState";
 
 // ============================================================================
 // HELPERS
@@ -946,6 +947,15 @@ export const updateStatus = mutation({
 
     if (args.status === "CANCELED") {
       updates.completedAt = Date.now();
+    }
+
+    if (args.status === "FAILED" || args.status === "CANCELED") {
+      updates.steps = reconcileTerminalWorkflowSteps(
+        run.steps,
+        args.status,
+        args.failureReason,
+        updates.completedAt
+      );
     }
     
     await ctx.db.patch(run._id, updates);
