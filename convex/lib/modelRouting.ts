@@ -7,9 +7,9 @@ export {
   type RoutingRisk,
   type RoutingRule,
   type RoutingTier,
-} from "../../packages/model-router/src/policy";
+} from "@mission-control/model-router";
 
-import type { RoutingPolicyInput } from "../../packages/model-router/src/policy";
+import type { RoutingPolicyInput } from "@mission-control/model-router";
 
 export function fallbackRoutingPolicy(
   projectDefaultModel?: string
