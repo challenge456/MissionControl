@@ -29,8 +29,14 @@ export function IdentityDirectoryView({ projectId }: { projectId: Id<"projects">
   const [soulContent, setSoulContent] = useState("");
   const [editingSoul, setEditingSoul] = useState(false);
 
-  const directory = useQuery(api.identity.getDirectory, projectId ? { projectId } : {});
-  const complianceReport = useQuery(api.identity.getComplianceReport, projectId ? { projectId } : {});
+  const directory = useQuery(
+    api.identity.getDirectory,
+    projectId ? { projectId } : "skip"
+  );
+  const complianceReport = useQuery(
+    api.identity.getComplianceReport,
+    projectId ? { projectId } : "skip"
+  );
   const selectedIdentity = useQuery(
     api.identity.getByAgent,
     selectedAgentId ? { agentId: selectedAgentId } : "skip"

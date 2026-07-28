@@ -370,6 +370,16 @@ app.post("/workorders/:workOrderId/dispatch", async (c) => {
       model: body.model,
       worktree: body.worktree,
     });
+    if ((result as any)?.reason === "routing-exhausted") {
+      return c.json(
+        {
+          success: false,
+          error: "No safe model route satisfies this Work Order",
+          result,
+        },
+        409
+      );
+    }
     return c.json({ success: true, result });
   } catch (err: any) {
     return c.json({ error: err.message }, 400);
@@ -427,6 +437,70 @@ app.post("/workorders/:workOrderId/receipt-packets", async (c) => {
       markRunCompleted: body.markRunCompleted,
       receipts: body.receipts ?? [],
       idempotencyKey: body.idempotencyKey,
+    });
+    return c.json({ success: true, result });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+// Mission handoffs preserve the worker/validator boundary without duplicating
+// Convex lifecycle logic in the runtime adapter.
+app.post("/missions/:missionId/handoffs", async (c) => {
+  try {
+    const missionId = c.req.param("missionId");
+    const body = await c.req.json();
+    const result = await client.mutation(ConvexMutations.missions.recordHandoff as any, {
+      missionId,
+      workOrderId: body.workOrderId,
+      workflowRunId: body.workflowRunId,
+      idempotencyKey: body.idempotencyKey,
+      producingRole: body.producingRole,
+      consumingRole: body.consumingRole,
+      outcome: body.outcome,
+      completedAssertionIds: body.completedAssertionIds ?? [],
+      incompleteAssertionIds: body.incompleteAssertionIds ?? [],
+      unknownAssertionIds: body.unknownAssertionIds ?? [],
+      commands: body.commands ?? [],
+      artifactIds: body.artifactIds ?? [],
+      knownRisks: body.knownRisks ?? [],
+      nextAction: body.nextAction,
+      nextOwner: body.nextOwner,
+    });
+    return c.json({ success: true, result });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+app.post("/missions/:missionId/validation-results", async (c) => {
+  try {
+    const missionId = c.req.param("missionId");
+    const body = await c.req.json();
+    const result = await client.mutation(ConvexMutations.missions.recordValidationResult as any, {
+      missionId,
+      validationAssertionId: body.validationAssertionId,
+      workflowRunId: body.workflowRunId,
+      status: body.status,
+      verificationReceiptId: body.verificationReceiptId,
+      waiverApprovalDecisionId: body.waiverApprovalDecisionId,
+      actorId: body.actorId ?? "orchestration-server",
+      idempotencyKey: body.idempotencyKey,
+    });
+    return c.json({ success: true, result });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+app.post("/missions/:missionId/accept", async (c) => {
+  try {
+    const missionId = c.req.param("missionId");
+    const body = await c.req.json();
+    const result = await client.mutation(ConvexMutations.missions.accept as any, {
+      missionId,
+      acceptedBy: body.acceptedBy ?? "orchestration-server",
+      idempotencyKey: body.idempotencyKey ?? `orch-mission-accept:${missionId}`,
     });
     return c.json({ success: true, result });
   } catch (err: any) {

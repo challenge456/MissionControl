@@ -61,9 +61,12 @@ export function AtcBoardView({
   onNavigateToTasks,
 }: AtcBoardViewProps) {
   const { privacyMode } = usePrivacy();
-  const agents = useQuery(api.agents.listAll, projectId ? { projectId } : {});
-  const tasks = useQuery(api.tasks.listAll, projectId ? { projectId } : {});
-  const runs = useQuery(api.runs.listRecent, projectId ? { projectId, limit: 500 } : { limit: 500 });
+  const agents = useQuery(api.agents.listAll, projectId ? { projectId } : "skip");
+  const tasks = useQuery(api.tasks.listAll, projectId ? { projectId } : "skip");
+  const runs = useQuery(
+    api.runs.listRecent,
+    projectId ? { projectId, limit: 500 } : "skip"
+  );
 
   if (agents === undefined || tasks === undefined || runs === undefined) {
     return (

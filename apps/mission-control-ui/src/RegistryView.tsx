@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { Code2, Github, Search } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
+import type { Id } from "../../../convex/_generated/dataModel";
 import type { MainView } from "./TopNav";
 import { DataTable, type Column } from "./components/factory/DataTable";
 import { RegistryInstallationsPanel } from "./RegistryInstallationsPanel";
@@ -118,6 +119,9 @@ function TopPackageCard({
 export interface RegistryViewContentProps {
   entries: RegistryEntry[] | undefined;
   activeTab?: RegistryTab;
+  projectId?: Id<"projects"> | null;
+  repository?: string;
+  showWorkspaceTabs?: boolean;
   onTabChange?: (tab: RegistryTab) => void;
   onOpenDetail?: (entry: RegistryEntry) => void;
 }
@@ -126,6 +130,9 @@ export interface RegistryViewContentProps {
 export function RegistryViewContent({
   entries,
   activeTab = "catalog",
+  projectId,
+  repository,
+  showWorkspaceTabs = true,
   onTabChange,
   onOpenDetail,
 }: RegistryViewContentProps): JSX.Element {
@@ -244,7 +251,7 @@ export function RegistryViewContent({
             role="tablist"
             aria-label="Registry sections"
           >
-            {REGISTRY_TABS.map((tab) => (
+            {(showWorkspaceTabs ? REGISTRY_TABS : REGISTRY_TABS.slice(0, 1)).map((tab) => (
               <button
                 key={tab.id}
                 role="tab"
@@ -266,15 +273,15 @@ export function RegistryViewContent({
 
         {activeTab === "inventory" ? (
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <SkillInventoryPanel />
+            <SkillInventoryPanel repoSlug={repository} />
           </div>
         ) : activeTab === "installations" ? (
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <RegistryInstallationsPanel />
+            <RegistryInstallationsPanel repoSlug={repository} />
           </div>
         ) : activeTab === "evaluate" ? (
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <RegistryEvaluateSkill />
+            <RegistryEvaluateSkill projectId={projectId} />
           </div>
         ) : activeTab === "lifecycle" ? (
           <div className="min-h-0 flex-1 overflow-y-auto">
@@ -282,7 +289,7 @@ export function RegistryViewContent({
           </div>
         ) : activeTab === "evals" ? (
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <RegistryEvalsPanel />
+            <RegistryEvalsPanel projectId={projectId} />
           </div>
         ) : (
           <div className="min-h-0 flex-1 overflow-y-auto">
@@ -367,7 +374,9 @@ export function RegistryViewContent({
                 }
               />
 
-              <RegistryOptimizeCta onEvaluate={() => onTabChange?.("evaluate")} />
+              {showWorkspaceTabs ? (
+                <RegistryOptimizeCta onEvaluate={() => onTabChange?.("evaluate")} />
+              ) : null}
             </div>
           </div>
         )}
@@ -379,13 +388,18 @@ export function RegistryViewContent({
 /** Data container — queries the governed context registry. */
 export function RegistryView({
   initialTab = "catalog",
+  projectId,
+  showWorkspaceTabs = true,
   onNavigate,
 }: {
   initialTab?: RegistryTab;
+  projectId?: Id<"projects"> | null;
+  showWorkspaceTabs?: boolean;
   onNavigate?: (view: MainView) => void;
 } = {}): JSX.Element {
   const [activeTab, setActiveTab] = useState<RegistryTab>(initialTab);
   const [detailEntry, setDetailEntry] = useState<RegistryEntry | null>(null);
+  const project = useQuery(api.projects.get, projectId ? { projectId } : "skip");
   const entries = useQuery(api.context.packages.listWithCurrentVersions, {}) as
     | RegistryEntry[]
     | undefined;
@@ -423,6 +437,9 @@ export function RegistryView({
     <RegistryViewContent
       entries={entries}
       activeTab={activeTab}
+      projectId={projectId}
+      repository={project?.githubRepo}
+      showWorkspaceTabs={showWorkspaceTabs}
       onTabChange={handleTabChange}
       onOpenDetail={setDetailEntry}
     />

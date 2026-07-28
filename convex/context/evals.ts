@@ -199,9 +199,14 @@ export const getEvalProfile = query({
 
 /** Recent eval activity across all packages — powers the Registry Evals tab. */
 export const listRecentRuns = query({
-  args: { limit: v.optional(v.number()) },
+  args: {
+    limit: v.optional(v.number()),
+    projectId: v.optional(v.id("projects")),
+  },
   handler: async (ctx, args) => {
-    const runs = await ctx.db.query("contextEvalRuns").collect();
+    const runs = (await ctx.db.query("contextEvalRuns").collect()).filter(
+      (run) => !args.projectId || run.projectId === args.projectId
+    );
     runs.sort((a, b) => b.createdAt - a.createdAt);
     const limit = args.limit ?? 20;
     const slice = runs.slice(0, limit);
@@ -403,11 +408,16 @@ export const runProxyEval = mutation({
     versionId: v.optional(v.id("contextPackageVersions")),
     idempotencyKey: v.optional(v.string()),
     actorId: v.optional(v.string()),
+    projectId: v.optional(v.id("projects")),
   },
   handler: async (ctx, args) => {
     const pkg = await ctx.db.get(args.packageId);
     if (!pkg) throw new Error("Package not found");
-    await requireEvalFrameworkEnabled(ctx, pkg.projectId);
+    if (args.projectId && !(await ctx.db.get(args.projectId))) {
+      throw new Error("Workspace not found");
+    }
+    const projectId = args.projectId ?? pkg.projectId;
+    await requireEvalFrameworkEnabled(ctx, projectId);
 
     let version = args.versionId
       ? await ctx.db.get(args.versionId)
@@ -449,7 +459,7 @@ export const runProxyEval = mutation({
       completedScenarios: 0,
       idempotencyKey: args.idempotencyKey,
       actorId: args.actorId,
-      projectId: pkg.projectId,
+      projectId,
       startedAt: now,
       createdAt: now,
     });

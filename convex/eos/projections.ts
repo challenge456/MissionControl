@@ -33,13 +33,19 @@ export const getHealthSignals = query({
     const activeAgents = agents.filter((a) => a.status === "ACTIVE").length;
     const quarantined = agents.filter((a) => a.status === "QUARANTINED").length;
 
-    const packages = await ctx.db.query("contextPackages").collect();
+    const packages = (await ctx.db.query("contextPackages").collect()).filter(
+      (row) => !args.projectId || row.projectId === args.projectId
+    );
     const published = packages.filter((p) => p.status === "ACTIVE").length;
 
-    const evalRuns = await ctx.db.query("contextEvalRuns").collect();
+    const evalRuns = (await ctx.db.query("contextEvalRuns").collect()).filter(
+      (row) => !args.projectId || row.projectId === args.projectId
+    );
     const completedEvals = evalRuns.filter((e) => e.status === "COMPLETED").length;
 
-    const receipts = await ctx.db.query("verificationReceipts").collect();
+    const receipts = (await ctx.db.query("verificationReceipts").collect()).filter(
+      (row) => !args.projectId || row.projectId === args.projectId
+    );
     const staleReceipts = receipts.filter(
       (r) => r.status === "STALE" || (r.validUntil != null && r.validUntil <= Date.now())
     ).length;
@@ -59,7 +65,7 @@ export const getHealthSignals = query({
         confidence: workOrders.length >= 3 ? ("high" as const) : ("moderate" as const),
         provenance: "convex" as const,
         evidence: [{ label: "work orders", count: workOrders.length, view: "control-work-orders" }],
-        drillView: "missions",
+        drillView: "control-work-orders",
       },
       {
         id: "factory",
@@ -69,8 +75,8 @@ export const getHealthSignals = query({
         summary: `${activeAgents} agents active · ${quarantined} quarantined · ${inProgress} runs in progress`,
         confidence: "high" as const,
         provenance: "convex" as const,
-        evidence: [{ label: "agents", count: agents.length, view: "agent-catalog" }],
-        drillView: "factory-health",
+        evidence: [{ label: "agents", count: agents.length, view: "agents" }],
+        drillView: "agents",
       },
       {
         id: "delivery",
@@ -80,8 +86,8 @@ export const getHealthSignals = query({
         summary: `${runsNeedingAttention} runs need attention · ${inProgress} in progress`,
         confidence: "moderate" as const,
         provenance: "convex" as const,
-        evidence: [{ label: "execution", view: "trace-inspector" }],
-        drillView: "trace-inspector",
+        evidence: [{ label: "work orders", view: "control-work-orders" }],
+        drillView: "control-work-orders",
       },
       {
         id: "verification",
@@ -92,7 +98,7 @@ export const getHealthSignals = query({
         confidence: receipts.length > 0 ? ("high" as const) : ("low" as const),
         provenance: "convex" as const,
         evidence: [{ label: "receipts", count: receipts.length, view: "control-work-orders" }],
-        drillView: "trace-inspector",
+        drillView: "control-work-orders",
       },
       {
         id: "effectiveness",
@@ -103,7 +109,7 @@ export const getHealthSignals = query({
         confidence: completedEvals >= 3 ? ("moderate" as const) : ("low" as const),
         provenance: "convex" as const,
         evidence: [{ label: "eval runs", count: evalRuns.length, view: "registry-runs" }],
-        drillView: "effectiveness",
+        drillView: "skills",
       },
       {
         id: "readiness",
@@ -114,7 +120,7 @@ export const getHealthSignals = query({
         confidence: "moderate" as const,
         provenance: "convex" as const,
         evidence: [{ label: "skills", count: published, view: "skills" }],
-        drillView: "readiness",
+        drillView: "skills",
       },
       {
         id: "reliability",
@@ -124,8 +130,8 @@ export const getHealthSignals = query({
         summary: quarantined === 0 ? "No quarantined agents" : `${quarantined} agent(s) quarantined`,
         confidence: "high" as const,
         provenance: "convex" as const,
-        evidence: [{ label: "agents", count: agents.length, view: "agent-catalog" }],
-        drillView: "agent-catalog",
+        evidence: [{ label: "agents", count: agents.length, view: "agents" }],
+        drillView: "agents",
       },
       {
         id: "knowledge",

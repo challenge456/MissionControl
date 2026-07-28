@@ -68,6 +68,19 @@ export function isValidContentHash(hash: string): boolean {
 }
 
 /**
+ * Return the previously imported version with identical content, if one
+ * exists. Imports use the content hash as their identity boundary: unchanged
+ * source must not create a synthetic patch release.
+ */
+export function findVersionByContentHash<T extends { contentHash?: string }>(
+  versions: readonly T[],
+  contentHash: string | undefined
+): T | undefined {
+  if (!contentHash) return undefined;
+  return versions.find((version) => version.contentHash === contentHash);
+}
+
+/**
  * Package lifecycle: DRAFT <-> ACTIVE -> DEPRECATED.
  * A draft can be activated and an active package can be pulled back to
  * draft; only ACTIVE packages can be deprecated (deprecation implies prior

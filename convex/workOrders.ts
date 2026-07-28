@@ -26,9 +26,138 @@ import {
   verificationValidUntil,
 } from "./lib/workOrderRevision";
 import { planAcceptedWorkOrderParentSync } from "./lib/workOrderParentSync";
+import { validateMissionWorkOrderDispatch } from "./lib/missionGovernance";
+import { resolveFlag, type FlagRow } from "./lib/flags";
+import {
+  fallbackRoutingPolicy,
+  resolveModelRoute,
+  type CatalogModel,
+  type RoutingPolicyInput,
+  type RoutingTier,
+} from "./lib/modelRouting";
 
 function generateRunId(): string {
   return Math.random().toString(36).substring(2, 10);
+}
+
+function isInCanary(id: string, percent: number): boolean {
+  if (percent >= 100) return true;
+  if (percent <= 0) return false;
+  let hash = 0;
+  for (const character of id) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+  return hash % 100 < percent;
+}
+
+async function resolveDispatchRouting(
+  ctx: any,
+  args: {
+    workOrder: any;
+    workflow: any;
+    authorizedRunOverride?: string;
+  }
+) {
+  const { workOrder, workflow } = args;
+  if (!workOrder.projectId) return null;
+  const [project, catalog, activePolicy, flagRows, task] = await Promise.all([
+    ctx.db.get(workOrder.projectId),
+    ctx.db.query("modelCatalog").collect(),
+    ctx.db
+      .query("modelRoutingPolicies")
+      .withIndex("by_project_status", (q: any) =>
+        q.eq("projectId", workOrder.projectId).eq("status", "ACTIVE")
+      )
+      .order("desc")
+      .first(),
+    ctx.db.query("featureFlags").collect(),
+    workOrder.legacyTaskId ? ctx.db.get(workOrder.legacyTaskId) : null,
+  ]);
+  const agent = workOrder.assignedAgent
+    ? await ctx.db
+        .query("agents")
+        .withIndex("by_project_name", (q: any) =>
+          q.eq("projectId", workOrder.projectId).eq("name", workOrder.assignedAgent)
+        )
+        .first()
+    : null;
+  const agentOverride = agent
+    ? await ctx.db
+        .query("agentModelOverrides")
+        .withIndex("by_project_agent", (q: any) =>
+          q.eq("projectId", workOrder.projectId).eq("agentId", agent._id)
+        )
+        .first()
+    : null;
+  const policy: RoutingPolicyInput = activePolicy
+    ? {
+        id: activePolicy._id,
+        version: activePolicy.version,
+        defaultModelId: activePolicy.defaultModelId,
+        safeFallbackModelId: activePolicy.safeFallbackModelId,
+        fallbackChain: activePolicy.fallbackChain,
+        rules: activePolicy.rules,
+        budgetLimitUsd: activePolicy.budgetLimitUsd,
+        killSwitch: activePolicy.killSwitch,
+      }
+    : fallbackRoutingPolicy(project?.swarmConfig?.defaultModel);
+  const requiredCapabilities =
+    (workOrder.metadata as { requiredModelCapabilities?: string[] } | undefined)
+      ?.requiredModelCapabilities ?? ["tools"];
+  const requestedTier = workflow.steps.find((step: any) => step.modelTier)?.modelTier as
+    | RoutingTier
+    | undefined;
+  const result = resolveModelRoute(catalog as CatalogModel[], policy, {
+    taskType: task?.type,
+    riskLevel: workOrder.riskLevel,
+    requestedTier,
+    requiredCapabilities,
+    budgetRemainingUsd:
+      (workOrder.metadata as { modelBudgetRemainingUsd?: number } | undefined)
+        ?.modelBudgetRemainingUsd,
+    authorizedRunOverride: args.authorizedRunOverride,
+    agentOverrideModelId:
+      agentOverride && (!agentOverride.expiresAt || agentOverride.expiresAt > Date.now())
+        ? agentOverride.modelId
+        : undefined,
+    systemDefaultModelId: "operator-default",
+  });
+  const enabled = resolveFlag(
+    flagRows as FlagRow[],
+    "model-routing.enabled",
+    workOrder.projectId
+  ).enabled;
+  const enforced =
+    enabled &&
+    result.status === "SELECTED" &&
+    isInCanary(String(workOrder._id), activePolicy?.canaryPercent ?? 0);
+  const mode =
+    result.status === "KILLED"
+      ? ("KILLED" as const)
+      : result.status === "EXHAUSTED"
+        ? ("EXHAUSTED" as const)
+        : enforced
+          ? ("ENFORCED" as const)
+          : ("SHADOW" as const);
+  const decisionId = await ctx.db.insert("modelRoutingDecisions", {
+    projectId: workOrder.projectId,
+    policyId: activePolicy?._id,
+    policyVersion: policy.version,
+    workOrderId: workOrder._id,
+    taskId: workOrder.legacyTaskId,
+    agentId: agent?._id,
+    taskType: task?.type,
+    riskLevel: workOrder.riskLevel,
+    requestedTier,
+    requiredCapabilities,
+    selectedProvider: result.selectedProvider,
+    selectedModelId: result.selectedModelId,
+    source: result.source,
+    ruleId: result.ruleId,
+    explanation: result.explanation,
+    alternativesConsidered: result.alternativesConsidered,
+    mode,
+    createdAt: Date.now(),
+  });
+  return { decisionId, result, mode, enabled, policyVersion: policy.version };
 }
 
 async function logWorkOrderEvent(
@@ -1057,6 +1186,11 @@ export const listStaleEvidence = query({
 export const create = mutation({
   args: {
     projectId: v.optional(v.id("projects")),
+    missionId: v.optional(v.id("missions")),
+    missionPlanId: v.optional(v.id("missionPlans")),
+    missionBlueprintId: v.optional(v.string()),
+    missionRole: v.optional(v.union(v.literal("WORKER"), v.literal("VALIDATOR"))),
+    isMutating: v.optional(v.boolean()),
     legacyTaskId: v.optional(v.id("tasks")),
     idempotencyKey: v.optional(v.string()),
     title: v.string(),
@@ -1091,6 +1225,27 @@ export const create = mutation({
     }
 
     const project = args.projectId ? await ctx.db.get(args.projectId) : null;
+    let mission: any = null;
+    let missionPlan: any = null;
+    let missionBlueprint: any = null;
+    if (args.missionId) {
+      mission = await ctx.db.get(args.missionId);
+      if (!mission) throw new Error("Mission not found");
+      if (mission.projectId !== args.projectId) throw new Error("Mission and WorkOrder project scopes must match");
+      if (!args.missionPlanId || !args.missionBlueprintId) throw new Error("Mission WorkOrders require an approved plan and blueprint");
+      missionPlan = await ctx.db.get(args.missionPlanId);
+      if (!missionPlan || missionPlan.missionId !== mission._id || mission.currentPlanId !== missionPlan._id || missionPlan.status !== "APPROVED") {
+        throw new Error("Mission WorkOrder must use the current approved plan");
+      }
+      missionBlueprint = missionPlan.workOrderBlueprints.find((blueprint: any) => blueprint.id === args.missionBlueprintId);
+      if (!missionBlueprint) throw new Error("Mission WorkOrder blueprint not found");
+      if (missionBlueprint.title !== args.title || missionBlueprint.desiredOutcome !== args.desiredOutcome) {
+        throw new Error("Mission WorkOrder must match its approved blueprint");
+      }
+      if ((args.missionRole ?? "WORKER") !== missionBlueprint.role) {
+        throw new Error("Mission WorkOrder role must match its approved blueprint");
+      }
+    }
     const now = Date.now();
     const finalCriteria = args.acceptanceCriteria.map((criterion) => ({
       ...criterion,
@@ -1100,6 +1255,12 @@ export const create = mutation({
     const workOrderId = await ctx.db.insert("workOrders", {
       tenantId: project?.tenantId,
       projectId: args.projectId,
+      missionId: args.missionId,
+      missionPlanId: args.missionPlanId,
+      missionSequence: missionBlueprint?.sequence,
+      missionRole: args.missionId ? (args.missionRole ?? "WORKER") : undefined,
+      isMutating: args.missionId ? missionBlueprint?.isMutating : args.isMutating,
+      releasedAt: args.missionId ? now : undefined,
       legacyTaskId: args.legacyTaskId,
       idempotencyKey: args.idempotencyKey,
       title: args.title,
@@ -1127,8 +1288,22 @@ export const create = mutation({
       acceptedRevisionNumber: undefined,
       createdAt: now,
       updatedAt: now,
-      metadata: args.metadata,
+      metadata: args.missionId ? { ...(args.metadata ?? {}), missionBlueprintId: args.missionBlueprintId } : args.metadata,
     });
+
+    if (mission && missionBlueprint) {
+      await Promise.all(missionBlueprint.assertionIds.map(async (assertionId: string) => {
+        const assertion = await ctx.db
+          .query("validationAssertions")
+          .withIndex("by_mission_assertion", (q: any) => q.eq("missionId", mission._id).eq("assertionId", assertionId))
+          .first();
+        if (!assertion) throw new Error(`Mission WorkOrder references an assertion that is not in the approved contract: ${assertionId}`);
+        await ctx.db.patch(assertion._id, {
+          linkedWorkOrderIds: [...assertion.linkedWorkOrderIds, workOrderId],
+          updatedAt: now,
+        });
+      }));
+    }
 
     const initialSnapshot = snapshotRevisionFields({
       ...args,
@@ -1279,6 +1454,51 @@ export const dispatch = mutation({
       .withIndex("by_work_order", (q) => q.eq("workOrderId", args.workOrderId))
       .collect();
 
+    if (refreshedWorkOrder.missionId) {
+      const mission = await ctx.db.get(refreshedWorkOrder.missionId);
+      const missionPlan = refreshedWorkOrder.missionPlanId
+        ? await ctx.db.get(refreshedWorkOrder.missionPlanId)
+        : null;
+      if (!mission || !missionPlan) throw new Error("Mission WorkOrder is missing its Mission plan");
+      const blueprintId = (refreshedWorkOrder.metadata as { missionBlueprintId?: string } | undefined)?.missionBlueprintId;
+      const blueprint = missionPlan.workOrderBlueprints.find((candidate: any) => candidate.id === blueprintId);
+      if (!blueprint) throw new Error("Mission WorkOrder blueprint not found");
+      const missionWorkOrders = await ctx.db
+        .query("workOrders")
+        .withIndex("by_mission", (q) => q.eq("missionId", mission._id))
+        .collect();
+      const dependencyWorkOrders = blueprint.dependsOnBlueprintIds.map((dependencyId: string) =>
+        missionWorkOrders.find((candidate: any) => candidate.metadata?.missionBlueprintId === dependencyId)
+      );
+      const predecessorHandoffResults = await Promise.all(dependencyWorkOrders.map(async (dependency: any) => {
+          if (!dependency) return false;
+          const handoff = await ctx.db
+            .query("missionHandoffs")
+            .withIndex("by_work_order", (q) => q.eq("workOrderId", dependency._id))
+            .order("desc")
+            .first();
+          return handoff?.outcome === "COMPLETE" && handoff.incompleteAssertionIds.length === 0 && handoff.unknownAssertionIds.length === 0;
+        }));
+      const predecessorHandoffValid =
+        dependencyWorkOrders.length === blueprint.dependsOnBlueprintIds.length &&
+        predecessorHandoffResults.every(Boolean);
+      const hasActiveMutatingWorkOrder = missionWorkOrders.some((candidate: any) =>
+        candidate._id !== refreshedWorkOrder._id && candidate.isMutating && ["DISPATCHED", "IN_PROGRESS"].includes(candidate.state)
+      );
+      const missionDispatch = validateMissionWorkOrderDispatch({
+        missionState: mission.state,
+        planApproved: missionPlan.status === "APPROVED" && mission.currentPlanId === missionPlan._id,
+        executionPolicy: mission.executionPolicy,
+        workOrderReleased: !!refreshedWorkOrder.releasedAt,
+        isMutating: refreshedWorkOrder.isMutating ?? true,
+        hasActiveMutatingWorkOrder,
+        predecessorHandoffValid,
+        budgetRemaining: mission.budgetUsd === undefined || mission.spentUsd < mission.budgetUsd,
+        correctiveIterationsRemaining: mission.correctiveIterations < mission.maxCorrectiveIterations,
+      });
+      if (!missionDispatch.ok) throw new Error(`Mission WorkOrder is not dispatchable (${missionDispatch.reason})`);
+    }
+
     const dispatchable = validateDispatchable({
       state: refreshedWorkOrder.state,
       riskLevel: refreshedWorkOrder.riskLevel,
@@ -1290,6 +1510,36 @@ export const dispatch = mutation({
     if (!dispatchable.ok) {
       throw new Error(`WorkOrder is not dispatchable (${("reason" in dispatchable ? dispatchable.reason : "unknown")})`);
     }
+
+    const routing = await resolveDispatchRouting(ctx, {
+      workOrder: refreshedWorkOrder,
+      workflow,
+      authorizedRunOverride: args.model,
+    });
+    if (routing?.enabled && routing.mode === "EXHAUSTED") {
+      await ctx.db.insert("alerts", {
+        tenantId: refreshedWorkOrder.tenantId,
+        projectId: refreshedWorkOrder.projectId,
+        severity: "CRITICAL",
+        type: "MODEL_ROUTING_EXHAUSTED",
+        title: "No safe model route available",
+        description: routing.result.explanation,
+        taskId: refreshedWorkOrder.legacyTaskId,
+        status: "OPEN",
+        metadata: {
+          workOrderId: refreshedWorkOrder._id,
+          routingDecisionId: routing.decisionId,
+        },
+      });
+      return {
+        created: false,
+        run: null,
+        reason: "routing-exhausted",
+        routingDecisionId: routing.decisionId,
+      };
+    }
+    const routedModel =
+      routing?.mode === "ENFORCED" ? routing.result.selectedModelId : args.model;
 
     const topology = workflow.topology ?? "LINEAR";
     const steps = workflow.steps.map((step, index) => ({
@@ -1326,7 +1576,9 @@ export const dispatch = mutation({
       idempotencyKey: `${args.idempotencyKey}:request`,
       metadata: {
         runtime: args.runtime,
-        model: args.model,
+        model: routedModel,
+        routingDecisionId: routing?.decisionId,
+        routingMode: routing?.mode,
         worktree: args.worktree,
         retryOfWorkflowRunId: args.retryOfWorkflowRunId,
         retryReason: retryRequest?.reason,
@@ -1340,6 +1592,8 @@ export const dispatch = mutation({
       runId,
       workflowId: resolvedWorkflowId,
       projectId: refreshedWorkOrder.projectId,
+      missionId: refreshedWorkOrder.missionId,
+      missionRole: refreshedWorkOrder.missionId ? (refreshedWorkOrder.missionRole ?? "WORKER") : undefined,
       workOrderId: refreshedWorkOrder._id,
       workOrderRevisionNumber: refreshedWorkOrder.currentRevisionNumber ?? 1,
       workOrderRevisionId: refreshedWorkOrder.currentRevisionId,
@@ -1364,7 +1618,8 @@ export const dispatch = mutation({
       maxConcurrency: workflow.maxConcurrency ?? 1,
       initialInput: refreshedWorkOrder.desiredOutcome,
       runtime: args.runtime,
-      model: args.model,
+      model: routedModel,
+      routingDecisionId: routing?.decisionId,
       worktree: args.worktree,
       startedAt: now,
       metadata: {
@@ -1372,8 +1627,15 @@ export const dispatch = mutation({
         retryOfWorkflowRunId: args.retryOfWorkflowRunId,
         retryOfRunId: retryOfRun?.runId,
         retryReason: retryRequest?.reason,
+        routingMode: routing?.mode,
+        routingSource: routing?.result.source,
+        routingPolicyVersion: routing?.policyVersion,
       },
     });
+
+    if (routing) {
+      await ctx.db.patch(routing.decisionId, { workflowRunId: runDocId });
+    }
 
     await ctx.runMutation(internal.workflowRuns.recordEventInternal, {
       workflowRunId: runDocId,
@@ -1386,7 +1648,9 @@ export const dispatch = mutation({
       idempotencyKey: `${args.idempotencyKey}:run-started`,
       metadata: {
         runtime: args.runtime,
-        model: args.model,
+        model: routedModel,
+        routingDecisionId: routing?.decisionId,
+        routingMode: routing?.mode,
         worktree: args.worktree,
         retryOfWorkflowRunId: args.retryOfWorkflowRunId,
         retryOfRunId: retryOfRun?.runId,

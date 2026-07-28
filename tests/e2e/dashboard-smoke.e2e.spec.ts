@@ -47,7 +47,7 @@ test("mobile shell keeps navigation and chat off canvas", async ({ page }) => {
   await page.getByRole("button", { name: "Open navigation" }).click();
   await expect(page.getByRole("navigation", { name: "Primary" })).toBeVisible();
   await page.getByRole("button", { name: /Tasks/ }).click();
-  await expect(page).toHaveURL(/\/v2\/tasks$/);
+  await expect(page).toHaveURL(/\/v2\/tasks(?:\?.*)?$/);
   await expect(page.getByRole("navigation", { name: "Primary" })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Open chat" }).click();

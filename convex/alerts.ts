@@ -10,8 +10,21 @@ import { mutation, query } from "./_generated/server";
 // ============================================================================
 
 export const listOpen = query({
-  args: { limit: v.optional(v.number()) },
+  args: {
+    projectId: v.optional(v.id("projects")),
+    limit: v.optional(v.number()),
+  },
   handler: async (ctx, args) => {
+    if (args.projectId) {
+      const rows = await ctx.db
+        .query("alerts")
+        .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+        .collect();
+      return rows
+        .filter((row) => row.status === "OPEN")
+        .sort((left, right) => right._creationTime - left._creationTime)
+        .slice(0, args.limit ?? 50);
+    }
     return await ctx.db
       .query("alerts")
       .withIndex("by_status", (q) => q.eq("status", "OPEN"))

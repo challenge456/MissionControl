@@ -77,12 +77,20 @@ function TableSection({
   );
 }
 
-export function AuditView({ projectId: _projectId }: { projectId: Id<"projects"> | null }) {
+export function AuditView({ projectId }: { projectId: Id<"projects"> | null }) {
   const [limit, setLimit] = useState(100);
   const [changeTypeFilter, setChangeTypeFilter] = useState("");
 
-  const changes   = useQuery(api["governance/changeRecords"].listChangeRecords, { type: changeTypeFilter || undefined, limit });
-  const approvals = useQuery(api["governance/approvalRecords"].listApprovals, {});
+  const changes = useQuery(
+    api["governance/changeRecords"].listChangeRecords,
+    projectId
+      ? { projectId, type: changeTypeFilter || undefined, limit }
+      : "skip"
+  );
+  const approvals = useQuery(
+    api["governance/approvalRecords"].listApprovals,
+    projectId ? { projectId } : "skip"
+  );
 
   const pendingCount = (approvals ?? []).filter((r) => r.status === "PENDING").length;
   const deniedCount  = (approvals ?? []).filter((r) => r.status === "DENIED").length;

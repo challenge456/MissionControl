@@ -13,7 +13,6 @@ export interface FactorySchematicOverviewProps {
   projectId?: Id<"projects"> | null;
   projectLabel?: string;
   scannedAt: number;
-  evalPass?: string | null;
   /** Page title in sticky header (default Overview) */
   title?: string;
 }
@@ -24,16 +23,15 @@ export function FactorySchematicOverview({
   projectId,
   projectLabel,
   scannedAt,
-  evalPass,
   title = "Overview",
 }: FactorySchematicOverviewProps): JSX.Element {
   const stats = useQuery(
     api.analytics.schematicOverview,
-    projectId ? { projectId } : {}
+    projectId ? { projectId } : "skip"
   );
   const latestTurn = useQuery(
     api.analytics.recentRunTurns,
-    projectId ? { projectId, limit: 1 } : { limit: 1 }
+    projectId ? { projectId, limit: 1 } : "skip"
   );
 
   const loading = stats === undefined;
@@ -76,18 +74,18 @@ export function FactorySchematicOverview({
             })}
             className="mt-4"
           />
-          <DispatchGateBar autoRouted={stats.gateAuto} gated={stats.gateGated} />
+          <DispatchGateBar
+            pendingApprovals={stats.pendingApprovals ?? 0}
+            blockedTasks={stats.blockedTasks ?? 0}
+          />
           <FactoryArchitectureDiagram
             stats={{
-              gateAuto: stats.gateAuto,
-              gateGated: stats.gateGated,
-              skillCount: stats.skillCount,
-              factCount: stats.facts,
-              episodeCount: stats.episodeCount,
-              consolidateEvery: 6,
-              consolidatePending: Math.min(stats.turns % 12, 12),
-              traceFiles: stats.traceFiles,
-              evalPass: evalPass ?? null,
+              pendingApprovals: stats.pendingApprovals ?? 0,
+              blockedTasks: stats.blockedTasks ?? 0,
+              contextPackageCount: stats.skillCount,
+              knowledgeNodeCount: stats.facts,
+              completedRunCount: stats.episodeCount,
+              recordedRunCount: stats.turns,
             }}
             onNavigate={onNavigate}
           />

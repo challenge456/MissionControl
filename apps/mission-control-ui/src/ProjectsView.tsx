@@ -19,7 +19,19 @@ import {
 import { PageHeader } from "./components/PageHeader";
 import { StatusBadge } from "./components/factory/badges";
 import { MetricBlock } from "./components/factory/MetricBlock";
-import { FolderKanban, Github, Link2, Orbit, Plus, RadioTower, Sparkles } from "lucide-react";
+import {
+  Clock3,
+  FolderKanban,
+  GitCommit,
+  Github,
+  HardDrive,
+  Link2,
+  Orbit,
+  Plus,
+  RadioTower,
+  Server,
+  Sparkles,
+} from "lucide-react";
 
 interface ProjectsViewProps {
   projectId: Id<"projects"> | null;
@@ -73,8 +85,8 @@ export function ProjectsView({ projectId, onProjectSelect }: ProjectsViewProps) 
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
       <PageHeader
-        title="Projects"
-        description="Operate every mission, repo, and swarm from a single view. Select a project to inspect readiness, agent staffing, and integration health."
+        title="Workspaces & Repositories"
+        description="Define the repository and execution boundary used by Work Orders, agents, runs, and context."
         icon={<FolderKanban size={16} strokeWidth={1.7} />}
         status={
           <StatusBadge tone="neutral">{totals.total} tracked projects</StatusBadge>
@@ -200,9 +212,13 @@ function ProjectCard({ project, isSelected, onSelect }: ProjectCardProps) {
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        {project.githubRepo && (
-          <StatusBadge tone="neutral">Repo linked</StatusBadge>
-        )}
+        {project.githubRepo ? (
+          <StatusBadge
+            tone={project.repositoryStatus === "READY" ? "success" : "neutral"}
+          >
+            {(project.repositoryStatus ?? "CONFIGURED").toLowerCase()}
+          </StatusBadge>
+        ) : null}
         {project.swarmConfig && (
           <StatusBadge tone="success">Swarm configured</StatusBadge>
         )}
@@ -223,10 +239,15 @@ function StatPill({ label, value }: { label: string; value: number }) {
 function ProjectDetails({ project }: { project: Doc<"projects"> }) {
   const agents = useQuery(api.agents.list, { projectId: project._id });
   const stats = useQuery(api.projects.getStats, { projectId: project._id });
+  const hostBindings = useQuery(api.workspaceHostBindings.listByProject, {
+    projectId: project._id,
+  });
   const [repositoryOpen, setRepositoryOpen] = useState(false);
 
   const activeAgents = agents?.filter((agent) => agent.status === "ACTIVE") ?? [];
   const pausedAgents = agents?.filter((agent) => agent.status === "PAUSED") ?? [];
+  const repositoryStatus =
+    project.repositoryStatus ?? (project.githubRepo ? "CONFIGURED" : "UNCONFIGURED");
 
   return (
     <Card className="overflow-hidden">
@@ -245,6 +266,9 @@ function ProjectDetails({ project }: { project: Doc<"projects"> }) {
           <div className="flex flex-wrap gap-2">
             <StatusBadge tone={project.status === "PAUSED" ? "warning" : "success"}>
               {(project.status || "ACTIVE").toLowerCase()}
+            </StatusBadge>
+            <StatusBadge tone={repositoryStatus === "READY" ? "success" : repositoryStatus === "ERROR" ? "error" : "neutral"}>
+              repo {repositoryStatus.toLowerCase()}
             </StatusBadge>
             <Button variant="outline" size="sm" onClick={() => setRepositoryOpen(true)}>
               {project.githubRepo ? (
@@ -309,7 +333,15 @@ function ProjectDetails({ project }: { project: Doc<"projects"> }) {
                 icon={<Github size={15} strokeWidth={1.7} />}
                 label="Repository"
                 value={project.githubRepo || "Not connected"}
-                detail={project.githubRepo ? `Configured · default branch ${project.githubBranch || "main"}` : "Link a repository for release and code context."}
+                detail={
+                  project.githubRepo
+                    ? `${repositoryStatus.toLowerCase()} · default branch ${project.githubBranch || "main"}${
+                        project.repositoryValidatedAt
+                          ? ` · validated ${new Date(project.repositoryValidatedAt).toLocaleString()}`
+                          : ""
+                      }`
+                    : "Link a repository for release and code context."
+                }
               />
               <IntegrationRow
                 icon={<RadioTower size={15} strokeWidth={1.7} />}
@@ -317,6 +349,81 @@ function ProjectDetails({ project }: { project: Doc<"projects"> }) {
                 value={project.githubWebhookSecret ? "Configured" : "Missing"}
                 detail={project.githubWebhookSecret ? "Inbound repo events are enabled." : "Set a webhook secret if this project should react to GitHub events."}
               />
+            </div>
+            {project.repositoryValidationError ? (
+              <div className="mt-3 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-[12.5px] text-danger">
+                {project.repositoryValidationError}
+              </div>
+            ) : null}
+          </Card>
+
+          <Card className="p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[12.5px] font-medium text-ink-secondary">
+                  Executor checkouts
+                </div>
+                <div className="mt-1 text-[12.5px] text-ink-muted">
+                  Host-specific paths reported by execution workers.
+                </div>
+              </div>
+              <HardDrive size={16} strokeWidth={1.7} className="text-ink-muted" />
+            </div>
+            <div className="mt-4 space-y-3">
+              {hostBindings === undefined ? (
+                <div className="h-20 animate-pulse rounded-lg bg-surface-2" />
+              ) : hostBindings.length === 0 ? (
+                <div className="rounded-lg border border-line bg-surface-2 px-4 py-4 text-[13px] text-ink-secondary">
+                  No executor has reported a checkout for this workspace yet.
+                </div>
+              ) : (
+                hostBindings.map((binding) => (
+                  <div key={binding._id} className="rounded-lg border border-line bg-surface-2 px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-[13px] font-medium text-ink">
+                        <Server size={14} strokeWidth={1.7} className="text-ink-muted" />
+                        {binding.hostId}
+                      </div>
+                      <StatusBadge
+                        tone={
+                          binding.status === "READY"
+                            ? "success"
+                            : binding.status === "ERROR" || binding.status === "MISSING"
+                              ? "error"
+                              : "warning"
+                        }
+                      >
+                        {binding.status.toLowerCase()}
+                      </StatusBadge>
+                    </div>
+                    <div className="mt-3 grid gap-2 text-[11.5px] text-ink-muted sm:grid-cols-2">
+                      <div className="flex items-center gap-1.5">
+                        <HardDrive size={12} aria-hidden />
+                        <span className="truncate font-mono" title={binding.checkoutRoot}>
+                          {binding.checkoutRoot}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <GitCommit size={12} aria-hidden />
+                        <span className="truncate font-mono">
+                          {binding.observedBranch || "branch unknown"}
+                          {binding.observedCommit
+                            ? ` · ${binding.observedCommit.slice(0, 8)}`
+                            : ""}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <Clock3 size={12} aria-hidden />
+                        {new Date(binding.checkedAt).toLocaleString()}
+                      </div>
+                      <div>{binding.dirty ? "Uncommitted changes present" : "Working tree clean"}</div>
+                    </div>
+                    {binding.error ? (
+                      <div className="mt-2 text-[12px] text-danger">{binding.error}</div>
+                    ) : null}
+                  </div>
+                ))
+              )}
             </div>
           </Card>
         </div>

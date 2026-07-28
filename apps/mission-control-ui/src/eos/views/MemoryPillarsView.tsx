@@ -44,14 +44,17 @@ export function MemoryPillarsView({ projectId, onNavigate }: MemoryPillarsViewPr
           </div>
           {stats ? (
             <>
-              <h2 className="schematic-section-label mt-6">Retrieval gate</h2>
-              <DispatchGateBar autoRouted={stats.gateAuto} gated={stats.gateGated} />
+              <h2 className="schematic-section-label mt-6">Work state</h2>
+              <DispatchGateBar
+                pendingApprovals={stats.pendingApprovals ?? 0}
+                blockedTasks={stats.blockedTasks ?? 0}
+              />
             </>
           ) : null}
           <div className="mt-4 grid gap-2 sm:grid-cols-3">
             {[
               ["Semantic", "semantic", `${stats?.facts ?? "—"} facts`, "durable distilled facts"],
-              ["Episodic", "episodic", `${stats?.episodeCount ?? "—"} episodes`, "dated run summaries"],
+              ["Episodic", "episodic", `${stats?.episodeCount ?? "—"} completed runs`, "run history; durable episode storage is planned"],
               ["Procedural", "skills", `${stats?.skillCount ?? "—"} skills`, "context packages & SKILL.md"],
             ].map(([title, id, n, desc]) => (
               <button

@@ -55,3 +55,4 @@ tmp/
 
 # macOS
 .DS_Store
+.worktrees

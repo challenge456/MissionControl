@@ -42,16 +42,17 @@ export function TelemetryView({ projectId }: { projectId: Id<"projects"> | null 
   const [typeFilter, setTypeFilter] = useState("");
   const [windowMinutes, setWindowMinutes] = useState(60);
 
-  const agents = useQuery(api.agents.listAll, projectId ? { projectId } : {});
-  const events = useQuery(api["operations/opEvents"].listOpEvents, {
-    projectId: projectId ?? undefined,
-    type: typeFilter || undefined,
-    limit: 200,
-  });
-  const stats = useQuery(api["operations/opEvents"].getOpEventStats, {
-    projectId: projectId ?? undefined,
-    windowMinutes,
-  });
+  const agents = useQuery(api.agents.listAll, projectId ? { projectId } : "skip");
+  const events = useQuery(
+    api["operations/opEvents"].listOpEvents,
+    projectId
+      ? { projectId, type: typeFilter || undefined, limit: 200 }
+      : "skip"
+  );
+  const stats = useQuery(
+    api["operations/opEvents"].getOpEventStats,
+    projectId ? { projectId, windowMinutes } : "skip"
+  );
   const evaluateWithARM = useMutation(api.policy.evaluateWithARM);
 
   const handleEmitTestEvent = async () => {

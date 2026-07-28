@@ -44,8 +44,11 @@ export function FactoryOpsView({ projectId, onNavigate }: FactoryOpsViewProps): 
             className="mt-4"
           />
 
-          <h2 className="schematic-section-label mt-6">Dispatch gate</h2>
-          <DispatchGateBar autoRouted={stats.gateAuto} gated={stats.gateGated} />
+          <h2 className="schematic-section-label mt-6">Work state</h2>
+          <DispatchGateBar
+            pendingApprovals={stats.pendingApprovals ?? 0}
+            blockedTasks={stats.blockedTasks ?? 0}
+          />
 
           <h2 className="schematic-section-label mt-6">Slowest recent turns</h2>
           {(turns ?? [])

@@ -11,6 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import { api } from "../../../convex/_generated/api";
+import type { Id } from "../../../convex/_generated/dataModel";
 import { PageHeader } from "./components/PageHeader";
 import { EmptyState } from "./components/ui/empty-state";
 import {
@@ -519,15 +520,22 @@ export function AnalyticsViewContent({
 }
 
 /** Data container — wires the three analytics queries. */
-export function AnalyticsView(): JSX.Element {
+export function AnalyticsView({
+  projectId,
+}: {
+  projectId: Id<"projects">;
+}): JSX.Element {
   const [periodDays, setPeriodDays] = useState<PeriodDays>(30);
-  const kpis = useQuery(api.analytics.kpiSummary, { periodDays }) as
+  const kpis = useQuery(api.analytics.kpiSummary, { projectId, periodDays }) as
     | KpiSummary
     | undefined;
-  const dailyCost = useQuery(api.analytics.dailyModelCost, { periodDays }) as
+  const dailyCost = useQuery(api.analytics.dailyModelCost, {
+    projectId,
+    periodDays,
+  }) as
     | DailyModelCost
     | undefined;
-  const heatmap = useQuery(api.analytics.activityHeatmap, {}) as
+  const heatmap = useQuery(api.analytics.activityHeatmap, { projectId }) as
     | ActivityHeatmapData
     | undefined;
   return (

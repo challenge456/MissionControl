@@ -225,10 +225,17 @@ function MetricCard({
 }
 
 /** Data container for the Evals tab. */
-export function RegistryEvalsPanel(): JSX.Element {
+export function RegistryEvalsPanel({
+  projectId,
+}: {
+  projectId?: Id<"projects"> | null;
+}): JSX.Element {
   const evalEnabled = useFlag("eval.framework");
   const [runningPackageId, setRunningPackageId] = useState<string | null>(null);
-  const runs = useQuery(api.context.evals.listRecentRuns, { limit: 25 });
+  const runs = useQuery(api.context.evals.listRecentRuns, {
+    limit: 25,
+    projectId: projectId ?? undefined,
+  });
   const packages = useQuery(api.context.packages.listWithCurrentVersions, {});
   const runProxyEval = useMutation(api.context.evals.runProxyEval);
 
@@ -239,6 +246,7 @@ export function RegistryEvalsPanel(): JSX.Element {
         packageId,
         idempotencyKey: `ui-eval:${packageId}:${Date.now()}`,
         actorId: "registry-ui",
+        projectId: projectId ?? undefined,
       });
     } finally {
       setRunningPackageId(null);

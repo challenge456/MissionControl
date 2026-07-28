@@ -6,24 +6,14 @@ async function expectShellLoaded(page: Page) {
   await expect(page.getByRole("button", { name: "Overview" })).toBeVisible();
 }
 
-test("ARM pages render in Mission Control shell", async ({ page }) => {
+test("retained operator routes resolve in Mission Control shell", async ({ page }) => {
   await expectShellLoaded(page);
 
-  await page.goto("/v2/directory");
-  await expect(page.getByRole("heading", { name: "Templates" })).toBeVisible();
-  await expect(page.getByText("ARM template registry: version lineage and instances")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Dev Tools" })).toBeVisible();
+  await page.goto("/v2/agents");
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByText("Agent Registry")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Agent Registry" })).toBeVisible();
 
-  await page.goto("/v2/policies");
-  await expect(page.getByRole("heading", { name: "Policies" })).toBeVisible();
-
-  await page.goto("/v2/deployments");
-  await expect(page.getByRole("heading", { name: "Deployments" })).toBeVisible();
-
-  await page.goto("/v2/audit");
-  await expect(page.getByRole("heading", { name: "ARM Audit" })).toBeVisible();
-
-  await page.goto("/v2/telemetry");
-  await expect(page.getByRole("heading", { name: "ARM Telemetry" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Emit Test Event" })).toBeVisible();
+  await page.goto("/v2/model-routing");
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByText("Model Routing")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Model Routing" })).toBeVisible();
 });

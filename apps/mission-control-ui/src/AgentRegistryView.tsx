@@ -7,10 +7,8 @@ import { loadGatewayStatus } from "@/lib/gatewayStatus";
 import { useToast } from "./Toast";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { PageHeader } from "./components/PageHeader";
 import { StatusBadge, type StatusBadgeProps } from "./components/factory/badges";
-import { MetricBlock } from "./components/factory/MetricBlock";
 import {
   Dialog,
   DialogContent,
@@ -23,10 +21,6 @@ import { DiscoverAgentsModal } from "./DiscoverAgentsModal";
 import {
   Bot,
   Activity,
-  ShieldAlert,
-  ListTodo,
-  Clock,
-  DollarSign,
   AlertTriangle,
   Radio,
   Search,
@@ -34,7 +28,8 @@ import {
   Play,
   Plus,
   RotateCcw,
-  Settings,
+  Pencil,
+  Eye,
 } from "lucide-react";
 import { AgentSettingsPanel } from "./AgentSettingsPanel";
 
@@ -73,6 +68,7 @@ export function AgentRegistryView({
 }) {
   const [discoverOpen, setDiscoverOpen] = useState(false);
   const [settingsAgent, setSettingsAgent] = useState<Doc<"agents"> | null>(null);
+  const [settingsMode, setSettingsMode] = useState<"view" | "edit">("view");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<typeof STATUS_FILTER_OPTIONS[number] | "ALL">("ALL");
   const [confirmState, setConfirmState] = useState<{
@@ -96,8 +92,15 @@ export function AgentRegistryView({
     };
   }, [orchestrationBase]);
 
-  const agents = useQuery(api.agents.listAll, projectId ? { projectId } : {});
-  const tasks = useQuery(api.tasks.listAll, projectId ? { projectId } : {});
+  useEffect(() => {
+    setSettingsAgent(null);
+    setSearch("");
+    setStatusFilter("ALL");
+  }, [projectId]);
+
+  const agents = useQuery(api.agents.listAll, projectId ? { projectId } : "skip");
+  const tasks = useQuery(api.tasks.listAll, projectId ? { projectId } : "skip");
+  const project = useQuery(api.projects.get, projectId ? { projectId } : "skip");
   const updateStatus = useMutation(api.agents.updateStatus);
   const pauseAll = useMutation(api.agents.pauseAll);
   const resumeAll = useMutation(api.agents.resumeAll);
@@ -126,10 +129,21 @@ export function AgentRegistryView({
           (a.emoji ?? "").toLowerCase().includes(q)
       );
     }
-    return list;
+    const statusRank: Record<string, number> = {
+      QUARANTINED: 0,
+      OFFLINE: 1,
+      PAUSED: 2,
+      DRAINED: 3,
+      ACTIVE: 4,
+    };
+    return [...list].sort(
+      (left, right) =>
+        (statusRank[left.status] ?? 9) - (statusRank[right.status] ?? 9) ||
+        left.name.localeCompare(right.name)
+    );
   }, [agents, statusFilter, search]);
 
-  if (!agents || !tasks) {
+  if (!agents || !tasks || !project) {
     return (
       <section className="flex-1 overflow-auto p-6">
         <div className="h-6 w-40 rounded animate-pulse bg-surface-2 mb-2" />
@@ -145,6 +159,10 @@ export function AgentRegistryView({
   const assignedCount = tasks.filter((t) => t.assigneeIds.length > 0).length;
 
   async function setStatus(agent: Doc<"agents">, status: string, reason: string) {
+    if (!projectId) {
+      toast("Select a workspace before changing an agent.", true);
+      return;
+    }
     const isDangerous = status === "QUARANTINED" || status === "DRAINED";
     if (isDangerous) {
       setConfirmState({
@@ -154,7 +172,7 @@ export function AgentRegistryView({
         danger: true,
         onConfirm: async () => {
           try {
-            await updateStatus({ agentId: agent._id, status, reason });
+            await updateStatus({ agentId: agent._id, projectId, status, reason });
             toast(`${agent.name} → ${status}`);
           } catch (e) {
             toast(e instanceof Error ? e.message : "Status update failed", true);
@@ -165,7 +183,7 @@ export function AgentRegistryView({
       return;
     }
     try {
-      await updateStatus({ agentId: agent._id, status, reason });
+      await updateStatus({ agentId: agent._id, projectId, status, reason });
       toast(`${agent.name} → ${status}`);
     } catch (e) {
       toast(e instanceof Error ? e.message : "Status update failed", true);
@@ -173,6 +191,10 @@ export function AgentRegistryView({
   }
 
   const handlePauseAll = () => {
+    if (!projectId) {
+      toast("Select a workspace before pausing agents.", true);
+      return;
+    }
     setConfirmState({
       open: true,
       title: "Pause all active agents?",
@@ -180,7 +202,7 @@ export function AgentRegistryView({
       danger: true,
       onConfirm: async () => {
         try {
-          const r = await pauseAll({ projectId: projectId ?? undefined, reason: "Operator pause", userId: "operator" });
+          const r = await pauseAll({ projectId, reason: "Operator pause", userId: "operator" });
           toast(`Paused ${(r as { paused: number }).paused} agent(s)`);
         } catch (e) {
           toast(e instanceof Error ? e.message : "Failed", true);
@@ -223,294 +245,238 @@ export function AgentRegistryView({
         onImported={() => toast("Agent imported")}
       />
 
-      <div className="mx-auto flex min-h-0 w-full max-w-[1200px] flex-1 flex-col gap-4 overflow-hidden px-6 pb-6 pt-4">
-      <div className="grid shrink-0 gap-4 md:grid-cols-4">
-        <Card className="p-4">
-          <MetricBlock
-            label="Active"
-            value={activeCount}
-            detail="Agents currently trusted to take live work"
-          />
-        </Card>
-        <Card className="p-4">
-          <MetricBlock
-            label="Paused"
-            value={pausedCount}
-            detail="Agents intentionally held out of the queue"
-          />
-        </Card>
-        <Card className="p-4">
-          <MetricBlock
-            label="Quarantined"
-            value={quarantinedCount}
-            detail="Agents requiring intervention before reuse"
-          />
-        </Card>
-        <Card className="p-4">
-          <MetricBlock
-            label="Assigned tasks"
-            value={assignedCount}
-            detail="Tasks currently routed to one or more agents"
-          />
-        </Card>
-      </div>
+      <div className="mx-auto flex min-h-0 w-full max-w-[1400px] flex-1 flex-col gap-4 overflow-hidden px-6 pb-6 pt-4">
+        <div className="grid shrink-0 overflow-hidden rounded-lg border border-line bg-surface-1 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            ["Active", activeCount, "Ready for work"],
+            ["Paused", pausedCount, "Held from queue"],
+            ["Needs attention", quarantinedCount + offlineCount, "Quarantined or offline"],
+            ["Assigned tasks", assignedCount, "Routed in this workspace"],
+          ].map(([label, value, detail]) => (
+            <div key={label} className="border-b border-line px-4 py-3 last:border-0 sm:border-r lg:border-b-0">
+              <p className="text-[11px] font-medium uppercase tracking-[0.06em] text-ink-muted">{label}</p>
+              <p className="mt-1 text-xl font-semibold tabular-nums text-ink">{value}</p>
+              <p className="text-[11.5px] text-ink-muted">{detail}</p>
+            </div>
+          ))}
+        </div>
 
-      {/* Fleet health bar */}
-      <div className="flex shrink-0 items-center gap-2 overflow-x-auto flex-nowrap">
-        <button
-          type="button"
-          onClick={() => setStatusFilter("ALL")}
-          className={cn(
-            FILTER_CHIP_BASE,
-            statusFilter === "ALL" ? FILTER_CHIP_ACTIVE : FILTER_CHIP_INACTIVE
-          )}
-        >
-          <Bot size={13} strokeWidth={1.7} aria-hidden />
-          All {agents.length}
-        </button>
-        <button
-          type="button"
-          onClick={() => setStatusFilter("ACTIVE")}
-          className={cn(
-            FILTER_CHIP_BASE,
-            statusFilter === "ACTIVE" ? FILTER_CHIP_ACTIVE : FILTER_CHIP_INACTIVE
-          )}
-        >
-          <span className="h-1.5 w-1.5 rounded-full bg-ok" />
-          Active {activeCount}
-        </button>
-        <button
-          type="button"
-          onClick={() => setStatusFilter("PAUSED")}
-          className={cn(
-            FILTER_CHIP_BASE,
-            statusFilter === "PAUSED" ? FILTER_CHIP_ACTIVE : FILTER_CHIP_INACTIVE
-          )}
-        >
-          <span className="h-1.5 w-1.5 rounded-full bg-warn" />
-          Paused {pausedCount}
-        </button>
-        <button
-          type="button"
-          onClick={() => setStatusFilter("QUARANTINED")}
-          className={cn(
-            FILTER_CHIP_BASE,
-            statusFilter === "QUARANTINED" ? FILTER_CHIP_ACTIVE : FILTER_CHIP_INACTIVE
-          )}
-        >
-          <span className="h-1.5 w-1.5 rounded-full bg-err" />
-          Quarantined {quarantinedCount}
-        </button>
-        <button
-          type="button"
-          onClick={() => setStatusFilter("OFFLINE")}
-          className={cn(
-            FILTER_CHIP_BASE,
-            statusFilter === "OFFLINE" ? FILTER_CHIP_ACTIVE : FILTER_CHIP_INACTIVE
-          )}
-        >
-          <span className="h-1.5 w-1.5 rounded-full bg-ink-muted" />
-          Offline {offlineCount}
-        </button>
-      </div>
+        <div className="flex shrink-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex items-center gap-2 overflow-x-auto">
+            {[
+              { key: "ALL" as const, label: "All", count: agents.length, dot: "bg-ink-muted" },
+              { key: "ACTIVE" as const, label: "Active", count: activeCount, dot: "bg-ok" },
+              { key: "PAUSED" as const, label: "Paused", count: pausedCount, dot: "bg-warn" },
+              { key: "QUARANTINED" as const, label: "Quarantined", count: quarantinedCount, dot: "bg-err" },
+              { key: "OFFLINE" as const, label: "Offline", count: offlineCount, dot: "bg-ink-muted" },
+            ].map((filter) => (
+              <button
+                key={filter.key}
+                type="button"
+                onClick={() => setStatusFilter(filter.key)}
+                className={cn(
+                  FILTER_CHIP_BASE,
+                  statusFilter === filter.key ? FILTER_CHIP_ACTIVE : FILTER_CHIP_INACTIVE
+                )}
+              >
+                <span className={cn("h-1.5 w-1.5 rounded-full", filter.dot)} />
+                {filter.label} {filter.count}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 overflow-x-auto">
+            <Button size="sm" variant="destructive" className="h-8 text-xs" onClick={handlePauseAll}>
+              <Pause className="mr-1 h-3 w-3" />
+              Pause active
+            </Button>
+            <Button
+              size="sm"
+              className="h-8 text-xs"
+              onClick={async () => {
+                try {
+                  if (!projectId) throw new Error("Select a workspace before resuming agents.");
+                  const result = await resumeAll({ projectId, reason: "Operator resume", userId: "operator" });
+                  toast(`Resumed ${(result as { resumed: number }).resumed} agent(s)`);
+                } catch (cause) {
+                  toast(cause instanceof Error ? cause.message : "Failed", true);
+                }
+              }}
+            >
+              <Play className="mr-1 h-3 w-3" />
+              Resume paused
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 text-xs"
+              onClick={async () => {
+                try {
+                  if (!projectId) throw new Error("Select a workspace before resetting agents.");
+                  const result = await resetAll({ projectId });
+                  toast(`Reset ${(result as { resetCount: number }).resetCount} agent(s)`);
+                } catch (cause) {
+                  toast(cause instanceof Error ? cause.message : "Failed", true);
+                }
+              }}
+            >
+              <RotateCcw className="mr-1 h-3 w-3" />
+              Reset unavailable
+            </Button>
+          </div>
+        </div>
 
-      {/* Compact operator controls */}
-      <div className="flex shrink-0 items-center gap-2 overflow-x-auto flex-nowrap">
-        <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={handlePauseAll}>
-          <Pause className="h-3 w-3 mr-1" />
-          Pause Squad
-        </Button>
-        <Button
-          size="sm"
-          className="h-7 text-xs"
-          onClick={async () => {
-            try {
-              const r = await resumeAll({ projectId: projectId ?? undefined, reason: "Operator resume", userId: "operator" });
-              toast(`Resumed ${(r as { resumed: number }).resumed} agent(s)`);
-            } catch (e) {
-              toast(e instanceof Error ? e.message : "Failed", true);
-            }
-          }}
-        >
-          <Play className="h-3 w-3 mr-1" />
-          Resume Squad
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-7 text-xs"
-          onClick={async () => {
-            try {
-              const r = await resetAll({ projectId: projectId ?? undefined });
-              toast(`Reset ${(r as { resetCount: number }).resetCount} agent(s)`);
-            } catch (e) {
-              toast(e instanceof Error ? e.message : "Failed", true);
-            }
-          }}
-        >
-          <RotateCcw className="h-3 w-3 mr-1" />
-          Reset Quarantined/Offline
-        </Button>
-      </div>
-
-      {/* Search + filters */}
-      <div>
-        <div className="relative max-w-xs">
+        <div className="relative max-w-sm shrink-0">
           <Search size={14} strokeWidth={1.7} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-muted" aria-hidden />
           <input
-            type="text"
-            placeholder="Search by name or role..."
+            type="search"
+            placeholder="Search agents by name or role…"
             aria-label="Search agents by name or role"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full h-9 rounded-lg border border-line bg-surface-1 pl-8 pr-3 text-[13.5px] text-ink placeholder:text-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onChange={(event) => setSearch(event.target.value)}
+            className="h-9 w-full rounded-lg border border-line bg-surface-1 pl-8 pr-3 text-[13.5px] text-ink placeholder:text-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
         </div>
-      </div>
 
-      {/* 2-column agent grid */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto md:grid-cols-2">
-        {filteredAgents.map((agent) => {
-          const lastHB = agent.lastHeartbeatAt ? formatRelativeTime(agent.lastHeartbeatAt) : "Never";
-          const aCount = taskCountByAgent.get(agent._id) ?? 0;
-          const remaining = agent.budgetDaily - agent.spendToday;
-          const budgetPct = Math.min(100, (agent.spendToday / Math.max(agent.budgetDaily, 0.01)) * 100);
-          const cfg = STATUS_CONFIG[agent.status] ?? STATUS_CONFIG.OFFLINE;
-          const currentTask = agent.currentTaskId ? tasks.find((t) => t._id === agent.currentTaskId) : null;
+        <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-line bg-surface-1">
+          <table className="w-full min-w-[1040px] border-collapse text-left">
+            <thead className="sticky top-0 z-10 bg-surface-2">
+              <tr className="border-b border-line text-[10.5px] font-semibold uppercase tracking-[0.07em] text-ink-muted">
+                <th className="px-4 py-3">Agent</th>
+                <th className="px-3 py-3">Status</th>
+                <th className="px-3 py-3">Assignment</th>
+                <th className="px-3 py-3">Model route</th>
+                <th className="px-3 py-3">Daily budget</th>
+                <th className="px-3 py-3">Heartbeat</th>
+                <th className="sticky right-0 bg-surface-2 px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredAgents.map((agent) => {
+                const lastHeartbeat = agent.lastHeartbeatAt ? formatRelativeTime(agent.lastHeartbeatAt) : "Never";
+                const taskCount = taskCountByAgent.get(agent._id) ?? 0;
+                const status = STATUS_CONFIG[agent.status] ?? STATUS_CONFIG.OFFLINE;
+                const currentTask = agent.currentTaskId
+                  ? tasks.find((task) => task._id === agent.currentTaskId)
+                  : null;
+                const effectiveModel = project.swarmConfig?.defaultModel ?? "operator-default";
+                const openPanel = (mode: "view" | "edit") => {
+                  setSettingsMode(mode);
+                  setSettingsAgent(agent);
+                };
 
-          return (
-            <Card key={agent._id} className="p-4 flex flex-col">
-              <div className="flex items-center justify-between gap-2 mb-3">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="h-9 w-9 rounded-lg bg-surface-2 border border-line flex items-center justify-center text-lg shrink-0">
-                    {agent.emoji || agent.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-semibold text-ink leading-tight truncate text-[13.5px]">{agent.name}</p>
-                    <p className="text-[11.5px] text-ink-muted">{agent.role}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <span className={cn("h-2 w-2 rounded-full", cfg.dotClass)} />
-                  <StatusBadge tone={cfg.tone}>{cfg.label}</StatusBadge>
-                </div>
-              </div>
-
-              {/* Budget bar */}
-              <div className="mb-3">
-                <div className="flex items-center justify-between text-[11.5px] text-ink-muted mb-1">
-                  <span>Budget</span>
-                  <span className={cn("font-mono font-medium tabular-nums", remaining < 1 ? "text-err" : "text-ink-secondary")}>
-                    ${agent.spendToday.toFixed(2)} / ${agent.budgetDaily.toFixed(2)}
-                  </span>
-                </div>
-                <div className="h-1.5 w-full rounded-full bg-surface-2 overflow-hidden">
-                  <div
-                    className={cn(
-                      "h-full rounded-full transition-[width] duration-300",
-                      budgetPct >= 90 ? "bg-err" : budgetPct >= 70 ? "bg-warn" : "bg-ok"
-                    )}
-                    style={{ width: `${budgetPct}%` }}
-                  />
-                </div>
-              </div>
-
-              {currentTask && (
-                <p className="text-[12.5px] text-ink-secondary truncate mb-1" title={currentTask.title}>
-                  Task: {currentTask.title}
-                </p>
-              )}
-              <p className="text-[11.5px] text-ink-muted flex items-center gap-1 mb-3">
-                <Clock size={11} strokeWidth={1.7} aria-hidden />
-                Last heartbeat {lastHB}
+                return (
+                  <tr key={agent._id} className="border-b border-line last:border-0 hover:bg-surface-2/60">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-line bg-surface-2 text-base">
+                          {agent.emoji || agent.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <button className="block max-w-48 truncate text-[13px] font-semibold text-ink hover:underline" onClick={() => openPanel("view")}>
+                            {agent.name}
+                          </button>
+                          <p className="text-[11px] text-ink-muted">{agent.role}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-3 py-3">
+                      <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
+                    </td>
+                    <td className="max-w-64 px-3 py-3">
+                      <p className="truncate text-[12.5px] text-ink-secondary" title={currentTask?.title}>
+                        {currentTask?.title ?? (taskCount ? `${taskCount} assigned task${taskCount === 1 ? "" : "s"}` : "Unassigned")}
+                      </p>
+                    </td>
+                    <td className="px-3 py-3">
+                      <p className="max-w-44 truncate font-mono text-[11.5px] text-ink-secondary" title={effectiveModel}>
+                        {effectiveModel}
+                      </p>
+                      <p className="text-[10.5px] text-ink-muted">Workspace default</p>
+                    </td>
+                    <td className="px-3 py-3 font-mono text-[11.5px] tabular-nums text-ink-secondary">
+                      ${agent.spendToday.toFixed(2)} / ${agent.budgetDaily.toFixed(2)}
+                    </td>
+                    <td className="px-3 py-3 text-[11.5px] text-ink-muted">{lastHeartbeat}</td>
+                    <td className="sticky right-0 bg-surface-1 px-4 py-3">
+                      <div className="flex justify-end gap-1.5">
+                        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => openPanel("view")}>
+                          <Eye className="mr-1 h-3 w-3" />
+                          View
+                        </Button>
+                        <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => openPanel("edit")}>
+                          <Pencil className="mr-1 h-3 w-3" />
+                          Edit
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 text-xs"
+                          onClick={() =>
+                            setStatus(
+                              agent,
+                              agent.status === "ACTIVE" ? "PAUSED" : "ACTIVE",
+                              agent.status === "ACTIVE" ? "Operator paused agent" : "Operator activated agent"
+                            )
+                          }
+                        >
+                          {agent.status === "ACTIVE" ? "Pause" : "Activate"}
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="destructive"
+                          disabled={agent.status === "QUARANTINED"}
+                          onClick={() => setStatus(agent, "QUARANTINED", "Operator quarantined agent")}
+                          className="h-7 w-7"
+                          title="Quarantine agent"
+                          aria-label={`Quarantine ${agent.name}`}
+                        >
+                          <AlertTriangle className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {filteredAgents.length === 0 && (
+            <div className="py-14 text-center">
+              <p className="mb-4 text-[13.5px] text-ink-muted">
+                {agents.length === 0 ? "No agents registered in this workspace." : "No agents match the current filters."}
               </p>
-
-              <div className="flex flex-wrap gap-1.5 pt-3 border-t border-line mt-auto">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 text-xs px-2 mr-auto"
-                  onClick={() => setSettingsAgent(agent)}
-                  title="Agent settings"
-                  aria-label={`Settings for ${agent.name}`}
-                >
-                  <Settings className="h-3 w-3" />
-                </Button>
-                {[
-                  { label: "Activate", s: "ACTIVE" },
-                  { label: "Pause", s: "PAUSED" },
-                  { label: "Drain", s: "DRAINED" },
-                ].map(({ label, s }) => (
-                  <Button
-                    key={s}
-                    size="sm"
-                    variant="outline"
-                    disabled={agent.status === s}
-                    onClick={() => setStatus(agent, s, `Operator ${label.toLowerCase()}d agent`)}
-                    className="h-7 text-xs px-2"
-                  >
-                    {label}
+              {agents.length === 0 && (
+                <div className="flex items-center justify-center gap-3">
+                  {onOpenCreateAgent && (
+                    <Button onClick={onOpenCreateAgent}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Create agent
+                    </Button>
+                  )}
+                  <Button variant="outline" onClick={() => setDiscoverOpen(true)}>
+                    <Activity className="mr-2 h-4 w-4" />
+                    Discover agents
                   </Button>
-                ))}
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  disabled={agent.status === "QUARANTINED"}
-                  onClick={() => setStatus(agent, "QUARANTINED", "Operator quarantined agent")}
-                  className="h-7 text-xs px-2"
-                >
-                  <AlertTriangle className="h-3 w-3 mr-0.5" />
-                  Quarantine
-                </Button>
-              </div>
-            </Card>
-          );
-        })}
-      </div>
-
-      {filteredAgents.length === 0 && (
-        <div className="text-center py-12">
-          <p className="text-ink-muted text-[13.5px] mb-4">
-            {agents.length === 0 ? "No agents registered yet." : "No agents match the current filters."}
-          </p>
-          {agents.length === 0 && (
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-              {onOpenCreateAgent && (
-                <Button onClick={onOpenCreateAgent}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create your first agent
-                </Button>
+                </div>
               )}
-              <Button variant="outline" onClick={() => setDiscoverOpen(true)}>
-                <Activity className="h-4 w-4 mr-2" />
-                Discover agents
-              </Button>
             </div>
           )}
         </div>
-      )}
 
       {settingsAgent && (
         <AgentSettingsPanel
           agent={settingsAgent}
+          projectId={projectId!}
+          effectiveModel={project.swarmConfig?.defaultModel ?? "operator-default"}
           open={!!settingsAgent}
+          initialEditing={settingsMode === "edit"}
           onClose={() => setSettingsAgent(null)}
           onNavigateToIdentity={() => {
             setSettingsAgent(null);
             onNavigateToIdentity?.();
           }}
-          onDelete={(agentId) => {
-            setConfirmState({
-              open: true,
-              title: "Delete agent",
-              description: "Agent removal (Gateway + Convex/ARM cleanup) is not yet implemented. Use OpenClaw Studio or Gateway to remove the agent.",
-              danger: true,
-              onConfirm: () => {
-                setConfirmState(null);
-                setSettingsAgent(null);
-                toast("Agent deletion not yet implemented.", true);
-              },
-            });
+          onDeactivate={() => {
+            setSettingsAgent(null);
+            void setStatus(settingsAgent, "DRAINED", "Operator deactivated agent");
           }}
         />
       )}

@@ -214,6 +214,8 @@ export function OrgView({ projectId }: OrgViewProps) {
 
         await updateAgent({
           agentId: parsedSelection.entityId as Id<"agents">,
+          projectId: projectId ?? undefined,
+          expectedConfigVersion: agentDetail.configVersion ?? 0,
           name: editForm.name,
           emoji: editForm.emoji || undefined,
           budgetDaily: Number(editForm.budgetDaily),

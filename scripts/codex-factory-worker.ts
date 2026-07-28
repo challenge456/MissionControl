@@ -23,6 +23,9 @@ const CONVEX_URL = process.env.CONVEX_URL ?? process.env.VITE_CONVEX_URL;
 const PROJECT_SLUG = process.env.PROJECT_SLUG ?? "software-factory-research-lab";
 const AGENT_NAME = process.env.FACTORY_AGENT_NAME ?? process.argv[2];
 const POLL_INTERVAL_MS = Number(process.env.FACTORY_WORKER_POLL_MS ?? 2_000);
+const TASK_TIMEOUT_MS = Number(process.env.FACTORY_TASK_TIMEOUT_MS ?? 10 * 60 * 1_000);
+const STOP_ON_FAILURE = process.env.FACTORY_STOP_ON_FAILURE !== "0";
+const MAX_TASKS = Number(process.env.FACTORY_MAX_TASKS ?? Number.POSITIVE_INFINITY);
 const CLAIM_INBOX = process.env.FACTORY_CLAIM_INBOX === "1";
 const REPOSITORY_PATH = process.env.FACTORY_REPOSITORY_PATH ?? process.cwd();
 
@@ -32,6 +35,8 @@ if (!AGENT_NAME) throw new Error("Set FACTORY_AGENT_NAME or pass the agent name 
 const client = new ConvexHttpClient(CONVEX_URL);
 const inFlight = new Set<string>();
 let running = true;
+let shutdownRequested = false;
+let activeExecutionController: AbortController | null = null;
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -57,33 +62,51 @@ function taskPrompt(task: any, agentName: string) {
 async function executeWithCodex(task: any, agentName: string) {
   const outputDirectory = await mkdtemp(path.join(tmpdir(), "mc-codex-worker-"));
   const outputPath = path.join(outputDirectory, "deliverable.json");
+  const controller = new AbortController();
+  activeExecutionController = controller;
   try {
-    const { stdout, stderr } = await execFileAsync(
-      CODEX_EXECUTABLE,
-      [
-        "exec",
-        "--ephemeral",
-        "--ignore-user-config",
-        "--ignore-rules",
-        "--sandbox",
-        "read-only",
-        "--color",
-        "never",
-        "-c",
-        'model_reasoning_effort="medium"',
-        "-C",
-        REPOSITORY_PATH,
-        "-o",
-        outputPath,
-        taskPrompt(task, agentName),
-      ],
-      {
-        cwd: REPOSITORY_PATH,
-        env: process.env,
-        maxBuffer: 20 * 1024 * 1024,
-        timeout: 30 * 60 * 1000,
+    let stdout = "";
+    let stderr = "";
+    try {
+      const result = await execFileAsync(
+        CODEX_EXECUTABLE,
+        [
+          "exec",
+          "--ephemeral",
+          "--ignore-user-config",
+          "--ignore-rules",
+          "--sandbox",
+          "read-only",
+          "--color",
+          "never",
+          "-c",
+          'model_reasoning_effort="medium"',
+          "-C",
+          REPOSITORY_PATH,
+          "-o",
+          outputPath,
+          taskPrompt(task, agentName),
+        ],
+        {
+          cwd: REPOSITORY_PATH,
+          env: process.env,
+          maxBuffer: 20 * 1024 * 1024,
+          timeout: TASK_TIMEOUT_MS,
+          signal: controller.signal,
+        }
+      );
+      stdout = result.stdout;
+      stderr = result.stderr;
+    } catch (error: any) {
+      if (shutdownRequested || error?.name === "AbortError") {
+        throw new Error("Codex execution canceled by operator.");
       }
-    );
+      if (error?.killed || error?.signal === "SIGTERM") {
+        throw new Error(`Codex execution timed out after ${Math.round(TASK_TIMEOUT_MS / 1_000)} seconds.`);
+      }
+      const code = typeof error?.code === "number" ? ` (exit ${error.code})` : "";
+      throw new Error(`Codex execution failed${code}. Review worker diagnostics and retry as a new run.`);
+    }
     const evidence = (await readFile(outputPath, "utf8")).trim();
     if (!evidence) throw new Error("Codex returned an empty deliverable.");
     const tokenMatch = `${stdout}\n${stderr}`.match(/tokens used\s+([\d,]+)/i);
@@ -92,12 +115,13 @@ async function executeWithCodex(task: any, agentName: string) {
       tokens: tokenMatch ? Number(tokenMatch[1].replace(/,/g, "")) : 0,
     };
   } finally {
+    if (activeExecutionController === controller) activeExecutionController = null;
     await rm(outputDirectory, { recursive: true, force: true });
   }
 }
 
-async function submitTask(agent: any, task: any) {
-  if (inFlight.has(task._id)) return;
+async function submitTask(agent: any, task: any): Promise<boolean> {
+  if (inFlight.has(task._id)) return true;
   inFlight.add(task._id);
   const attemptKey = `codex-worker:${agent._id}:${task._id}:${task.reviewCycles ?? 0}`;
   let runId: string | undefined;
@@ -193,6 +217,7 @@ async function submitTask(agent: any, task: any) {
       );
     }
     console.log(`[CodexFactoryWorker:${agent.name}] Submitted ${task.title} for review.`);
+    return true;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[CodexFactoryWorker:${agent.name}] ${task.title}: ${message}`);
@@ -214,6 +239,7 @@ async function submitTask(agent: any, task: any) {
       reason: message,
       blockedReason: message,
     }).catch(() => undefined);
+    return false;
   } finally {
     inFlight.delete(task._id);
   }
@@ -239,8 +265,9 @@ async function main() {
   if (!agent) throw new Error(`Agent not found in ${PROJECT_SLUG}: ${AGENT_NAME}`);
 
   console.log(
-    `[CodexFactoryWorker:${agent.name}] Started for ${PROJECT_SLUG}; claim inbox=${CLAIM_INBOX}.`
+    `[CodexFactoryWorker:${agent.name}] Started for ${PROJECT_SLUG}; claim inbox=${CLAIM_INBOX}; timeout=${Math.round(TASK_TIMEOUT_MS / 1_000)}s; max tasks=${Number.isFinite(MAX_TASKS) ? MAX_TASKS : "unbounded"}; stop on failure=${STOP_ON_FAILURE}.`
   );
+  let completedTasks = 0;
   while (running) {
     const heartbeat = await client.mutation(api.agents.heartbeat, {
       agentId: agent._id,
@@ -248,8 +275,20 @@ async function main() {
     });
     for (const task of heartbeat.pendingTasks ?? []) {
       if (!(await isCurrentWorkflowTask(task))) continue;
-      await submitTask(agent, task);
+      const succeeded = await submitTask(agent, task);
+      if (succeeded) completedTasks += 1;
+      if (!succeeded && STOP_ON_FAILURE) {
+        console.error(`[CodexFactoryWorker:${agent.name}] Stopping after failed task.`);
+        running = false;
+        break;
+      }
+      if (completedTasks >= MAX_TASKS) {
+        console.log(`[CodexFactoryWorker:${agent.name}] Reached configured task limit (${MAX_TASKS}); stopping.`);
+        running = false;
+        break;
+      }
     }
+    if (!running) break;
     if (CLAIM_INBOX && (heartbeat.pendingTasks?.length ?? 0) === 0) {
       const task = heartbeat.claimableTasks?.[0];
       if (task) {
@@ -261,7 +300,8 @@ async function main() {
           idempotencyKey: `codex-worker:${agent._id}:${task._id}:claim`,
         });
         if (assignment?.success && assignment.task) {
-          await submitTask(agent, assignment.task);
+          const succeeded = await submitTask(agent, assignment.task);
+          if (!succeeded && STOP_ON_FAILURE) running = false;
         }
       }
     }
@@ -271,7 +311,9 @@ async function main() {
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
+    shutdownRequested = true;
     running = false;
+    activeExecutionController?.abort();
   });
 }
 

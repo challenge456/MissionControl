@@ -9,13 +9,18 @@ export function useNavGroupsWithCounts(
   groups: NavGroup[],
   projectId?: Id<"projects"> | null
 ): NavGroup[] {
-  const projectArgs = projectId ? { projectId } : {};
-  const stats = useQuery(api.analytics.schematicOverview, projectArgs);
-  const tasks = useQuery(api.tasks.listAll, projectArgs);
-  const approvals = useQuery(api.approvals.listPending, {
-    ...projectArgs,
-    limit: 100,
-  });
+  const stats = useQuery(
+    api.analytics.schematicOverview,
+    projectId ? { projectId } : "skip"
+  );
+  const tasks = useQuery(
+    api.tasks.listAll,
+    projectId ? { projectId } : "skip"
+  );
+  const approvals = useQuery(
+    api.approvals.listPending,
+    projectId ? { projectId, limit: 100 } : "skip"
+  );
 
   if (!stats) return groups;
 

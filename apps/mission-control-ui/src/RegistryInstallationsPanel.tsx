@@ -273,9 +273,13 @@ function SummaryCard({
 }
 
 /** Data container for installation lifecycle state. */
-export function RegistryInstallationsPanel(): JSX.Element {
-  const installations = useQuery(api.context.manifests.listInstallationOverview, {});
-  const repoSummaries = useQuery(api.context.manifests.listRepoSummaries, {});
+export function RegistryInstallationsPanel({
+  repoSlug,
+}: {
+  repoSlug?: string;
+}): JSX.Element {
+  const installations = useQuery(api.context.manifests.listInstallationOverview, { repoSlug });
+  const repoSummaries = useQuery(api.context.manifests.listRepoSummaries, { repoSlug });
   return (
     <RegistryInstallationsContent
       installations={installations ?? undefined}
