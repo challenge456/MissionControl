@@ -8,7 +8,8 @@ export default defineConfig({
   use: {
     baseURL: "http://127.0.0.1:4173",
     headless: true,
-    trace: "on-first-retry",
+    screenshot: "only-on-failure",
+    trace: "retain-on-failure",
   },
   webServer: {
     command: "pnpm --filter mission-control-ui exec vite --host 127.0.0.1 --port 4173",

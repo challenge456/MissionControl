@@ -226,6 +226,7 @@ export const start = mutation({
   args: {
     agentId: v.id("agents"),
     taskId: v.optional(v.id("tasks")),
+    workflowRunId: v.optional(v.id("workflowRuns")),
     sessionKey: v.string(),
     model: v.string(),
     idempotencyKey: v.string(),
@@ -252,6 +253,29 @@ export const start = mutation({
     }
     
     const task = args.taskId ? await ctx.db.get(args.taskId) : null;
+    if (args.taskId && !task) {
+      throw new Error("Task not found");
+    }
+
+    const workflowRun = args.workflowRunId
+      ? await ctx.db.get(args.workflowRunId)
+      : null;
+    if (args.workflowRunId && !workflowRun) {
+      throw new Error("Workflow run not found");
+    }
+    if (
+      workflowRun &&
+      (workflowRun.projectId ?? null) !== (agent.projectId ?? null)
+    ) {
+      throw new Error("Workflow run belongs to a different project");
+    }
+    if (
+      workflowRun &&
+      task &&
+      !workflowRun.steps.some((step) => step.taskId === task._id)
+    ) {
+      throw new Error("Task is not part of the supplied workflow run");
+    }
 
     const operatorControl = await getEffectiveOperatorControl(ctx.db, agent.projectId);
     const operatorGate = evaluateOperatorGate({
@@ -578,6 +602,7 @@ export const start = mutation({
       versionId: resolved.versionId,
       templateId: resolved.templateId,
       taskId: args.taskId,
+      workflowRunId: args.workflowRunId,
       sessionKey: args.sessionKey,
       startedAt: Date.now(),
       model: args.model,

@@ -9,7 +9,8 @@ import { mutation, query, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { appendOpEvent } from "./lib/armAudit";
 import { resolveAgentRef } from "./lib/agentResolver";
-import { buildEvidenceLineage, buildFileChanges, buildRetryTimeline, orderRunEvents, summarizeRunEvents } from "./lib/runInspector";
+import { buildContinuousEvidenceLineage, buildEvidenceLineage, buildFileChanges, buildRetryTimeline, orderRunEvents, summarizeRunEvents } from "./lib/runInspector";
+import { summarizeWorkflowObservability } from "./lib/workflowObservability";
 
 // ============================================================================
 // HELPERS
@@ -294,7 +295,7 @@ export const getInspector = query({
     const run = await ctx.db.get(args.workflowRunId);
     if (!run) return null;
 
-    const [workflow, workOrder, events, artifacts, receipts] = await Promise.all([
+    const [workflow, workOrder, events, artifacts, receipts, linkedAgentRuns] = await Promise.all([
       ctx.db.query("workflows").withIndex("by_workflow_id", (q) => q.eq("workflowId", run.workflowId)).first(),
       run.workOrderId ? ctx.db.get(run.workOrderId) : null,
       ctx.db.query("runEvents").withIndex("by_run_sequence", (q) => q.eq("workflowRunId", run._id)).collect(),
@@ -302,6 +303,7 @@ export const getInspector = query({
       run.workOrderId
         ? ctx.db.query("verificationReceipts").withIndex("by_run", (q) => q.eq("workflowRunId", run._id)).collect()
         : [],
+      ctx.db.query("runs").withIndex("by_workflow_run", (q) => q.eq("workflowRunId", run._id)).take(201),
     ]);
 
     const orderedEvents = orderRunEvents(events as any);
@@ -313,6 +315,17 @@ export const getInspector = query({
       acceptanceCriterionId: args.acceptanceCriterionId ?? null,
       events: orderedEvents as any,
       artifacts: artifacts as any,
+    });
+    const approvalId = typeof run.context?.approvalId === "string"
+      ? ctx.db.normalizeId("approvals", run.context.approvalId)
+      : null;
+    const approval = approvalId ? await ctx.db.get(approvalId) : null;
+    const continuousEvidenceLineage = buildContinuousEvidenceLineage({
+      context: run.context,
+      approval: approval as any,
+      fileChanges,
+      artifacts: artifacts as any,
+      receipts: receipts as any,
     });
 
     return {
@@ -331,9 +344,16 @@ export const getInspector = query({
         failureSummary: run.failureReason ?? eventSummary.failure,
         blockingIssue: workOrder?.blockingIssue ?? run.failureReason ?? null,
       },
+      observability: summarizeWorkflowObservability({
+        workflowRun: run,
+        agentRuns: linkedAgentRuns.slice(0, 200),
+        now: Date.now(),
+        truncated: linkedAgentRuns.length > 200,
+      }),
       fileChanges,
       retryTimeline,
       evidenceLineage,
+      continuousEvidenceLineage,
     };
   },
 });
@@ -401,9 +421,19 @@ export const start = mutation({
     }
     
     // Initialize step states
-    const steps = workflow.steps.map((step) => ({
+    const topology = workflow.topology ?? "LINEAR";
+    const steps = workflow.steps.map((step, index) => ({
       stepId: step.id,
       status: "PENDING" as const,
+      dependsOn:
+        step.dependsOn ??
+        (topology === "LINEAR" && index > 0 ? [workflow.steps[index - 1].id] : []),
+      kind: step.kind ?? "AGENT",
+      modelTier: step.modelTier,
+      isolation: step.isolation,
+      failurePolicy: step.failurePolicy ?? "RETRY",
+      conditionResult: undefined,
+      structuredOutput: undefined,
       taskId: undefined,
       agentId: undefined,
       startedAt: undefined,
@@ -430,6 +460,8 @@ export const start = mutation({
       totalSteps: workflow.steps.length,
       steps,
       context: { task: args.initialInput },
+      topology,
+      maxConcurrency: workflow.maxConcurrency ?? 1,
       initialInput: args.initialInput,
       runtime: args.runtime,
       model: args.model,
@@ -639,15 +671,24 @@ export const linkArtifactToVerificationReceipt = mutation({
 /**
  * Update step status
  */
-export const updateStep = internalMutation({
+export const updateStep = mutation({
   args: {
     runId: v.string(),
     stepIndex: v.number(),
-    status: v.string(),
+    status: v.union(
+      v.literal("PENDING"),
+      v.literal("RUNNING"),
+      v.literal("DONE"),
+      v.literal("FAILED"),
+      v.literal("SKIPPED"),
+      v.literal("BLOCKED")
+    ),
     taskId: v.optional(v.id("tasks")),
     agentId: v.optional(v.id("agents")),
     error: v.optional(v.string()),
     output: v.optional(v.string()),
+    structuredOutput: v.optional(v.any()),
+    conditionResult: v.optional(v.boolean()),
     failureReason: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -679,17 +720,19 @@ export const updateStep = internalMutation({
       completedAt: (args.status === "DONE" || args.status === "FAILED") ? now : step.completedAt,
       error: args.error ?? step.error,
       output: args.output ?? step.output,
+      structuredOutput: args.structuredOutput ?? step.structuredOutput,
+      conditionResult: args.conditionResult ?? step.conditionResult,
     };
     
     await ctx.db.patch(run._id, {
       steps,
-      failureReason: args.failureReason ?? (args.status === "FAILED" ? args.error : run.failureReason),
+      failureReason: args.failureReason ?? run.failureReason,
     });
     const instanceRef = args.agentId
       ? await resolveAgentRef({ db: ctx.db as any }, { agentId: args.agentId, createIfMissing: true })
       : null;
     if (args.status === "RUNNING") {
-      await ctx.db.patch(run._id, { status: "RUNNING" });
+      await ctx.db.patch(run._id, { status: "RUNNING", currentStepIndex: args.stepIndex });
       await insertRunEvent(ctx, {
         workflowRunId: run._id,
         workOrderId: run.workOrderId,
@@ -773,7 +816,6 @@ export const updateStep = internalMutation({
         },
       });
     } else if (args.status === "FAILED") {
-      await ctx.db.patch(run._id, { status: "FAILED", completedAt: now, failureReason: args.failureReason ?? args.error ?? run.failureReason });
       if (step.retryCount > 0) {
         await insertRunEvent(ctx, {
           workflowRunId: run._id,
@@ -788,30 +830,6 @@ export const updateStep = internalMutation({
           retryNumber: step.retryCount,
           errorSummary: args.failureReason ?? args.error ?? run.failureReason,
           idempotencyKey: `retry-complete:${run.runId}:${args.stepIndex}:${step.retryCount}`,
-        });
-      }
-      await insertRunEvent(ctx, {
-        workflowRunId: run._id,
-        workOrderId: run.workOrderId,
-        projectId: run.projectId,
-        tenantId: run.tenantId,
-        eventType: "RUN_FAILED",
-        workflowStep: step.stepId,
-        actor: args.agentId ? "agent" : "system",
-        agentId: args.agentId,
-        status: "FAILED",
-        startedAt: step.startedAt,
-        endedAt: now,
-        retryNumber: step.retryCount,
-        errorCategory: "STEP_FAILURE",
-        errorSummary: args.failureReason ?? args.error ?? run.failureReason,
-        idempotencyKey: `run-failed:${run.runId}:${args.stepIndex}:${step.retryCount}`,
-      });
-      if (run.workOrderId) {
-        await ctx.runMutation(internal.workOrders.syncExecutionOutcome, {
-          workflowRunId: run._id,
-          eventType: "RUN_FAILED",
-          summary: args.error ?? `Workflow run ${run.runId} failed`,
         });
       }
       await appendOpEvent(ctx.db as any, {
@@ -838,7 +856,7 @@ export const updateStep = internalMutation({
 /**
  * Advance workflow to next step
  */
-export const advance = internalMutation({
+export const advance = mutation({
   args: {
     runId: v.string(),
   },
@@ -1020,7 +1038,7 @@ export const updateStatus = mutation({
 /**
  * Update workflow context (variables passed between steps)
  */
-export const updateContext = internalMutation({
+export const updateContext = mutation({
   args: {
     runId: v.string(),
     context: v.any(),
@@ -1046,7 +1064,7 @@ export const updateContext = internalMutation({
 /**
  * Increment retry count for a step
  */
-export const incrementRetry = internalMutation({
+export const incrementRetry = mutation({
   args: {
     runId: v.string(),
     stepIndex: v.number(),

@@ -178,18 +178,11 @@ fi
 # ============================================
 log_section "D) Content Drops"
 
-# Check for content drop functionality
-CONTENT_DROP_FILES=("convex/runs.ts" "convex/activities.ts")
-FOUND=false
-for file in "${CONTENT_DROP_FILES[@]}"; do
-    if [[ -f "$MC_DIR/$file" ]] && grep -q "content\|drop\|artifact" "$MC_DIR/$file" 2>/dev/null; then
-        log_pass "Content drops referenced in $file"
-        FOUND=true
-    fi
-done
-
-if ! $FOUND; then
-    log_warn "Content drop functionality not clearly found"
+# Check for the canonical content drop module
+if [[ -f "$MC_DIR/convex/contentDrops.ts" ]]; then
+    log_pass "Content drop functions exist"
+else
+    log_warn "convex/contentDrops.ts not found"
 fi
 
 # ============================================
@@ -293,11 +286,12 @@ else
     log_warn "apps/orchestration-server missing"
 fi
 
-# Check heartbeat/tick
-if [[ -f "$MC_DIR/packages/coordinator/src/tick.ts" ]]; then
-    log_pass "Coordinator tick/heartbeat exists"
+# Check the current coordinator loop implementation
+if [[ -f "$MC_DIR/packages/coordinator/src/loop.ts" ]] &&
+   grep -q "CoordinatorLoop" "$MC_DIR/packages/coordinator/src/loop.ts"; then
+    log_pass "Coordinator loop exists"
 else
-    log_warn "coordinator/src/tick.ts not found"
+    log_warn "Coordinator loop implementation not found"
 fi
 
 # ============================================

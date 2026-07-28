@@ -27,7 +27,7 @@ const FACTORY_PROMPTS = [
 ];
 
 export interface ChatDockProps {
-  width: number;
+  width: number | string;
   onClose: () => void;
   projectId?: Id<"projects"> | null;
   archStatus?: ReactNode;
@@ -47,9 +47,20 @@ export function ChatDock({
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatItem[]>([]);
   const [pending, setPending] = useState(false);
+  const [selectedThreadId, setSelectedThreadId] = useState<Id<"telegraphThreads"> | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
 
   const seedMetaLoop = useMutation(api.factory.metaLoop.seedDemoSuggestions);
+  const submitChatRequest = useMutation(api.missionChat.submitRequest);
+  const chatThreads = useQuery(
+    api.missionChat.listThreads,
+    projectId ? { projectId, limit: 20 } : "skip"
+  );
+  const chatSession = useQuery(
+    api.missionChat.getSession,
+    selectedThreadId ? { threadId: selectedThreadId } : "skip"
+  );
   const factoryHealth = useQuery(
     api.factory.health.getFactoryHealth,
     projectId ? { projectId } : "skip"
@@ -60,24 +71,72 @@ export function ChatDock({
     projectId ? { projectId, limit: 20 } : { limit: 20 }
   );
 
-  const sessions = [
-    {
-      id: "default",
-      title: mode === "factory" ? "Factory Agent" : "Operator session",
-      channel: mode,
-      messageCount: messages.length,
-    },
-    ...(runs ?? []).slice(0, 5).map((r) => ({
-      id: r.id,
-      title: r.label,
-      channel: "factory",
-      messageCount: r.toolCount,
-    })),
-  ];
+  const sessions =
+    mode === "operator"
+      ? [
+          {
+            id: "new",
+            title: "New work request",
+            channel: "operator",
+            messageCount: 0,
+          },
+          ...(chatThreads ?? []).map((thread) => ({
+            id: thread._id,
+            title: thread.title,
+            channel: "operator",
+            messageCount: thread.messageCount,
+          })),
+        ]
+      : [
+          {
+            id: "default",
+            title: "Factory Agent",
+            channel: "factory",
+            messageCount: messages.length,
+          },
+          ...(runs ?? []).slice(0, 5).map((r) => ({
+            id: r.id,
+            title: r.label,
+            channel: "factory",
+            messageCount: r.toolCount,
+          })),
+        ];
+
+  useEffect(() => {
+    setSelectedThreadId(null);
+    setSessionId(mode === "operator" ? "new" : "default");
+    setMessages([]);
+    setSubmitError(null);
+  }, [mode, projectId]);
+
+  const renderedMessages: ChatItem[] =
+    mode === "operator"
+      ? [
+          ...(chatSession?.messages ?? []).map((message): ChatItem =>
+            message.senderType === "HUMAN"
+              ? { kind: "user", text: message.content }
+              : {
+                  kind: "turn",
+                  turn: {
+                    reply: message.content,
+                    gate: {
+                      decision: "allow",
+                      reason: "Persisted Mission Control work record",
+                    },
+                    latencyMs: 0,
+                    iterations: 1,
+                    cost: 0,
+                    model: "mission-control",
+                  },
+                }
+          ),
+          ...messages.filter((message) => message.kind === "streaming"),
+        ]
+      : messages;
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
-  }, [messages, pending]);
+  }, [renderedMessages.length, pending]);
 
   const factoryReply = useCallback(
     async (text: string, startedAt: number) => {
@@ -137,8 +196,11 @@ export function ChatDock({
   const send = useCallback(() => {
     const text = input.trim();
     if (!text || pending) return;
+    setSubmitError(null);
     setInput("");
-    setMessages((m) => [...m, { kind: "user", text }]);
+    if (mode === "factory") {
+      setMessages((m) => [...m, { kind: "user", text }]);
+    }
     setPending(true);
     const startedAt = Date.now();
     setMessages((m) => [
@@ -155,49 +217,60 @@ export function ChatDock({
     };
 
     if (mode === "factory") {
-      void factoryReply(text, startedAt).then(({ reply, gate }) => {
-        finish({
-          reply,
-          gate,
-          latencyMs: Date.now() - startedAt,
-          iterations: 1,
-          cost: 0.004,
-          model: "factory-agent-router",
+      void factoryReply(text, startedAt)
+        .then(({ reply, gate }) => {
+          finish({
+            reply,
+            gate,
+            latencyMs: Date.now() - startedAt,
+            iterations: 1,
+            cost: 0.004,
+            model: "factory-agent-router",
+          });
+        })
+        .catch((error) => {
+          setPending(false);
+          setMessages((current) => current.filter((item) => item.kind !== "streaming"));
+          setSubmitError(error instanceof Error ? error.message : "Factory routing failed.");
         });
-      });
       return;
     }
 
-    const words = [
-      "Routing through dispatch gate…",
-      "Memory retrieval skipped (low relevance).",
-      "Checking factory health before reply.",
-    ];
-    let i = 0;
-    const interval = window.setInterval(() => {
-      if (i >= words.length) {
-        window.clearInterval(interval);
-        finish({
-          reply: `Acknowledged: "${text}". Mission Control is monitoring ${projectId ? "this project" : "all projects"} — check Command Center for live factory status.`,
-          gate: { decision: "skip", reason: "operator chat — no memory retrieval needed" },
-          latencyMs: Date.now() - startedAt,
-          iterations: 1,
-          cost: 0.002,
-          model: "orchestration-router",
-        });
-        return;
-      }
-      const chunk = words[i];
-      i += 1;
-      setMessages((m) =>
-        m.map((x) =>
-          x.kind === "streaming"
-            ? { ...x, stream: [x.stream, chunk].filter(Boolean).join("\n") }
-            : x
-        )
-      );
-    }, 400);
-  }, [factoryReply, input, mode, pending, projectId]);
+    if (!projectId) {
+      setPending(false);
+      setMessages([]);
+      setSubmitError("Select a workspace before submitting work.");
+      return;
+    }
+    void submitChatRequest({
+      projectId,
+      threadId: selectedThreadId ?? undefined,
+      content: text,
+      actorId: "operator",
+      idempotencyKey: `mission-chat:${projectId}:${startedAt}`,
+    })
+      .then((result) => {
+        setSelectedThreadId(result.threadId);
+        setSessionId(result.threadId);
+        setMessages([]);
+        setPending(false);
+      })
+      .catch((error) => {
+        setPending(false);
+        setMessages([]);
+        setSubmitError(
+          error instanceof Error ? error.message : "Mission Control could not create the work."
+        );
+      });
+  }, [
+    factoryReply,
+    input,
+    mode,
+    pending,
+    projectId,
+    selectedThreadId,
+    submitChatRequest,
+  ]);
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -257,13 +330,54 @@ export function ChatDock({
         sessions={sessions}
         activeSessionId={sessionId}
         onNewChat={() => {
-          setSessionId(`session-${Date.now()}`);
+          setSessionId(mode === "operator" ? "new" : `session-${Date.now()}`);
+          setSelectedThreadId(null);
           setMessages([]);
+          setSubmitError(null);
         }}
-        onSelectSession={setSessionId}
-        onViewAllHistory={() => setSessionId("__all__")}
+        onSelectSession={(nextSessionId) => {
+          setSessionId(nextSessionId);
+          if (mode === "operator") {
+            const thread = (chatThreads ?? []).find((candidate) => candidate._id === nextSessionId);
+            setSelectedThreadId(thread?._id ?? null);
+          }
+        }}
+        onViewAllHistory={() => {
+          const first = chatThreads?.[0];
+          if (mode === "operator" && first) {
+            setSessionId(first._id);
+            setSelectedThreadId(first._id);
+          }
+        }}
         modelLabel={mode === "factory" ? "factory-agent" : "factory-router"}
       />
+
+      {mode === "operator" && chatSession?.task && (
+        <div className="shrink-0 border-b border-line bg-surface-1 px-3 py-2 text-[11px]">
+          <div className="flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => onNavigate?.("tasks")}
+              className="truncate font-medium text-ink hover:underline"
+            >
+              {chatSession.task.identifier ?? chatSession.task.title}
+            </button>
+            <span className="rounded border border-line px-1.5 py-0.5 text-ink-secondary">
+              {chatSession.task.status.replace(/_/g, " ")}
+            </span>
+          </div>
+          {chatSession.workOrder && (
+            <button
+              type="button"
+              onClick={() => onNavigate?.("control-work-orders")}
+              className="mt-1 text-ink-muted hover:text-ink hover:underline"
+            >
+              WorkOrder · {chatSession.workOrder.state.replace(/_/g, " ")}
+              {chatSession.workflowRun ? ` · Run ${chatSession.workflowRun.status}` : ""}
+            </button>
+          )}
+        </div>
+      )}
 
       {mode === "factory" ? (
         <div className="flex shrink-0 flex-wrap gap-1.5 border-b border-line px-3 py-2">
@@ -284,14 +398,14 @@ export function ChatDock({
       ) : null}
 
       <div ref={logRef} className="schematic-chatlog min-h-0 flex-1 overflow-y-auto px-3 pb-2">
-        {messages.length === 0 ? (
+        {renderedMessages.length === 0 ? (
           <p className="px-0.5 py-2 text-[13px] text-ink-muted">
             {mode === "factory"
               ? "Factory Agent routes harness work: code review setup, PR sync, meta loop, and registry analyze."
               : "Message Mission Control from any tab. Open Overview to watch factory flow, or Gateway for channel conversations."}
           </p>
         ) : (
-          messages.map((m, idx) => {
+          renderedMessages.map((m, idx) => {
             if (m.kind === "user") return <ChatBubble key={idx} text={m.text} />;
             if (m.kind === "streaming")
               return (
@@ -311,6 +425,12 @@ export function ChatDock({
           })
         )}
       </div>
+
+      {submitError && (
+        <div role="alert" className="shrink-0 border-t border-err/30 bg-err-soft px-3 py-2 text-xs text-err">
+          {submitError}
+        </div>
+      )}
 
       <div className="flex shrink-0 items-center gap-2 border-t border-line px-3 py-2.5">
         <input

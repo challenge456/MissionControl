@@ -84,7 +84,7 @@ export const seed = mutation({
       action: "E2E_SEED_AGENTS",
       description: `Created 2 E2E agents for run ${runId}`,
       targetType: "SYSTEM",
-      metadata: { runId, agentCount: 2 },
+      metadata: { e2eRunId: runId, agentCount: 2 },
     });
 
     // ============================================================================
@@ -285,7 +285,7 @@ export const seed = mutation({
       description: `E2E seed completed for run ${runId}`,
       targetType: "SYSTEM",
       metadata: {
-        runId,
+        e2eRunId: runId,
         agentsCreated: results.agents.length,
         tasksCreated: results.tasks.length,
         dropsCreated: results.contentDrops.length,
@@ -336,7 +336,7 @@ export const cleanup = mutation({
     // Delete tasks
     const tasks = await ctx.db
       .query("tasks")
-      .filter((q) => q.eq("metadata.e2eRunId", runId))
+      .filter((q) => q.eq(q.field("metadata.e2eRunId"), runId))
       .collect();
     
     for (const task of tasks) {
@@ -347,7 +347,7 @@ export const cleanup = mutation({
     // Delete content drops
     const drops = await ctx.db
       .query("contentDrops")
-      .filter((q) => q.eq("metadata.e2eRunId", runId))
+      .filter((q) => q.eq(q.field("metadata.e2eRunId"), runId))
       .collect();
     
     for (const drop of drops) {
@@ -358,7 +358,7 @@ export const cleanup = mutation({
     // Delete workflow runs
     const workflowRuns = await ctx.db
       .query("workflowRuns")
-      .filter((q) => q.eq("metadata.e2eRunId", runId))
+      .filter((q) => q.eq(q.field("metadata.e2eRunId"), runId))
       .collect();
     
     for (const wr of workflowRuns) {
@@ -369,25 +369,18 @@ export const cleanup = mutation({
     // Delete activities
     const activities = await ctx.db
       .query("activities")
-      .filter((q) => q.eq("metadata.e2eRunId", runId))
+      .filter((q) =>
+        q.or(
+          q.eq(q.field("metadata.e2eRunId"), runId),
+          q.eq(q.field("metadata.runId"), runId)
+        )
+      )
       .collect();
     
     for (const activity of activities) {
       await ctx.db.delete(activity._id);
       results.activitiesDeleted++;
     }
-
-    // Log cleanup
-    await ctx.db.insert("activities", {
-      actorType: "SYSTEM",
-      action: "E2E_CLEANUP_COMPLETE",
-      description: `E2E cleanup completed for run ${runId}`,
-      targetType: "SYSTEM",
-      metadata: {
-        runId,
-        ...results,
-      },
-    });
 
     return {
       success: true,
@@ -419,7 +412,7 @@ export const validate = query({
     // Check agents
     const agents = await ctx.db
       .query("agents")
-      .filter((q) => q.eq("metadata.e2eRunId", runId))
+      .filter((q) => q.eq(q.field("metadata.e2eRunId"), runId))
       .collect();
     results.agents.found = agents.length;
     results.agents.valid = agents.length >= 2;
@@ -427,7 +420,7 @@ export const validate = query({
     // Check tasks
     const tasks = await ctx.db
       .query("tasks")
-      .filter((q) => q.eq("metadata.e2eRunId", runId))
+      .filter((q) => q.eq(q.field("metadata.e2eRunId"), runId))
       .collect();
     results.tasks.found = tasks.length;
     results.tasks.valid = tasks.length >= 3;
@@ -435,7 +428,7 @@ export const validate = query({
     // Check content drops
     const drops = await ctx.db
       .query("contentDrops")
-      .filter((q) => q.eq("metadata.e2eRunId", runId))
+      .filter((q) => q.eq(q.field("metadata.e2eRunId"), runId))
       .collect();
     results.contentDrops.found = drops.length;
     results.contentDrops.valid = drops.length >= 2;
@@ -445,10 +438,10 @@ export const validate = query({
       .query("activities")
       .filter((q) => 
         q.and(
-          q.eq("metadata.e2eRunId", runId),
+          q.eq(q.field("metadata.e2eRunId"), runId),
           q.or(
-            q.eq("action", "E2E_BUDGET_CREDIT"),
-            q.eq("action", "E2E_BUDGET_DEBIT")
+            q.eq(q.field("action"), "E2E_BUDGET_CREDIT"),
+            q.eq(q.field("action"), "E2E_BUDGET_DEBIT")
           )
         )
       )
@@ -464,7 +457,7 @@ export const validate = query({
     // Check workflow runs
     const workflowRuns = await ctx.db
       .query("workflowRuns")
-      .filter((q) => q.eq("metadata.e2eRunId", runId))
+      .filter((q) => q.eq(q.field("metadata.e2eRunId"), runId))
       .collect();
     results.workflowRuns.found = workflowRuns.length;
     results.workflowRuns.valid = workflowRuns.length >= 1;

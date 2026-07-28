@@ -89,6 +89,14 @@ type Task = {
   source?: string;
   sourceRef?: string;
   identifier?: string;
+  metadata?: {
+    workflowRunId?: string;
+    workflowAttempt?: {
+      attemptNumber?: number;
+      retryNumber?: number;
+      supersededAt?: number;
+    };
+  };
 };
 
 const SOURCE_CONFIG: Record<string, { label: string; isSpecial?: boolean }> = {
@@ -100,6 +108,7 @@ const SOURCE_CONFIG: Record<string, { label: string; isSpecial?: boolean }> = {
   TRELLO:    { label: "Trello" },
   SEED:      { label: "Seed" },
   MISSION_PROMPT: { label: "Mission", isSpecial: true },
+  PRD_IMPORT: { label: "Imported PRD", isSpecial: true },
   UNKNOWN:   { label: "Unknown" },
 };
 
@@ -186,7 +195,6 @@ export function Kanban({
 
   const handleMoveTo = async (taskId: Id<"tasks">, fromStatus: TaskStatus, toStatus: TaskStatus) => {
     try {
-      setLastMove({ taskId, fromStatus, toStatus });
       const result = await transitionTask({
         taskId,
         toStatus,
@@ -198,6 +206,7 @@ export function Kanban({
         const err = (result as { errors?: { message: string }[] }).errors?.[0]?.message ?? "Transition failed";
         toast(err, true);
       } else {
+        setLastMove({ taskId, fromStatus, toStatus });
         toast(`Moved to ${STATUS_LABELS[toStatus]}`);
       }
     } catch (e) {
@@ -402,6 +411,7 @@ function Card({
     .filter(Boolean);
 
   const src = task.source ? (SOURCE_CONFIG[task.source] || SOURCE_CONFIG.UNKNOWN) : null;
+  const workflowAttempt = task.metadata?.workflowAttempt;
 
   const style = transform ? {
     transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
@@ -410,27 +420,37 @@ function Card({
   return (
     <div
       ref={setNodeRef}
-      {...attributes}
-      {...listeners}
       style={style}
       className={cn(
-        "group rounded-xl border bg-surface-1 p-3 transition-colors duration-150",
+        "group relative rounded-xl border bg-surface-1 p-3 transition-colors duration-150",
         isDragging ? "opacity-50 border-line-strong" : "border-line hover:border-line-strong hover:bg-surface-2",
-        allowedToStatuses.length > 0 ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
+        "cursor-pointer"
       )}
     >
+      {allowedToStatuses.length > 0 ? (
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          className="absolute right-2 top-2 z-10 rounded p-1 text-ink-muted opacity-0 transition-opacity hover:bg-surface-3 hover:text-ink-secondary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100"
+          aria-label={`Drag ${task.title}`}
+        >
+          <GripVertical className="h-3.5 w-3.5" aria-hidden />
+        </button>
+      ) : null}
       <div
         role="button"
         tabIndex={0}
+        aria-label={`Open task ${task.title}`}
         onClick={onSelect}
         onKeyDown={(e) => e.key === "Enter" && onSelect()}
-        className="outline-none"
+        className="outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         {/* Identifier + Title */}
         {task.identifier && (
           <div className="text-[11.5px] font-mono text-ink-muted mb-1">{task.identifier}</div>
         )}
-        <div className="font-medium text-[13.5px] text-ink leading-snug line-clamp-2 mb-2">
+        <div className="mb-2 line-clamp-2 pr-5 text-[13.5px] font-medium leading-snug text-ink">
           {task.title}
         </div>
 
@@ -444,6 +464,12 @@ function Card({
               {src.label}
             </StatusBadge>
           )}
+          {task.metadata?.workflowRunId && workflowAttempt?.attemptNumber ? (
+            <StatusBadge tone={workflowAttempt.supersededAt ? "warning" : "info"}>
+              Attempt {workflowAttempt.attemptNumber}
+              {workflowAttempt.retryNumber ? ` · Retry ${workflowAttempt.retryNumber}` : ""}
+            </StatusBadge>
+          ) : null}
         </div>
 
         {/* Labels */}
@@ -503,7 +529,7 @@ function Card({
 
       {/* Hover actions */}
       {(allowedToStatuses.length > 0 || onPlanTask) && (
-        <div className="mt-2 pt-2 border-t border-line opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex items-center gap-1">
+        <div className="mt-2 flex items-center gap-1 border-t border-line pt-2">
           {onPlanTask && (
             <Button
               variant="ghost"

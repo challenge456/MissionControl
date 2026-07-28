@@ -32,6 +32,26 @@ export function findActiveRun<T extends { status: DispatchRunStatus }>(runs: T[]
   return runs.find((run) => ACTIVE_RUN_STATUSES.includes(run.status));
 }
 
+export function validateRetryRequest(args: {
+  workOrderId: string;
+  retryReason?: string;
+  priorRun?: {
+    workOrderId?: string;
+    status: DispatchRunStatus;
+  } | null;
+}): { ok: true; reason: string } | { ok: false; reason: string } {
+  const reason = args.retryReason?.trim() ?? "";
+  if (!args.priorRun) return { ok: false, reason: "retry-run-not-found" };
+  if (args.priorRun.workOrderId !== args.workOrderId) {
+    return { ok: false, reason: "retry-run-work-order-mismatch" };
+  }
+  if (args.priorRun.status !== "FAILED") {
+    return { ok: false, reason: `retry-run-not-failed:${args.priorRun.status}` };
+  }
+  if (reason.length < 10) return { ok: false, reason: "retry-reason-required" };
+  return { ok: true, reason };
+}
+
 export function validateDispatchable(args: {
   state: DispatchableState;
   riskLevel: DispatchRiskLevel;

@@ -118,6 +118,12 @@ export const create = mutation({
     name: v.string(),
     slug: v.string(),
     description: v.optional(v.string()),
+    purpose: v.optional(v.string()),
+    owner: v.optional(v.string()),
+    defaultPolicy: v.optional(v.string()),
+    status: v.optional(
+      v.union(v.literal("ACTIVE"), v.literal("PAUSED"), v.literal("ARCHIVED"))
+    ),
     tenantId: v.optional(v.id("tenants")), // ARM: Required for new projects
     githubRepo: v.optional(v.string()),
     githubBranch: v.optional(v.string()),
@@ -171,6 +177,10 @@ export const create = mutation({
       name: args.name,
       slug: args.slug,
       description: args.description,
+      purpose: args.purpose,
+      owner: args.owner,
+      defaultPolicy: args.defaultPolicy,
+      status: args.status ?? "ACTIVE",
       githubRepo: args.githubRepo,
       githubBranch: args.githubBranch,
       policyDefaults: args.policyDefaults,
@@ -202,6 +212,12 @@ export const update = mutation({
     projectId: v.id("projects"),
     name: v.optional(v.string()),
     description: v.optional(v.string()),
+    purpose: v.optional(v.string()),
+    owner: v.optional(v.string()),
+    defaultPolicy: v.optional(v.string()),
+    status: v.optional(
+      v.union(v.literal("ACTIVE"), v.literal("PAUSED"), v.literal("ARCHIVED"))
+    ),
     policyDefaults: v.optional(
       v.object({
         budgetDefaults: v.optional(v.any()),
@@ -219,6 +235,10 @@ export const update = mutation({
     const updates: any = {};
     if (args.name !== undefined) updates.name = args.name;
     if (args.description !== undefined) updates.description = args.description;
+    if (args.purpose !== undefined) updates.purpose = args.purpose;
+    if (args.owner !== undefined) updates.owner = args.owner;
+    if (args.defaultPolicy !== undefined) updates.defaultPolicy = args.defaultPolicy;
+    if (args.status !== undefined) updates.status = args.status;
     if (args.policyDefaults !== undefined)
       updates.policyDefaults = args.policyDefaults;
     if (args.metadata !== undefined) updates.metadata = args.metadata;
@@ -235,6 +255,65 @@ export const update = mutation({
       projectId: args.projectId,
       beforeState: project,
       afterState: { ...project, ...updates },
+    });
+
+    return {
+      success: true,
+      project: await ctx.db.get(args.projectId),
+    };
+  },
+});
+
+/**
+ * Validate and attach repository metadata to a project workspace.
+ */
+export const connectRepository = mutation({
+  args: {
+    projectId: v.id("projects"),
+    repository: v.string(),
+    defaultBranch: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const project = await ctx.db.get(args.projectId);
+    if (!project) {
+      return { success: false, error: "Workspace not found" };
+    }
+
+    const repository = args.repository.trim();
+    const defaultBranch = args.defaultBranch.trim();
+    const repositoryPattern = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+
+    if (!repositoryPattern.test(repository)) {
+      return {
+        success: false,
+        error: "Use the repository format owner/repository.",
+      };
+    }
+    if (!defaultBranch) {
+      return { success: false, error: "Default branch is required." };
+    }
+
+    const previousRepository = project.githubRepo;
+    await ctx.db.patch(args.projectId, {
+      githubRepo: repository,
+      githubBranch: defaultBranch,
+    });
+
+    await ctx.db.insert("activities", {
+      projectId: args.projectId,
+      actorType: "HUMAN",
+      action: previousRepository ? "REPOSITORY_UPDATED" : "REPOSITORY_CONNECTED",
+      description: `${repository} configured for workspace "${project.name}"`,
+      targetType: "PROJECT",
+      targetId: args.projectId,
+      beforeState: {
+        githubRepo: project.githubRepo,
+        githubBranch: project.githubBranch,
+      },
+      afterState: {
+        githubRepo: repository,
+        githubBranch: defaultBranch,
+      },
     });
 
     return {

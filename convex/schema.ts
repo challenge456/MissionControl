@@ -666,6 +666,12 @@ export default defineSchema({
     name: v.string(),
     slug: v.string(),
     description: v.optional(v.string()),
+    purpose: v.optional(v.string()),
+    owner: v.optional(v.string()),
+    defaultPolicy: v.optional(v.string()),
+    status: v.optional(
+      v.union(v.literal("ACTIVE"), v.literal("PAUSED"), v.literal("ARCHIVED"))
+    ),
     
     // GitHub integration
     githubRepo: v.optional(v.string()), // e.g., "owner/repo"
@@ -1085,6 +1091,7 @@ export default defineSchema({
     .index("by_role", ["role"])
     .index("by_name", ["name"])
     .index("by_project", ["projectId"])
+    .index("by_project_name", ["projectId", "name"])
     .index("by_project_status", ["projectId", "status"]),
 
   // -------------------------------------------------------------------------
@@ -1232,12 +1239,14 @@ export default defineSchema({
     projectId: v.optional(v.id("projects")),
     title: v.string(),
     content: v.string(),
+    contentHash: v.optional(v.string()),
     taskCount: v.number(),
     parsedAt: v.number(),
     createdBy: v.optional(v.string()),
     metadata: v.optional(v.any()),
   })
     .index("by_project", ["projectId"])
+    .index("by_content_hash", ["contentHash"])
     .index("by_tenant", ["tenantId"]),
 
   // -------------------------------------------------------------------------
@@ -1393,6 +1402,7 @@ export default defineSchema({
     versionId: v.optional(v.id("agentVersions")),
     templateId: v.optional(v.id("agentTemplates")),
     taskId: v.optional(v.id("tasks")),
+    workflowRunId: v.optional(v.id("workflowRuns")),
     sessionKey: v.string(),
     
     // Timing
@@ -1427,6 +1437,7 @@ export default defineSchema({
     .index("by_instance", ["instanceId"])
     .index("by_version", ["versionId"])
     .index("by_task", ["taskId"])
+    .index("by_workflow_run", ["workflowRunId"])
     .index("by_session", ["sessionKey"])
     .index("by_idempotency", ["idempotencyKey"])
     .index("by_project", ["projectId"]),
@@ -2383,6 +2394,7 @@ export default defineSchema({
     // Linked entities
     linkedTaskId: v.optional(v.id("tasks")),
     linkedApprovalId: v.optional(v.id("approvals")),
+    linkedWorkOrderId: v.optional(v.id("workOrders")),
     linkedIncidentId: v.optional(v.string()),
     
     // State
@@ -2393,6 +2405,7 @@ export default defineSchema({
   })
     .index("by_project", ["projectId"])
     .index("by_linked_task", ["linkedTaskId"])
+    .index("by_linked_work_order", ["linkedWorkOrderId"])
     .index("by_last_message", ["lastMessageAt"])
     .index("by_channel", ["channel"]),
 
@@ -2403,6 +2416,7 @@ export default defineSchema({
     tenantId: v.optional(v.id("tenants")),
     projectId: v.optional(v.id("projects")),
     threadId: v.id("telegraphThreads"),
+    idempotencyKey: v.optional(v.string()),
     
     // Sender
     senderId: v.string(),
@@ -2434,6 +2448,7 @@ export default defineSchema({
   })
     .index("by_thread", ["threadId"])
     .index("by_project", ["projectId"])
+    .index("by_idempotency", ["idempotencyKey"])
     .index("by_sender", ["senderId"])
     .index("by_status", ["status"]),
 
@@ -2547,6 +2562,12 @@ export default defineSchema({
     workflowId: v.string(), // e.g., "feature-dev", "bug-fix", "security-audit"
     name: v.string(),
     description: v.string(),
+    topology: v.optional(v.union(v.literal("LINEAR"), v.literal("DAG"))),
+    maxConcurrency: v.optional(v.number()),
+    convergence: v.optional(v.object({
+      maxIterations: v.number(),
+      stopCondition: v.string(),
+    })),
     
     // Agent definitions
     agents: v.array(v.object({
@@ -2565,6 +2586,41 @@ export default defineSchema({
       expects: v.string(), // Success criteria (e.g., "STATUS: done")
       retryLimit: v.number(),
       timeoutMinutes: v.number(),
+      dependsOn: v.optional(v.array(v.string())),
+      kind: v.optional(v.union(
+        v.literal("AGENT"),
+        v.literal("REDUCE"),
+        v.literal("ROUTER"),
+        v.literal("VERIFY"),
+        v.literal("GATE")
+      )),
+      inputSchema: v.optional(v.any()),
+      outputSchema: v.optional(v.any()),
+      modelTier: v.optional(v.union(
+        v.literal("FAST"),
+        v.literal("BALANCED"),
+        v.literal("POWERFUL")
+      )),
+      isolation: v.optional(v.union(
+        v.literal("SHARED"),
+        v.literal("WORKTREE"),
+        v.literal("READ_ONLY")
+      )),
+      failurePolicy: v.optional(v.union(
+        v.literal("RETRY"),
+        v.literal("CONTINUE"),
+        v.literal("BLOCK")
+      )),
+      condition: v.optional(v.object({
+        path: v.string(),
+        operator: v.union(
+          v.literal("EQ"),
+          v.literal("NEQ"),
+          v.literal("IN"),
+          v.literal("EXISTS")
+        ),
+        value: v.optional(v.any()),
+      })),
     })),
     
     // Status
@@ -2618,8 +2674,35 @@ export default defineSchema({
         v.literal("PENDING"),
         v.literal("RUNNING"),
         v.literal("DONE"),
-        v.literal("FAILED")
+        v.literal("FAILED"),
+        v.literal("SKIPPED"),
+        v.literal("BLOCKED")
       ),
+      dependsOn: v.optional(v.array(v.string())),
+      kind: v.optional(v.union(
+        v.literal("AGENT"),
+        v.literal("REDUCE"),
+        v.literal("ROUTER"),
+        v.literal("VERIFY"),
+        v.literal("GATE")
+      )),
+      modelTier: v.optional(v.union(
+        v.literal("FAST"),
+        v.literal("BALANCED"),
+        v.literal("POWERFUL")
+      )),
+      isolation: v.optional(v.union(
+        v.literal("SHARED"),
+        v.literal("WORKTREE"),
+        v.literal("READ_ONLY")
+      )),
+      failurePolicy: v.optional(v.union(
+        v.literal("RETRY"),
+        v.literal("CONTINUE"),
+        v.literal("BLOCK")
+      )),
+      conditionResult: v.optional(v.boolean()),
+      structuredOutput: v.optional(v.any()),
       taskId: v.optional(v.id("tasks")),
       agentId: v.optional(v.id("agents")),
       startedAt: v.optional(v.number()),
@@ -2631,6 +2714,8 @@ export default defineSchema({
     
     // Context variables passed between steps
     context: v.any(),
+    topology: v.optional(v.union(v.literal("LINEAR"), v.literal("DAG"))),
+    maxConcurrency: v.optional(v.number()),
     
     // Initial input
     initialInput: v.string(),
@@ -3721,6 +3806,152 @@ export default defineSchema({
     .index("by_version", ["versionId"])
     .index("by_status", ["status"])
     .index("by_idempotency", ["idempotencyKey"]),
+
+  // -------------------------------------------------------------------------
+  // LOOP ENGINEERING (bounded research -> implementation -> learning cycles)
+  // -------------------------------------------------------------------------
+  loopEngineeringCycles: defineTable({
+    projectId: v.id("projects"),
+    parentCycleId: v.optional(v.id("loopEngineeringCycles")),
+    nextCycleId: v.optional(v.id("loopEngineeringCycles")),
+    idempotencyKey: v.string(),
+    iteration: v.number(),
+    objective: v.string(),
+    hypothesis: v.optional(v.string()),
+    researchBrief: v.optional(v.object({
+      question: v.string(),
+      scope: v.string(),
+      exclusions: v.array(v.string()),
+      freshnessWindow: v.string(),
+      preferredSourceTypes: v.array(v.string()),
+      requiredOutput: v.string(),
+      approvalPolicy: v.string(),
+    })),
+    stopCondition: v.string(),
+    maxIterations: v.number(),
+    phase: v.union(
+      v.literal("RESEARCH"),
+      v.literal("VERIFY"),
+      v.literal("RECOMMEND"),
+      v.literal("AWAITING_APPROVAL"),
+      v.literal("IMPLEMENT"),
+      v.literal("VALIDATE"),
+      v.literal("MEASURE"),
+      v.literal("READY_FOR_NEXT_CYCLE"),
+      v.literal("COMPLETE"),
+      v.literal("BLOCKED")
+    ),
+    phaseHistory: v.array(v.object({
+      phase: v.string(),
+      enteredAt: v.number(),
+      actorId: v.string(),
+      note: v.optional(v.string()),
+    })),
+    sources: v.array(v.object({
+      id: v.string(),
+      title: v.string(),
+      url: v.string(),
+      publisher: v.optional(v.string()),
+      publishedAt: v.optional(v.number()),
+      retrievedAt: v.number(),
+      sourceType: v.optional(v.union(
+        v.literal("PRIMARY"),
+        v.literal("OFFICIAL_DOCS"),
+        v.literal("RESEARCH"),
+        v.literal("NEWS"),
+        v.literal("VENDOR"),
+        v.literal("COMMUNITY"),
+        v.literal("OTHER")
+      )),
+      vendorClaim: v.optional(v.boolean()),
+      canonicalUrl: v.optional(v.string()),
+      syndicatedFromUrl: v.optional(v.string()),
+      freshness: v.union(
+        v.literal("CURRENT"),
+        v.literal("RECENT"),
+        v.literal("RELEVANT"),
+        v.literal("FOUNDATIONAL"),
+        v.literal("STALE"),
+        v.literal("UNKNOWN")
+      ),
+      decision: v.union(
+        v.literal("PENDING"),
+        v.literal("ACCEPTED"),
+        v.literal("REJECTED")
+      ),
+      decisionReason: v.optional(v.string()),
+      verifiedBy: v.optional(v.string()),
+      verifiedAt: v.optional(v.number()),
+    })),
+    claims: v.optional(v.array(v.object({
+      id: v.string(),
+      statement: v.string(),
+      supportingSourceIds: v.array(v.string()),
+      contradictorySourceIds: v.array(v.string()),
+      unsupported: v.boolean(),
+      confidence: v.union(
+        v.literal("LOW"),
+        v.literal("MEDIUM"),
+        v.literal("HIGH")
+      ),
+      createdAt: v.number(),
+      createdBy: v.string(),
+    }))),
+    recommendations: v.array(v.object({
+      id: v.string(),
+      title: v.string(),
+      rationale: v.string(),
+      evidenceSourceIds: v.array(v.string()),
+      confidence: v.union(
+        v.literal("LOW"),
+        v.literal("MEDIUM"),
+        v.literal("HIGH")
+      ),
+      status: v.union(
+        v.literal("PROPOSED"),
+        v.literal("APPROVED"),
+        v.literal("REJECTED"),
+        v.literal("IMPLEMENTING"),
+        v.literal("IMPLEMENTED")
+      ),
+      decisionReason: v.optional(v.string()),
+      implementationTaskId: v.optional(v.id("tasks")),
+      implementationWorkOrderId: v.optional(v.id("workOrders")),
+    })),
+    validations: v.array(v.object({
+      id: v.string(),
+      name: v.string(),
+      status: v.union(v.literal("PASS"), v.literal("FAIL")),
+      evidenceLocation: v.string(),
+      recordedAt: v.number(),
+      recordedBy: v.string(),
+    })),
+    measurements: v.array(v.object({
+      id: v.string(),
+      name: v.string(),
+      baseline: v.number(),
+      result: v.number(),
+      unit: v.string(),
+      target: v.optional(v.number()),
+      passed: v.boolean(),
+      evidenceLocation: v.string(),
+      recordedAt: v.number(),
+      recordedBy: v.string(),
+    })),
+    taskIds: v.array(v.id("tasks")),
+    workOrderIds: v.array(v.id("workOrders")),
+    approvalActorId: v.optional(v.string()),
+    approvedAt: v.optional(v.number()),
+    blockedReason: v.optional(v.string()),
+    createdBy: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_phase", ["projectId", "phase"])
+    .index("by_idempotency", ["idempotencyKey"])
+    .index("by_parent", ["parentCycleId"]),
 
   // -------------------------------------------------------------------------
   // HARNESS ENGINEERING: VERIFIERS (outer loop — skill adherence)

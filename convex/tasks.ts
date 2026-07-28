@@ -2,7 +2,8 @@
  * Tasks — Convex Functions
  *
  * Core task operations with state machine enforcement.
- * task.status can ONLY change through the transition function.
+ * task.status changes through transition or a guarded, audited workflow
+ * supersession/approval mutation.
  */
 
 import { v } from "convex/values";
@@ -15,7 +16,14 @@ import { sanitizeTaskTitle, sanitizeTaskDescription } from "./lib/sanitize";
 import { resolveAgentRef } from "./lib/agentResolver";
 import { appendChangeRecord } from "./lib/armAudit";
 import { preferInstanceRefs } from "./lib/armCompat";
-import { validateForReview } from "./lib/outputValidation";
+import {
+  outputContractFromMetadata,
+  validateForReview,
+} from "./lib/outputValidation";
+import {
+  isExecutorOwnedWorkflowAttempt,
+  isMatchingExplicitWorkflowGateApproval,
+} from "./lib/workflowTaskGuards";
 
 // ============================================================================
 // TYPES
@@ -176,7 +184,11 @@ export const validateOutputForReview = query({
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.taskId);
     if (!task) return { valid: false, errors: ["Task not found"] };
-    const errors = validateForReview(task.deliverable ?? null, task.reviewChecklist ?? null);
+    const errors = validateForReview(
+      task.deliverable ?? null,
+      task.reviewChecklist ?? null,
+      outputContractFromMetadata(task.metadata)
+    );
     return { valid: errors.length === 0, errors };
   },
 });
@@ -1224,29 +1236,34 @@ export const transition = mutation({
     
     // 6. Validate required artifacts
     const errors: { field: string; message: string }[] = [];
+    const effectiveWorkPlan = args.workPlan ?? task.workPlan;
+    const effectiveDeliverable = args.deliverable ?? task.deliverable;
+    const effectiveReviewChecklist = args.reviewChecklist ?? task.reviewChecklist;
     
-    if (rule.requiresWorkPlan && !args.workPlan) {
+    if (rule.requiresWorkPlan && !effectiveWorkPlan) {
       errors.push({ field: "workPlan", message: "Work plan required for IN_PROGRESS" });
     }
-    if (rule.requiresWorkPlan && args.workPlan) {
-      if (args.workPlan.bullets.length < 3 || args.workPlan.bullets.length > 6) {
+    if (rule.requiresWorkPlan && effectiveWorkPlan) {
+      if (effectiveWorkPlan.bullets.length < 3 || effectiveWorkPlan.bullets.length > 6) {
         errors.push({ field: "workPlan.bullets", message: "Work plan must have 3-6 bullets" });
       }
     }
     
-    if (rule.requiresDeliverable && !args.deliverable) {
+    if (rule.requiresDeliverable && !effectiveDeliverable) {
       errors.push({ field: "deliverable", message: "Deliverable required for REVIEW" });
     }
     
-    if (rule.requiresChecklist && !args.reviewChecklist) {
+    if (rule.requiresChecklist && !effectiveReviewChecklist) {
       errors.push({ field: "reviewChecklist", message: "Review checklist required for REVIEW" });
     }
     
     // Output validation when transitioning to REVIEW (format, length, checklist)
     if (toStatus === "REVIEW") {
-      const deliverable = args.deliverable ?? task.deliverable ?? null;
-      const reviewChecklist = args.reviewChecklist ?? task.reviewChecklist ?? null;
-      const outputErrors = validateForReview(deliverable, reviewChecklist);
+      const outputErrors = validateForReview(
+        effectiveDeliverable ?? null,
+        effectiveReviewChecklist ?? null,
+        outputContractFromMetadata(task.metadata)
+      );
       for (const msg of outputErrors) {
         errors.push({ field: "deliverable", message: msg });
       }
@@ -1330,9 +1347,9 @@ export const transition = mutation({
       sessionKey: args.sessionKey,
       validationResult: { valid: true },
       artifactsSnapshot: {
-        workPlan: args.workPlan,
-        deliverable: args.deliverable,
-        reviewChecklist: args.reviewChecklist,
+        workPlan: effectiveWorkPlan,
+        deliverable: effectiveDeliverable,
+        reviewChecklist: effectiveReviewChecklist,
       },
     });
 
@@ -1437,6 +1454,347 @@ export const transition = mutation({
   },
 });
 
+export const supersedeWorkflowAttempt = mutation({
+  args: {
+    taskId: v.id("tasks"),
+    runId: v.string(),
+    stepId: v.string(),
+    retryCount: v.number(),
+    reason: v.string(),
+    idempotencyKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const existingTransition = await ctx.db
+      .query("taskTransitions")
+      .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.idempotencyKey))
+      .first();
+    if (existingTransition) {
+      return {
+        success: true,
+        task: await ctx.db.get(args.taskId),
+        transition: existingTransition,
+        idempotencyHit: true,
+      };
+    }
+
+    const task = await ctx.db.get(args.taskId);
+    if (!task) return { success: false, error: "Task not found" };
+
+    const metadata = (task.metadata ?? {}) as Record<string, any>;
+    const isOwnedAttempt = isExecutorOwnedWorkflowAttempt(task, {
+      taskId: args.taskId,
+      runId: args.runId,
+      stepId: args.stepId,
+    });
+    if (!isOwnedAttempt) {
+      return {
+        success: false,
+        error: "Task is not the matching executor-owned workflow attempt",
+      };
+    }
+    if (task.status === "DONE" || task.status === "CANCELED") {
+      return {
+        success: true,
+        task,
+        idempotencyHit: task.status === "CANCELED",
+      };
+    }
+
+    const operatorControl = await getEffectiveOperatorControl(ctx.db, task.projectId);
+    const operatorGate = evaluateOperatorGate({
+      mode: operatorControl.mode,
+      actorType: "SYSTEM",
+      operation: "TRANSITION",
+    });
+    if (operatorGate.decision !== "ALLOW") {
+      return { success: false, error: operatorGate.reason };
+    }
+
+    const now = Date.now();
+    const fromStatus = task.status as TaskStatus;
+    await ctx.db.patch(args.taskId, {
+      status: "CANCELED",
+      completedAt: now,
+      metadata: {
+        ...metadata,
+        workflowAttempt: {
+          ...(metadata.workflowAttempt ?? {}),
+          supersededAt: now,
+          supersededReason: args.reason,
+          retryCount: args.retryCount,
+        },
+      },
+    });
+    const transitionId = await ctx.db.insert("taskTransitions", {
+      tenantId: task.tenantId,
+      projectId: task.projectId,
+      idempotencyKey: args.idempotencyKey,
+      taskId: args.taskId,
+      fromStatus,
+      toStatus: "CANCELED",
+      actorType: "SYSTEM",
+      actorUserId: "workflow-executor",
+      reason: `Superseded workflow attempt: ${args.reason}`,
+      validationResult: { valid: true },
+      artifactsSnapshot: {
+        retryCount: args.retryCount,
+        workflowRunId: args.runId,
+        workflowStepId: args.stepId,
+      },
+    });
+    await appendChangeRecord(ctx.db as any, {
+      tenantId: task.tenantId,
+      projectId: task.projectId,
+      type: "TASK_TRANSITIONED",
+      summary: `Workflow attempt ${args.taskId} superseded`,
+      payload: {
+        taskId: args.taskId,
+        fromStatus,
+        toStatus: "CANCELED",
+        runId: args.runId,
+        stepId: args.stepId,
+        retryCount: args.retryCount,
+      },
+      relatedTable: "tasks",
+      relatedId: args.taskId,
+    });
+    await ctx.db.insert("activities", {
+      projectId: task.projectId,
+      actorType: "SYSTEM",
+      actorId: "workflow-executor",
+      action: "TASK_TRANSITION",
+      description: `Workflow attempt superseded: ${fromStatus} → CANCELED`,
+      targetType: "TASK",
+      targetId: args.taskId,
+      taskId: args.taskId,
+      beforeState: { status: fromStatus },
+      afterState: { status: "CANCELED" },
+      metadata: {
+        runId: args.runId,
+        stepId: args.stepId,
+        retryCount: args.retryCount,
+      },
+    });
+    await logTaskEvent(ctx, {
+      taskId: args.taskId,
+      projectId: task.projectId,
+      eventType: "TASK_TRANSITION",
+      actorType: "SYSTEM",
+      actorId: "workflow-executor",
+      relatedId: transitionId,
+      beforeState: { status: fromStatus },
+      afterState: { status: "CANCELED" },
+      metadata: {
+        reason: args.reason,
+        runId: args.runId,
+        stepId: args.stepId,
+        retryCount: args.retryCount,
+        operatorMode: operatorControl.mode,
+      },
+    });
+
+    return {
+      success: true,
+      task: await ctx.db.get(args.taskId),
+      transition: await ctx.db.get(transitionId),
+      idempotencyHit: false,
+    };
+  },
+});
+
+export const resolveApprovedWorkflowGate = mutation({
+  args: {
+    taskId: v.id("tasks"),
+    approvalId: v.id("approvals"),
+    runId: v.string(),
+    stepId: v.string(),
+    evidenceDigest: v.string(),
+    targetVersion: v.string(),
+    idempotencyKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const existingTransition = await ctx.db
+      .query("taskTransitions")
+      .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.idempotencyKey))
+      .first();
+    if (existingTransition) {
+      return {
+        success: true,
+        task: await ctx.db.get(args.taskId),
+        transition: existingTransition,
+        idempotencyHit: true,
+      };
+    }
+
+    const [task, approval] = await Promise.all([
+      ctx.db.get(args.taskId),
+      ctx.db.get(args.approvalId),
+    ]);
+    if (!task) return { success: false, error: "Task not found" };
+    if (!approval) return { success: false, error: "Approval not found" };
+
+    const metadata = (task.metadata ?? {}) as Record<string, any>;
+    const gate = metadata.gate ?? {};
+    const isMatchingGate = isExecutorOwnedWorkflowAttempt(task, {
+      taskId: args.taskId,
+      runId: args.runId,
+      stepId: args.stepId,
+    });
+    const isMatchingApproval = isMatchingExplicitWorkflowGateApproval(
+      task,
+      approval,
+      {
+        taskId: args.taskId,
+        runId: args.runId,
+        stepId: args.stepId,
+        evidenceDigest: args.evidenceDigest,
+        targetVersion: args.targetVersion,
+      }
+    );
+    if (!isMatchingGate) {
+      return { success: false, error: "Task is not the matching workflow gate" };
+    }
+    if (!isMatchingApproval) {
+      return {
+        success: false,
+        error: "A matching explicit human approval is required",
+      };
+    }
+    if (task.status === "DONE") {
+      return { success: true, task, idempotencyHit: true };
+    }
+    if (task.status === "FAILED" || task.status === "CANCELED") {
+      return {
+        success: false,
+        error: `Cannot resolve a workflow gate from ${task.status}`,
+      };
+    }
+
+    const operatorControl = await getEffectiveOperatorControl(ctx.db, task.projectId);
+    const operatorGate = evaluateOperatorGate({
+      mode: operatorControl.mode,
+      actorType: "HUMAN",
+      operation: "TRANSITION",
+    });
+    if (operatorGate.decision === "DENY") {
+      return { success: false, error: operatorGate.reason };
+    }
+
+    const now = Date.now();
+    const fromStatus = task.status as TaskStatus;
+    const deliverable = {
+      summary: `Approved workflow gate ${args.stepId}`,
+      content: "APPROVED",
+      artifactIds: [],
+    };
+    const reviewChecklist = {
+      type: "WORKFLOW_GATE",
+      items: [
+        {
+          label: "Explicit human approval is bound to this evidence digest",
+          checked: true,
+          note: approval.decisionReason,
+        },
+      ],
+    };
+    await ctx.db.patch(args.taskId, {
+      status: "DONE",
+      completedAt: now,
+      deliverable,
+      reviewChecklist,
+      metadata: {
+        ...metadata,
+        gate: {
+          ...gate,
+          approvalId: args.approvalId,
+          approvedAt: approval.decidedAt,
+          approvedByUserId: approval.decidedByUserId,
+          decisionReason: approval.decisionReason,
+        },
+      },
+    });
+    const transitionId = await ctx.db.insert("taskTransitions", {
+      tenantId: task.tenantId,
+      projectId: task.projectId,
+      idempotencyKey: args.idempotencyKey,
+      taskId: args.taskId,
+      fromStatus,
+      toStatus: "DONE",
+      actorType: "HUMAN",
+      actorUserId: approval.decidedByUserId,
+      reason: approval.decisionReason ?? "Approved workflow gate",
+      validationResult: { valid: true },
+      artifactsSnapshot: {
+        deliverable,
+        reviewChecklist,
+        approvalId: args.approvalId,
+        evidenceDigest: args.evidenceDigest,
+        targetVersion: args.targetVersion,
+      },
+    });
+    await appendChangeRecord(ctx.db as any, {
+      tenantId: task.tenantId,
+      projectId: task.projectId,
+      type: "TASK_TRANSITIONED",
+      summary: `Approved workflow gate ${args.taskId} resolved`,
+      payload: {
+        taskId: args.taskId,
+        approvalId: args.approvalId,
+        fromStatus,
+        toStatus: "DONE",
+        runId: args.runId,
+        stepId: args.stepId,
+        evidenceDigest: args.evidenceDigest,
+        targetVersion: args.targetVersion,
+        actorUserId: approval.decidedByUserId,
+      },
+      relatedTable: "tasks",
+      relatedId: args.taskId,
+    });
+    await ctx.db.insert("activities", {
+      projectId: task.projectId,
+      actorType: "HUMAN",
+      actorId: approval.decidedByUserId,
+      action: "TASK_TRANSITION",
+      description: `Approved workflow gate resolved: ${fromStatus} → DONE`,
+      targetType: "TASK",
+      targetId: args.taskId,
+      taskId: args.taskId,
+      beforeState: { status: fromStatus },
+      afterState: { status: "DONE" },
+      metadata: {
+        approvalId: args.approvalId,
+        evidenceDigest: args.evidenceDigest,
+        targetVersion: args.targetVersion,
+      },
+    });
+    await logTaskEvent(ctx, {
+      taskId: args.taskId,
+      projectId: task.projectId,
+      eventType: "TASK_TRANSITION",
+      actorType: "HUMAN",
+      actorId: approval.decidedByUserId,
+      relatedId: transitionId,
+      beforeState: { status: fromStatus },
+      afterState: { status: "DONE" },
+      metadata: {
+        reason: approval.decisionReason,
+        approvalId: args.approvalId,
+        evidenceDigest: args.evidenceDigest,
+        targetVersion: args.targetVersion,
+        operatorMode: operatorControl.mode,
+      },
+    });
+
+    return {
+      success: true,
+      task: await ctx.db.get(args.taskId),
+      transition: await ctx.db.get(transitionId),
+      idempotencyHit: false,
+    };
+  },
+});
+
 export const assign = mutation({
   args: {
     taskId: v.id("tasks"),
@@ -1490,6 +1848,24 @@ export const update = mutation({
     estimatedCost: v.optional(v.number()),
     assigneeIds: v.optional(v.array(v.id("agents"))),
     dueAt: v.optional(v.union(v.number(), v.null())),
+    workPlan: v.optional(v.object({
+      bullets: v.array(v.string()),
+      estimatedCost: v.optional(v.number()),
+      estimatedDuration: v.optional(v.string()),
+    })),
+    deliverable: v.optional(v.object({
+      summary: v.optional(v.string()),
+      content: v.optional(v.string()),
+      artifactIds: v.optional(v.array(v.string())),
+    })),
+    reviewChecklist: v.optional(v.object({
+      type: v.string(),
+      items: v.array(v.object({
+        label: v.string(),
+        checked: v.boolean(),
+        note: v.optional(v.string()),
+      })),
+    })),
     actorUserId: v.optional(v.string()),
     idempotencyKey: v.optional(v.string()),
   },
@@ -1508,9 +1884,9 @@ export const update = mutation({
         actorUserId: args.actorUserId ?? "operator",
         idempotencyKey: args.idempotencyKey ?? `update-status:${args.taskId}:${args.status}:${args.actorUserId ?? "operator"}`,
         reason: "Task updated from editor",
-        workPlan: task.workPlan,
-        deliverable: task.deliverable,
-        reviewChecklist: task.reviewChecklist,
+        workPlan: args.workPlan ?? task.workPlan,
+        deliverable: args.deliverable ?? task.deliverable,
+        reviewChecklist: args.reviewChecklist ?? task.reviewChecklist,
         blockedReason: task.blockedReason,
       });
 
@@ -1533,6 +1909,9 @@ export const update = mutation({
       patch.assigneeInstanceIds = await resolveAssigneeInstanceIds(ctx, args.assigneeIds);
     }
     if (args.dueAt !== undefined) patch.dueAt = args.dueAt ?? undefined;
+    if (args.workPlan !== undefined) patch.workPlan = args.workPlan;
+    if (args.deliverable !== undefined) patch.deliverable = args.deliverable;
+    if (args.reviewChecklist !== undefined) patch.reviewChecklist = args.reviewChecklist;
 
     if (Object.keys(patch).length > 0) {
       await ctx.db.patch(args.taskId, patch);

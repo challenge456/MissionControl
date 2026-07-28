@@ -157,7 +157,10 @@ export function KanbanFilters({ projectId, currentUserId, filters, onFiltersChan
         {/* Saved views */}
         <div className="flex items-center gap-1.5 shrink-0">
           <Select value={selectedViewId} onValueChange={handleApplyView}>
-            <SelectTrigger className="h-8 w-[150px] text-xs">
+            <SelectTrigger
+              aria-label="Saved task views"
+              className="h-8 w-[150px] text-xs"
+            >
               <SelectValue placeholder="Saved views…" />
             </SelectTrigger>
             <SelectContent>
@@ -181,6 +184,7 @@ export function KanbanFilters({ projectId, currentUserId, filters, onFiltersChan
               size="sm"
               className="h-8 px-2 text-err hover:text-err hover:bg-err-soft"
               onClick={handleDeleteView}
+              aria-label={`Delete saved view ${selectedView.name}`}
             >
               <Trash2 className="h-3.5 w-3.5" />
             </Button>

@@ -8,26 +8,15 @@ import { v } from "convex/values";
 import { mutation, query, action } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { logTaskEvent } from "./lib/taskEvents";
+import {
+  fingerprintPrdContent,
+  normalizePrdContent,
+  parsePrdHeuristically,
+  PRD_TASK_TYPES,
+  type ParsedPrdTask,
+} from "./lib/prdParser";
 
-// Task types allowed in Mission Control (must match schema taskType)
-const TASK_TYPES = [
-  "CONTENT",
-  "SOCIAL",
-  "EMAIL_MARKETING",
-  "CUSTOMER_RESEARCH",
-  "SEO_RESEARCH",
-  "ENGINEERING",
-  "DOCS",
-  "OPS",
-] as const;
-
-export type ParsedTaskPreview = {
-  title: string;
-  description?: string;
-  type: (typeof TASK_TYPES)[number];
-  priority: 1 | 2 | 3 | 4;
-  dependencyIndices?: number[]; // 0-based indices into the same task list
-};
+export type ParsedTaskPreview = ParsedPrdTask;
 
 // ============================================================================
 // QUERIES
@@ -59,15 +48,51 @@ export const storePrdDocument = mutation({
     createdBy: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const content = normalizePrdContent(args.content);
+    const contentHash = fingerprintPrdContent(content);
+    const matchingHashes = await ctx.db
+      .query("prdDocuments")
+      .withIndex("by_content_hash", (q) => q.eq("contentHash", contentHash))
+      .collect();
+    const existingByHash = matchingHashes.find(
+      (document) =>
+        document.projectId === args.projectId &&
+        normalizePrdContent(document.content) === content
+    );
+
+    if (existingByHash) {
+      return { prdDocumentId: existingByHash._id, created: false };
+    }
+
+    const projectDocuments = args.projectId
+      ? await ctx.db
+          .query("prdDocuments")
+          .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+          .collect()
+      : await ctx.db.query("prdDocuments").collect();
+    const existingLegacyDocument = projectDocuments.find(
+      (document) =>
+        document.projectId === args.projectId &&
+        normalizePrdContent(document.content) === content
+    );
+
+    if (existingLegacyDocument) {
+      if (!existingLegacyDocument.contentHash) {
+        await ctx.db.patch(existingLegacyDocument._id, { contentHash });
+      }
+      return { prdDocumentId: existingLegacyDocument._id, created: false };
+    }
+
     const id = await ctx.db.insert("prdDocuments", {
       projectId: args.projectId,
       title: args.title,
-      content: args.content,
+      content,
+      contentHash,
       taskCount: args.taskCount,
       parsedAt: Date.now(),
       createdBy: args.createdBy,
     });
-    return id;
+    return { prdDocumentId: id, created: true };
   },
 });
 
@@ -99,6 +124,7 @@ export const bulkCreateFromPrd = mutation({
     const sourceRef = args.prdDocumentId;
     const createdBy = (args.createdBy as "HUMAN" | "AGENT" | "SYSTEM") ?? "SYSTEM";
     const createdIds: Id<"tasks">[] = [];
+    let createdCount = 0;
 
     for (let i = 0; i < args.tasks.length; i++) {
       const t = args.tasks[i];
@@ -113,8 +139,8 @@ export const bulkCreateFromPrd = mutation({
       }
 
       const priority = Math.min(4, Math.max(1, t.priority)) as 1 | 2 | 3 | 4;
-      const type = TASK_TYPES.includes(t.type as (typeof TASK_TYPES)[number])
-        ? (t.type as (typeof TASK_TYPES)[number])
+      const type = PRD_TASK_TYPES.includes(t.type as (typeof PRD_TASK_TYPES)[number])
+        ? (t.type as (typeof PRD_TASK_TYPES)[number])
         : "ENGINEERING";
 
       const taskId = await ctx.db.insert("tasks", {
@@ -135,6 +161,7 @@ export const bulkCreateFromPrd = mutation({
         metadata: { prdDocumentId: args.prdDocumentId, index: i },
       });
       createdIds.push(taskId);
+      createdCount++;
 
       await ctx.db.insert("activities", {
         projectId: args.projectId,
@@ -157,6 +184,18 @@ export const bulkCreateFromPrd = mutation({
     }
 
     const batchParentId = createdIds[0] ?? undefined;
+    const existingDependencies = batchParentId
+      ? await ctx.db
+          .query("taskDependencies")
+          .withIndex("by_parent", (q) => q.eq("parentTaskId", batchParentId))
+          .collect()
+      : [];
+    const dependencyKeys = new Set(
+      existingDependencies.map(
+        (dependency) => `${dependency.taskId}:${dependency.dependsOnTaskId}`
+      )
+    );
+
     for (let i = 0; i < args.tasks.length; i++) {
       const deps = args.tasks[i].dependencyIndices;
       if (!deps?.length || !createdIds[i]) continue;
@@ -164,16 +203,19 @@ export const bulkCreateFromPrd = mutation({
       for (const depIdx of deps) {
         if (depIdx >= 0 && depIdx < createdIds.length && createdIds[depIdx]) {
           const dependsOnTaskId = createdIds[depIdx];
+          const dependencyKey = `${taskId}:${dependsOnTaskId}`;
+          if (dependencyKeys.has(dependencyKey)) continue;
           await ctx.db.insert("taskDependencies", {
             parentTaskId: batchParentId ?? dependsOnTaskId,
             taskId,
             dependsOnTaskId,
           });
+          dependencyKeys.add(dependencyKey);
         }
       }
     }
 
-    return { createdCount: createdIds.length, taskIds: createdIds };
+    return { createdCount, taskIds: createdIds };
   },
 });
 
@@ -247,7 +289,7 @@ ${content.slice(0, 28000)}
         const normalized = tasks.slice(0, maxTasks).map((t) => ({
           title: String(t.title ?? "").slice(0, 200),
           description: t.description ? String(t.description).slice(0, 2000) : undefined,
-          type: TASK_TYPES.includes(t.type as (typeof TASK_TYPES)[number]) ? t.type : "ENGINEERING",
+          type: PRD_TASK_TYPES.includes(t.type as (typeof PRD_TASK_TYPES)[number]) ? t.type : "ENGINEERING",
           priority: Math.min(4, Math.max(1, Number(t.priority) || 3)) as 1 | 2 | 3 | 4,
           dependencyIndices: Array.isArray(t.dependencyIndices)
             ? t.dependencyIndices.filter((i) => typeof i === "number" && i >= 0)
@@ -261,33 +303,6 @@ ${content.slice(0, 28000)}
       }
     }
 
-    // Fallback: heuristic extraction (sections as tasks)
-    const lines = content.split("\n");
-    const tasks: ParsedTaskPreview[] = [];
-    let currentTitle = "";
-    let currentLines: string[] = [];
-    const flush = () => {
-      if (currentTitle.trim()) {
-        tasks.push({
-          title: currentTitle.trim().slice(0, 200),
-          description: currentLines.join("\n").trim().slice(0, 1500) || undefined,
-          type: "ENGINEERING",
-          priority: 3,
-        });
-      }
-      currentTitle = "";
-      currentLines = [];
-    };
-    for (const line of lines) {
-      const match = line.match(/^#{1,3}\s+(.+)/);
-      if (match && (line.startsWith("## ") || line.startsWith("### "))) {
-        flush();
-        currentTitle = match[1].trim();
-      } else if (currentTitle) {
-        currentLines.push(line);
-      }
-    }
-    flush();
-    return { tasks: tasks.slice(0, maxTasks) };
+    return { tasks: parsePrdHeuristically(content, maxTasks) };
   },
 });

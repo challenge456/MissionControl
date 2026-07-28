@@ -5,7 +5,25 @@
  */
 
 import { v } from "convex/values";
-import { query } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
+
+export const create = mutation({
+  args: {
+    projectId: v.optional(v.id("projects")),
+    actorType: v.union(v.literal("HUMAN"), v.literal("AGENT"), v.literal("SYSTEM")),
+    actorId: v.optional(v.string()),
+    action: v.string(),
+    description: v.string(),
+    targetType: v.optional(v.string()),
+    targetId: v.optional(v.string()),
+    taskId: v.optional(v.id("tasks")),
+    agentId: v.optional(v.id("agents")),
+    beforeState: v.optional(v.any()),
+    afterState: v.optional(v.any()),
+    metadata: v.optional(v.any()),
+  },
+  handler: async (ctx, args) => await ctx.db.insert("activities", args),
+});
 
 export const list = query({
   args: {

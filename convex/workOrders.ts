@@ -1,8 +1,10 @@
 import { v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
+import { appendChangeRecord } from "./lib/armAudit";
+import { logTaskEvent } from "./lib/taskEvents";
 import { deriveVerificationStatus, currentWorkflowStepLabel, totalWorkflowRetries } from "./lib/workOrders";
-import { ACTIVE_RUN_STATUSES, nextStateForRunStatus, validateDispatchable } from "./lib/workOrderDispatch";
+import { ACTIVE_RUN_STATUSES, nextStateForRunStatus, validateDispatchable, validateRetryRequest } from "./lib/workOrderDispatch";
 import { isRunNeedingAttention, summarizeFactoryMetrics } from "./lib/factoryOverview";
 import {
   approvalStatusSatisfiesRequirement,
@@ -23,6 +25,7 @@ import {
   snapshotRevisionFields,
   verificationValidUntil,
 } from "./lib/workOrderRevision";
+import { planAcceptedWorkOrderParentSync } from "./lib/workOrderParentSync";
 
 function generateRunId(): string {
   return Math.random().toString(36).substring(2, 10);
@@ -1212,6 +1215,8 @@ export const dispatch = mutation({
     runtime: v.optional(v.string()),
     model: v.optional(v.string()),
     worktree: v.optional(v.string()),
+    retryOfWorkflowRunId: v.optional(v.id("workflowRuns")),
+    retryReason: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const existingEvent = await ctx.db
@@ -1230,6 +1235,25 @@ export const dispatch = mutation({
     }
     if (workOrder.state === "SUPERSEDED") {
       throw new Error("Superseded WorkOrders cannot be dispatched");
+    }
+
+    const retryOfRun = args.retryOfWorkflowRunId
+      ? await ctx.db.get(args.retryOfWorkflowRunId)
+      : null;
+    const retryRequest = args.retryOfWorkflowRunId
+      ? validateRetryRequest({
+          workOrderId: workOrder._id,
+          retryReason: args.retryReason,
+          priorRun: retryOfRun
+            ? {
+                workOrderId: retryOfRun.workOrderId,
+                status: retryOfRun.status as any,
+              }
+            : null,
+        })
+      : null;
+    if (retryRequest && !retryRequest.ok) {
+      throw new Error(`WorkOrder retry is not allowed (${retryRequest.reason})`);
     }
 
     await expireGovernanceRecordsForWorkOrder(ctx, workOrder);
@@ -1267,9 +1291,19 @@ export const dispatch = mutation({
       throw new Error(`WorkOrder is not dispatchable (${("reason" in dispatchable ? dispatchable.reason : "unknown")})`);
     }
 
-    const steps = workflow.steps.map((step) => ({
+    const topology = workflow.topology ?? "LINEAR";
+    const steps = workflow.steps.map((step, index) => ({
       stepId: step.id,
       status: "PENDING" as const,
+      dependsOn:
+        step.dependsOn ??
+        (topology === "LINEAR" && index > 0 ? [workflow.steps[index - 1].id] : []),
+      kind: step.kind ?? "AGENT",
+      modelTier: step.modelTier,
+      isolation: step.isolation,
+      failurePolicy: step.failurePolicy ?? "RETRY",
+      conditionResult: undefined,
+      structuredOutput: undefined,
       taskId: undefined,
       agentId: undefined,
       startedAt: undefined,
@@ -1290,7 +1324,13 @@ export const dispatch = mutation({
       actorId: args.actorId,
       summary: `Dispatch requested for workflow ${resolvedWorkflowId}`,
       idempotencyKey: `${args.idempotencyKey}:request`,
-      metadata: { runtime: args.runtime, model: args.model, worktree: args.worktree },
+      metadata: {
+        runtime: args.runtime,
+        model: args.model,
+        worktree: args.worktree,
+        retryOfWorkflowRunId: args.retryOfWorkflowRunId,
+        retryReason: retryRequest?.reason,
+      },
     });
 
     const now = Date.now();
@@ -1308,13 +1348,31 @@ export const dispatch = mutation({
       currentStepIndex: 0,
       totalSteps: workflow.steps.length,
       steps,
-      context: { workOrderId: refreshedWorkOrder._id, source: "workOrders.dispatch", revisionNumber: refreshedWorkOrder.currentRevisionNumber ?? 1 },
+      context: {
+        task: refreshedWorkOrder.desiredOutcome,
+        workOrderId: refreshedWorkOrder._id,
+        source: "workOrders.dispatch",
+        revisionNumber: refreshedWorkOrder.currentRevisionNumber ?? 1,
+        ...(retryOfRun
+          ? {
+              retryOfRunId: retryOfRun.runId,
+              retryReason: retryRequest?.reason,
+            }
+          : {}),
+      },
+      topology,
+      maxConcurrency: workflow.maxConcurrency ?? 1,
       initialInput: refreshedWorkOrder.desiredOutcome,
       runtime: args.runtime,
       model: args.model,
       worktree: args.worktree,
       startedAt: now,
-      metadata: { dispatchIdempotencyKey: args.idempotencyKey },
+      metadata: {
+        dispatchIdempotencyKey: args.idempotencyKey,
+        retryOfWorkflowRunId: args.retryOfWorkflowRunId,
+        retryOfRunId: retryOfRun?.runId,
+        retryReason: retryRequest?.reason,
+      },
     });
 
     await ctx.runMutation(internal.workflowRuns.recordEventInternal, {
@@ -1326,7 +1384,14 @@ export const dispatch = mutation({
       startedAt: now,
       commandSummary: `Dispatched ${resolvedWorkflowId}`,
       idempotencyKey: `${args.idempotencyKey}:run-started`,
-      metadata: { runtime: args.runtime, model: args.model, worktree: args.worktree },
+      metadata: {
+        runtime: args.runtime,
+        model: args.model,
+        worktree: args.worktree,
+        retryOfWorkflowRunId: args.retryOfWorkflowRunId,
+        retryOfRunId: retryOfRun?.runId,
+        retryReason: retryRequest?.reason,
+      },
     });
 
     await markReceiptsStaleForWorkOrder(ctx, refreshedWorkOrder, runDocId);
@@ -1349,7 +1414,12 @@ export const dispatch = mutation({
       description: `Dispatched work order ${refreshedWorkOrder.title} via ${resolvedWorkflowId}`,
       targetType: "WORK_ORDER",
       targetId: refreshedWorkOrder._id,
-      metadata: { workflowRunId: runDocId, runId },
+      metadata: {
+        workflowRunId: runDocId,
+        runId,
+        retryOfWorkflowRunId: args.retryOfWorkflowRunId,
+        retryOfRunId: retryOfRun?.runId,
+      },
     });
 
     await logWorkOrderEvent(ctx, {
@@ -1362,10 +1432,42 @@ export const dispatch = mutation({
       toState: "DISPATCHED",
       actorType: args.actorType,
       actorId: args.actorId,
-      summary: `Execution run ${runId} created for ${resolvedWorkflowId}`,
+      summary: retryOfRun
+        ? `Recovery run ${runId} created for failed run ${retryOfRun.runId}`
+        : `Execution run ${runId} created for ${resolvedWorkflowId}`,
       idempotencyKey: `${args.idempotencyKey}:dispatched`,
-      metadata: { runId, runtime: args.runtime, model: args.model, worktree: args.worktree },
+      metadata: {
+        runId,
+        runtime: args.runtime,
+        model: args.model,
+        worktree: args.worktree,
+        retryOfWorkflowRunId: args.retryOfWorkflowRunId,
+        retryOfRunId: retryOfRun?.runId,
+        retryReason: retryRequest?.reason,
+      },
     });
+
+    if (retryOfRun) {
+      await logWorkOrderEvent(ctx, {
+        tenantId: refreshedWorkOrder.tenantId,
+        projectId: refreshedWorkOrder.projectId,
+        workOrderId: refreshedWorkOrder._id,
+        workflowRunId: runDocId,
+        eventType: "RUN_RETRIED",
+        fromState: refreshedWorkOrder.state,
+        toState: "DISPATCHED",
+        actorType: args.actorType,
+        actorId: args.actorId,
+        summary: `Operator started recovery run ${runId} from failed run ${retryOfRun.runId}`,
+        idempotencyKey: `${args.idempotencyKey}:retried`,
+        metadata: {
+          retryOfWorkflowRunId: retryOfRun._id,
+          retryOfRunId: retryOfRun.runId,
+          retryReason: retryRequest?.reason,
+          recoveryRunId: runId,
+        },
+      });
+    }
 
     await refreshWorkOrderGovernance(ctx, refreshedWorkOrder._id);
 
@@ -1851,6 +1953,17 @@ export const accept = mutation({
     if (["DONE", "CANCELED", "DRAFT"].includes(workOrder.state)) {
       throw new Error(`WorkOrder cannot be accepted from ${workOrder.state}`);
     }
+    const parentTask = workOrder.legacyTaskId
+      ? await ctx.db.get(workOrder.legacyTaskId)
+      : null;
+    const parentSync = planAcceptedWorkOrderParentSync({
+      legacyTaskId: workOrder.legacyTaskId,
+      workOrderProjectId: workOrder.projectId,
+      parentTask,
+    });
+    if (parentSync.action === "CONFLICT") {
+      throw new Error(`WorkOrder parent sync conflict: ${parentSync.message}`);
+    }
 
     const [approvalDecisions, verificationReceipts, latestRun, activeRuns] = await Promise.all([
       listApprovalDecisionsForWorkOrder(ctx, workOrder._id),
@@ -1866,13 +1979,14 @@ export const accept = mutation({
       throw new Error("WorkOrder acceptance requires a completed execution run");
     }
 
+    const now = Date.now();
     const acceptance = evaluateAcceptance({
       riskLevel: workOrder.riskLevel as any,
       requiredApprovals: workOrder.requiredApprovals,
       approvalDecisions,
       acceptanceCriteria: workOrder.acceptanceCriteria as any,
       verificationReceipts,
-      now: Date.now(),
+      now,
     });
     if (!acceptance.eligible) {
       throw new Error(`WorkOrder cannot be accepted (${acceptance.blockingReasons.join("; ")})`);
@@ -1884,8 +1998,107 @@ export const accept = mutation({
       currentExecutionRunId: undefined,
       blockingIssue: undefined,
       requiredHumanAction: undefined,
-      updatedAt: Date.now(),
+      updatedAt: now,
     });
+
+    let parentTransitionId: string | undefined;
+    if (parentSync.action === "SYNC" && parentTask) {
+      parentTransitionId = await ctx.db.insert("taskTransitions", {
+        tenantId: parentTask.tenantId,
+        projectId: parentTask.projectId,
+        idempotencyKey: `${args.idempotencyKey}:parent-sync`,
+        taskId: parentTask._id,
+        fromStatus: parentSync.fromStatus,
+        toStatus: "DONE",
+        actorType: args.actorType,
+        actorUserId: args.actorType === "HUMAN" ? args.actorId : undefined,
+        reason: `Parent outcome synchronized from accepted WorkOrder ${workOrder._id}.`,
+        validationResult: { valid: true },
+        artifactsSnapshot: {
+          workPlan: parentTask.workPlan,
+          deliverable: parentTask.deliverable,
+          reviewChecklist: parentTask.reviewChecklist,
+        },
+      });
+
+      await ctx.db.patch(parentTask._id, {
+        status: "DONE",
+        completedAt: now,
+        blockedReason: undefined,
+      });
+
+      await appendChangeRecord(ctx.db as any, {
+        tenantId: parentTask.tenantId,
+        projectId: parentTask.projectId,
+        type: "TASK_TRANSITIONED",
+        summary: `Task ${parentTask._id} synchronized ${parentSync.fromStatus} -> DONE after WorkOrder acceptance`,
+        payload: {
+          taskId: parentTask._id,
+          workOrderId: workOrder._id,
+          workflowRunId: latestRun._id,
+          fromStatus: parentSync.fromStatus,
+          toStatus: "DONE",
+          syncType: "ACCEPTED_WORK_ORDER_OUTCOME",
+        },
+        relatedTable: "tasks",
+        relatedId: parentTask._id,
+      });
+
+      await ctx.db.insert("activities", {
+        tenantId: parentTask.tenantId,
+        projectId: parentTask.projectId,
+        actorType: args.actorType,
+        actorId: args.actorId,
+        action: "TASK_TRANSITION",
+        description: `Parent task synchronized: ${parentSync.fromStatus} → DONE after WorkOrder acceptance`,
+        targetType: "TASK",
+        targetId: parentTask._id,
+        taskId: parentTask._id,
+        beforeState: { status: parentSync.fromStatus },
+        afterState: { status: "DONE" },
+        metadata: {
+          workOrderId: workOrder._id,
+          workflowRunId: latestRun._id,
+          syncType: "ACCEPTED_WORK_ORDER_OUTCOME",
+        },
+      });
+
+      await logTaskEvent(ctx, {
+        taskId: parentTask._id,
+        projectId: parentTask.projectId,
+        eventType: "TASK_TRANSITION",
+        actorType: args.actorType,
+        actorId: args.actorId,
+        relatedId: parentTransitionId,
+        beforeState: { status: parentSync.fromStatus },
+        afterState: { status: "DONE" },
+        metadata: {
+          reason: "Accepted WorkOrder outcome synchronization",
+          workOrderId: workOrder._id,
+          workflowRunId: latestRun._id,
+          syncType: "ACCEPTED_WORK_ORDER_OUTCOME",
+        },
+      });
+
+      await logWorkOrderEvent(ctx, {
+        tenantId: workOrder.tenantId,
+        projectId: workOrder.projectId,
+        workOrderId: workOrder._id,
+        workflowRunId: latestRun._id,
+        eventType: "STATE_SYNCED",
+        actorType: args.actorType,
+        actorId: args.actorId,
+        summary: `Accepted WorkOrder synchronized parent task ${parentTask._id} to DONE`,
+        idempotencyKey: `${args.idempotencyKey}:parent-state-synced`,
+        metadata: {
+          parentTaskId: parentTask._id,
+          parentTransitionId,
+          fromStatus: parentSync.fromStatus,
+          toStatus: "DONE",
+          syncType: "ACCEPTED_WORK_ORDER_OUTCOME",
+        },
+      });
+    }
 
     await logWorkOrderEvent(ctx, {
       tenantId: workOrder.tenantId,
@@ -1901,7 +2114,15 @@ export const accept = mutation({
       idempotencyKey: `${args.idempotencyKey}:accepted`,
     });
 
-    return { accepted: true, workOrder: await ctx.db.get(workOrder._id) };
+    return {
+      accepted: true,
+      workOrder: await ctx.db.get(workOrder._id),
+      parentTaskSync: {
+        action: parentSync.action,
+        taskId: parentTask?._id,
+        transitionId: parentTransitionId,
+      },
+    };
   },
 });
 

@@ -18,6 +18,7 @@ import {
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
@@ -50,6 +51,12 @@ export function TaskDrawer({
   return (
     <Sheet open={!!taskId} onOpenChange={(open) => { if (!open) onClose(); }}>
       <SheetContent side="right" className="flex w-[480px] max-w-[90vw] flex-col border-l border-line bg-surface-1 p-0">
+        <SheetHeader className="sr-only">
+          <SheetTitle>{data?.task.title ?? "Task details"}</SheetTitle>
+          <SheetDescription>
+            Review task status, activity, comments, assignments, and available actions.
+          </SheetDescription>
+        </SheetHeader>
         {isLoading ? (
           <div className="p-6 text-sm text-ink-muted">Loading...</div>
         ) : !data ? (
@@ -168,11 +175,12 @@ function TaskDrawerContent({
     <>
       {/* Header */}
       <div className="border-b border-line px-5 py-4">
-        <SheetHeader className="space-y-0">
-          <SheetTitle className="text-base font-semibold leading-snug text-ink">
-            {task.title}
-          </SheetTitle>
-        </SheetHeader>
+        <h2
+          aria-hidden="true"
+          className="text-base font-semibold leading-snug text-ink"
+        >
+          {task.title}
+        </h2>
         <div className="mt-2 flex flex-wrap gap-2">
           <StatusBadge tone={taskStatusTone(task.status)}>
             {task.status.replace(/_/g, " ")}

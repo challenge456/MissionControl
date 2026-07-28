@@ -124,10 +124,13 @@ export function MissionDAGView({ projectId, onTaskSelect }: MissionDAGViewProps)
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>("all");
 
-  const graphData = useQuery(api.coordinator.getDependencyGraph, {});
+  const graphData = useQuery(
+    api.coordinator.getDependencyGraph,
+    projectId ? { projectId } : {}
+  );
   const tasks = useQuery(api.tasks.listAll, projectId ? { projectId } : {});
 
-  const { nodes, edges } = useMemo(() => {
+  const { nodes, edges, metrics } = useMemo(() => {
     if (graphData) {
       return graphData;
     }
@@ -141,9 +144,17 @@ export function MissionDAGView({ projectId, onTaskSelect }: MissionDAGViewProps)
         assigneeIds: t.assigneeIds,
         parentTaskId: t.parentTaskId as string | undefined,
       }));
-      return { nodes, edges: [] };
+      return {
+        nodes,
+        edges: [],
+        metrics: { depth: nodes.length > 0 ? 1 : 0, maximumWidth: nodes.length, readyCount: 0, cyclicNodeCount: 0 },
+      };
     }
-    return { nodes: [], edges: [] };
+    return {
+      nodes: [],
+      edges: [],
+      metrics: { depth: 0, maximumWidth: 0, readyCount: 0, cyclicNodeCount: 0 },
+    };
   }, [graphData, tasks]);
 
   const filteredNodes = useMemo(() => {
@@ -183,7 +194,6 @@ export function MissionDAGView({ projectId, onTaskSelect }: MissionDAGViewProps)
     return counts;
   }, [nodes]);
   const blockedCount = statusCounts.BLOCKED ?? 0;
-  const doneCount = statusCounts.DONE ?? 0;
 
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-hidden bg-app">
@@ -216,16 +226,20 @@ export function MissionDAGView({ projectId, onTaskSelect }: MissionDAGViewProps)
           </Card>
           <Card className="p-4">
             <MetricBlock
-              label="Blocked"
-              value={blockedCount}
-              detail="Nodes currently breaking flow through the graph"
+              label="Parallel width"
+              value={metrics.maximumWidth}
+              detail={`${metrics.readyCount} node(s) ready now · ${metrics.depth} dependency layer(s)`}
             />
           </Card>
           <Card className="p-4">
             <MetricBlock
-              label="Done"
-              value={doneCount}
-              detail="Completed tasks already cleared from critical flow"
+              label="Blocked"
+              value={blockedCount + metrics.cyclicNodeCount}
+              detail={
+                metrics.cyclicNodeCount > 0
+                  ? `${metrics.cyclicNodeCount} node(s) are part of an invalid dependency cycle`
+                  : "Nodes currently breaking flow through the graph"
+              }
             />
           </Card>
         </div>

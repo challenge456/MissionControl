@@ -29,6 +29,100 @@ describe("validateWorkflow", () => {
     const errors = validateWorkflow(workflow);
     expect(errors).toEqual([]);
   });
+
+  it("validates a bounded parallel workflow graph", () => {
+    const workflow = {
+      id: "research-graph",
+      name: "Research Graph",
+      description: "Parallel research with a verification barrier",
+      topology: "DAG",
+      maxConcurrency: 3,
+      convergence: {
+        maxIterations: 3,
+        stopCondition: "All material claims have accepted evidence",
+      },
+      agents: [
+        { id: "researcher", persona: "Research" },
+        { id: "verifier", persona: "QA" },
+      ],
+      steps: [
+        {
+          id: "research-a",
+          agent: "researcher",
+          input: "Research A",
+          expects: "source ledger",
+          retryLimit: 2,
+          timeoutMinutes: 20,
+          kind: "AGENT",
+          modelTier: "BALANCED",
+          isolation: "READ_ONLY",
+          failurePolicy: "BLOCK",
+        },
+        {
+          id: "research-b",
+          agent: "researcher",
+          input: "Research B",
+          expects: "source ledger",
+          retryLimit: 2,
+          timeoutMinutes: 20,
+          kind: "AGENT",
+          modelTier: "BALANCED",
+          isolation: "READ_ONLY",
+          failurePolicy: "BLOCK",
+        },
+        {
+          id: "verify",
+          agent: "verifier",
+          input: "Verify both ledgers",
+          expects: "verified evidence",
+          retryLimit: 1,
+          timeoutMinutes: 20,
+          dependsOn: ["research-a", "research-b"],
+          kind: "VERIFY",
+          modelTier: "POWERFUL",
+          isolation: "READ_ONLY",
+          failurePolicy: "BLOCK",
+        },
+      ],
+    };
+
+    expect(validateWorkflow(workflow)).toEqual([]);
+  });
+
+  it("rejects cyclic graph dependencies", () => {
+    const workflow = {
+      id: "cyclic",
+      name: "Cyclic",
+      description: "Invalid cyclic workflow",
+      topology: "DAG",
+      agents: [{ id: "agent1", persona: "Coder" }],
+      steps: [
+        {
+          id: "a",
+          agent: "agent1",
+          input: "A",
+          expects: "done",
+          retryLimit: 1,
+          timeoutMinutes: 10,
+          dependsOn: ["b"],
+        },
+        {
+          id: "b",
+          agent: "agent1",
+          input: "B",
+          expects: "done",
+          retryLimit: 1,
+          timeoutMinutes: 10,
+          dependsOn: ["a"],
+        },
+      ],
+    };
+
+    expect(validateWorkflow(workflow)).toContainEqual({
+      field: "steps",
+      message: "Workflow graph contains a cycle",
+    });
+  });
   
   it("should require id field", () => {
     const workflow = {

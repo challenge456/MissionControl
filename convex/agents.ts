@@ -19,13 +19,22 @@ export const get = query({
 });
 
 export const getByName = query({
-  args: { name: v.string() },
-  handler: async (ctx, args) => {
-    return await ctx.db
-      .query("agents")
-      .withIndex("by_name", (q) => q.eq("name", args.name))
-      .first();
+  args: {
+    name: v.string(),
+    projectId: v.optional(v.id("projects")),
   },
+  handler: async (ctx, args) =>
+    args.projectId
+      ? await ctx.db
+          .query("agents")
+          .withIndex("by_project_name", (q) =>
+            q.eq("projectId", args.projectId).eq("name", args.name)
+          )
+          .first()
+      : await ctx.db
+          .query("agents")
+          .withIndex("by_name", (q) => q.eq("name", args.name))
+          .first(),
 });
 
 export const list = query({
@@ -139,10 +148,17 @@ export const register = mutation({
   },
   handler: async (ctx, args) => {
     // Check if agent already exists
-    const existing = await ctx.db
-      .query("agents")
-      .withIndex("by_name", (q) => q.eq("name", args.name))
-      .first();
+    const existing = args.projectId
+      ? await ctx.db
+          .query("agents")
+          .withIndex("by_project_name", (q) =>
+            q.eq("projectId", args.projectId).eq("name", args.name)
+          )
+          .first()
+      : await ctx.db
+          .query("agents")
+          .withIndex("by_name", (q) => q.eq("name", args.name))
+          .first();
     
     if (existing) {
       const existingRef = await resolveAgentRef(
@@ -313,7 +329,7 @@ export const heartbeat = mutation({
       .take(200);
     
     const myPendingTasks = pendingTasks.filter(t => 
-      t.assigneeIds.includes(args.agentId)
+      t.projectId === agent.projectId && t.assigneeIds.includes(args.agentId)
     );
     
     // Find inbox tasks matching agent's allowed types
@@ -323,8 +339,10 @@ export const heartbeat = mutation({
       .take(200);
     
     const claimableTasks = inboxTasks.filter(t =>
-      agent.allowedTaskTypes.length === 0 || 
-      agent.allowedTaskTypes.includes(t.type)
+      t.projectId === agent.projectId &&
+      !t.labels?.includes("graph-root") &&
+      !(t.metadata as { missionChatThreadId?: string } | undefined)?.missionChatThreadId &&
+      (agent.allowedTaskTypes.length === 0 || agent.allowedTaskTypes.includes(t.type))
     );
     
     // Get pending approvals

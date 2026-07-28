@@ -88,8 +88,15 @@ export class CoordinatorLoop {
     );
     
     const readyTaskIds = findReadyTasks(graph);
+    const decompositionParentIds = new Set(
+      actions.tasksToDecompose.map((decomposition) => decomposition.parentTaskId)
+    );
     const readyTasks = state.allTasks.filter(
-      (t) => readyTaskIds.includes(t.id) && t.status === "INBOX"
+      (t) =>
+        readyTaskIds.includes(t.id) &&
+        t.status === "INBOX" &&
+        !t.hasSubtasks &&
+        !decompositionParentIds.has(t.id)
     );
     
     for (const task of readyTasks) {
@@ -181,6 +188,7 @@ export interface CoordinatorState {
     dependsOn: string[];
     assigneeIds: string[];
     lastActivityAt?: number;
+    hasSubtasks?: boolean;
   }>;
   availableAgents: AgentCandidate[];
 }

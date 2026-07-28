@@ -46,7 +46,10 @@ export const getTaskDependencies = query({
  * Returns nodes (tasks) and edges (dependencies).
  */
 export const getDependencyGraph = query({
-  args: { parentTaskId: v.optional(v.id("tasks")) },
+  args: {
+    parentTaskId: v.optional(v.id("tasks")),
+    projectId: v.optional(v.id("projects")),
+  },
   handler: async (ctx, args) => {
     let tasks: Doc<"tasks">[];
     let deps: Doc<"taskDependencies">[];
@@ -55,17 +58,29 @@ export const getDependencyGraph = query({
       // Get subtasks of a specific parent
       const allTasks = await ctx.db.query("tasks").collect();
       tasks = allTasks.filter(
-        (t) => t.parentTaskId === args.parentTaskId || t._id === args.parentTaskId
+        (t) =>
+          (t.parentTaskId === args.parentTaskId || t._id === args.parentTaskId) &&
+          (!args.projectId || t.projectId === args.projectId)
       );
       deps = await ctx.db
         .query("taskDependencies")
         .withIndex("by_parent", (q) => q.eq("parentTaskId", args.parentTaskId!))
         .collect();
     } else {
-      // Get all top-level tasks and their subtasks
-      tasks = await ctx.db.query("tasks").collect();
+      tasks = args.projectId
+        ? await ctx.db
+            .query("tasks")
+            .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+            .collect()
+        : await ctx.db.query("tasks").collect();
       deps = await ctx.db.query("taskDependencies").collect();
     }
+
+    const taskIds = new Set(tasks.map((task) => task._id));
+    deps = deps.filter(
+      (dependency) =>
+        taskIds.has(dependency.taskId) && taskIds.has(dependency.dependsOnTaskId)
+    );
 
     const nodes = tasks.map((t) => ({
       id: t._id,
@@ -84,7 +99,50 @@ export const getDependencyGraph = query({
       parentTaskId: d.parentTaskId,
     }));
 
-    return { nodes, edges };
+    const dependencyIdsByTask = new Map<Id<"tasks">, Id<"tasks">[]>();
+    for (const edge of edges) {
+      const list = dependencyIdsByTask.get(edge.from) ?? [];
+      list.push(edge.to);
+      dependencyIdsByTask.set(edge.from, list);
+    }
+    const nodeById = new Map(nodes.map((node) => [node.id, node]));
+    const readyCount = nodes.filter((node) => {
+      if (!["INBOX", "ASSIGNED"].includes(node.status)) return false;
+      return (dependencyIdsByTask.get(node.id) ?? []).every(
+        (dependencyId) => nodeById.get(dependencyId)?.status === "DONE"
+      );
+    }).length;
+
+    const remaining = new Set<Id<"tasks">>(nodes.map((node) => node.id));
+    const resolved = new Set<Id<"tasks">>();
+    const layers: Array<Array<Id<"tasks">>> = [];
+    while (remaining.size > 0) {
+      const layer = nodes
+        .filter((node) => remaining.has(node.id))
+        .filter((node) =>
+          (dependencyIdsByTask.get(node.id) ?? []).every((dependency) =>
+            resolved.has(dependency)
+          )
+        )
+        .map((node) => node.id);
+      if (layer.length === 0) break;
+      layers.push(layer);
+      layer.forEach((id) => {
+        remaining.delete(id);
+        resolved.add(id);
+      });
+    }
+
+    return {
+      nodes,
+      edges,
+      metrics: {
+        depth: layers.length,
+        maximumWidth: Math.max(...layers.map((layer) => layer.length), 0),
+        readyCount,
+        cyclicNodeCount: remaining.size,
+      },
+    };
   },
 });
 

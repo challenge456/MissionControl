@@ -94,7 +94,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { view: "harness-health", label: "Factory Health", icon: Gauge },
       { view: "harness-agent-fleet", label: "Agent Fleet", icon: Bot },
       { view: "harness-automations", label: "Automations", icon: Sparkles },
-      { view: "harness-loops", label: "Harness Loops", icon: GitBranch },
+      { view: "harness-loops", label: "Loop Engineering", icon: GitBranch },
       { view: "harness-control-plane", label: "Control Plane", icon: Waypoints },
       { view: "harness-work-ledger", label: "Work Ledger", icon: ClipboardList },
       { view: "harness-team-pulse", label: "Team Pulse", icon: Radio },

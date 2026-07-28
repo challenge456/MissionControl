@@ -29,8 +29,8 @@ export const ConvexQueries = {
 } as const;
 
 export const ConvexMutations = {
-  tasks: {
-    create: "tasks:create",
+  coordinator: {
+    decomposeTask: "coordinator:decomposeTask",
   },
   workOrders: {
     dispatch: "workOrders:dispatch",

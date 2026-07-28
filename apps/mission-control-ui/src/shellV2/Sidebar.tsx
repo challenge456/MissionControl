@@ -72,7 +72,7 @@ export function SidebarSection({
         />
       </button>
       {expanded && (
-        <div className="mt-0.5 flex flex-col gap-px" role="list">
+        <div className="mt-0.5 flex flex-col gap-px">
           {group.items.map((item) => (
             <SidebarItem
               key={item.view}

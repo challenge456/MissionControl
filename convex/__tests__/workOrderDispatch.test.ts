@@ -4,6 +4,7 @@ import {
   findActiveRun,
   nextStateForRunStatus,
   validateDispatchable,
+  validateRetryRequest,
 } from "../lib/workOrderDispatch";
 
 describe("work order dispatch policy", () => {
@@ -89,6 +90,48 @@ describe("work order dispatch policy", () => {
     });
 
     expect(result).toEqual({ ok: false, reason: "invalid-state:SUPERSEDED" });
+  });
+});
+
+describe("work order recovery dispatch", () => {
+  it("allows a reasoned retry of a failed run from the same WorkOrder", () => {
+    expect(
+      validateRetryRequest({
+        workOrderId: "wo-1",
+        retryReason: "Environment bootstrap was corrected.",
+        priorRun: { workOrderId: "wo-1", status: "FAILED" },
+      })
+    ).toEqual({ ok: true, reason: "Environment bootstrap was corrected." });
+  });
+
+  it("rejects retrying a non-failed run", () => {
+    expect(
+      validateRetryRequest({
+        workOrderId: "wo-1",
+        retryReason: "Try the run again after review.",
+        priorRun: { workOrderId: "wo-1", status: "COMPLETED" },
+      })
+    ).toEqual({ ok: false, reason: "retry-run-not-failed:COMPLETED" });
+  });
+
+  it("rejects a retry across WorkOrders", () => {
+    expect(
+      validateRetryRequest({
+        workOrderId: "wo-1",
+        retryReason: "Try the run again after review.",
+        priorRun: { workOrderId: "wo-2", status: "FAILED" },
+      })
+    ).toEqual({ ok: false, reason: "retry-run-work-order-mismatch" });
+  });
+
+  it("requires a meaningful recovery reason", () => {
+    expect(
+      validateRetryRequest({
+        workOrderId: "wo-1",
+        retryReason: "retry",
+        priorRun: { workOrderId: "wo-1", status: "FAILED" },
+      })
+    ).toEqual({ ok: false, reason: "retry-reason-required" });
   });
 });
 

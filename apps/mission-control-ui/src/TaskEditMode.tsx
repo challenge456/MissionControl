@@ -18,6 +18,47 @@ import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { Pencil, Save, Loader2 } from "lucide-react";
 
+const DEFAULT_REVIEW_ITEMS = [
+  "Acceptance criteria verified",
+  "Tests or manual checks passed",
+  "Evidence, risks, and limitations recorded",
+];
+
+function getRequiredOutputFields(metadata: unknown): string[] {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return [];
+  const outputContract = (metadata as Record<string, unknown>).outputContract;
+  if (!outputContract || typeof outputContract !== "object" || Array.isArray(outputContract)) {
+    return [];
+  }
+  const requiredFields = (outputContract as Record<string, unknown>).requiredFields;
+  return Array.isArray(requiredFields)
+    ? requiredFields.filter(
+        (field): field is string => typeof field === "string" && field.trim().length > 0
+      )
+    : [];
+}
+
+function validateRequiredOutputFields(content: string, requiredFields: string[]): string | null {
+  if (requiredFields.length === 0) return null;
+  if (!content.trim()) {
+    return `Deliverable evidence must be JSON with required fields: ${requiredFields.join(", ")}.`;
+  }
+  try {
+    const parsed: unknown = JSON.parse(content);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return "Deliverable evidence must be a JSON object.";
+    }
+    const missing = requiredFields.filter(
+      (field) => !Object.prototype.hasOwnProperty.call(parsed, field)
+    );
+    return missing.length > 0
+      ? `Deliverable evidence is missing required fields: ${missing.join(", ")}.`
+      : null;
+  } catch {
+    return `Deliverable evidence must be valid JSON with required fields: ${requiredFields.join(", ")}.`;
+  }
+}
+
 interface TaskEditModeProps {
   task: Doc<"tasks">;
   onSave: () => void;
@@ -35,14 +76,47 @@ export function TaskEditMode({ task, onSave, onCancel, onSaveError }: TaskEditMo
   const [estimatedCost, setEstimatedCost] = useState(task.estimatedCost || 0);
   const [dueAt, setDueAt] = useState(formatDateInputValue(task.dueAt));
   const [assigneeIds, setAssigneeIds] = useState<Id<"agents">[]>(task.assigneeIds || []);
+  const [workPlanText, setWorkPlanText] = useState(
+    task.workPlan?.bullets.join("\n") ?? ""
+  );
+  const [deliverableSummary, setDeliverableSummary] = useState(
+    task.deliverable?.summary ?? ""
+  );
+  const [deliverableContent, setDeliverableContent] = useState(
+    task.deliverable?.content ?? ""
+  );
+  const [reviewItems, setReviewItems] = useState(
+    task.reviewChecklist?.items ??
+      DEFAULT_REVIEW_ITEMS.map((label) => ({ label, checked: false }))
+  );
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const requiredOutputFields = getRequiredOutputFields(task.metadata);
 
   const updateTask = useMutation(api.tasks.update);
   const agents = useQuery(api.agents.listAll, { projectId: task.projectId });
+  const allowedTransitions = useQuery(api.tasks.getAllowedTransitionsForHuman);
 
   const handleSave = async () => {
+    setSaveError(null);
+    if (status === "REVIEW") {
+      const contractError = validateRequiredOutputFields(
+        deliverableContent,
+        requiredOutputFields
+      );
+      if (contractError) {
+        setSaveError(contractError);
+        onSaveError?.(contractError);
+        return;
+      }
+    }
+
     setSaving(true);
     try {
+      const workPlanBullets = workPlanText
+        .split("\n")
+        .map((bullet) => bullet.trim())
+        .filter(Boolean);
       await updateTask({
         taskId: task._id,
         title,
@@ -53,32 +127,43 @@ export function TaskEditMode({ task, onSave, onCancel, onSaveError }: TaskEditMo
         estimatedCost,
         dueAt: parseDateInputValue(dueAt),
         assigneeIds,
+        workPlan:
+          workPlanBullets.length > 0
+            ? {
+                bullets: workPlanBullets,
+                estimatedCost: estimatedCost || undefined,
+              }
+            : undefined,
+        deliverable:
+          deliverableSummary.trim() || deliverableContent.trim()
+            ? {
+                summary: deliverableSummary.trim() || undefined,
+                content: deliverableContent.trim() || undefined,
+                artifactIds: task.deliverable?.artifactIds ?? [],
+              }
+            : undefined,
+        reviewChecklist: {
+          type: task.reviewChecklist?.type ?? "SUBMISSION",
+          items: reviewItems,
+        },
+        actorUserId: "operator",
+        idempotencyKey: `task-editor:${task._id}:${status}:${Date.now()}`,
       });
       onSave();
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to update task";
-      if (onSaveError) {
-        onSaveError(message);
-      } else {
-        window.alert(message);
-      }
+      setSaveError(message);
+      onSaveError?.(message);
     } finally {
       setSaving(false);
     }
   };
 
   const statuses: Array<Doc<"tasks">["status"]> = [
-    "INBOX",
-    "ASSIGNED",
-    "IN_PROGRESS",
-    "REVIEW",
-    "NEEDS_APPROVAL",
-    "BLOCKED",
-    "FAILED",
-    "DONE",
-    "CANCELED",
-  ];
+    task.status,
+    ...(((allowedTransitions?.[task.status] ?? []) as Array<Doc<"tasks">["status"]>)),
+  ].filter((value, index, values) => values.indexOf(value) === index);
   const types: Array<Doc<"tasks">["type"]> = [
     "CONTENT",
     "SOCIAL",
@@ -117,6 +202,15 @@ export function TaskEditMode({ task, onSave, onCancel, onSaveError }: TaskEditMo
           </Button>
         </div>
       </div>
+      {saveError && (
+        <div
+          id="task-edit-save-error"
+          role="alert"
+          className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {saveError}
+        </div>
+      )}
 
       <div className="flex flex-col gap-5">
         <div className="space-y-2">
@@ -258,6 +352,86 @@ export function TaskEditMode({ task, onSave, onCancel, onSaveError }: TaskEditMo
             min={0}
           />
         </div>
+
+        <div className="space-y-2 border-t border-border pt-5">
+          <Label htmlFor="task-edit-work-plan">Work plan</Label>
+          <Textarea
+            id="task-edit-work-plan"
+            value={workPlanText}
+            onChange={(event) => setWorkPlanText(event.target.value)}
+            rows={4}
+            placeholder={"One plan item per line (3–6 required before starting)"}
+            className="resize-y"
+          />
+          <p className="text-xs text-muted-foreground">
+            Required to move an assigned task into progress.
+          </p>
+        </div>
+
+        <div className="space-y-2 border-t border-border pt-5">
+          {requiredOutputFields.length > 0 && (
+            <Card className="mb-4 border-border bg-muted/30 p-3">
+              <p className="text-sm font-medium text-foreground">
+                Workflow output contract
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Required JSON fields: {requiredOutputFields.join(", ")}. Submission is
+                validated before the task can enter Review.
+              </p>
+            </Card>
+          )}
+          <Label htmlFor="task-edit-deliverable-summary">Deliverable summary</Label>
+          <Textarea
+            id="task-edit-deliverable-summary"
+            value={deliverableSummary}
+            onChange={(event) => setDeliverableSummary(event.target.value)}
+            rows={3}
+            placeholder="What was produced, what changed, and the outcome"
+            className="resize-y"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="task-edit-deliverable-content">Deliverable evidence</Label>
+          <Textarea
+            id="task-edit-deliverable-content"
+            value={deliverableContent}
+            onChange={(event) => setDeliverableContent(event.target.value)}
+            rows={7}
+            placeholder="Evidence, source links, test output, artifact paths, risks, and limitations"
+            className="resize-y font-mono text-xs"
+            aria-describedby={saveError ? "task-edit-save-error" : undefined}
+          />
+          <p className="text-xs text-muted-foreground">
+            Summary, evidence, and a checked review list are required before submission.
+          </p>
+        </div>
+
+        <fieldset className="space-y-3">
+          <legend className="text-sm font-medium text-foreground">Review checklist</legend>
+          {reviewItems.map((item, index) => (
+            <label
+              key={`${item.label}-${index}`}
+              className="flex items-start gap-3 rounded-md border border-border bg-muted/20 px-3 py-2.5 text-sm"
+            >
+              <input
+                type="checkbox"
+                checked={item.checked}
+                onChange={(event) =>
+                  setReviewItems((current) =>
+                    current.map((candidate, candidateIndex) =>
+                      candidateIndex === index
+                        ? { ...candidate, checked: event.target.checked }
+                        : candidate
+                    )
+                  )
+                }
+                className="mt-0.5 h-4 w-4"
+              />
+              <span>{item.label}</span>
+            </label>
+          ))}
+        </fieldset>
 
         <Card className="p-3 bg-muted/30 border-border/80">
           <p className="text-[0.7rem] text-muted-foreground space-y-1">

@@ -67,6 +67,12 @@ export const upsert = mutation({
     workflowId: v.string(),
     name: v.string(),
     description: v.string(),
+    topology: v.optional(v.union(v.literal("LINEAR"), v.literal("DAG"))),
+    maxConcurrency: v.optional(v.number()),
+    convergence: v.optional(v.object({
+      maxIterations: v.number(),
+      stopCondition: v.string(),
+    })),
     agents: v.array(v.object({
       id: v.string(),
       persona: v.string(),
@@ -81,6 +87,41 @@ export const upsert = mutation({
       expects: v.string(),
       retryLimit: v.number(),
       timeoutMinutes: v.number(),
+      dependsOn: v.optional(v.array(v.string())),
+      kind: v.optional(v.union(
+        v.literal("AGENT"),
+        v.literal("REDUCE"),
+        v.literal("ROUTER"),
+        v.literal("VERIFY"),
+        v.literal("GATE")
+      )),
+      inputSchema: v.optional(v.any()),
+      outputSchema: v.optional(v.any()),
+      modelTier: v.optional(v.union(
+        v.literal("FAST"),
+        v.literal("BALANCED"),
+        v.literal("POWERFUL")
+      )),
+      isolation: v.optional(v.union(
+        v.literal("SHARED"),
+        v.literal("WORKTREE"),
+        v.literal("READ_ONLY")
+      )),
+      failurePolicy: v.optional(v.union(
+        v.literal("RETRY"),
+        v.literal("CONTINUE"),
+        v.literal("BLOCK")
+      )),
+      condition: v.optional(v.object({
+        path: v.string(),
+        operator: v.union(
+          v.literal("EQ"),
+          v.literal("NEQ"),
+          v.literal("IN"),
+          v.literal("EXISTS")
+        ),
+        value: v.optional(v.any()),
+      })),
     })),
     active: v.optional(v.boolean()),
     createdBy: v.optional(v.string()),
@@ -98,6 +139,9 @@ export const upsert = mutation({
       await ctx.db.patch(existing._id, {
         name: args.name,
         description: args.description,
+        topology: args.topology,
+        maxConcurrency: args.maxConcurrency,
+        convergence: args.convergence,
         agents: args.agents,
         steps: args.steps,
         active: args.active ?? existing.active,
@@ -112,6 +156,9 @@ export const upsert = mutation({
         workflowId: args.workflowId,
         name: args.name,
         description: args.description,
+        topology: args.topology,
+        maxConcurrency: args.maxConcurrency,
+        convergence: args.convergence,
         agents: args.agents,
         steps: args.steps,
         active: args.active ?? true,

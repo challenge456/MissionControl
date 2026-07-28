@@ -153,6 +153,8 @@ export function OpsSection({
           projectId={projectId}
           expanded={liveFeedExpanded}
           onToggle={onToggleLiveFeed}
+          onTaskSelect={onTaskSelect}
+          onExecutionSelect={() => onNavigate("control-work-orders")}
         />
       </div>
     );

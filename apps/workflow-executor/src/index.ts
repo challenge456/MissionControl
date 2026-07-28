@@ -5,8 +5,12 @@
  * Runs as a long-lived process with graceful shutdown handling.
  */
 
-import { createExecutor } from "@mission-control/workflow-engine";
+import * as workflowEngine from "@mission-control/workflow-engine";
 import * as dotenv from "dotenv";
+
+const createExecutor =
+  workflowEngine.createExecutor ??
+  (workflowEngine as unknown as { default?: typeof workflowEngine }).default?.createExecutor;
 
 // Load environment variables
 dotenv.config();
@@ -17,6 +21,10 @@ const STEP_TIMEOUT_MS = parseInt(process.env.STEP_TIMEOUT_MS || "60000", 10);
 
 if (!CONVEX_URL) {
   console.error("❌ Error: CONVEX_URL environment variable is required");
+  process.exit(1);
+}
+if (!createExecutor) {
+  console.error("❌ Error: workflow engine factory is unavailable");
   process.exit(1);
 }
 

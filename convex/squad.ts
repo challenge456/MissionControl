@@ -47,10 +47,17 @@ export const deploySquad = mutation({
     const skipped: string[] = [];
 
     for (const persona of SQUAD_PERSONAS) {
-      const existing = await ctx.db
-        .query("agents")
-        .withIndex("by_name", (q) => q.eq("name", persona.name))
-        .first();
+      const existing = args.projectId
+        ? await ctx.db
+            .query("agents")
+            .withIndex("by_project_name", (q) =>
+              q.eq("projectId", args.projectId).eq("name", persona.name)
+            )
+            .first()
+        : await ctx.db
+            .query("agents")
+            .withIndex("by_name", (q) => q.eq("name", persona.name))
+            .first();
 
       if (existing) {
         // Reactivate if offline/quarantined

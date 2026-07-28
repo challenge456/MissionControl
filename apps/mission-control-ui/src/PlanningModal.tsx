@@ -48,6 +48,17 @@ export function PlanningModal({
   const submitPlan = useMutation(api.planning.submitPlan);
 
   useEffect(() => {
+    setStep("questions");
+    setQuestions([]);
+    setAnswers({});
+    setPlan(null);
+    setError(null);
+    setQuestionsLoading(false);
+    setPlanLoading(false);
+    setSubmitLoading(false);
+  }, [taskId]);
+
+  useEffect(() => {
     if (!taskId || !task) return;
     if (step !== "questions" || questions.length > 0) return;
     setQuestionsLoading(true);

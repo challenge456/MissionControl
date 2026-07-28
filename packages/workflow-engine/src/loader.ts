@@ -7,11 +7,42 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as yaml from "yaml";
+import {
+  validateGraphDefinition,
+  type JsonContract,
+  type WorkflowCondition,
+  type WorkflowFailurePolicy,
+  type WorkflowNodeKind,
+  type WorkflowTopology,
+} from "./graph";
+
+export interface WorkflowStepDefinition {
+  id: string;
+  agent: string;
+  input: string;
+  expects: string;
+  retryLimit: number;
+  timeoutMinutes: number;
+  dependsOn?: string[];
+  kind?: WorkflowNodeKind;
+  inputSchema?: JsonContract;
+  outputSchema?: JsonContract;
+  modelTier?: "FAST" | "BALANCED" | "POWERFUL";
+  isolation?: "SHARED" | "WORKTREE" | "READ_ONLY";
+  failurePolicy?: WorkflowFailurePolicy;
+  condition?: WorkflowCondition;
+}
 
 export interface WorkflowDefinition {
   id: string;
   name: string;
   description: string;
+  topology?: WorkflowTopology;
+  maxConcurrency?: number;
+  convergence?: {
+    maxIterations: number;
+    stopCondition: string;
+  };
   agents: Array<{
     id: string;
     persona: string;
@@ -19,14 +50,7 @@ export interface WorkflowDefinition {
       files?: Record<string, string>;
     };
   }>;
-  steps: Array<{
-    id: string;
-    agent: string;
-    input: string;
-    expects: string;
-    retryLimit: number;
-    timeoutMinutes: number;
-  }>;
+  steps: WorkflowStepDefinition[];
 }
 
 export interface WorkflowValidationError {
@@ -106,6 +130,37 @@ export function validateWorkflow(data: any): WorkflowValidationError[] {
   if (!data.description || typeof data.description !== "string") {
     errors.push({ field: "description", message: "Required string field 'description' is missing" });
   }
+
+  if (data.topology !== undefined && !["LINEAR", "DAG"].includes(data.topology)) {
+    errors.push({ field: "topology", message: "Topology must be LINEAR or DAG" });
+  }
+  if (
+    data.maxConcurrency !== undefined &&
+    (!Number.isInteger(data.maxConcurrency) || data.maxConcurrency < 1 || data.maxConcurrency > 32)
+  ) {
+    errors.push({
+      field: "maxConcurrency",
+      message: "maxConcurrency must be an integer between 1 and 32",
+    });
+  }
+  if (data.convergence !== undefined) {
+    if (
+      !Number.isInteger(data.convergence?.maxIterations) ||
+      data.convergence.maxIterations < 1 ||
+      data.convergence.maxIterations > 10
+    ) {
+      errors.push({
+        field: "convergence.maxIterations",
+        message: "maxIterations must be an integer between 1 and 10",
+      });
+    }
+    if (!data.convergence?.stopCondition || typeof data.convergence.stopCondition !== "string") {
+      errors.push({
+        field: "convergence.stopCondition",
+        message: "A bounded stop condition is required",
+      });
+    }
+  }
   
   // Agents array
   if (!Array.isArray(data.agents)) {
@@ -148,15 +203,71 @@ export function validateWorkflow(data: any): WorkflowValidationError[] {
       if (typeof step.timeoutMinutes !== "number" || step.timeoutMinutes <= 0) {
         errors.push({ field: `steps[${index}].timeoutMinutes`, message: "Step timeoutMinutes must be a positive number" });
       }
+      if (
+        step.dependsOn !== undefined &&
+        (!Array.isArray(step.dependsOn) || step.dependsOn.some((value: unknown) => typeof value !== "string"))
+      ) {
+        errors.push({
+          field: `steps[${index}].dependsOn`,
+          message: "Step dependsOn must be an array of step ids",
+        });
+      }
+      if (
+        step.kind !== undefined &&
+        !["AGENT", "REDUCE", "ROUTER", "VERIFY", "GATE"].includes(step.kind)
+      ) {
+        errors.push({ field: `steps[${index}].kind`, message: "Unknown node kind" });
+      }
+      if (
+        step.modelTier !== undefined &&
+        !["FAST", "BALANCED", "POWERFUL"].includes(step.modelTier)
+      ) {
+        errors.push({ field: `steps[${index}].modelTier`, message: "Unknown model tier" });
+      }
+      if (
+        step.isolation !== undefined &&
+        !["SHARED", "WORKTREE", "READ_ONLY"].includes(step.isolation)
+      ) {
+        errors.push({ field: `steps[${index}].isolation`, message: "Unknown isolation mode" });
+      }
+      if (
+        step.failurePolicy !== undefined &&
+        !["RETRY", "CONTINUE", "BLOCK"].includes(step.failurePolicy)
+      ) {
+        errors.push({ field: `steps[${index}].failurePolicy`, message: "Unknown failure policy" });
+      }
+      if (step.condition !== undefined) {
+        if (!step.condition.path || typeof step.condition.path !== "string") {
+          errors.push({
+            field: `steps[${index}].condition.path`,
+            message: "Condition path is required",
+          });
+        }
+        if (!["EQ", "NEQ", "IN", "EXISTS"].includes(step.condition.operator)) {
+          errors.push({
+            field: `steps[${index}].condition.operator`,
+            message: "Unknown condition operator",
+          });
+        }
+      }
       
       // Validate agent reference
-      if (data.agents && step.agent) {
+      if (Array.isArray(data.agents) && step.agent) {
         const agentExists = data.agents.some((a: any) => a.id === step.agent);
         if (!agentExists) {
           errors.push({ field: `steps[${index}].agent`, message: `Agent "${step.agent}" not defined in agents array` });
         }
       }
     });
+
+    if (
+      data.steps.every((step: any) => typeof step.id === "string") &&
+      (data.topology === undefined || ["LINEAR", "DAG"].includes(data.topology))
+    ) {
+      errors.push(
+        ...validateGraphDefinition(data.steps, data.topology ?? "LINEAR")
+      );
+    }
   }
   
   return errors;

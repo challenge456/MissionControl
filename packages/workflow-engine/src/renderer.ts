@@ -40,7 +40,8 @@ export function render(template: string, context: RenderContext): string {
   // nested context references such as {{coverageThresholds.unit}}.
   return template.replace(/\{\{([^}]+)\}\}/g, (_match, variable: string) => {
     const value = resolveVariable(context, variable.trim());
-    return value == null ? "" : String(value);
+    if (value == null) return "";
+    return typeof value === "object" ? JSON.stringify(value, null, 2) : String(value);
   });
 }
 

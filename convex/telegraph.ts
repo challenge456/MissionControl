@@ -113,7 +113,9 @@ export const createThread = mutation({
     externalThreadRef: v.optional(v.string()),
     linkedTaskId: v.optional(v.id("tasks")),
     linkedApprovalId: v.optional(v.id("approvals")),
+    linkedWorkOrderId: v.optional(v.id("workOrders")),
     linkedIncidentId: v.optional(v.string()),
+    metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("telegraphThreads", {
@@ -124,9 +126,11 @@ export const createThread = mutation({
       externalThreadRef: args.externalThreadRef,
       linkedTaskId: args.linkedTaskId,
       linkedApprovalId: args.linkedApprovalId,
+      linkedWorkOrderId: args.linkedWorkOrderId,
       linkedIncidentId: args.linkedIncidentId,
       lastMessageAt: undefined,
       messageCount: 0,
+      metadata: args.metadata,
     });
   },
 });
@@ -139,6 +143,7 @@ export const linkToEntity = mutation({
     threadId: v.id("telegraphThreads"),
     linkedTaskId: v.optional(v.id("tasks")),
     linkedApprovalId: v.optional(v.id("approvals")),
+    linkedWorkOrderId: v.optional(v.id("workOrders")),
     linkedIncidentId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -148,6 +153,7 @@ export const linkToEntity = mutation({
     const updates: Record<string, any> = {};
     if (args.linkedTaskId !== undefined) updates.linkedTaskId = args.linkedTaskId;
     if (args.linkedApprovalId !== undefined) updates.linkedApprovalId = args.linkedApprovalId;
+    if (args.linkedWorkOrderId !== undefined) updates.linkedWorkOrderId = args.linkedWorkOrderId;
     if (args.linkedIncidentId !== undefined) updates.linkedIncidentId = args.linkedIncidentId;
 
     await ctx.db.patch(args.threadId, updates);
@@ -172,13 +178,23 @@ export const sendMessage = mutation({
     replyToId: v.optional(v.id("telegraphMessages")),
     externalRef: v.optional(v.string()),
     projectId: v.optional(v.id("projects")),
+    idempotencyKey: v.optional(v.string()),
+    metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
+    if (!args.content || args.content.trim().length === 0) {
+      throw new Error("Cannot send an empty message");
+    }
+    if (args.idempotencyKey) {
+      const existing = await ctx.db
+        .query("telegraphMessages")
+        .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.idempotencyKey))
+        .first();
+      if (existing) return existing._id;
+    }
+
     // SAFETY: Reject streaming/partial content for external channels
     if (args.channel === "TELEGRAM") {
-      if (!args.content || args.content.trim().length === 0) {
-        throw new Error("SAFETY: Cannot send empty message to external channel");
-      }
       if (args.content.includes("[STREAMING]") || args.content.includes("[PARTIAL]")) {
         throw new Error("SAFETY: Cannot send streaming/partial content to Telegram. Final replies only.");
       }
@@ -188,6 +204,7 @@ export const sendMessage = mutation({
     const messageId = await ctx.db.insert("telegraphMessages", {
       projectId: args.projectId,
       threadId: args.threadId,
+      idempotencyKey: args.idempotencyKey,
       senderId: args.senderId,
       senderType: args.senderType,
       content: args.content,
@@ -195,6 +212,7 @@ export const sendMessage = mutation({
       channel: args.channel,
       externalRef: args.externalRef,
       status: "SENT",
+      metadata: args.metadata,
     });
 
     // Update thread stats

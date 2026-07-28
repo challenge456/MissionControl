@@ -108,6 +108,7 @@ function ProjectSwitcher() {
 
   return (
     <select
+      aria-label="Workspace"
       value={projectId ?? ""}
       onChange={(e) => {
         const value = e.target.value;
@@ -130,6 +131,7 @@ function ProjectSwitcher() {
 // ============================================================================
 
 const STORAGE_KEY_VIEW = "mc.last_view";
+const STORAGE_KEY_PROJECT = "mc.last_project";
 
 const VALID_MAIN_VIEWS: MainView[] = [
   "home", "atc", "tasks", "agents", "directory", "policies", "deployments", "audit", "telemetry",
@@ -338,8 +340,7 @@ function viewToSection(view: MainView): CommandSection {
 // HEADER METRICS
 // ============================================================================
 
-function useHeaderMetrics() {
-  const { projectId } = useProject();
+function useHeaderMetrics(projectId: Id<"projects"> | null) {
   const agents = useQuery(api.agents.listAll, projectId ? { projectId } : {});
   const tasks = useQuery(api.tasks.listAll, projectId ? { projectId } : {});
   const [statusTick, setStatusTick] = useState(() => Date.now());
@@ -547,14 +548,34 @@ export default function App() {
 
   // ── Effects ──────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!projectId && projects && projects.length > 0) {
+    if (
+      projects &&
+      projects.length > 0 &&
+      (!projectId || !projects.some((item) => item._id === projectId))
+    ) {
+      let persistedProjectId: string | null = null;
+      try {
+        persistedProjectId = window.localStorage.getItem(STORAGE_KEY_PROJECT);
+      } catch {
+        // ignore
+      }
       const preferred =
+        projects.find((p) => p._id === persistedProjectId) ??
         projects.find((p) => p.name.trim().toLowerCase() === "mission control") ??
         projects.find((p) => p.name.toLowerCase().includes("mission control")) ??
         projects[0];
       setProjectId(preferred._id);
     }
   }, [projectId, projects]);
+
+  useEffect(() => {
+    if (!projectId || typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(STORAGE_KEY_PROJECT, projectId);
+    } catch {
+      // ignore
+    }
+  }, [projectId]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -646,7 +667,7 @@ export default function App() {
   const now = new Date();
   const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   const dateStr = now.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }).toUpperCase();
-  const { activeCount, taskCount, aiStatus } = useHeaderMetrics();
+  const { activeCount, taskCount, aiStatus } = useHeaderMetrics(projectId);
 
   // ── Section renderer ─────────────────────────────────────────────────────
   function renderSection() {
@@ -767,7 +788,13 @@ export default function App() {
           />
         );
       case "content":
-        return <ContentSection currentView={currentView} projectId={projectId} />;
+        return (
+          <ContentSection
+            currentView={currentView}
+            projectId={projectId}
+            onProjectSelect={setProjectId}
+          />
+        );
       case "comms":
         return (
           <CommsSection

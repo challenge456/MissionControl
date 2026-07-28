@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { PageHeader } from "@/components/PageHeader";
-import { ClipboardList, ExternalLink, PlayCircle, Plus, ShieldCheck, Sparkles, TriangleAlert } from "lucide-react";
+import { ArrowLeft, ClipboardList, ExternalLink, PlayCircle, Plus, ShieldCheck, Sparkles, TriangleAlert } from "lucide-react";
 import {
   countByQuickFilter,
   DEFAULT_WORK_ORDER_FILTERS,
@@ -99,6 +99,7 @@ function latestByCriterion<T extends { acceptanceCriterionId: string; recordedAt
 export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null }) {
   const [filters, setFilters] = useState<WorkOrderQueueFilters>(DEFAULT_WORK_ORDER_FILTERS);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [approvalOpen, setApprovalOpen] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
@@ -142,6 +143,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
   useEffect(() => {
     if (filtered.length === 0) {
       setSelectedId(null);
+      setMobileDetailOpen(false);
       return;
     }
     if (!selectedId && filtered.length > 0) {
@@ -276,7 +278,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
         </div>
 
         <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(360px,1.05fr)]">
-          <div className="space-y-3">
+          <div className={`${mobileDetailOpen ? "hidden xl:block" : "block"} space-y-3`}>
             {filtered.length === 0 ? (
               <Card className="p-8 text-center text-sm text-muted-foreground">
                 No work orders match the current filters.
@@ -288,7 +290,10 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                   <button
                     key={item._id}
                     type="button"
-                    onClick={() => setSelectedId(item._id)}
+                    onClick={() => {
+                      setSelectedId(item._id);
+                      setMobileDetailOpen(true);
+                    }}
                     aria-label={`${item.title} — next action: ${deriveNextAction(item)}`}
                     className={`w-full rounded-xl border p-4 text-left transition-colors ${selectedRow ? "border-registry-accent/40 bg-registry-accent-soft" : "border-[var(--panel-line)] bg-card/40 hover:border-registry-accent/20"}`}
                   >
@@ -332,11 +337,20 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
             )}
           </div>
 
-          <Card className="min-h-[420px] p-5">
+          <Card className={`${mobileDetailOpen ? "block" : "hidden xl:block"} min-h-[420px] p-5`}>
             {!selected ? (
               <div className="text-sm text-muted-foreground">Select a work order to inspect requested outcome, criteria, and linked execution.</div>
             ) : (
               <div className="space-y-5">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="xl:hidden"
+                  onClick={() => setMobileDetailOpen(false)}
+                >
+                  <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
+                  Back to work orders
+                </Button>
                 <div>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
@@ -812,6 +826,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
               idempotencyKey: createRequestKey ?? undefined,
             });
             setSelectedId(result.workOrder?._id ?? null);
+            setMobileDetailOpen(true);
             setCreateOpen(false);
           } catch (err) {
             setError(err instanceof Error ? err.message : "Failed to create work order");
@@ -982,6 +997,29 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
         workflowRunId={inspectorRunId}
         verificationReceiptId={inspectorReceiptId}
         acceptanceCriterionId={inspectorCriterionId}
+        retrying={!!selected && dispatchingId === selected.workOrder._id}
+        onRetryFailedRun={selected
+          ? async ({ workflowRunId, reason, runtime, model, worktree }) => {
+              setDispatchError(null);
+              setDispatchingId(selected.workOrder._id);
+              try {
+                await dispatchWorkOrder({
+                  workOrderId: selected.workOrder._id,
+                  workflowId: selected.workOrder.workflowId,
+                  actorType: "HUMAN",
+                  actorId: "operator",
+                  idempotencyKey: `ui-retry:${workflowRunId}:${globalThis.crypto?.randomUUID?.() ?? Date.now()}`,
+                  runtime: runtime ?? "Mission Control UI",
+                  model,
+                  worktree,
+                  retryOfWorkflowRunId: workflowRunId,
+                  retryReason: reason,
+                });
+              } finally {
+                setDispatchingId(null);
+              }
+            }
+          : undefined}
         onClose={() => {
           setInspectorRunId(null);
           setInspectorReceiptId(null);
@@ -1007,7 +1045,7 @@ function FilterSelect({
     <div className="space-y-1.5">
       <Label className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{label}</Label>
       <Select value={value} onValueChange={onChange}>
-        <SelectTrigger>
+        <SelectTrigger aria-label={`${label} filter`}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

@@ -18,10 +18,26 @@ NC='\033[0m'
 
 PASSED=0
 FAILED=0
+CLEANUP_REQUIRED=false
 
 log_pass() { echo -e "${GREEN}[PASS]${NC} $1"; ((PASSED++)) || true; }
 log_fail() { echo -e "${RED}[FAIL]${NC} $1"; ((FAILED++)) || true; }
 log_info() { echo -e "${BLUE}[TEST]${NC} $1"; }
+
+cleanup_on_exit() {
+    if [[ "$CLEANUP_REQUIRED" != "true" ]]; then
+        return
+    fi
+
+    log_info "Emergency cleanup for interrupted run $RUN_ID..."
+    if npx convex run api.e2e.cleanup "{\"runId\": \"$RUN_ID\"}" >/dev/null 2>&1; then
+        log_pass "Interrupted E2E data cleaned up"
+    else
+        log_fail "Emergency E2E cleanup failed for $RUN_ID"
+    fi
+}
+
+trap cleanup_on_exit EXIT
 
 # Generate unique run ID
 TIMESTAMP=$(date +%s)
@@ -56,18 +72,20 @@ echo ""
 # ============================================================================
 log_info "TEST 1: Seeding E2E data..."
 
-SEED_RESULT=$(npx convex run api.e2e.seed "{\"runId\": \"$RUN_ID\"}" 2>/dev/null) || {
+SEED_RESULT=$(npx convex run api.e2e.seed "{\"runId\": \"$RUN_ID\"}") || {
     log_fail "E2E seed failed"
     exit 1
 }
 
-if echo "$SEED_RESULT" | grep -q "\"success\": true"; then
+if jq -e '.success == true' >/dev/null <<<"$SEED_RESULT"; then
+    CLEANUP_REQUIRED=true
     log_pass "E2E data seeded"
-    AGENT_COUNT=$(echo "$SEED_RESULT" | grep -o '"agents": \[[^]]*\]' | grep -o '"id"' | wc -l)
-    TASK_COUNT=$(echo "$SEED_RESULT" | grep -o '"tasks": \[[^]]*\]' | grep -o '"id"' | wc -l)
+    AGENT_COUNT=$(jq '.agents | length' <<<"$SEED_RESULT")
+    TASK_COUNT=$(jq '.tasks | length' <<<"$SEED_RESULT")
     log_info "  Created: $AGENT_COUNT agents, $TASK_COUNT tasks"
 else
     log_fail "E2E seed returned error"
+    exit 1
 fi
 
 # ============================================================================
@@ -76,16 +94,16 @@ fi
 echo ""
 log_info "TEST 2: Validating seed data..."
 
-VALIDATE_RESULT=$(npx convex run api.e2e.validate "{\"runId\": \"$RUN_ID\"}" 2>/dev/null) || {
+VALIDATE_RESULT=$(npx convex run api.e2e.validate "{\"runId\": \"$RUN_ID\"}") || {
     log_fail "E2E validation failed"
     exit 1
 }
 
-if echo "$VALIDATE_RESULT" | grep -q '"allValid": true'; then
+if jq -e '.allValid == true' >/dev/null <<<"$VALIDATE_RESULT"; then
     log_pass "Seed data validation passed"
 else
     log_fail "Seed data validation failed"
-    echo "$VALIDATE_RESULT" | grep -E '"found"|"valid"|"expected"' | head -10
+    jq '{agents, tasks, contentDrops, budget, workflowRuns}' <<<"$VALIDATE_RESULT"
 fi
 
 # ============================================================================
@@ -95,21 +113,17 @@ echo ""
 log_info "TEST 3: Testing agent lifecycle..."
 
 # Get an agent
-AGENT_RESULT=$(npx convex run api.agents.listAll '{"limit": 5}' 2>/dev/null)
-if echo "$AGENT_RESULT" | grep -q '"_id":'; then
-    log_pass "Agent list query works"
-    
-    AGENT_ID=$(echo "$AGENT_RESULT" | grep -o '"_id": "[^"]*"' | head -1 | cut -d'"' -f4)
-    
+AGENT_ID=$(jq -r '.agents[0].id' <<<"$SEED_RESULT")
+if [[ -n "$AGENT_ID" && "$AGENT_ID" != "null" ]]; then
     # Test heartbeat
-    HEARTBEAT_RESULT=$(npx convex run api.agents.heartbeat "{\"agentId\": \"$AGENT_ID\"}" 2>/dev/null) || true
+    HEARTBEAT_RESULT=$(npx convex run api.agents.heartbeat "{\"agentId\": \"$AGENT_ID\"}") || true
     if [[ -n "$HEARTBEAT_RESULT" ]]; then
-        log_pass "Agent heartbeat works"
+        log_pass "Seeded agent heartbeat works"
     else
         log_fail "Agent heartbeat failed"
     fi
 else
-    log_fail "Agent list query failed"
+    log_fail "Seed response did not include an agent"
 fi
 
 # ============================================================================
@@ -119,21 +133,17 @@ echo ""
 log_info "TEST 4: Testing task lifecycle..."
 
 # Get a task
-TASK_RESULT=$(npx convex run api.tasks.listAll '{"limit": 5}' 2>/dev/null)
-if echo "$TASK_RESULT" | grep -q '"_id":'; then
-    log_pass "Task list query works"
-    
-    TASK_ID=$(echo "$TASK_RESULT" | grep -o '"_id": "[^"]*"' | head -1 | cut -d'"' -f4)
-    
+TASK_ID=$(jq -r '.tasks[0].id' <<<"$SEED_RESULT")
+if [[ -n "$TASK_ID" && "$TASK_ID" != "null" ]]; then
     # Test task get
-    GET_RESULT=$(npx convex run api.tasks.get "{\"taskId\": \"$TASK_ID\"}" 2>/dev/null) || true
+    GET_RESULT=$(npx convex run api.tasks.get "{\"taskId\": \"$TASK_ID\"}") || true
     if [[ -n "$GET_RESULT" ]]; then
-        log_pass "Task get works"
+        log_pass "Seeded task get works"
     else
         log_fail "Task get failed"
     fi
 else
-    log_fail "Task list query failed"
+    log_fail "Seed response did not include a task"
 fi
 
 # ============================================================================
@@ -142,7 +152,7 @@ fi
 echo ""
 log_info "TEST 5: Testing workflow operations..."
 
-WORKFLOW_RESULT=$(npx convex run api.workflows.list '{"limit": 5}' 2>/dev/null) || true
+WORKFLOW_RESULT=$(npx convex run api.workflows.list '{}') || true
 if [[ -n "$WORKFLOW_RESULT" ]]; then
     log_pass "Workflow list query works"
 else
@@ -155,7 +165,7 @@ fi
 echo ""
 log_info "TEST 6: Testing approval operations..."
 
-APPROVAL_RESULT=$(npx convex run api.approvals.list '{"limit": 5}' 2>/dev/null) || true
+APPROVAL_RESULT=$(npx convex run api.approvals.list '{"limit": 5}') || true
 if [[ -n "$APPROVAL_RESULT" ]]; then
     log_pass "Approval list query works"
 else
@@ -168,7 +178,7 @@ fi
 echo ""
 log_info "TEST 7: Testing content drop operations..."
 
-DROP_RESULT=$(npx convex run api.contentDrops.list '{"limit": 5}' 2>/dev/null) || true
+DROP_RESULT=$(npx convex run api.contentDrops.list '{"limit": 5}') || true
 if [[ -n "$DROP_RESULT" ]]; then
     log_pass "Content drop list query works"
 else
@@ -181,11 +191,13 @@ fi
 echo ""
 log_info "TEST 8: Cleaning up E2E data..."
 
-CLEANUP_RESULT=$(npx convex run api.e2e.cleanup "{\"runId\": \"$RUN_ID\"}" 2>/dev/null) || {
+CLEANUP_RESULT=$(npx convex run api.e2e.cleanup "{\"runId\": \"$RUN_ID\"}") || {
     log_fail "E2E cleanup failed"
 }
 
-if echo "$CLEANUP_RESULT" | grep -q "\"success\": true"; then
+if jq -e '.success == true' >/dev/null <<<"$CLEANUP_RESULT"; then
+    CLEANUP_REQUIRED=false
+    trap - EXIT
     log_pass "E2E data cleaned up"
 else
     log_fail "E2E cleanup returned error"

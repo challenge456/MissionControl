@@ -23,7 +23,12 @@ if (!rootEl) {
         ) : (
           <ConvexProvider client={new ConvexReactClient(convexUrl)}>
             <ToastProvider>
-              <BrowserRouter>
+              <BrowserRouter
+                future={{
+                  v7_startTransition: true,
+                  v7_relativeSplatPath: true,
+                }}
+              >
                 <App />
               </BrowserRouter>
             </ToastProvider>

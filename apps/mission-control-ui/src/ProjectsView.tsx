@@ -1,22 +1,35 @@
-import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { useQuery } from "convex/react";
+import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id, Doc } from "../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { PageHeader } from "./components/PageHeader";
 import { StatusBadge } from "./components/factory/badges";
 import { MetricBlock } from "./components/factory/MetricBlock";
-import { FolderKanban, Github, Orbit, RadioTower, Sparkles } from "lucide-react";
+import { FolderKanban, Github, Link2, Orbit, Plus, RadioTower, Sparkles } from "lucide-react";
 
 interface ProjectsViewProps {
   projectId: Id<"projects"> | null;
+  onProjectSelect: (projectId: Id<"projects">) => void;
 }
 
-export function ProjectsView({ projectId }: ProjectsViewProps) {
+export function ProjectsView({ projectId, onProjectSelect }: ProjectsViewProps) {
   const projects = useQuery(api.projects.list);
   const [selectedProject, setSelectedProject] = useState<Id<"projects"> | null>(projectId);
+  const [createOpen, setCreateOpen] = useState(false);
 
   useEffect(() => {
     if (projectId) setSelectedProject(projectId);
@@ -52,6 +65,10 @@ export function ProjectsView({ projectId }: ProjectsViewProps) {
   }
 
   const selectedProjectDoc = projects.find((project) => project._id === selectedProject) ?? null;
+  const selectProject = (nextProjectId: Id<"projects">) => {
+    setSelectedProject(nextProjectId);
+    onProjectSelect(nextProjectId);
+  };
 
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
@@ -61,6 +78,12 @@ export function ProjectsView({ projectId }: ProjectsViewProps) {
         icon={<FolderKanban size={16} strokeWidth={1.7} />}
         status={
           <StatusBadge tone="neutral">{totals.total} tracked projects</StatusBadge>
+        }
+        actions={
+          <Button size="sm" onClick={() => setCreateOpen(true)}>
+            <Plus className="h-3.5 w-3.5" />
+            New workspace
+          </Button>
         }
       />
 
@@ -101,7 +124,7 @@ export function ProjectsView({ projectId }: ProjectsViewProps) {
                   key={project._id}
                   project={project}
                   isSelected={project._id === selectedProject}
-                  onSelect={() => setSelectedProject(project._id)}
+                  onSelect={() => selectProject(project._id)}
                 />
               ))}
             </div>
@@ -124,6 +147,13 @@ export function ProjectsView({ projectId }: ProjectsViewProps) {
           )}
         </div>
       </div>
+
+      {createOpen ? (
+        <CreateWorkspaceDialog
+          onClose={() => setCreateOpen(false)}
+          onCreated={selectProject}
+        />
+      ) : null}
     </section>
   );
 }
@@ -193,6 +223,7 @@ function StatPill({ label, value }: { label: string; value: number }) {
 function ProjectDetails({ project }: { project: Doc<"projects"> }) {
   const agents = useQuery(api.agents.list, { projectId: project._id });
   const stats = useQuery(api.projects.getStats, { projectId: project._id });
+  const [repositoryOpen, setRepositoryOpen] = useState(false);
 
   const activeAgents = agents?.filter((agent) => agent.status === "ACTIVE") ?? [];
   const pausedAgents = agents?.filter((agent) => agent.status === "PAUSED") ?? [];
@@ -212,12 +243,17 @@ function ProjectDetails({ project }: { project: Doc<"projects"> }) {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {project.githubRepo && (
-              <Button variant="outline" size="sm">
+            <StatusBadge tone={project.status === "PAUSED" ? "warning" : "success"}>
+              {(project.status || "ACTIVE").toLowerCase()}
+            </StatusBadge>
+            <Button variant="outline" size="sm" onClick={() => setRepositoryOpen(true)}>
+              {project.githubRepo ? (
                 <Github className="h-3.5 w-3.5" />
-                {project.githubBranch || "main"}
-              </Button>
-            )}
+              ) : (
+                <Link2 className="h-3.5 w-3.5" />
+              )}
+              {project.githubRepo ? "Edit repository" : "Connect repository"}
+            </Button>
             {project.swarmConfig && (
               <Button variant="outline" size="sm">
                 <Orbit className="h-3.5 w-3.5" />
@@ -255,13 +291,25 @@ function ProjectDetails({ project }: { project: Doc<"projects"> }) {
           </div>
 
           <Card className="p-5">
+            <div className="text-[12.5px] font-medium text-ink-secondary">Workspace contract</div>
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <ContractField label="Purpose" value={project.purpose || "Not defined"} />
+              <ContractField label="Owner" value={project.owner || "Unassigned"} />
+              <ContractField
+                label="Default policy"
+                value={project.defaultPolicy || "Not configured"}
+              />
+            </div>
+          </Card>
+
+          <Card className="p-5">
             <div className="text-[12.5px] font-medium text-ink-secondary">Integration posture</div>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <IntegrationRow
                 icon={<Github size={15} strokeWidth={1.7} />}
                 label="Repository"
                 value={project.githubRepo || "Not connected"}
-                detail={project.githubRepo ? `Branch ${project.githubBranch || "main"}` : "Link a repository for release and code context."}
+                detail={project.githubRepo ? `Configured · default branch ${project.githubBranch || "main"}` : "Link a repository for release and code context."}
               />
               <IntegrationRow
                 icon={<RadioTower size={15} strokeWidth={1.7} />}
@@ -309,7 +357,23 @@ function ProjectDetails({ project }: { project: Doc<"projects"> }) {
           </Card>
         </div>
       </div>
+
+      {repositoryOpen ? (
+        <ConnectRepositoryDialog
+          project={project}
+          onClose={() => setRepositoryOpen(false)}
+        />
+      ) : null}
     </Card>
+  );
+}
+
+function ContractField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-line bg-surface-2 px-4 py-3">
+      <div className="text-[11.5px] text-ink-muted">{label}</div>
+      <div className="mt-1 text-[13.5px] font-medium leading-relaxed text-ink">{value}</div>
+    </div>
   );
 }
 
@@ -371,5 +435,339 @@ function RosterGroup({
         </div>
       )}
     </div>
+  );
+}
+
+type WorkspaceStatus = "ACTIVE" | "PAUSED";
+
+interface WorkspaceForm {
+  name: string;
+  slug: string;
+  description: string;
+  purpose: string;
+  owner: string;
+  defaultPolicy: string;
+  status: WorkspaceStatus;
+}
+
+const EMPTY_WORKSPACE: WorkspaceForm = {
+  name: "",
+  slug: "",
+  description: "",
+  purpose: "",
+  owner: "",
+  defaultPolicy: "Governed research",
+  status: "ACTIVE",
+};
+
+function slugifyWorkspaceName(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function CreateWorkspaceDialog({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: (projectId: Id<"projects">) => void;
+}) {
+  const createWorkspace = useMutation(api.projects.create);
+  const [form, setForm] = useState<WorkspaceForm>(EMPTY_WORKSPACE);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
+
+  const updateField = <K extends keyof WorkspaceForm>(key: K, value: WorkspaceForm[K]) => {
+    setForm((current) => {
+      if (key === "name") {
+        const shouldUpdateSlug =
+          current.slug.length === 0 || current.slug === slugifyWorkspaceName(current.name);
+        return {
+          ...current,
+          name: value as string,
+          slug: shouldUpdateSlug ? slugifyWorkspaceName(value as string) : current.slug,
+        };
+      }
+      return { ...current, [key]: value };
+    });
+    setErrors((current) => ({ ...current, [key]: "", form: "" }));
+  };
+
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    const nextErrors: Record<string, string> = {};
+    if (!form.name.trim()) nextErrors.name = "Workspace name is required.";
+    if (!form.slug.trim()) {
+      nextErrors.slug = "Workspace slug is required.";
+    } else if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(form.slug.trim())) {
+      nextErrors.slug = "Use lowercase letters, numbers, and single hyphens.";
+    }
+    if (!form.purpose.trim()) nextErrors.purpose = "Purpose is required.";
+    if (!form.owner.trim()) nextErrors.owner = "Owner is required.";
+    if (!form.defaultPolicy.trim()) nextErrors.defaultPolicy = "Default policy is required.";
+    if (Object.keys(nextErrors).length > 0) {
+      setErrors(nextErrors);
+      return;
+    }
+
+    setSubmitting(true);
+    setErrors({});
+    try {
+      const result = await createWorkspace({
+        name: form.name.trim(),
+        slug: form.slug.trim(),
+        description: form.description.trim() || undefined,
+        purpose: form.purpose.trim(),
+        owner: form.owner.trim(),
+        defaultPolicy: form.defaultPolicy.trim(),
+        status: form.status,
+      });
+      if (!result.success || !("project" in result) || !result.project) {
+        setErrors({ form: "error" in result ? result.error : "Workspace could not be created." });
+        return;
+      }
+      onCreated(result.project._id);
+      onClose();
+    } catch (error) {
+      setErrors({
+        form: error instanceof Error ? error.message : "Workspace could not be created.",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <form onSubmit={handleSubmit} noValidate>
+          <DialogHeader>
+            <DialogTitle>Create workspace</DialogTitle>
+            <DialogDescription>
+              Define the operating boundary before importing requirements or dispatching agents.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-5 md:grid-cols-2">
+            <WorkspaceField id="workspace-name" label="Name" error={errors.name}>
+              <Input
+                id="workspace-name"
+                value={form.name}
+                onChange={(event) => updateField("name", event.target.value)}
+                aria-invalid={Boolean(errors.name)}
+                aria-describedby={errors.name ? "workspace-name-error" : undefined}
+                autoFocus
+              />
+            </WorkspaceField>
+            <WorkspaceField id="workspace-slug" label="Slug" error={errors.slug}>
+              <Input
+                id="workspace-slug"
+                value={form.slug}
+                onChange={(event) => updateField("slug", event.target.value.toLowerCase())}
+                aria-invalid={Boolean(errors.slug)}
+                aria-describedby={errors.slug ? "workspace-slug-error" : undefined}
+                placeholder="software-factory-research-lab"
+              />
+            </WorkspaceField>
+            <WorkspaceField id="workspace-description" label="Description" className="md:col-span-2">
+              <Textarea
+                id="workspace-description"
+                value={form.description}
+                onChange={(event) => updateField("description", event.target.value)}
+                rows={2}
+              />
+            </WorkspaceField>
+            <WorkspaceField id="workspace-purpose" label="Purpose" error={errors.purpose} className="md:col-span-2">
+              <Textarea
+                id="workspace-purpose"
+                value={form.purpose}
+                onChange={(event) => updateField("purpose", event.target.value)}
+                aria-invalid={Boolean(errors.purpose)}
+                aria-describedby={errors.purpose ? "workspace-purpose-error" : undefined}
+                rows={3}
+              />
+            </WorkspaceField>
+            <WorkspaceField id="workspace-owner" label="Owner" error={errors.owner}>
+              <Input
+                id="workspace-owner"
+                value={form.owner}
+                onChange={(event) => updateField("owner", event.target.value)}
+                aria-invalid={Boolean(errors.owner)}
+                aria-describedby={errors.owner ? "workspace-owner-error" : undefined}
+              />
+            </WorkspaceField>
+            <WorkspaceField id="workspace-policy" label="Default policy" error={errors.defaultPolicy}>
+              <Input
+                id="workspace-policy"
+                value={form.defaultPolicy}
+                onChange={(event) => updateField("defaultPolicy", event.target.value)}
+                aria-invalid={Boolean(errors.defaultPolicy)}
+                aria-describedby={errors.defaultPolicy ? "workspace-policy-error" : undefined}
+              />
+            </WorkspaceField>
+            <WorkspaceField id="workspace-status" label="Status">
+              <select
+                id="workspace-status"
+                value={form.status}
+                onChange={(event) => updateField("status", event.target.value as WorkspaceStatus)}
+                className="h-10 w-full rounded-lg border border-line bg-surface-2 px-3 text-[13.5px] text-ink outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <option value="ACTIVE">Active</option>
+                <option value="PAUSED">Paused</option>
+              </select>
+            </WorkspaceField>
+          </div>
+
+          {errors.form ? (
+            <div role="alert" className="mb-4 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-[13px] text-danger">
+              {errors.form}
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting ? "Creating…" : "Create workspace"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function WorkspaceField({
+  id,
+  label,
+  error,
+  className,
+  children,
+}: {
+  id: string;
+  label: string;
+  error?: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className={cn("space-y-2", className)}>
+      <Label htmlFor={id}>{label}</Label>
+      {children}
+      {error ? (
+        <div id={`${id}-error`} className="text-[12px] text-danger">
+          {error}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ConnectRepositoryDialog({
+  project,
+  onClose,
+}: {
+  project: Doc<"projects">;
+  onClose: () => void;
+}) {
+  const connectRepository = useMutation(api.projects.connectRepository);
+  const [repository, setRepository] = useState(project.githubRepo || "");
+  const [defaultBranch, setDefaultBranch] = useState(project.githubBranch || "main");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    const normalizedRepository = repository.trim();
+    if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(normalizedRepository)) {
+      setError("Use the repository format owner/repository.");
+      return;
+    }
+    if (!defaultBranch.trim()) {
+      setError("Default branch is required.");
+      return;
+    }
+
+    setSubmitting(true);
+    setError("");
+    try {
+      const result = await connectRepository({
+        projectId: project._id,
+        repository: normalizedRepository,
+        defaultBranch: defaultBranch.trim(),
+      });
+      if (!result.success) {
+        setError(result.error || "Repository could not be configured.");
+        return;
+      }
+      onClose();
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Repository could not be configured.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <form onSubmit={handleSubmit} noValidate>
+          <DialogHeader>
+            <DialogTitle>{project.githubRepo ? "Edit repository" : "Connect repository"}</DialogTitle>
+            <DialogDescription>
+              Configure repository context for this workspace. This records the owner, repository, and default branch; it does not create a remote repository.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-5">
+            <WorkspaceField id="repository-name" label="Repository">
+              <Input
+                id="repository-name"
+                value={repository}
+                onChange={(event) => {
+                  setRepository(event.target.value);
+                  setError("");
+                }}
+                aria-invalid={Boolean(error)}
+                aria-describedby={error ? "repository-error" : undefined}
+                placeholder="owner/repository"
+                autoFocus
+              />
+            </WorkspaceField>
+            <WorkspaceField id="repository-branch" label="Default branch">
+              <Input
+                id="repository-branch"
+                value={defaultBranch}
+                onChange={(event) => {
+                  setDefaultBranch(event.target.value);
+                  setError("");
+                }}
+                aria-invalid={Boolean(error)}
+                aria-describedby={error ? "repository-error" : undefined}
+              />
+            </WorkspaceField>
+          </div>
+
+          {error ? (
+            <div id="repository-error" role="alert" className="mb-4 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-[13px] text-danger">
+              {error}
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting ? "Saving…" : "Save repository"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

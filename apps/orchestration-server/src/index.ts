@@ -31,7 +31,18 @@ import * as dotenv from "dotenv";
 import * as fs from "fs";
 import * as path from "path";
 
-dotenv.config();
+const envSearchPaths = [
+  path.resolve(process.cwd(), ".env.local"),
+  path.resolve(process.cwd(), ".env"),
+  path.resolve(process.cwd(), "../../.env.local"),
+  path.resolve(process.cwd(), "../../.env"),
+];
+
+for (const envPath of envSearchPaths) {
+  if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath });
+  }
+}
 
 // ============================================================================
 // CONFIG
@@ -80,16 +91,23 @@ async function runTick(): Promise<any> {
       client.query(ConvexQueries.tasks.listAll as any, {}),
       client.query(ConvexQueries.agents.listAll as any, {}),
     ]);
+    const decomposedParentIds = new Set(
+      (allTasks ?? [])
+        .map((task: any) => task.parentTaskId)
+        .filter((taskId: unknown): taskId is string => typeof taskId === "string")
+    );
 
     // 2. Build coordinator state
     const state = {
-      inboxTasks: (inboxTasks ?? []).map((t: any) => ({
-        id: t._id,
-        title: t.title,
-        description: t.description ?? "",
-        type: t.type,
-        priority: t.priority,
-      })),
+      inboxTasks: (inboxTasks ?? [])
+        .filter((task: any) => !task.parentTaskId && !decomposedParentIds.has(task._id))
+        .map((t: any) => ({
+          id: t._id,
+          title: t.title,
+          description: t.description ?? "",
+          type: t.type,
+          priority: t.priority,
+        })),
       allTasks: (allTasks ?? []).map((t: any) => ({
         id: t._id,
         title: t.title,
@@ -100,6 +118,7 @@ async function runTick(): Promise<any> {
         dependsOn: [],
         assigneeIds: (t.assigneeIds ?? []).map((id: any) => String(id)),
         lastActivityAt: t.startedAt ?? t._creationTime,
+        hasSubtasks: decomposedParentIds.has(t._id),
       })),
       availableAgents: (agents ?? [])
         .filter((a: any) => a.status === "ACTIVE")
@@ -123,24 +142,29 @@ async function runTick(): Promise<any> {
     // 3. Run coordinator tick
     const actions = coordinator.tick(state);
 
-    // 4. Apply decomposition results: create subtasks in Convex
+    // 4. Apply decomposition results transactionally in Convex
+    let decompositionsApplied = 0;
+    let decompositionErrors = 0;
     for (const decomp of actions.tasksToDecompose) {
-      for (let i = 0; i < decomp.subtasks.length; i++) {
-        const sub = decomp.subtasks[i];
-        try {
-          await client.mutation(ConvexMutations.tasks.create as any, {
-            title: sub.title,
-            description: sub.description,
-            type: sub.type,
-            priority: sub.priority,
-            parentTaskId: decomp.parentTaskId,
-            source: "AGENT",
-            createdBy: "SYSTEM",
-            idempotencyKey: `decompose-${decomp.parentTaskId}-${i}-${Date.now()}`,
-          });
-        } catch (err) {
-          console.error(`[orchestration] Failed to create subtask: ${sub.title}`, err);
+      try {
+        const result = await client.mutation(
+          ConvexMutations.coordinator.decomposeTask as any,
+          {
+            taskId: decomp.parentTaskId,
+            maxSubtasks: decomp.subtasks.length,
+          }
+        );
+        if (result?.success) {
+          decompositionsApplied++;
+        } else {
+          decompositionErrors++;
+          console.error(
+            `[orchestration] Failed to decompose task ${decomp.parentTaskId}: ${result?.error ?? "Unknown error"}`
+          );
         }
+      } catch (err) {
+        decompositionErrors++;
+        console.error(`[orchestration] Failed to decompose task ${decomp.parentTaskId}`, err);
       }
     }
 
@@ -181,7 +205,8 @@ async function runTick(): Promise<any> {
 
     lastTickAt = Date.now();
     lastTickResult = {
-      decompositions: actions.tasksToDecompose.length,
+      decompositions: decompositionsApplied,
+      decompositionErrors,
       delegations: actions.delegations.length,
       stuckAlerts: actions.stuckAlerts.length,
       escalations: actions.escalations.length,

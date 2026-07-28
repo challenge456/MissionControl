@@ -27,3 +27,36 @@ test("navigate to Tasks and back to Home", async ({ page }) => {
   await page.goto("/v2/home");
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible({ timeout: 8000 });
 });
+
+test("mobile shell keeps navigation and chat off canvas", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/v2/control-work-orders");
+
+  await expect(page.getByRole("heading", { name: "Work Orders", exact: true })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Primary" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Open navigation" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open chat" })).toBeVisible();
+
+  const firstWorkOrder = page.locator('button[aria-label*="next action"]').first();
+  await expect(firstWorkOrder).toBeVisible();
+  await firstWorkOrder.click();
+  await expect(page.getByRole("button", { name: "Back to work orders" })).toBeVisible();
+  await page.getByRole("button", { name: "Back to work orders" }).click();
+  await expect(firstWorkOrder).toBeVisible();
+
+  await page.getByRole("button", { name: "Open navigation" }).click();
+  await expect(page.getByRole("navigation", { name: "Primary" })).toBeVisible();
+  await page.getByRole("button", { name: /Tasks/ }).click();
+  await expect(page).toHaveURL(/\/v2\/tasks$/);
+  await expect(page.getByRole("navigation", { name: "Primary" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Open chat" }).click();
+  await expect(page.getByRole("complementary", { name: "Chat dock" })).toBeVisible();
+  await page.getByRole("button", { name: "Collapse chat" }).click();
+  await expect(page.getByRole("complementary", { name: "Chat dock" })).toHaveCount(0);
+
+  const horizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth
+  );
+  expect(horizontalOverflow).toBe(false);
+});

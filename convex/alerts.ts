@@ -65,6 +65,22 @@ export const create = mutation({
     metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
+    if (args.taskId) {
+      const existing = (await ctx.db
+        .query("alerts")
+        .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+        .collect())
+        .find(
+          (alert) =>
+            alert.type === args.type &&
+            (alert.status === "OPEN" || alert.status === "ACKNOWLEDGED")
+        );
+
+      if (existing) {
+        return { alert: existing, created: false };
+      }
+    }
+
     const alertId = await ctx.db.insert("alerts", {
       projectId: args.projectId,
       severity: args.severity as any,
@@ -78,7 +94,7 @@ export const create = mutation({
       metadata: args.metadata,
     });
     
-    return { alert: await ctx.db.get(alertId) };
+    return { alert: await ctx.db.get(alertId), created: true };
   },
 });
 

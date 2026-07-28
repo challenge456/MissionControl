@@ -146,7 +146,13 @@ export function ModalLayer({
         <ImportPrdModal
           projectId={projectId}
           onClose={() => close("importPrd")}
-          onCreated={(count) => onToast(`${count} tasks created from PRD`)}
+          onCreated={(count) =>
+            onToast(
+              count > 0
+                ? `${count} tasks created from PRD`
+                : "This PRD was already imported; no duplicate tasks were created"
+            )
+          }
         />
       )}
 

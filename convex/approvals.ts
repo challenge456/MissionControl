@@ -4,6 +4,8 @@
 
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { api } from "./_generated/api";
+import type { Doc } from "./_generated/dataModel";
 import { logTaskEvent } from "./lib/taskEvents";
 import { appendChangeRecord, appendOpEvent } from "./lib/armAudit";
 import { resolveAgentRef } from "./lib/agentResolver";
@@ -578,7 +580,19 @@ export const deny = mutation({
     decidedByUserId: v.optional(v.string()),
     reason: v.string(),
   },
-  handler: async (ctx, args) => {
+  handler: async (
+    ctx,
+    args
+  ): Promise<{
+    success: boolean;
+    error?: string;
+    approval?: Doc<"approvals"> | null;
+    taskTransition?: { success: boolean; errors?: Array<{ message: string }> };
+  }> => {
+    const reason = args.reason.trim();
+    if (!reason) {
+      return { success: false, error: "Rejection requires a reason" };
+    }
     const approval = await ctx.db.get(args.approvalId);
     if (!approval) {
       return { success: false, error: "Approval not found" };
@@ -593,7 +607,7 @@ export const deny = mutation({
       decidedByAgentId: args.decidedByAgentId,
       decidedByUserId: args.decidedByUserId,
       decidedAt: Date.now(),
-      decisionReason: args.reason,
+      decisionReason: reason,
       decisionCount: (approval.decisionCount ?? 0) + 1,
     });
     const approvalRecord = await ctx.db
@@ -604,7 +618,7 @@ export const deny = mutation({
       await ctx.db.patch(approvalRecord._id, {
         status: "DENIED",
         decidedAt: Date.now(),
-        decisionReason: args.reason,
+        decisionReason: reason,
       });
     }
 
@@ -614,7 +628,7 @@ export const deny = mutation({
       actorType: args.decidedByUserId ? "HUMAN" : "AGENT",
       actorId: args.decidedByUserId ?? args.decidedByAgentId?.toString(),
       action: "APPROVAL_DENIED",
-      description: `Approval denied: ${approval.actionSummary} — ${args.reason}`,
+      description: `Approval denied: ${approval.actionSummary} — ${reason}`,
       targetType: "APPROVAL",
       targetId: args.approvalId,
       taskId: approval.taskId,
@@ -630,7 +644,7 @@ export const deny = mutation({
         actorId: args.decidedByUserId ?? args.decidedByAgentId?.toString(),
         relatedId: args.approvalId,
         metadata: {
-          reason: args.reason,
+          reason,
         },
       });
     }
@@ -653,7 +667,7 @@ export const deny = mutation({
       payload: {
         approvalId: args.approvalId,
         decision: "DENIED",
-        reason: args.reason,
+        reason,
       },
       relatedTable: "approvals",
       relatedId: args.approvalId,
@@ -672,7 +686,33 @@ export const deny = mutation({
       },
     });
 
-    return { success: true, approval: await ctx.db.get(args.approvalId) };
+    let taskTransition: { success: boolean; errors?: Array<{ message: string }> } | undefined;
+    if (approval.taskId) {
+      const task = await ctx.db.get(approval.taskId);
+      if (task?.status === "REVIEW") {
+        taskTransition = (await ctx.runMutation(api.tasks.transition, {
+          taskId: approval.taskId,
+          toStatus: "IN_PROGRESS",
+          actorType: args.decidedByUserId ? "HUMAN" : "AGENT",
+          actorAgentId: args.decidedByAgentId,
+          actorUserId: args.decidedByUserId,
+          idempotencyKey: `approval-denied:${args.approvalId}`,
+          reason: `Review rejected: ${reason}`,
+        })) as { success: boolean; errors?: Array<{ message: string }> };
+        if (!taskTransition.success) {
+          throw new Error(
+            taskTransition.errors?.map((error: { message: string }) => error.message).join(", ") ??
+              "Unable to return rejected work to an actionable state"
+          );
+        }
+      }
+    }
+
+    return {
+      success: true,
+      approval: await ctx.db.get(args.approvalId),
+      taskTransition,
+    };
   },
 });
 

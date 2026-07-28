@@ -22,6 +22,7 @@ import {
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
@@ -85,7 +86,10 @@ export function TaskDrawerTabs({
   const [loading, setLoading] = useState(false);
 
   const data = useQuery(api.tasks.getWithTimeline, taskId ? { taskId } : "skip");
-  const agents = useQuery(api.agents.listAll, {});
+  const agents = useQuery(
+    api.agents.listAll,
+    data?.task.projectId ? { projectId: data.task.projectId } : {}
+  );
   const watchSubscriptions = useQuery(
     api.watchSubscriptions.listByUser,
     taskId ? { userId: "operator", entityType: "TASK" } : "skip"
@@ -94,6 +98,7 @@ export function TaskDrawerTabs({
   const transitionTask = useMutation(api.tasks.transition);
   const updateTask = useMutation(api.tasks.update);
   const toggleWatch = useMutation(api.watchSubscriptions.toggle);
+  const requestApproval = useMutation(api.approvals.request);
 
   if (!taskId) return null;
 
@@ -102,6 +107,12 @@ export function TaskDrawerTabs({
   return (
     <Sheet open={!!taskId} onOpenChange={(open) => { if (!open) onClose(); }}>
       <SheetContent side="right" className="w-[600px] max-w-[90vw] p-0 flex flex-col bg-surface-1 border-l border-line">
+        <SheetHeader className="sr-only">
+          <SheetTitle>{data?.task.title ?? "Task details"}</SheetTitle>
+          <SheetDescription>
+            Review task status, evidence, approvals, activity, and available actions.
+          </SheetDescription>
+        </SheetHeader>
         {isLoading ? (
           <div className="p-6 text-sm text-ink-muted">Loading...</div>
         ) : !data ? (
@@ -158,14 +169,17 @@ export function TaskDrawerTabs({
               <div className="px-5 py-4 border-b border-line">
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
-                    <SheetHeader className="space-y-0">
+                    <div className="space-y-0">
                       {task.identifier && (
                         <span className="text-[11px] font-mono text-ink-muted mb-0.5 block">{task.identifier}</span>
                       )}
-                      <SheetTitle className="text-base font-semibold leading-snug">
+                      <h2
+                        aria-hidden="true"
+                        className="text-base font-semibold leading-snug"
+                      >
                         {task.title}
-                      </SheetTitle>
-                    </SheetHeader>
+                      </h2>
+                    </div>
                     <div className="flex gap-2 mt-2 flex-wrap items-center">
                       <StatusBadge tone={taskStatusTone(task.status)}>
                         {formatStatusLabel(task.status)}
@@ -251,6 +265,7 @@ export function TaskDrawerTabs({
                         loading={loading}
                         postMessage={postMessage}
                         updateTask={updateTask}
+                        requestApproval={requestApproval}
                         setLoading={setLoading}
                       />
                     )}
@@ -326,6 +341,7 @@ function OverviewTab({
   loading,
   postMessage,
   updateTask,
+  requestApproval,
   setLoading,
 }: {
   taskId: Id<"tasks">;
@@ -345,9 +361,52 @@ function OverviewTab({
     idempotencyKey: string;
   }) => Promise<unknown>;
   updateTask: (args: { taskId: Id<"tasks">; assigneeIds: Id<"agents">[] }) => Promise<unknown>;
+  requestApproval: (args: {
+    projectId?: Id<"projects">;
+    taskId: Id<"tasks">;
+    requestorAgentId: Id<"agents">;
+    actionType: string;
+    actionSummary: string;
+    riskLevel: string;
+    justification: string;
+    expiresInMinutes?: number;
+    idempotencyKey?: string;
+  }) => Promise<unknown>;
   setLoading: (value: boolean) => void;
 }) {
   const verificationTrace = buildVerificationTrace(task, runs, approvals);
+  const approved = approvals.some((approval) => approval.status === "APPROVED");
+  const pendingApproval = approvals.some((approval) =>
+    ["PENDING", "ESCALATED"].includes(approval.status)
+  );
+
+  const handleRequestApproval = async () => {
+    const requestorAgentId = task.assigneeIds[0];
+    if (!requestorAgentId) {
+      window.alert("Assign an agent before requesting approval.");
+      return;
+    }
+    setLoading(true);
+    try {
+      await requestApproval({
+        projectId: task.projectId,
+        taskId,
+        requestorAgentId,
+        actionType: "TASK_COMPLETION",
+        actionSummary: `Approve completion of ${task.identifier ?? task.title}`,
+        riskLevel: "YELLOW",
+        justification:
+          task.deliverable?.summary ??
+          "Task deliverable is ready for an explicit operator decision.",
+        expiresInMinutes: 120,
+        idempotencyKey: `task-review:${taskId}:${task.reviewCycles}`,
+      });
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Unable to request approval.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -481,9 +540,19 @@ function OverviewTab({
               Assign
             </Button>
           )}
-          {task.status === "REVIEW" && (
+          {task.status === "REVIEW" && approved && (
             <Button size="sm" onClick={() => onTransition("DONE")} disabled={loading}>
-              Mark Done
+              Accept and mark done
+            </Button>
+          )}
+          {task.status === "REVIEW" && !approved && !pendingApproval && (
+            <Button size="sm" onClick={handleRequestApproval} disabled={loading}>
+              Request approval
+            </Button>
+          )}
+          {task.status === "REVIEW" && pendingApproval && (
+            <Button size="sm" variant="outline" disabled>
+              Awaiting approval
             </Button>
           )}
           {task.status === "BLOCKED" && (
@@ -517,16 +586,11 @@ function ReassignDropdown({
     setSelectedIds(currentAssigneeIds);
   }, [currentAssigneeIds]);
 
-  const toggleAgent = (id: Id<"agents">) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((candidate) => candidate !== id) : [...prev, id]
-    );
-  };
-
-  const handleReassign = async () => {
+  const handleReassign = async (nextIds: Id<"agents">[]) => {
+    setSelectedIds(nextIds);
     setLoading(true);
     try {
-      await updateTask({ taskId, assigneeIds: selectedIds });
+      await updateTask({ taskId, assigneeIds: nextIds });
       setOpen(false);
     } catch (error) {
       console.error(error);
@@ -549,28 +613,21 @@ function ReassignDropdown({
           <DropdownMenuCheckboxItem
             key={agent._id}
             checked={selectedIds.includes(agent._id)}
-            onCheckedChange={() => toggleAgent(agent._id)}
-            onSelect={(event) => event.preventDefault()}
+            onCheckedChange={() => {
+              const nextIds = selectedIds.includes(agent._id)
+                ? selectedIds.filter((candidate) => candidate !== agent._id)
+                : [...selectedIds, agent._id];
+              void handleReassign(nextIds);
+            }}
           >
             <span>{agent.name}</span>
           </DropdownMenuCheckboxItem>
         ))}
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          onSelect={(event) => {
-            event.preventDefault();
-            setSelectedIds([]);
-          }}
+          onSelect={() => void handleReassign([])}
         >
           Clear assignees
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={(event) => {
-            event.preventDefault();
-            void handleReassign();
-          }}
-        >
-          Apply
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -909,6 +966,11 @@ function ApprovalsTab({
   approvals: Doc<"approvals">[];
   agentMap: Map<Id<"agents">, Doc<"agents">>;
 }) {
+  const approve = useMutation(api.approvals.approve);
+  const deny = useMutation(api.approvals.deny);
+  const [decisionReasons, setDecisionReasons] = useState<Record<string, string>>({});
+  const [busyApprovalId, setBusyApprovalId] = useState<string | null>(null);
+
   if (approvals.length === 0) {
     return <p className="text-sm text-ink-muted">No approvals for this task</p>;
   }
@@ -932,6 +994,67 @@ function ApprovalsTab({
             {a.decisionReason && (
               <div className="text-xs text-ink-secondary pt-2 border-t border-line">
                 <strong>Decision:</strong> {a.decisionReason}
+              </div>
+            )}
+            {["PENDING", "ESCALATED"].includes(a.status) && (
+              <div className="mt-3 space-y-2 border-t border-line pt-3">
+                <input
+                  value={decisionReasons[a._id] ?? ""}
+                  onChange={(event) =>
+                    setDecisionReasons((current) => ({
+                      ...current,
+                      [a._id]: event.target.value,
+                    }))
+                  }
+                  placeholder="Decision reason (required)"
+                  aria-label={`Decision reason for ${a.actionSummary}`}
+                  className="h-9 w-full rounded-md border border-line bg-surface-1 px-3 text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    disabled={
+                      busyApprovalId === a._id || !(decisionReasons[a._id] ?? "").trim()
+                    }
+                    onClick={async () => {
+                      setBusyApprovalId(a._id);
+                      try {
+                        const result = await approve({
+                          approvalId: a._id,
+                          decidedByUserId: "operator",
+                          reason: decisionReasons[a._id].trim(),
+                        });
+                        if (!result.success) window.alert(result.error ?? "Approval failed.");
+                      } finally {
+                        setBusyApprovalId(null);
+                      }
+                    }}
+                  >
+                    Approve
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={
+                      busyApprovalId === a._id || !(decisionReasons[a._id] ?? "").trim()
+                    }
+                    onClick={async () => {
+                      setBusyApprovalId(a._id);
+                      try {
+                        const result = await deny({
+                          approvalId: a._id,
+                          decidedByUserId: "operator",
+                          reason: decisionReasons[a._id].trim(),
+                        });
+                        if (!result.success) window.alert(result.error ?? "Rejection failed.");
+                      } finally {
+                        setBusyApprovalId(null);
+                      }
+                    }}
+                  >
+                    Reject
+                  </Button>
+                </div>
               </div>
             )}
           </div>
@@ -1316,6 +1439,7 @@ const SOURCE_CONFIG: Record<string, { label: string }> = {
   TRELLO: { label: "Trello" },
   SEED: { label: "Seed Data" },
   MISSION_PROMPT: { label: "Mission" },
+  PRD_IMPORT: { label: "Imported PRD" },
   UNKNOWN: { label: "Unknown" },
 };
 

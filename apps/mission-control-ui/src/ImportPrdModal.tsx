@@ -105,6 +105,12 @@ export function ImportPrdModal({
         priority: t.priority,
         dependencyIndices: t.dependencyIndices,
       }));
+      if (rows.length === 0) {
+        setError(
+          "No actionable requirements were found. Use FR-1 style requirements, numbered sections, or Markdown headings."
+        );
+        return;
+      }
       setTasks(rows);
       setStep("preview");
     } catch (err) {
@@ -132,17 +138,20 @@ export function ImportPrdModal({
     setCreateLoading(true);
     setError(null);
     try {
-      const title = content.slice(0, 80).replace(/\n/g, " ").trim() || "Imported PRD";
-      const docId = await storePrdDocument({
+      const productName =
+        content.match(/(?:^|\n)\s*(?:\d+\.\s+)?Product Name\s*\n+\s*([^\n]+)/i)?.[1]?.trim();
+      const title =
+        productName || content.match(/^#\s+(.+)$/m)?.[1]?.trim() || "Imported PRD";
+      const storedDocument = await storePrdDocument({
         projectId: projectId ?? undefined,
         title,
         content,
         taskCount: tasks.length,
         createdBy: "HUMAN",
       });
-      await bulkCreateFromPrd({
+      const result = await bulkCreateFromPrd({
         projectId: projectId ?? undefined,
-        prdDocumentId: docId,
+        prdDocumentId: storedDocument.prdDocumentId,
         tasks: tasks.map((t) => ({
           title: t.title,
           description: t.description,
@@ -152,7 +161,7 @@ export function ImportPrdModal({
         })),
         createdBy: "HUMAN",
       });
-      onCreated?.(tasks.length);
+      onCreated?.(result.createdCount);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create tasks");

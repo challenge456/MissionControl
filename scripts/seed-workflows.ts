@@ -1,8 +1,7 @@
 /**
  * Seed Built-in Workflows
  * 
- * Loads the 3 built-in workflows (feature-dev, bug-fix, security-audit)
- * from YAML files and inserts them into the Convex database.
+ * Loads supported workflow definitions from YAML and inserts them into Convex.
  * 
  * Usage:
  *   npx tsx scripts/seed-workflows.ts
@@ -10,10 +9,15 @@
 
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
-import { loadAllWorkflows } from "../packages/workflow-engine/src/loader";
+import * as workflowLoader from "../packages/workflow-engine/src/loader.ts";
 import * as path from "path";
+import { fileURLToPath } from "url";
 
 const CONVEX_URL = process.env.CONVEX_URL || process.env.VITE_CONVEX_URL;
+const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
+const loadAllWorkflows =
+  workflowLoader.loadAllWorkflows ??
+  (workflowLoader as unknown as { default?: typeof workflowLoader }).default?.loadAllWorkflows;
 
 if (!CONVEX_URL) {
   console.error("Error: CONVEX_URL or VITE_CONVEX_URL environment variable not set");
@@ -21,12 +25,15 @@ if (!CONVEX_URL) {
 }
 
 async function main() {
+  if (!loadAllWorkflows) {
+    throw new Error("Workflow loader is unavailable.");
+  }
   console.log("🔄 Seeding workflows into Convex...\n");
   
   const client = new ConvexHttpClient(CONVEX_URL);
   
   // Load all workflows from workflows/ directory
-  const workflowsDir = path.join(__dirname, "..", "workflows");
+  const workflowsDir = path.join(scriptDirectory, "..", "workflows");
   const workflows = loadAllWorkflows(workflowsDir);
   
   console.log(`Found ${workflows.size} workflow(s):\n`);
@@ -37,13 +44,16 @@ async function main() {
     console.log(`    ${workflow.agents.length} agents, ${workflow.steps.length} steps\n`);
   }
   
-  // Upsert each workflow
+  let failureCount = 0;
   for (const [id, workflow] of workflows) {
     try {
       await client.mutation(api.workflows.upsert, {
         workflowId: workflow.id,
         name: workflow.name,
         description: workflow.description,
+        topology: workflow.topology,
+        maxConcurrency: workflow.maxConcurrency,
+        convergence: workflow.convergence,
         agents: workflow.agents,
         steps: workflow.steps,
         active: true,
@@ -52,10 +62,15 @@ async function main() {
       
       console.log(`✅ Seeded: ${workflow.name}`);
     } catch (error) {
+      failureCount += 1;
       console.error(`❌ Failed to seed ${workflow.name}:`, error);
     }
   }
-  
+
+  if (failureCount > 0) {
+    throw new Error(`Failed to seed ${failureCount} of ${workflows.size} workflows.`);
+  }
+
   console.log("\n✨ Workflow seeding complete!");
 }
 

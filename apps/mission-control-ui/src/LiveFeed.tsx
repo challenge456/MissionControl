@@ -8,16 +8,24 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { CheckCircle2, X } from "lucide-react";
 
-type FeedFilter = "all" | "tasks" | "comments" | "decisions" | "docs" | "status";
+type FeedFilter = "all" | "tasks" | "comments" | "decisions" | "agents" | "status";
 const FEED_PAGE_SIZE = 10;
 
 interface LiveFeedProps {
   projectId: Id<"projects"> | null;
   expanded: boolean;
   onToggle: () => void;
+  onTaskSelect?: (taskId: Id<"tasks">) => void;
+  onExecutionSelect?: () => void;
 }
 
-export function LiveFeed({ projectId, expanded, onToggle }: LiveFeedProps) {
+export function LiveFeed({
+  projectId,
+  expanded,
+  onToggle,
+  onTaskSelect,
+  onExecutionSelect,
+}: LiveFeedProps) {
   const [filter, setFilter] = useState<FeedFilter>("all");
   const [visibleCount, setVisibleCount] = useState(FEED_PAGE_SIZE);
   const activities = useQuery(api.activities.listRecent, projectId ? { projectId, limit: 80 } : { limit: 80 });
@@ -61,37 +69,49 @@ export function LiveFeed({ projectId, expanded, onToggle }: LiveFeedProps) {
     );
   }
 
-  const taskActions = new Set(["TASK_CREATED", "TASK_TRANSITION", "AGENT_REGISTERED"]);
+  const taskActions = new Set(["TASK_CREATED", "TASK_TRANSITION", "TASK_UPDATED"]);
   const statusActions = new Set(["TASK_TRANSITION", "AGENT_PAUSED", "AGENT_STATUS_CHANGED"]);
   const decisionActions = new Set(["APPROVAL_REQUESTED", "APPROVAL_APPROVED", "APPROVAL_DENIED"]);
+  const isAgentExecutionAction = (action: string) =>
+    action.startsWith("WORKFLOW_") ||
+    action.startsWith("WORK_ORDER_DISPATCH") ||
+    action.startsWith("AGENT_EXECUTION") ||
+    action === "RUN_STARTED" ||
+    action === "RUN_COMPLETED" ||
+    action === "RUN_FAILED";
 
-  const countAll = activities.length + messages.length;
-  const countTasks = activities.filter((a) => taskActions.has(a.action)).length;
-  const countComments = messages.length;
-  const countDecisions = activities.filter((a) => decisionActions.has(a.action)).length;
-  const countStatus = activities.filter((a) => statusActions.has(a.action)).length;
+  const canonicalActivities = activities.filter((activity) => activity.action !== "MESSAGE_POSTED");
+  const commentMessages = messages.filter((message) => message.type === "COMMENT");
+  const countAll = canonicalActivities.length + commentMessages.length;
+  const countTasks = canonicalActivities.filter((a) => taskActions.has(a.action)).length;
+  const countComments = commentMessages.length;
+  const countDecisions = canonicalActivities.filter((a) => decisionActions.has(a.action)).length;
+  const countAgents = canonicalActivities.filter((a) => isAgentExecutionAction(a.action)).length;
+  const countStatus = canonicalActivities.filter((a) => statusActions.has(a.action)).length;
 
   const filters: { key: FeedFilter; label: string; count: number }[] = [
     { key: "all", label: "All", count: countAll },
     { key: "tasks", label: "Tasks", count: countTasks },
     { key: "comments", label: "Comments", count: countComments },
     { key: "decisions", label: "Decisions", count: countDecisions },
-    { key: "docs", label: "Docs", count: 0 },
+    { key: "agents", label: "Executions", count: countAgents },
     { key: "status", label: "Status", count: countStatus },
   ];
 
   const feedItems: Array<{
     type: "activity" | "message";
+    id: string;
     ts: number;
     author: string;
     text: string;
     taskId?: Id<"tasks">;
     taskTitle?: string;
     action?: string;
+    targetType?: string;
     isCompleted?: boolean;
   }> = [];
 
-  for (const a of activities) {
+  for (const a of canonicalActivities) {
     const taskTitle = a.taskId ? taskMap.get(a.taskId)?.title : undefined;
     const author =
       a.actorType === "HUMAN"
@@ -103,7 +123,8 @@ export function LiveFeed({ projectId, expanded, onToggle }: LiveFeedProps) {
       filter === "all" ||
       (filter === "tasks" && taskActions.has(a.action)) ||
       (filter === "status" && statusActions.has(a.action)) ||
-      (filter === "decisions" && decisionActions.has(a.action));
+      (filter === "decisions" && decisionActions.has(a.action)) ||
+      (filter === "agents" && isAgentExecutionAction(a.action));
     if (passes) {
       const desc = (a.description || "").toLowerCase();
       const isCompleted =
@@ -111,17 +132,19 @@ export function LiveFeed({ projectId, expanded, onToggle }: LiveFeedProps) {
         (desc.includes("done") || (a as { afterState?: { toStatus?: string } }).afterState?.toStatus === "DONE");
       feedItems.push({
         type: "activity",
+        id: a._id,
         ts: (a as { _creationTime: number })._creationTime,
         author,
         text: isCompleted && taskTitle ? `Completed: ${taskTitle}` : a.description,
         taskId: a.taskId,
         taskTitle,
         action: a.action,
+        targetType: a.targetType,
         isCompleted,
       });
     }
   }
-  for (const m of messages) {
+  for (const m of commentMessages) {
     const taskTitle = taskMap.get(m.taskId)?.title;
     const author =
       m.authorUserId ?? (m.authorAgentId ? agentMap.get(m.authorAgentId)?.name : null) ?? "Unknown";
@@ -129,6 +152,7 @@ export function LiveFeed({ projectId, expanded, onToggle }: LiveFeedProps) {
     if (passes) {
       feedItems.push({
         type: "message",
+        id: m._id,
         ts: (m as { _creationTime: number })._creationTime,
         author,
         text: m.type === "COMMENT" ? m.content : `[${m.type}] ${m.content.slice(0, 80)}${m.content.length > 80 ? "..." : ""}`,
@@ -193,8 +217,28 @@ export function LiveFeed({ projectId, expanded, onToggle }: LiveFeedProps) {
           {displayed.length === 0 ? (
             <div className="py-4 text-muted-foreground text-sm text-center">No activity yet</div>
           ) : (
-            displayed.map((item, i) => (
-              <div key={i} className="py-2 border-b border-border last:border-0">
+            displayed.map((item) => {
+              const hasExecutionTarget =
+                item.targetType === "WORK_ORDER" || item.targetType === "WORKFLOW_RUN";
+              return (
+                <button
+                  key={`${item.type}:${item.id}`}
+                  type="button"
+                  disabled={
+                    (!item.taskId || !onTaskSelect) &&
+                    (!hasExecutionTarget || !onExecutionSelect)
+                  }
+                  onClick={() => {
+                    if (item.taskId) {
+                      onTaskSelect?.(item.taskId);
+                      return;
+                    }
+                    if (hasExecutionTarget) {
+                      onExecutionSelect?.();
+                    }
+                  }}
+                  className="block w-full border-0 border-b border-border bg-transparent py-2 text-left last:border-0 enabled:cursor-pointer enabled:hover:bg-muted/40 disabled:cursor-default"
+                >
                 <div className="flex items-start gap-1.5 text-xs text-foreground">
                   {item.isCompleted && (
                     <CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5 text-emerald-500" aria-hidden />
@@ -209,8 +253,9 @@ export function LiveFeed({ projectId, expanded, onToggle }: LiveFeedProps) {
                 </div>
                 <div className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{item.text}</div>
                 <div className="text-[11px] text-muted-foreground/60 mt-1">{formatTime(item.ts)}</div>
-              </div>
-            ))
+                </button>
+              );
+            })
           )}
         </div>
       </ScrollArea>

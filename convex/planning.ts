@@ -9,6 +9,8 @@ import { v } from "convex/values";
 import { mutation, query, action } from "./_generated/server";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { resolveAgentRef } from "./lib/agentResolver";
+import { preferInstanceRefs } from "./lib/armCompat";
 
 // ============================================================================
 // QUERIES
@@ -50,9 +52,6 @@ export const submitPlan = mutation({
     if (task.status !== "INBOX") {
       throw new Error("Only INBOX tasks can be planned and assigned");
     }
-
-    const { resolveAgentRef } = await import("./lib/agentResolver");
-    const { preferInstanceRefs } = await import("./lib/armCompat");
 
     let resolvedIds: Id<"agents">[];
     if (args.assigneeIds && args.assigneeIds.length > 0) {

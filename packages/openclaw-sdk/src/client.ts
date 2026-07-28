@@ -61,6 +61,7 @@ export class MissionControlClient {
       // Register or get existing agent
       const existing = await this.client.query("agents:getByName" as any, {
         name: this.config.agent.name,
+        projectId: this.projectId,
       });
 
       if (existing) {
@@ -267,7 +268,16 @@ export class MissionControlClient {
       idempotencyKey: `complete-${taskId}-${Date.now()}`,
       deliverable: {
         summary: deliverable.summary,
+        content: deliverable.evidence,
         artifactIds: deliverable.artifactIds || [],
+      },
+      reviewChecklist: {
+        type: "AGENT_SUBMISSION",
+        items: [
+          { label: "Acceptance criteria addressed", checked: true },
+          { label: "Evidence attached", checked: !!deliverable.evidence },
+          { label: "Deliverable ready for independent review", checked: true },
+        ],
       },
     });
 

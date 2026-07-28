@@ -7,11 +7,14 @@ import { ContentPipelineView } from "../ContentPipelineView";
 interface ContentSectionProps {
   currentView: MainView;
   projectId: Id<"projects"> | null;
+  onProjectSelect: (projectId: Id<"projects">) => void;
 }
 
-export function ContentSection({ currentView, projectId }: ContentSectionProps) {
+export function ContentSection({ currentView, projectId, onProjectSelect }: ContentSectionProps) {
   if (currentView === "content-pipeline") return <ContentPipelineView projectId={projectId} />;
   if (currentView === "captures") return <CapturesView projectId={projectId} />;
-  if (currentView === "projects") return <ProjectsView projectId={projectId} />;
+  if (currentView === "projects") {
+    return <ProjectsView projectId={projectId} onProjectSelect={onProjectSelect} />;
+  }
   return null;
 }

@@ -37,5 +37,25 @@ export {
   loadAllWorkflows,
   validateWorkflow,
   type WorkflowDefinition,
+  type WorkflowStepDefinition,
   type WorkflowValidationError,
 } from "./loader";
+
+export {
+  compileWorkflowGraph,
+  evaluateWorkflowCondition,
+  getRunnableNodeIndexes,
+  graphMetrics,
+  validateGraphDefinition,
+  validateStructuredOutput,
+  type CompiledWorkflowGraph,
+  type GraphStepDefinition,
+  type GraphStepState,
+  type GraphValidationError,
+  type JsonContract,
+  type WorkflowCondition,
+  type WorkflowFailurePolicy,
+  type WorkflowNodeKind,
+  type WorkflowNodeStatus,
+  type WorkflowTopology,
+} from "./graph";

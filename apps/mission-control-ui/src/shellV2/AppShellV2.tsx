@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { BellRing, Menu, MessageSquare } from "lucide-react";
 import type { MainView } from "../TopNav";
@@ -17,6 +17,7 @@ import { cn } from "../lib/utils";
 import type { Id } from "../../../../convex/_generated/dataModel";
 
 const ROUTE_PREFIX = "/v2";
+const COMPACT_SHELL_QUERY = "(max-width: 899px)";
 
 function viewFromPath(pathname: string, validViews: string[]): MainView | null {
   if (!pathname.startsWith(`${ROUTE_PREFIX}/`)) return null;
@@ -55,6 +56,11 @@ export function AppShellV2({
   const navigate = useNavigate();
   const location = useLocation();
   const syncingFromUrl = useRef(false);
+  const [compactShell, setCompactShell] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia(COMPACT_SHELL_QUERY).matches
+  );
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [mobileDockOpen, setMobileDockOpen] = useState(false);
 
   const columns = useResizableColumns();
   const { statusLabel } = useHarnessAnimation(projectId ?? undefined);
@@ -63,7 +69,7 @@ export function AppShellV2({
   const showControlStubs = useFlag("ui.control.stubs");
   const baseNavGroups = eosPreview ? EOS_NAV_GROUPS : NAV_GROUPS;
   const filteredGroups = filterNavGroups(baseNavGroups, { showControlStubs });
-  const navGroups = useNavGroupsWithCounts(filteredGroups);
+  const navGroups = useNavGroupsWithCounts(filteredGroups, projectId);
   const validViews = [
     ...new Set([
       ...baseNavGroups.flatMap((g) => g.items.map((i) => i.view as string)),
@@ -105,6 +111,26 @@ export function AppShellV2({
     return () => document.body.classList.remove("shell-resizing");
   }, [columns.resizing]);
 
+  useEffect(() => {
+    const media = window.matchMedia(COMPACT_SHELL_QUERY);
+    const sync = (event: MediaQueryListEvent | MediaQueryList) => {
+      setCompactShell(event.matches);
+      if (!event.matches) {
+        setMobileNavOpen(false);
+        setMobileDockOpen(false);
+      }
+    };
+
+    sync(media);
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
+
+  const navigateFromSidebar = (view: MainView) => {
+    onNavigate(view);
+    setMobileNavOpen(false);
+  };
+
   const archStatus = statusLabel ? (
     <>
       <span className="schematic-live-dot" aria-hidden />
@@ -114,7 +140,33 @@ export function AppShellV2({
 
   return (
     <div className="shell-v2 flex h-screen overflow-hidden">
-      {!columns.navHidden ? (
+      {compactShell ? (
+        mobileNavOpen ? (
+          <div className="fixed inset-0 z-50">
+            <button
+              type="button"
+              aria-label="Close navigation"
+              className="absolute inset-0 bg-black/65"
+              onClick={() => setMobileNavOpen(false)}
+            />
+            <div className="relative z-10 h-full w-[min(86vw,320px)] shadow-2xl">
+              <Sidebar
+                width={Math.min(columns.navWidth, 320)}
+                groups={navGroups}
+                activeView={activeView}
+                onNavigate={navigateFromSidebar}
+                onOpenSearch={() => {
+                  setMobileNavOpen(false);
+                  onOpenSearch();
+                }}
+                workspaceSwitcher={workspaceSwitcher}
+                footer={footer}
+                onHide={() => setMobileNavOpen(false)}
+              />
+            </div>
+          </div>
+        ) : null
+      ) : !columns.navHidden ? (
         <>
           <Sidebar
             width={columns.navWidth}
@@ -145,10 +197,36 @@ export function AppShellV2({
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-12 shrink-0 items-center justify-between border-b border-line bg-app px-5">
-          <Breadcrumbs items={crumbs} />
-          <div className="flex items-center gap-2">
+        <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-line bg-app px-3 sm:px-5">
+          <div className="flex min-w-0 items-center gap-2">
+            {compactShell ? (
+              <button
+                type="button"
+                onClick={() => setMobileNavOpen(true)}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-line bg-surface-1 text-ink-secondary hover:text-ink"
+                aria-label="Open navigation"
+                aria-expanded={mobileNavOpen}
+              >
+                <Menu size={16} aria-hidden />
+              </button>
+            ) : null}
+            <div className="min-w-0 overflow-hidden">
+              <Breadcrumbs items={crumbs} />
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
             {headerActions}
+            {compactShell ? (
+              <button
+                type="button"
+                onClick={() => setMobileDockOpen(true)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-line bg-surface-1 text-ink-secondary hover:text-ink"
+                aria-label="Open chat"
+                aria-expanded={mobileDockOpen}
+              >
+                <MessageSquare size={14} aria-hidden />
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={onOpenApprovals}
@@ -158,11 +236,18 @@ export function AppShellV2({
                   ? "border-line-strong bg-warn-soft text-warn"
                   : "border-line text-ink-muted hover:text-ink-secondary"
               )}
+              aria-label={
+                pendingApprovals > 0
+                  ? `${pendingApprovals} pending approval${pendingApprovals === 1 ? "" : "s"}`
+                  : "Open approvals"
+              }
             >
               <BellRing size={13} aria-hidden />
-              {pendingApprovals > 0
-                ? `${pendingApprovals} approval${pendingApprovals === 1 ? "" : "s"}`
-                : "Approvals"}
+              {compactShell
+                ? pendingApprovals || null
+                : pendingApprovals > 0
+                  ? `${pendingApprovals} approval${pendingApprovals === 1 ? "" : "s"}`
+                  : "Approvals"}
             </button>
           </div>
         </header>
@@ -170,7 +255,7 @@ export function AppShellV2({
           <div className="shell-main factory-page min-h-0 min-w-0 flex-1 overflow-y-auto">
             {children}
           </div>
-          {!columns.dockClosed ? (
+          {!compactShell && !columns.dockClosed ? (
             <>
               <ResizerHandle
                 onResize={columns.onDockResize}
@@ -186,7 +271,7 @@ export function AppShellV2({
                 onNavigate={onNavigate}
               />
             </>
-          ) : (
+          ) : !compactShell ? (
             <button
               type="button"
               onClick={() => columns.setDockClosed(false)}
@@ -196,9 +281,32 @@ export function AppShellV2({
               <MessageSquare size={14} aria-hidden />
               Chat
             </button>
-          )}
+          ) : null}
         </main>
       </div>
+
+      {compactShell && mobileDockOpen ? (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <button
+            type="button"
+            aria-label="Close chat"
+            className="absolute inset-0 bg-black/65"
+            onClick={() => setMobileDockOpen(false)}
+          />
+          <div className="relative z-10 h-full w-full max-w-[440px] shadow-2xl">
+            <ChatDock
+              width="100%"
+              onClose={() => setMobileDockOpen(false)}
+              projectId={projectId}
+              archStatus={archStatus}
+              onNavigate={(view) => {
+                setMobileDockOpen(false);
+                onNavigate(view);
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

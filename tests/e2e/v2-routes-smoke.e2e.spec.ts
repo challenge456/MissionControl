@@ -67,7 +67,7 @@ const ROUTES: Array<{ route: string; heading: string; text?: string | RegExp }> 
   { route: "feedback", heading: "Feedback" },
   { route: "command-center", heading: "Command Center", text: "Active mission" },
   { route: "harness-health", heading: "Factory Health" },
-  { route: "harness-loops", heading: "Harness Loops" },
+  { route: "harness-loops", heading: "Loop Engineering" },
   { route: "harness-control-plane", heading: "Control Plane" },
   { route: "harness-work-ledger", heading: "Work Ledger" },
   { route: "harness-verifiers", heading: "Verifiers" },

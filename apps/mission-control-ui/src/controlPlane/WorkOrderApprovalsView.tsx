@@ -63,7 +63,7 @@ export function WorkOrderApprovalsView({ projectId }: { projectId: Id<"projects"
         <div className="mt-4 max-w-[220px] space-y-1.5">
           <Label className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Status</Label>
           <Select value={status} onValueChange={(value) => setStatus(value as (typeof STATUS_OPTIONS)[number])}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectTrigger aria-label="Approval status filter"><SelectValue /></SelectTrigger>
             <SelectContent>
               {STATUS_OPTIONS.map((option) => <SelectItem key={option} value={option}>{option}</SelectItem>)}
             </SelectContent>

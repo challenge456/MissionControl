@@ -5,20 +5,32 @@ import type { Id } from "../../../../convex/_generated/dataModel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { orderTimelineEvents, latestHumanAttention, filterEvidenceArtifacts } from "./runInspectorModel";
+import { RunRecoveryPanel } from "./RunRecoveryPanel";
+import { EvidenceLineagePanel, type EvidenceLineageStage } from "./EvidenceLineagePanel";
 
 export function ExecutionRunInspector({
   open,
   workflowRunId,
   verificationReceiptId,
   acceptanceCriterionId,
+  retrying = false,
+  onRetryFailedRun,
   onClose,
 }: {
   open: boolean;
   workflowRunId: Id<"workflowRuns"> | null;
   verificationReceiptId?: Id<"verificationReceipts"> | null;
   acceptanceCriterionId?: string | null;
+  retrying?: boolean;
+  onRetryFailedRun?: (input: {
+    workflowRunId: Id<"workflowRuns">;
+    reason: string;
+    runtime?: string;
+    model?: string;
+    worktree?: string;
+  }) => Promise<void>;
   onClose: () => void;
 }) {
   const inspector = useQuery(
@@ -38,12 +50,18 @@ export function ExecutionRunInspector({
     () => filterEvidenceArtifacts((inspector?.artifacts ?? []) as any, { verificationReceiptId: verificationReceiptId ?? undefined, acceptanceCriterionId: acceptanceCriterionId ?? undefined }),
     [inspector?.artifacts, verificationReceiptId, acceptanceCriterionId]
   );
+  const navigateToRecords = (target: EvidenceLineageStage["target"]) => {
+    document.getElementById(`run-${target}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent className="max-h-[90vh] max-w-[1100px] overflow-hidden p-0">
         <DialogHeader className="border-b border-[var(--panel-line)] px-6 py-4">
           <DialogTitle>Execution Run Inspector</DialogTitle>
+          <DialogDescription className="sr-only">
+            Inspect execution state, continuous evidence lineage, artifacts, verification, and recovery history.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="max-h-[80vh] overflow-y-auto p-6">
@@ -76,9 +94,111 @@ export function ExecutionRunInspector({
                 </div>
               </Card>
 
+              {inspector.run.status === "FAILED" ? (
+                <RunRecoveryPanel
+                  runId={inspector.run.runId}
+                  failureSummary={inspector.summary.failureSummary}
+                  busy={retrying}
+                  onRetry={onRetryFailedRun
+                    ? (reason) => onRetryFailedRun({
+                        workflowRunId: inspector.run._id,
+                        reason,
+                        runtime: inspector.run.runtime,
+                        model: inspector.run.model,
+                        worktree: inspector.run.worktree,
+                      })
+                    : undefined}
+                />
+              ) : null}
+
+              <EvidenceLineagePanel
+                stages={(inspector.continuousEvidenceLineage ?? []) as EvidenceLineageStage[]}
+                onNavigate={navigateToRecords}
+              />
+
+              <Card className="p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-medium text-foreground">Operational observability</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      Fixed, non-sensitive workflow and usage totals linked by a typed run reference.
+                    </div>
+                  </div>
+                  <Badge variant="outline">
+                    {inspector.observability.usageComplete ? "Complete rollup" : "Bounded partial rollup"}
+                  </Badge>
+                </div>
+                <div className="mt-4 grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
+                  <Meta label="Correlation ID" value={inspector.observability.correlationId} />
+                  <Meta label="Status" value={inspector.observability.status} />
+                  <Meta label="Attempts / retries" value={`${inspector.observability.attempts} / ${inspector.observability.retries}`} />
+                  <Meta label="Duration" value={`${Math.max(0, Math.round(inspector.observability.durationMs / 1000))}s`} />
+                  <Meta label="Input tokens" value={inspector.observability.inputTokens.toLocaleString()} />
+                  <Meta label="Output tokens" value={inspector.observability.outputTokens.toLocaleString()} />
+                  <Meta label="Cost" value={`$${inspector.observability.costUsd.toFixed(4)}`} />
+                </div>
+              </Card>
+
+              <Card className="p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-medium text-foreground">Graph execution plan</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      Dependencies, isolation, and node state from the durable run record.
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="outline">{inspector.run.topology ?? "LINEAR"}</Badge>
+                    <Badge variant="outline">
+                      Max concurrency {inspector.run.maxConcurrency ?? 1}
+                    </Badge>
+                    <Badge variant="outline">
+                      {(inspector.run.steps ?? []).filter((step: any) =>
+                        ["DONE", "SKIPPED"].includes(step.status)
+                      ).length}
+                      /{inspector.run.steps?.length ?? 0} complete
+                    </Badge>
+                  </div>
+                </div>
+                <ol className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {(inspector.run.steps ?? []).map((step: any, index: number) => (
+                    <li
+                      key={step.stepId}
+                      className="rounded-lg border border-[var(--panel-line)] bg-background/30 p-3"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                            Node {index + 1}
+                          </div>
+                          <div className="mt-1 font-mono text-sm text-foreground">
+                            {step.stepId}
+                          </div>
+                        </div>
+                        <Badge variant="outline">{step.status}</Badge>
+                      </div>
+                      <dl className="mt-3 space-y-1.5 text-xs">
+                        <GraphMeta label="Kind" value={step.kind ?? "AGENT"} />
+                        <GraphMeta
+                          label="Depends on"
+                          value={step.dependsOn?.length ? step.dependsOn.join(", ") : "Ready at start"}
+                        />
+                        <GraphMeta label="Isolation" value={step.isolation ?? "SHARED"} />
+                        <GraphMeta label="Failure" value={step.failurePolicy ?? "RETRY"} />
+                      </dl>
+                      {step.error ? (
+                        <div className="mt-3 rounded border border-red-500/20 bg-red-500/5 p-2 text-xs text-red-200">
+                          {step.error}
+                        </div>
+                      ) : null}
+                    </li>
+                  ))}
+                </ol>
+              </Card>
+
               <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
                 <div className="space-y-6">
-                  <Card className="p-4">
+                  <Card id="run-timeline" className="scroll-mt-4 p-4">
                     <div className="mb-3 text-sm font-medium text-foreground">Timeline</div>
                     <div className="space-y-3">
                       {orderedEvents.length === 0 ? <p className="text-sm text-muted-foreground">No structured run events recorded yet.</p> : orderedEvents.map((event: any) => {
@@ -115,7 +235,7 @@ export function ExecutionRunInspector({
                     </div>
                   </Card>
 
-                  <Card className="p-4">
+                  <Card id="run-files" className="scroll-mt-4 p-4">
                     <div className="mb-3 text-sm font-medium text-foreground">Files changed</div>
                     <div className="space-y-2">
                       {(inspector.fileChanges ?? []).length === 0 ? <p className="text-sm text-muted-foreground">No structured file changes recorded.</p> : inspector.fileChanges.map((change: any) => (
@@ -136,7 +256,7 @@ export function ExecutionRunInspector({
                 </div>
 
                 <div className="space-y-6">
-                  <Card className="p-4">
+                  <Card id="run-artifacts" className="scroll-mt-4 p-4">
                     <div className="mb-3 text-sm font-medium text-foreground">Artifacts</div>
                     <div className="space-y-2">
                       {(inspector.artifacts ?? []).length === 0 ? <p className="text-sm text-muted-foreground">No artifacts recorded yet.</p> : inspector.artifacts.map((artifact: any) => {
@@ -178,7 +298,7 @@ export function ExecutionRunInspector({
                     </div>
                   </Card>
 
-                  <Card className="p-4">
+                  <Card id="run-receipts" className="scroll-mt-4 p-4">
                     <div className="mb-3 text-sm font-medium text-foreground">Evidence drill-down</div>
                     {(verificationReceiptId || acceptanceCriterionId) ? (
                       <div className="space-y-2 text-sm text-muted-foreground">
@@ -206,6 +326,15 @@ function Meta({ label, value }: { label: string; value?: string | null }) {
     <div>
       <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{label}</div>
       <div className="mt-1 text-sm text-foreground">{value ?? "—"}</div>
+    </div>
+  );
+}
+
+function GraphMeta({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="text-right text-foreground/85">{value}</dd>
     </div>
   );
 }
