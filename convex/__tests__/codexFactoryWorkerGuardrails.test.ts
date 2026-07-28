@@ -20,6 +20,11 @@ describe("Codex factory worker guardrails", () => {
     expect(source).toContain("Stopping after failed task.");
   });
 
+  it("supports an explicit per-worker task budget", () => {
+    expect(source).toContain("FACTORY_MAX_TASKS");
+    expect(source).toContain("Reached configured task limit");
+  });
+
   it("records a bounded diagnostic instead of the full command and prompt", () => {
     expect(source).toContain("Review worker diagnostics and retry as a new run.");
     expect(source).toContain("Codex execution timed out after");

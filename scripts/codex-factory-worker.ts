@@ -25,6 +25,7 @@ const AGENT_NAME = process.env.FACTORY_AGENT_NAME ?? process.argv[2];
 const POLL_INTERVAL_MS = Number(process.env.FACTORY_WORKER_POLL_MS ?? 2_000);
 const TASK_TIMEOUT_MS = Number(process.env.FACTORY_TASK_TIMEOUT_MS ?? 10 * 60 * 1_000);
 const STOP_ON_FAILURE = process.env.FACTORY_STOP_ON_FAILURE !== "0";
+const MAX_TASKS = Number(process.env.FACTORY_MAX_TASKS ?? Number.POSITIVE_INFINITY);
 const CLAIM_INBOX = process.env.FACTORY_CLAIM_INBOX === "1";
 const REPOSITORY_PATH = process.env.FACTORY_REPOSITORY_PATH ?? process.cwd();
 
@@ -264,8 +265,9 @@ async function main() {
   if (!agent) throw new Error(`Agent not found in ${PROJECT_SLUG}: ${AGENT_NAME}`);
 
   console.log(
-    `[CodexFactoryWorker:${agent.name}] Started for ${PROJECT_SLUG}; claim inbox=${CLAIM_INBOX}; timeout=${Math.round(TASK_TIMEOUT_MS / 1_000)}s; stop on failure=${STOP_ON_FAILURE}.`
+    `[CodexFactoryWorker:${agent.name}] Started for ${PROJECT_SLUG}; claim inbox=${CLAIM_INBOX}; timeout=${Math.round(TASK_TIMEOUT_MS / 1_000)}s; max tasks=${Number.isFinite(MAX_TASKS) ? MAX_TASKS : "unbounded"}; stop on failure=${STOP_ON_FAILURE}.`
   );
+  let completedTasks = 0;
   while (running) {
     const heartbeat = await client.mutation(api.agents.heartbeat, {
       agentId: agent._id,
@@ -274,8 +276,14 @@ async function main() {
     for (const task of heartbeat.pendingTasks ?? []) {
       if (!(await isCurrentWorkflowTask(task))) continue;
       const succeeded = await submitTask(agent, task);
+      if (succeeded) completedTasks += 1;
       if (!succeeded && STOP_ON_FAILURE) {
         console.error(`[CodexFactoryWorker:${agent.name}] Stopping after failed task.`);
+        running = false;
+        break;
+      }
+      if (completedTasks >= MAX_TASKS) {
+        console.log(`[CodexFactoryWorker:${agent.name}] Reached configured task limit (${MAX_TASKS}); stopping.`);
         running = false;
         break;
       }
