@@ -35,6 +35,7 @@ describe("filterNavGroups", () => {
     expect(items.find((item) => item.view === "docs")?.badge).toBe("Global");
     expect(views).toEqual([
       "command-center",
+      "missions",
       "control-work-orders",
       "tasks",
       "agents",
