@@ -20,10 +20,19 @@ import type { Id } from "../../../../convex/_generated/dataModel";
 const ROUTE_PREFIX = "/v2";
 const COMPACT_SHELL_QUERY = "(max-width: 899px)";
 
-function viewFromPath(pathname: string, validViews: string[]): MainView | null {
+export function viewFromPath(pathname: string, validViews: string[]): MainView | null {
   if (!pathname.startsWith(`${ROUTE_PREFIX}/`)) return null;
   const candidate = pathname.slice(ROUTE_PREFIX.length + 1).split("/")[0];
   return validViews.includes(candidate) ? (candidate as MainView) : null;
+}
+
+export function shouldDeferRouteWrite(
+  pathname: string,
+  validViews: string[],
+  activeView: MainView
+): boolean {
+  const pathView = viewFromPath(pathname, validViews);
+  return pathView !== null && pathView !== activeView;
 }
 
 interface AppShellV2Props {
@@ -106,11 +115,10 @@ export function AppShellV2({
   }, [location.pathname, validViews.join(",")]);
 
   useEffect(() => {
-    const pathView = viewFromPath(location.pathname, validViews);
     // Let the URL → state effect settle before writing state back to the URL.
     // Without this guard a persisted view can replace a direct deep link on
     // initial render (for example /v2/agents becoming /v2/command-center).
-    if (pathView && pathView !== activeView) {
+    if (shouldDeferRouteWrite(location.pathname, validViews, activeView)) {
       return;
     }
     if (
