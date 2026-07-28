@@ -326,7 +326,7 @@ function WorkforceList({
           <li key={agent._id} className="border-b border-line last:border-b-0">
             <button
               type="button"
-              onClick={() => onNavigate("agent-catalog")}
+              onClick={() => onNavigate("agents")}
               className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors duration-150 hover:bg-surface-2"
             >
               <span

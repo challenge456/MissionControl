@@ -78,6 +78,14 @@ crons.interval(
   internal.scheduledJobs.executeDue
 );
 
+// Scan only workspaces that explicitly scheduled repetitive-task detection.
+// The scan creates reviewable proposals; it never dispatches work automatically.
+crons.interval(
+  "scan opted-in repetitive tasks",
+  { hours: 1 },
+  internal.factory.repetitiveTasks.scanScheduled
+);
+
 // Evaluate alert rules (e.g. daily cost exceeded) every hour
 crons.interval(
   "evaluate alert rules",

@@ -62,8 +62,8 @@ export const ROUTE_CAPABILITIES: Partial<Record<MainView, RouteCapability>> = {
   codegen: { scope: "workspace", maturity: "preview" },
   pipeline: { scope: "workspace", maturity: "preview" },
 
-  missions: { scope: "workspace", maturity: "demo" },
-  "mission-detail": { scope: "workspace", maturity: "demo" },
+  missions: { scope: "workspace", maturity: "live" },
+  "mission-detail": { scope: "workspace", maturity: "live" },
   effectiveness: { scope: "workspace", maturity: "demo" },
   "factory-health": { scope: "workspace", maturity: "demo" },
   readiness: { scope: "workspace", maturity: "demo" },

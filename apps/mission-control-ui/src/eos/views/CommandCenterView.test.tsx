@@ -210,6 +210,10 @@ describe("CommandCenterView", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open work orders" }));
 
     expect(onNavigate).toHaveBeenCalledWith("control-work-orders");
+
+    fireEvent.click(screen.getByRole("button", { name: /Planner/ }));
+
+    expect(onNavigate).toHaveBeenCalledWith("agents");
   });
 
   it("executes Command Center approval and unblock mutations with operator audit context", async () => {

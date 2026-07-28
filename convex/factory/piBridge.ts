@@ -36,6 +36,19 @@ export const ingestReceiptPacket = mutation({
     piExecutionId: v.optional(v.string()),
     markRunCompleted: v.optional(v.boolean()),
     receipts: v.array(receiptArg),
+    handoff: v.optional(v.object({
+      producingRole: v.union(v.literal("WORKER"), v.literal("VALIDATOR")),
+      consumingRole: v.union(v.literal("WORKER"), v.literal("VALIDATOR"), v.literal("ORCHESTRATOR"), v.literal("OPERATOR")),
+      outcome: v.union(v.literal("COMPLETE"), v.literal("INCOMPLETE"), v.literal("NEEDS_HUMAN_INPUT")),
+      completedAssertionIds: v.array(v.string()),
+      incompleteAssertionIds: v.array(v.string()),
+      unknownAssertionIds: v.array(v.string()),
+      commands: v.array(v.object({ command: v.string(), exitCode: v.number() })),
+      artifactIds: v.array(v.id("runArtifacts")),
+      knownRisks: v.array(v.string()),
+      nextAction: v.string(),
+      nextOwner: v.optional(v.string()),
+    })),
     idempotencyKey: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -107,12 +120,23 @@ export const ingestReceiptPacket = mutation({
       created += 1;
     }
 
+    if (args.handoff) {
+      if (!workOrder.missionId) throw new Error("Receipt packet handoff requires a Mission-linked WorkOrder");
+      await ctx.runMutation(api.missions.recordHandoff, {
+        missionId: workOrder.missionId,
+        workOrderId: workOrder._id,
+        workflowRunId: run._id,
+        idempotencyKey: `${args.idempotencyKey ?? "pi-packet"}:handoff`,
+        ...args.handoff,
+      });
+    }
+
     await ctx.runMutation(internal.workOrders.syncExecutionOutcome, {
       workflowRunId: args.workflowRunId,
       eventType: "RUN_COMPLETED",
       summary: `Pi receipt packet ingested (${created} criteria)`,
     });
 
-    return { ingested: true, skipped: false, receiptCount: created };
+    return { ingested: true, skipped: false, receiptCount: created, handoffRecorded: !!args.handoff };
   },
 });

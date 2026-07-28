@@ -116,6 +116,7 @@ import type * as lib_workspaceBindings from "../lib/workspaceBindings.js";
 import type * as loopEngineering from "../loopEngineering.js";
 import type * as loops from "../loops.js";
 import type * as meetings from "../meetings.js";
+import type * as memoryLifecycle from "../memoryLifecycle.js";
 import type * as messages from "../messages.js";
 import type * as metrics from "../metrics.js";
 import type * as migrations_backfillInstanceRefs from "../migrations/backfillInstanceRefs.js";
@@ -301,6 +302,7 @@ declare const fullApi: ApiFromModules<{
   loopEngineering: typeof loopEngineering;
   loops: typeof loops;
   meetings: typeof meetings;
+  memoryLifecycle: typeof memoryLifecycle;
   messages: typeof messages;
   metrics: typeof metrics;
   "migrations/backfillInstanceRefs": typeof migrations_backfillInstanceRefs;

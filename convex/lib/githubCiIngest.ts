@@ -22,6 +22,29 @@ export interface GithubCiPayload {
   signals: Partial<PrCheckSignals>;
 }
 
+const GITHUB_REQUEST_TIMEOUT_MS = 15_000;
+
+async function fetchFromGitHub(
+  url: string,
+  options: RequestInit
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), GITHUB_REQUEST_TIMEOUT_MS);
+
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error(
+        `GitHub request timed out after ${GITHUB_REQUEST_TIMEOUT_MS / 1000} seconds`
+      );
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function githubHeaders(token?: string): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
@@ -75,7 +98,7 @@ export async function fetchPullRequestCi(
   token?: string
 ): Promise<GithubCiPayload> {
   const headers = githubHeaders(token);
-  const prRes = await fetch(
+  const prRes = await fetchFromGitHub(
     `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`,
     { headers }
   );
@@ -93,7 +116,7 @@ export async function fetchPullRequestCi(
     throw new Error("PR head SHA missing");
   }
 
-  const checksRes = await fetch(
+  const checksRes = await fetchFromGitHub(
     `https://api.github.com/repos/${owner}/${repo}/commits/${headSha}/check-runs?per_page=100`,
     { headers }
   );
@@ -118,7 +141,7 @@ export async function fetchPullRequestCi(
     details_url: c.details_url,
   }));
 
-  const diffRes = await fetch(
+  const diffRes = await fetchFromGitHub(
     `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`,
     { headers: { ...headers, Accept: "application/vnd.github.v3.diff" } }
   );

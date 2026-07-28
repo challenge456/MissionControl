@@ -436,6 +436,7 @@ app.post("/workorders/:workOrderId/receipt-packets", async (c) => {
       piExecutionId: body.piExecutionId,
       markRunCompleted: body.markRunCompleted,
       receipts: body.receipts ?? [],
+      handoff: body.handoff,
       idempotencyKey: body.idempotencyKey,
     });
     return c.json({ success: true, result });

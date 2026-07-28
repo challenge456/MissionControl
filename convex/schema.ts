@@ -4122,6 +4122,45 @@ export default defineSchema({
     .index("by_idempotency", ["idempotencyKey"]),
 
   // -------------------------------------------------------------------------
+  // DURABLE MEMORY + EXECUTION EVIDENCE
+  // -------------------------------------------------------------------------
+  memoryEpisodes: defineTable({
+    projectId: v.optional(v.id("projects")),
+    runId: v.id("runs"),
+    agentId: v.id("agents"),
+    taskId: v.optional(v.id("tasks")),
+    status: v.union(v.literal("COMPLETED"), v.literal("FAILED")),
+    summary: v.string(),
+    source: v.literal("run-completion"),
+    createdAt: v.number(),
+    consolidatedAt: v.optional(v.number()),
+  })
+    .index("by_run", ["runId"])
+    .index("by_project_consolidated", ["projectId", "consolidatedAt"]),
+
+  executionTraces: defineTable({
+    projectId: v.optional(v.id("projects")),
+    runId: v.id("runs"),
+    status: v.union(v.literal("COMPLETED"), v.literal("FAILED")),
+    model: v.string(),
+    durationMs: v.number(),
+    costUsd: v.number(),
+    inputTokens: v.number(),
+    outputTokens: v.number(),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_run", ["runId"])
+    .index("by_project", ["projectId"]),
+
+  memoryConsolidations: defineTable({
+    projectId: v.optional(v.id("projects")),
+    episodeIds: v.array(v.id("memoryEpisodes")),
+    knowledgeNodeId: v.id("knowledgeGraphNodes"),
+    createdAt: v.number(),
+  }).index("by_project", ["projectId"]),
+
+  // -------------------------------------------------------------------------
   // LOOP ENGINEERING (bounded research -> implementation -> learning cycles)
   // -------------------------------------------------------------------------
   loopEngineeringCycles: defineTable({

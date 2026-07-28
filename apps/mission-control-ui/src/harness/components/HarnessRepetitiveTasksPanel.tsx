@@ -1,4 +1,5 @@
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
+import { useState } from "react";
 import { FileSearch, ReceiptText } from "lucide-react";
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
@@ -8,10 +9,22 @@ export function HarnessRepetitiveTasksPanel({
 }: {
   projectId?: Id<"projects"> | null;
 }): JSX.Element {
+  const [scanMessage, setScanMessage] = useState<string | null>(null);
   const candidates = useQuery(api.factory.repetitiveTasks.listCandidates, {
     projectId: projectId ?? undefined,
     limit: 8,
   });
+  const createProposals = useMutation(api.factory.repetitiveTasks.createProposalsNow);
+
+  const handleScan = async () => {
+    setScanMessage(null);
+    const result = await createProposals({ projectId: projectId ?? undefined });
+    setScanMessage(
+      result.created > 0
+        ? `${result.created} automation proposal${result.created === 1 ? "" : "s"} added to the Improvement Loop.`
+        : "No new evidenced patterns need a proposal."
+    );
+  };
 
   return (
     <section className="registry-eval-card space-y-4">
@@ -23,7 +36,16 @@ export function HarnessRepetitiveTasksPanel({
             Repeated Work Orders grouped by workflow, with verification receipts as the promotion evidence.
           </p>
         </div>
+        <button
+          type="button"
+          onClick={() => void handleScan()}
+          disabled={!candidates}
+          className="ml-auto shrink-0 text-[12px] font-medium text-registry-accent underline-offset-2 hover:underline disabled:cursor-wait disabled:text-ink-muted"
+        >
+          Run scan now
+        </button>
       </div>
+      {scanMessage ? <p className="text-[12.5px] text-ok">{scanMessage}</p> : null}
       {!candidates ? (
         <p className="text-[13px] text-ink-muted">Scanning governed work…</p>
       ) : candidates.length === 0 ? (

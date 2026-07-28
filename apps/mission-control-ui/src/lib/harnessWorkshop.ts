@@ -193,11 +193,11 @@ export const WORKSHOP_AUTOMATIONS: readonly WorkshopAutomation[] = [
   {
     id: "repetitive-tasks",
     label: "Repetitive task detector",
-    description: "Analyze chat history for loops you do manually — candidate automations.",
-    cadence: "On demand",
-    sources: ["Chat history"],
+    description: "Detect repeated Work Orders and verification receipts — promote proven loops into bounded automations.",
+    cadence: "Weekly review",
+    sources: ["Work Orders", "Receipts"],
     skillName: "repetitive-task-scan",
-    schedule: "manual",
+    schedule: "0 8 * * 1",
   },
   {
     id: "linear-triage",
