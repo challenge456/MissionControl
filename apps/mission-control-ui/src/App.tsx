@@ -20,6 +20,7 @@ import {
   WorkspaceScopeProvider,
   useWorkspaceScope,
 } from "./workspace/WorkspaceScopeProvider";
+import { selectAccessibleWorkspace } from "./workspace/workspaceSelection";
 
 const DashboardOverview = lazy(() =>
   import("./DashboardOverview").then((module) => ({ default: module.DashboardOverview }))
@@ -155,13 +156,10 @@ function ProjectSwitcher({
 const STORAGE_KEY_VIEW = "mc.last_view";
 const STORAGE_KEY_PROJECT = "mc.last_project";
 
-function readRequestedProjectId(): string | null {
+function readPersistedProjectId(): string | null {
   if (typeof window === "undefined") return null;
   try {
-    const fromUrl = new URL(window.location.href).searchParams.get("workspace");
-    if (fromUrl) return fromUrl as Id<"projects">;
-    const persisted = window.localStorage.getItem(STORAGE_KEY_PROJECT);
-    return persisted ? (persisted as Id<"projects">) : null;
+    return window.localStorage.getItem(STORAGE_KEY_PROJECT);
   } catch {
     return null;
   }
@@ -550,10 +548,6 @@ export default function App() {
   const [searchParams, setSearchParams] = useSearchParams();
   // ── Navigation & selection (persist last view so UI reopens where operator left off) ─
   const [currentView, setCurrentView] = useState<MainView>(() => readPersistedView() ?? "home");
-  // Treat a URL/local-storage workspace value as untrusted until it is found
-  // in the project list. A foreign Convex ID otherwise crashes v.id("projects")
-  // validation before the normal workspace fallback can run.
-  const [requestedProjectId] = useState(readRequestedProjectId);
   const [projectId, setProjectId] = useState<Id<"projects"> | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<Id<"tasks"> | null>(null);
   const [selectedQcRunId, setSelectedQcRunId] = useState<Id<"qcRuns"> | null>(null);
@@ -585,6 +579,20 @@ export default function App() {
     () => projects?.filter((item) => item.status !== "ARCHIVED"),
     [projects]
   );
+  const requestedProjectId = searchParams.get("workspace");
+  const workspaceSelection = useMemo(
+    () => {
+      if (!availableProjects) {
+        return { projectId: null, requestedUnavailable: false };
+      }
+      return selectAccessibleWorkspace({
+        requestedWorkspace: requestedProjectId,
+        persistedWorkspace: readPersistedProjectId(),
+        workspaces: availableProjects,
+      });
+    },
+    [availableProjects, requestedProjectId]
+  );
   const pendingApprovals = useQuery(
     api.approvals.listPending,
     projectId ? { projectId, limit: 10 } : "skip"
@@ -598,17 +606,11 @@ export default function App() {
       availableProjects.length > 0 &&
       (!projectId || !availableProjects.some((item) => item._id === projectId))
     ) {
-      const preferred =
-        availableProjects.find((p) => p._id === projectId) ??
-        availableProjects.find((p) => p._id === requestedProjectId) ??
-        availableProjects.find((p) => p.name.trim().toLowerCase() === "mission control") ??
-        availableProjects.find((p) => p.name.toLowerCase().includes("mission control")) ??
-        availableProjects[0];
-      setProjectId(preferred._id);
+      setProjectId(workspaceSelection.projectId);
     } else if (availableProjects && availableProjects.length === 0 && projectId) {
       setProjectId(null);
     }
-  }, [availableProjects, projectId, requestedProjectId]);
+  }, [availableProjects, projectId, workspaceSelection.projectId]);
 
   useEffect(() => {
     if (!projectId || typeof window === "undefined") return;
@@ -667,6 +669,14 @@ export default function App() {
   const pauseAll = useMutation(api.agents.pauseAll);
   const resumeAll = useMutation(api.agents.resumeAll);
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (!workspaceSelection.requestedUnavailable) return;
+    toast(
+      "The requested workspace was unavailable. Mission Control opened an accessible workspace instead.",
+      true
+    );
+  }, [workspaceSelection.requestedUnavailable, toast]);
 
   // ── Keyboard shortcuts ───────────────────────────────────────────────────
   useKeyboardShortcuts({
