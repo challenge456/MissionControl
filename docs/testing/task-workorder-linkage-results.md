@@ -4,20 +4,20 @@ Date: 2026-07-28
 Browser: Playwright Chromium
 Workspace: Software Factory Research Lab (`sn71gskbdemgf4z1trt9zdmm5h8bde69`)
 Work Order: `yh720mxa1zg8bb1r23ye0twxzs8bdbx8`
-Implementation commit: `e428937da51e450de50264775716a45afb7e5681`
+Implementation commit: `de13dd829f3e62f143a4b15af24a0065c602d280`
 Draft pull request: https://github.com/jaydubya818/MissionControl/pull/45
 CI run: pending on the draft pull request
 
 ## Result
 
-PASS. The final deterministic browser journey completed in 9.4 seconds (11.6 seconds including runner setup). It verified governed creation, Ungoverned intake, blocked execution, linking, active transition, child rollup, Attempt projection, refresh persistence, routed Back/Forward behavior, workspace scoping, and zero critical accessibility violations.
+PASS. The final traced deterministic browser journey completed in 10.0 seconds (12.1 seconds including runner setup). It verified governed creation, Ungoverned intake, blocked execution, linking, active transition, child rollup, Attempt projection, refresh persistence, routed Back/Forward behavior, workspace scoping, and zero critical accessibility violations.
 
 Final evidence entities:
 
-- Governed Task: SFRL-087, `wh77ey42w2d9hjqem9bkem81dn8berry`
-- Ungoverned-then-linked Task: SFRL-088, `wh70gwea5ppa78gs6z7dhs5gb98bezqk`
+- Governed Task: SFRL-091, `wh7a5a5194jeryk0n14svp1fpn8bf880`
+- Ungoverned-then-linked Task: SFRL-092, `wh72g9s09xe8gwd886wsgcntvd8bekdd`
 - Both resolve to Work Order `yh720mxa1zg8bb1r23ye0twxzs8bdbx8`.
-- SFRL-088 persisted as `ASSIGNED` after refresh.
+- SFRL-092 persisted as `ASSIGNED` after refresh.
 
 Cleanup status: retained as labeled audit evidence. Earlier failed-test entities were also retained rather than deleted so their Activity and Task Event history remains reviewable.
 
@@ -49,7 +49,7 @@ Cleanup status: retained as labeled audit evidence. Earlier failed-test entities
 - Browser acceptance: 1 passed.
 - Root typecheck: PASS.
 - Root lint and skill validation: PASS (10 skills, 0 errors, 0 warnings, average score 100).
-- Full repository test suite: PASS (926 tests).
+- Full repository test suite: PASS (942 tests).
 - Production build: PASS.
 
 ## Evidence files
