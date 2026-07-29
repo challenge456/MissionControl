@@ -6,7 +6,7 @@ Workspace: Software Factory Research Lab (`sn71gskbdemgf4z1trt9zdmm5h8bde69`)
 Work Order: `yh720mxa1zg8bb1r23ye0twxzs8bdbx8`
 Implementation commit: `de13dd829f3e62f143a4b15af24a0065c602d280`
 Draft pull request: https://github.com/jaydubya818/MissionControl/pull/45
-CI run: pending on the draft pull request
+Verified CI run: https://github.com/jaydubya818/MissionControl/actions/runs/30423815370
 
 ## Result
 
@@ -51,6 +51,8 @@ Cleanup status: retained as labeled audit evidence. Earlier failed-test entities
 - Root lint and skill validation: PASS (10 skills, 0 errors, 0 warnings, average score 100).
 - Full repository test suite: PASS (942 tests).
 - Production build: PASS.
+- GitHub CI: PASS (lint, typecheck, unit, E2E, build, and smoke jobs).
+- Vercel previews: PASS for both UI projects.
 
 ## Evidence files
 
@@ -70,3 +72,5 @@ All files are under `docs/testing/evidence/task-workorder-linkage/`.
 The first browser pass found that the Task header action could sit beneath the agent rail at a 1280-pixel viewport because the shared header switched to a horizontal layout based on viewport width while the three-column shell left a narrow content container. The shared PageHeader breakpoint now remains stacked until `2xl`. The rerun confirmed the visible New Task control is pointer-operable.
 
 The local Convex dataset also contained `contextEvalRuns.releaseDeploymentId` from unrelated newer main-worktree work. A temporary local validator shim allowed the clean origin/main branch to load the existing dataset for browser validation. The shim was removed before the PR diff. This branch does not include that unrelated schema change.
+
+GitHub emitted a non-blocking maintenance annotation because older checkout, Node setup, and pnpm setup actions still target Node 20 internals. GitHub forced those actions onto Node 24 and every job passed. Updating the workflow action versions belongs in a separate CI-maintenance change.

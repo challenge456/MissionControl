@@ -6,6 +6,7 @@ Browser: Playwright Chromium
 Workspace: Software Factory Research Lab
 Implementation commit: `de13dd829f3e62f143a4b15af24a0065c602d280`
 Draft pull request: https://github.com/jaydubya818/MissionControl/pull/45
+Verified CI run: https://github.com/jaydubya818/MissionControl/actions/runs/30423815370
 
 The final browser journey completed governed Task creation, Ungoverned Inbox creation, blocked execution, operator linking, allowed transition, Work Order Child Task verification, Attempt/retry projection, refresh persistence, and Back/Forward navigation.
 
@@ -19,6 +20,9 @@ The final browser journey completed governed Task creation, Ungoverned Inbox cre
 - Axe found zero critical accessibility violations.
 - The page emitted zero browser console errors, zero page errors, and zero feature-relevant failed requests.
 - Root typecheck, lint, all 942 repository tests, and the production build passed.
+- GitHub lint, typecheck, unit, E2E, build, and smoke jobs passed; both Vercel previews completed.
+
+GitHub also reported a non-blocking maintenance annotation for workflow actions that still target Node 20 internals. The platform forced them onto Node 24 without failures. Action-version maintenance is separate from this product PR.
 
 Screenshots and the passing trace are stored in `docs/testing/evidence/task-workorder-linkage/`.
 
