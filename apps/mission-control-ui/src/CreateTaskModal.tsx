@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id, Doc } from "../../../convex/_generated/dataModel";
-import { Bot, CalendarDays, Flag, Layers3 } from "lucide-react";
+import { Bot, CalendarDays, Flag, Layers3, Link2, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -44,10 +44,12 @@ const PRIORITIES = [
 
 export function CreateTaskModal({
   projectId,
+  defaultWorkOrderId,
   onClose,
   onCreated,
 }: {
   projectId: Id<"projects"> | null;
+  defaultWorkOrderId?: Id<"workOrders">;
   onClose: () => void;
   onCreated?: () => void;
 }) {
@@ -57,11 +59,26 @@ export function CreateTaskModal({
   const [priority, setPriority] = useState(3);
   const [dueAt, setDueAt] = useState<string>("");
   const [assigneeIds, setAssigneeIds] = useState<Id<"agents">[]>([]);
+  const [workOrderId, setWorkOrderId] = useState<Id<"workOrders"> | null>(
+    defaultWorkOrderId ?? null
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const agents = useQuery(api.agents.listAll, projectId ? { projectId } : {});
+  const workOrders = useQuery(
+    api.workOrders.list,
+    projectId ? { projectId, limit: 200 } : "skip"
+  );
+  const missions = useQuery(
+    api.missions.list,
+    projectId ? { projectId, limit: 200 } : "skip"
+  );
   const createTask = useMutation(api.tasks.create);
+  const selectedWorkOrder = workOrders?.find((item) => item._id === workOrderId);
+  const parentMission = missions?.find(
+    (mission) => mission._id === selectedWorkOrder?.missionId
+  );
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -75,6 +92,7 @@ export function CreateTaskModal({
     try {
       await createTask({
         projectId: projectId ?? undefined,
+        workOrderId: workOrderId ?? undefined,
         title: title.trim(),
         description: description.trim() || undefined,
         type,
@@ -148,6 +166,61 @@ export function CreateTaskModal({
               </div>
 
               <div className="grid grid-cols-1 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="task-work-order">Parent Work Order</Label>
+                  <Select
+                    value={workOrderId ?? "UNGOVERNED"}
+                    onValueChange={(value) =>
+                      setWorkOrderId(
+                        value === "UNGOVERNED"
+                          ? null
+                          : (value as Id<"workOrders">)
+                      )
+                    }
+                  >
+                    <SelectTrigger id="task-work-order">
+                      <SelectValue placeholder="Select a Work Order" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="UNGOVERNED">
+                        Create as Ungoverned Inbox
+                      </SelectItem>
+                      {workOrders?.map((workOrder) => (
+                        <SelectItem key={workOrder._id} value={workOrder._id}>
+                          {workOrder.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11.5px] leading-relaxed text-ink-muted">
+                    Link this Task to a Work Order when it is part of governed factory delivery.
+                    Tasks created without a Work Order remain in Ungoverned Inbox until organized.
+                  </p>
+                </div>
+
+                {selectedWorkOrder ? (
+                  <div
+                    className="rounded-lg border border-line bg-surface-1 p-3 text-[11.5px]"
+                    aria-label="Selected Work Order context"
+                  >
+                    <div className="flex items-center gap-1.5 font-medium text-ink">
+                      <Link2 className="h-3.5 w-3.5" aria-hidden />
+                      {selectedWorkOrder.title}
+                    </div>
+                    <dl className="mt-2 grid grid-cols-[76px_1fr] gap-x-2 gap-y-1 text-ink-muted">
+                      <dt>Mission</dt><dd className="text-ink-secondary">{parentMission?.title ?? "No parent Mission"}</dd>
+                      <dt>Repository</dt><dd className="truncate text-ink-secondary">{selectedWorkOrder.repository ?? "Not declared"}</dd>
+                      <dt>Risk</dt><dd className="text-ink-secondary">{selectedWorkOrder.riskLevel}</dd>
+                      <dt>State</dt><dd className="text-ink-secondary">{selectedWorkOrder.state.replace(/_/g, " ")}</dd>
+                    </dl>
+                  </div>
+                ) : (
+                  <div className="flex gap-2 rounded-lg border border-warn/30 bg-warn/10 p-3 text-[11.5px] text-ink-secondary">
+                    <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warn" aria-hidden />
+                    <span>Work Order required before execution.</span>
+                  </div>
+                )}
+
                 <div className="space-y-1.5">
                   <Label htmlFor="task-type">Type</Label>
                   <Select value={type} onValueChange={setType}>

@@ -1443,6 +1443,8 @@ export default defineSchema({
     
     // Hierarchy
     parentTaskId: v.optional(v.id("tasks")),
+    // Canonical governed-delivery parent. Mission is derived through Work Order.
+    workOrderId: v.optional(v.id("workOrders")),
     
     // Work artifacts
     workPlan: v.optional(v.object({
@@ -1539,7 +1541,10 @@ export default defineSchema({
     .index("by_goal", ["goalId"])
     .index("by_source", ["source"])
     .index("by_project", ["projectId"])
-    .index("by_project_status", ["projectId", "status"]),
+    .index("by_project_status", ["projectId", "status"])
+    .index("by_work_order", ["workOrderId"])
+    .index("by_project_work_order", ["projectId", "workOrderId"])
+    .index("by_project_work_order_status", ["projectId", "workOrderId", "status"]),
 
   // -------------------------------------------------------------------------
   // PRD DOCUMENTS (PRD Import Pipeline)
@@ -1612,6 +1617,7 @@ export default defineSchema({
     taskId: v.id("tasks"),
     eventType: v.union(
       v.literal("TASK_CREATED"),
+      v.literal("TASK_LINKED_TO_WORK_ORDER"),
       v.literal("TASK_TRANSITION"),
       v.literal("POLICY_DECISION"),
       v.literal("APPROVAL_REQUESTED"),

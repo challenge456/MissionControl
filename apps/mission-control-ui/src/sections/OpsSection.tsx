@@ -82,7 +82,7 @@ export function OpsSection({
         <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <PageHeader
             title="Tasks"
-            description="Execution queue for active work orders"
+            description="Kanban execution board for Tasks across active Work Orders."
             actions={
               <div className="flex items-center gap-2">
                 {onNewTask && (

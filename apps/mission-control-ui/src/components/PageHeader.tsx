@@ -26,7 +26,7 @@ export function PageHeader({
     <header className="relative shrink-0 border-b border-line bg-app">
       <div className="relative px-6 py-5">
         <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-end 2xl:justify-between">
             <div className="min-w-0">
               {eyebrow ? <div className="registry-kicker">{eyebrow}</div> : null}
               <div className="flex min-w-0 items-start gap-3">
@@ -53,8 +53,8 @@ export function PageHeader({
             {actions ? (
               <div
                 className={cn(
-                  "flex flex-wrap items-center gap-2 xl:max-w-[48%] xl:justify-end",
-                  !description && "xl:self-center"
+                  "flex flex-wrap items-center gap-2 2xl:max-w-[48%] 2xl:justify-end",
+                  !description && "2xl:self-center"
                 )}
               >
                 {actions}

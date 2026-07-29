@@ -15,7 +15,7 @@ import { useModalState } from "./hooks/useModalState";
 import { PrivacyProvider } from "./contexts/PrivacyContext";
 import { useFlag } from "./hooks/useFlag";
 import { AppShellV2 } from "./shellV2/AppShellV2";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   WorkspaceScopeProvider,
   useWorkspaceScope,
@@ -575,6 +575,7 @@ function SectionLoadingState() {
 // ============================================================================
 
 export default function App() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   // ── Navigation & selection (persist last view so UI reopens where operator left off) ─
   const [currentView, setCurrentView] = useState<MainView>(() => readPersistedView() ?? "home");
@@ -1028,7 +1029,30 @@ export default function App() {
             <Suspense fallback={<SectionLoadingState />}>{renderSection()}</Suspense>
           </AppShellV2>
           <Suspense fallback={null}>
-            <TaskDrawerTabs taskId={selectedTaskId} onClose={() => setSelectedTaskId(null)} />
+            <TaskDrawerTabs
+              taskId={selectedTaskId}
+              onClose={() => setSelectedTaskId(null)}
+              onNavigateToWorkOrder={(workOrderId) => {
+                const next = new URLSearchParams(searchParams);
+                next.set("workOrder", workOrderId);
+                setSelectedTaskId(null);
+                setCurrentView("control-work-orders");
+                navigate({
+                  pathname: "/v2/control-work-orders",
+                  search: `?${next.toString()}`,
+                });
+              }}
+              onNavigateToMission={(missionId) => {
+                const next = new URLSearchParams(searchParams);
+                next.set("mission", missionId);
+                setSelectedTaskId(null);
+                setCurrentView("mission-detail");
+                navigate({
+                  pathname: "/v2/mission-detail",
+                  search: `?${next.toString()}`,
+                });
+              }}
+            />
           </Suspense>
           <Suspense fallback={null}>
             <ModalLayer
@@ -1124,7 +1148,30 @@ export default function App() {
         </div>
 
         <Suspense fallback={null}>
-          <TaskDrawerTabs taskId={selectedTaskId} onClose={() => setSelectedTaskId(null)} />
+          <TaskDrawerTabs
+            taskId={selectedTaskId}
+            onClose={() => setSelectedTaskId(null)}
+            onNavigateToWorkOrder={(workOrderId) => {
+              const next = new URLSearchParams(searchParams);
+              next.set("workOrder", workOrderId);
+              setSelectedTaskId(null);
+              setCurrentView("control-work-orders");
+              navigate({
+                pathname: "/v2/control-work-orders",
+                search: `?${next.toString()}`,
+              });
+            }}
+            onNavigateToMission={(missionId) => {
+              const next = new URLSearchParams(searchParams);
+              next.set("mission", missionId);
+              setSelectedTaskId(null);
+              setCurrentView("mission-detail");
+              navigate({
+                pathname: "/v2/mission-detail",
+                search: `?${next.toString()}`,
+              });
+            }}
+          />
         </Suspense>
 
         <Suspense fallback={null}>

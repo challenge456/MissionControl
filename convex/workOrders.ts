@@ -36,6 +36,7 @@ import {
   type RoutingTier,
 } from "./lib/modelRouting";
 import { isAutomationSelfApproval } from "./lib/automationGovernance";
+import { loadTaskProjections } from "./lib/taskProjection";
 
 function generateRunId(): string {
   return Math.random().toString(36).substring(2, 10);
@@ -995,7 +996,7 @@ export const get = query({
     const workOrder = await ctx.db.get(args.workOrderId);
     if (!workOrder) return null;
 
-    const [executionRuns, events, approvalDecisions, verificationReceipts, revisions, reopenDecisions, supersession, policy] = await Promise.all([
+    const [executionRuns, events, approvalDecisions, verificationReceipts, revisions, reopenDecisions, supersession, policy, childTaskRows] = await Promise.all([
       ctx.db
         .query("workflowRuns")
         .withIndex("by_work_order", (q) => q.eq("workOrderId", args.workOrderId))
@@ -1012,6 +1013,11 @@ export const get = query({
       listReopenDecisionsForWorkOrder(ctx, args.workOrderId),
       latestSupersessionForWorkOrder(ctx, args.workOrderId),
       resolveGovernancePolicy(ctx, workOrder),
+      ctx.db
+        .query("tasks")
+        .withIndex("by_work_order", (q) => q.eq("workOrderId", args.workOrderId))
+        .order("desc")
+        .collect(),
     ]);
 
     const legacyTask = workOrder.legacyTaskId ? await ctx.db.get(workOrder.legacyTaskId) : null;
@@ -1025,6 +1031,11 @@ export const get = query({
       now: Date.now(),
     });
     const governanceStatus = buildGovernanceStatus({ workOrder, revisions, approvalDecisions, verificationReceipts, policy, acceptance });
+    const childTasks = await loadTaskProjections(
+      ctx,
+      childTaskRows,
+      workOrder.projectId
+    );
 
     return {
       workOrder,
@@ -1040,6 +1051,7 @@ export const get = query({
        governancePolicy: policy,
        governanceStatus,
       acceptanceSummary: acceptance,
+      childTasks,
     };
   },
 });
