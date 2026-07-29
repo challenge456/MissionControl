@@ -91,6 +91,7 @@ import type * as lib_knowledgeGraph from "../lib/knowledgeGraph.js";
 import type * as lib_legacyToolPolicy from "../lib/legacyToolPolicy.js";
 import type * as lib_loopEngineering from "../lib/loopEngineering.js";
 import type * as lib_mergeGates from "../lib/mergeGates.js";
+import type * as lib_missionDraft from "../lib/missionDraft.js";
 import type * as lib_missionGovernance from "../lib/missionGovernance.js";
 import type * as lib_modelRouting from "../lib/modelRouting.js";
 import type * as lib_operatorControls from "../lib/operatorControls.js";
@@ -277,6 +278,7 @@ declare const fullApi: ApiFromModules<{
   "lib/legacyToolPolicy": typeof lib_legacyToolPolicy;
   "lib/loopEngineering": typeof lib_loopEngineering;
   "lib/mergeGates": typeof lib_mergeGates;
+  "lib/missionDraft": typeof lib_missionDraft;
   "lib/missionGovernance": typeof lib_missionGovernance;
   "lib/modelRouting": typeof lib_modelRouting;
   "lib/operatorControls": typeof lib_operatorControls;

@@ -16,12 +16,27 @@ import { Breadcrumbs } from "../components/factory/Breadcrumbs";
 import { useHarnessAnimation } from "../components/schematic/useHarnessAnimation";
 import { cn } from "../lib/utils";
 import type { Id } from "../../../../convex/_generated/dataModel";
+import {
+  canonicalMissionLocation,
+  isCanonicalMissionDetail,
+  missionIdFromLocation,
+} from "../eos/missionRoutes";
 
 const ROUTE_PREFIX = "/v2";
 const COMPACT_SHELL_QUERY = "(max-width: 899px)";
 
-export function viewFromPath(pathname: string, validViews: string[]): MainView | null {
+export function viewFromPath(
+  pathname: string,
+  validViews: string[],
+  search = ""
+): MainView | null {
   if (!pathname.startsWith(`${ROUTE_PREFIX}/`)) return null;
+  if (
+    missionIdFromLocation(pathname, search) &&
+    validViews.includes("mission-detail")
+  ) {
+    return "mission-detail";
+  }
   const candidate = pathname.slice(ROUTE_PREFIX.length + 1).split("/")[0];
   return validViews.includes(candidate) ? (candidate as MainView) : null;
 }
@@ -29,9 +44,10 @@ export function viewFromPath(pathname: string, validViews: string[]): MainView |
 export function shouldDeferRouteWrite(
   pathname: string,
   validViews: string[],
-  activeView: MainView
+  activeView: MainView,
+  search = ""
 ): boolean {
-  const pathView = viewFromPath(pathname, validViews);
+  const pathView = viewFromPath(pathname, validViews, search);
   return pathView !== null && pathView !== activeView;
 }
 
@@ -91,6 +107,7 @@ export function AppShellV2({
     ...new Set([
       ...baseNavGroups.flatMap((g) => g.items.map((i) => i.view as string)),
       ...allNavViews(),
+      "mission-detail",
     ]),
   ];
   const group =
@@ -106,19 +123,30 @@ export function AppShellV2({
   const activeRouteBadge = eosPreview ? routeBadge(activeView) : undefined;
 
   useEffect(() => {
-    const pathView = viewFromPath(location.pathname, validViews);
+    const normalizedMission = canonicalMissionLocation(
+      location.pathname,
+      location.search
+    );
+    if (normalizedMission) {
+      navigate(normalizedMission, { replace: true });
+      return;
+    }
+    const pathView = viewFromPath(location.pathname, validViews, location.search);
     if (pathView && pathView !== activeView) {
       syncingFromUrl.current = true;
       onNavigate(pathView);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname, validViews.join(",")]);
+  }, [location.pathname, location.search, validViews.join(",")]);
 
   useEffect(() => {
     // Let the URL → state effect settle before writing state back to the URL.
     // Without this guard a persisted view can replace a direct deep link on
     // initial render (for example /v2/agents becoming /v2/command-center).
-    if (shouldDeferRouteWrite(location.pathname, validViews, activeView)) {
+    if (canonicalMissionLocation(location.pathname, location.search)) {
+      return;
+    }
+    if (shouldDeferRouteWrite(location.pathname, validViews, activeView, location.search)) {
       return;
     }
     if (
@@ -132,7 +160,10 @@ export function AppShellV2({
       syncingFromUrl.current = false;
       return;
     }
-    const expected = `${ROUTE_PREFIX}/${activeView}`;
+    const expected =
+      activeView === "mission-detail" && isCanonicalMissionDetail(location.pathname)
+        ? location.pathname
+        : `${ROUTE_PREFIX}/${activeView}`;
     if (location.pathname !== expected) {
       navigate({ pathname: expected, search: location.search }, { replace: true });
     }
