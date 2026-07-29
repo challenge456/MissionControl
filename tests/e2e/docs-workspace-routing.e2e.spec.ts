@@ -19,10 +19,19 @@ test("invalid Docs workspace fails closed, preserves route state, and remains st
   await mkdir(EVIDENCE, { recursive: true });
   await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
   const pageErrors: string[] = [];
+  const consoleErrors: string[] = [];
   const failedRequests: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
   page.on("requestfailed", (request) => {
-    if (!request.url().includes("/gateway/status")) {
+    const failure = request.failure()?.errorText ?? "";
+    const expectedNavigationAbort =
+      request.resourceType() === "font" &&
+      request.url().startsWith("https://fonts.gstatic.com/") &&
+      failure === "net::ERR_ABORTED";
+    if (!request.url().includes("/gateway/status") && !expectedNavigationAbort) {
       failedRequests.push(`${request.method()} ${request.url()} ${request.failure()?.errorText}`);
     }
   });
@@ -71,6 +80,7 @@ test("invalid Docs workspace fails closed, preserves route state, and remains st
     await expect(page.getByRole("heading", { name: "Documentation" })).toBeVisible();
 
     expect(pageErrors).toEqual([]);
+    expect(consoleErrors).toEqual([]);
     expect(failedRequests).toEqual([]);
   } finally {
     await context.tracing.stop({

@@ -41,6 +41,10 @@ refresh does not reannounce the warning.
 - zero critical Axe violations.
 - complete root preparation, typecheck, lint, tests, and build passed.
 
+The network result excludes only expected `fonts.gstatic.com` `ERR_ABORTED`
+events caused by intentional browser navigation and the optional gateway health
+probe.
+
 ## Evidence
 
 - Repository record: `docs/testing/docs-workspace-routing-results.md`

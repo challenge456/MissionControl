@@ -52,6 +52,11 @@ No server schema or workspace authorization rule changed.
 | Relevant network failures | 0 |
 | Critical Axe violations | 0 |
 
+Intentional page navigation can abort in-flight `fonts.gstatic.com` font
+downloads. The browser test excludes only those font `ERR_ABORTED` events and
+the optional gateway health probe; neither is a Docs, application, or Convex
+request failure.
+
 ## Complete root validation
 
 | Command | Result |
