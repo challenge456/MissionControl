@@ -25,9 +25,12 @@ the application through the error boundary.
   accessible workspace.
 - Fail closed with no project when the accessible list is empty.
 - Replace only the `workspace` query parameter.
-- Preserve every other query parameter.
-- Announce the exact recovery message in the existing dismissible notification
-  region.
+- Preserve every other query parameter, including `doc`, `mission`, `task`,
+  `workOrder`, `tab`, `filters`, `view`, `automation`, and `definition`.
+- Announce the exact recovery message in a dedicated nonblocking
+  `role="status"` notice.
+- Remember dismissal for the resolved invalid request and reannounce only when
+  a different invalid workspace is explicitly requested.
 
 No server schema or workspace authorization rule changed.
 
@@ -35,10 +38,10 @@ No server schema or workspace authorization rule changed.
 
 | Check | Result |
 | --- | --- |
-| Selection-policy tests | PASS — 5 |
+| Selection-policy tests | PASS — 8 |
 | Existing route tests | PASS — 2 |
 | UI typecheck | PASS |
-| Chromium DOCS-001 journey | PASS |
+| Chromium DOCS-001 journey | PASS — 4.4 seconds |
 | Invalid/deleted/inaccessible fallback | PASS |
 | Valid accessible request | PASS |
 | No-parameter stored fallback | PASS |
@@ -46,6 +49,8 @@ No server schema or workspace authorization rule changed.
 | Docs route preservation | PASS |
 | Refresh | PASS |
 | Back and Forward | PASS |
+| Warning `role="status"` and dismissal | PASS |
+| Different invalid workspace reannouncement | PASS |
 | Workspace isolation | PASS |
 | Page errors | 0 |
 | Console errors | 0 |
@@ -65,7 +70,7 @@ request failure.
 | `pnpm run ci:prepare` | PASS |
 | `pnpm run typecheck` | PASS |
 | `pnpm run lint` | PASS — 10 skills, 0 errors, 0 warnings |
-| `pnpm test` | PASS |
+| `pnpm test` | PASS — 941 tests |
 | `pnpm build` | PASS |
 
 The existing production chunk-size warning remains non-blocking.
@@ -76,8 +81,14 @@ The existing production chunk-size warning remains non-blocking.
   `w17bnnjbwzws1rdyvg97s9cwxd8bfda8`
 - Corrected workspace:
   `sn71gskbdemgf4z1trt9zdmm5h8bde69`
+- Initial route:
+  `/v2/docs?workspace=w17bnnjbwzws1rdyvg97s9cwxd8bfda8&doc=sfe-overview&mission=m1&task=t1&workOrder=w1&tab=evidence&filters=open&view=operator&automation=a1&definition=d1`
+- Corrected route:
+  `/v2/docs?workspace=sn71gskbdemgf4z1trt9zdmm5h8bde69&doc=sfe-overview&mission=m1&task=t1&workOrder=w1&tab=evidence&filters=open&view=operator&automation=a1&definition=d1`
 - Screenshot:
   `docs/testing/evidence/docs-workspace-routing/docs-001-recovered.png`
+- Dismissed-warning screenshot:
+  `docs/testing/evidence/docs-workspace-routing/docs-001-dismissed.png`
 - Manual screenshot:
   `docs/testing/evidence/docs-workspace-routing/invalid-workspace-recovered.png`
 - Playwright trace:

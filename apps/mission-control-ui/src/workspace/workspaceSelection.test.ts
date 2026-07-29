@@ -17,9 +17,13 @@ describe("selectAccessibleWorkspace", () => {
     })).toEqual({ projectId: "workspace-research", requestedUnavailable: false });
   });
 
-  it("uses a valid stored workspace for an invalid, deleted, or inaccessible request", () => {
+  it.each([
+    ["malformed", "not-a-convex-id"],
+    ["inaccessible", "workspace-other-tenant"],
+    ["deleted", "workspace-deleted"],
+  ])("uses a valid stored workspace for a %s request", (_case, requestedWorkspace) => {
     expect(selectAccessibleWorkspace({
-      requestedWorkspace: "unavailable",
+      requestedWorkspace,
       persistedWorkspace: "workspace-research",
       workspaces,
     })).toEqual({ projectId: "workspace-research", requestedUnavailable: true });
@@ -39,6 +43,14 @@ describe("selectAccessibleWorkspace", () => {
       persistedWorkspace: "workspace-research",
       workspaces,
     })).toEqual({ projectId: "workspace-research", requestedUnavailable: false });
+  });
+
+  it("ignores an invalid stored workspace when the URL has no workspace", () => {
+    expect(selectAccessibleWorkspace({
+      requestedWorkspace: null,
+      persistedWorkspace: "workspace-deleted",
+      workspaces,
+    })).toEqual({ projectId: "workspace-mission-control", requestedUnavailable: false });
   });
 
   it("fails closed without an accessible workspace", () => {

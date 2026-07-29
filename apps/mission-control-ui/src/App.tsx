@@ -155,6 +155,8 @@ function ProjectSwitcher({
 
 const STORAGE_KEY_VIEW = "mc.last_view";
 const STORAGE_KEY_PROJECT = "mc.last_project";
+const WORKSPACE_RECOVERY_WARNING =
+  "The requested workspace was unavailable. Mission Control opened an accessible workspace instead.";
 
 function readPersistedProjectId(): string | null {
   if (typeof window === "undefined") return null;
@@ -163,6 +165,34 @@ function readPersistedProjectId(): string | null {
   } catch {
     return null;
   }
+}
+
+function WorkspaceRecoveryNotice({
+  visible,
+  onDismiss,
+}: {
+  visible: boolean;
+  onDismiss: () => void;
+}) {
+  if (!visible) return null;
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="fixed left-1/2 top-4 z-[100] flex w-[min(44rem,calc(100vw-2rem))] -translate-x-1/2 items-start justify-between gap-4 rounded-lg border border-amber-500/30 bg-card px-4 py-3 text-sm text-card-foreground shadow-lg"
+    >
+      <span>{WORKSPACE_RECOVERY_WARNING}</span>
+      <button
+        type="button"
+        aria-label="Close toast"
+        onClick={onDismiss}
+        className="shrink-0 rounded px-2 py-1 text-xs font-medium text-muted-foreground outline-none hover:bg-secondary hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        Dismiss
+      </button>
+    </div>
+  );
 }
 
 const VALID_MAIN_VIEWS: MainView[] = [
@@ -549,6 +579,10 @@ export default function App() {
   // ── Navigation & selection (persist last view so UI reopens where operator left off) ─
   const [currentView, setCurrentView] = useState<MainView>(() => readPersistedView() ?? "home");
   const [projectId, setProjectId] = useState<Id<"projects"> | null>(null);
+  const [workspaceWarning, setWorkspaceWarning] = useState<{
+    requestedWorkspace: string;
+    visible: boolean;
+  } | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<Id<"tasks"> | null>(null);
   const [selectedQcRunId, setSelectedQcRunId] = useState<Id<"qcRuns"> | null>(null);
 
@@ -671,12 +705,13 @@ export default function App() {
   const { toast } = useToast();
 
   useEffect(() => {
-    if (!workspaceSelection.requestedUnavailable) return;
-    toast(
-      "The requested workspace was unavailable. Mission Control opened an accessible workspace instead.",
-      true
+    if (!workspaceSelection.requestedUnavailable || !requestedProjectId) return;
+    setWorkspaceWarning((current) =>
+      current?.requestedWorkspace === requestedProjectId
+        ? current
+        : { requestedWorkspace: requestedProjectId, visible: true }
     );
-  }, [workspaceSelection.requestedUnavailable, toast]);
+  }, [requestedProjectId, workspaceSelection.requestedUnavailable]);
 
   // ── Keyboard shortcuts ───────────────────────────────────────────────────
   useKeyboardShortcuts({
@@ -968,6 +1003,14 @@ export default function App() {
     return (
       <WorkspaceScopeProvider value={{ projectId, setProjectId, project }}>
         <PrivacyProvider>
+          <WorkspaceRecoveryNotice
+            visible={workspaceWarning?.visible === true}
+            onDismiss={() =>
+              setWorkspaceWarning((current) =>
+                current ? { ...current, visible: false } : current
+              )
+            }
+          />
           <AppShellV2
             activeView={currentView}
             onNavigate={setCurrentView}
@@ -1016,6 +1059,14 @@ export default function App() {
   return (
     <WorkspaceScopeProvider value={{ projectId, setProjectId, project }}>
       <PrivacyProvider>
+      <WorkspaceRecoveryNotice
+        visible={workspaceWarning?.visible === true}
+        onDismiss={() =>
+          setWorkspaceWarning((current) =>
+            current ? { ...current, visible: false } : current
+          )
+        }
+      />
       <div className="flex h-screen flex-col bg-background text-foreground">
         <AppTopBar
           projectSwitcher={<ProjectSwitcher />}

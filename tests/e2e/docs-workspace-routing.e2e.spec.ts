@@ -5,6 +5,7 @@ import path from "node:path";
 
 const APP_URL = process.env.MISSION_CONTROL_URL ?? "http://127.0.0.1:5199";
 const INVALID_WORKSPACE = "w17bnnjbwzws1rdyvg97s9cwxd8bfda8";
+const SECOND_INVALID_WORKSPACE = "w27bnnjbwzws1rdyvg97s9cwxd8bfda8";
 const RESEARCH_LAB = "sn71gskbdemgf4z1trt9zdmm5h8bde69";
 const WARNING =
   "The requested workspace was unavailable. Mission Control opened an accessible workspace instead.";
@@ -42,9 +43,11 @@ test("invalid Docs workspace fails closed, preserves route state, and remains st
 
     await page.goto(
       `${APP_URL}/v2/docs?workspace=${INVALID_WORKSPACE}` +
-        "&doc=sfe-overview&mission=m1&task=t1&workOrder=w1&tab=evidence&filters=open"
+        "&doc=sfe-overview&mission=m1&task=t1&workOrder=w1&tab=evidence&filters=open" +
+        "&view=operator&automation=a1&definition=d1"
     );
-    await expect(page.getByText(WARNING, { exact: true })).toBeVisible();
+    const warningStatus = page.getByRole("status").filter({ hasText: WARNING });
+    await expect(warningStatus).toBeVisible();
     await expect(page.getByRole("button", { name: "Close toast" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Documentation" })).toBeVisible();
     await expect(page).not.toHaveURL(new RegExp(INVALID_WORKSPACE));
@@ -55,6 +58,9 @@ test("invalid Docs workspace fails closed, preserves route state, and remains st
       "workOrder=w1",
       "tab=evidence",
       "filters=open",
+      "view=operator",
+      "automation=a1",
+      "definition=d1",
     ]) {
       await expect(page).toHaveURL(new RegExp(parameter));
     }
@@ -69,6 +75,11 @@ test("invalid Docs workspace fails closed, preserves route state, and remains st
     expect(accessibility.violations.filter((item) => item.impact === "critical")).toEqual([]);
 
     await page.getByRole("button", { name: "Close toast" }).click();
+    await expect(warningStatus).toHaveCount(0);
+    await page.screenshot({
+      path: path.join(EVIDENCE, "docs-001-dismissed.png"),
+      fullPage: true,
+    });
     await page.reload();
     await expect(page.getByText(WARNING, { exact: true })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Documentation" })).toBeVisible();
@@ -78,6 +89,13 @@ test("invalid Docs workspace fails closed, preserves route state, and remains st
     await page.goForward();
     await expect(page).not.toHaveURL(new RegExp(INVALID_WORKSPACE));
     await expect(page.getByRole("heading", { name: "Documentation" })).toBeVisible();
+
+    const current = new URL(page.url());
+    current.searchParams.set("workspace", SECOND_INVALID_WORKSPACE);
+    await page.goto(current.toString());
+    await expect(page.getByRole("status").filter({ hasText: WARNING })).toBeVisible();
+    await expect(page).not.toHaveURL(new RegExp(SECOND_INVALID_WORKSPACE));
+    await expect(page).toHaveURL(/doc=sfe-overview/);
 
     expect(pageErrors).toEqual([]);
     expect(consoleErrors).toEqual([]);
