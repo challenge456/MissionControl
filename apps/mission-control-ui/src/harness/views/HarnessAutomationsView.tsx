@@ -21,6 +21,13 @@ export function HarnessAutomationsView({
       icon={<Sparkles className="h-5 w-5 text-registry-accent" />}
     >
       <div className="mx-auto max-w-[1000px] space-y-8 pb-4">
+        <button
+          type="button"
+          onClick={() => onNavigate("automations")}
+          className="harness-btn harness-btn-primary w-full"
+        >
+          Open governed Automations control plane
+        </button>
         <HarnessAutomationsCatalog
           projectId={projectId}
           onScheduled={() => onNavigate("harness-launch")}

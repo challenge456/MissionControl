@@ -25,6 +25,8 @@ export const ROUTE_CAPABILITIES: Partial<Record<MainView, RouteCapability>> = {
   atc: { scope: "workspace", maturity: "live" },
   audit: { scope: "workspace", maturity: "live" },
   telemetry: { scope: "workspace", maturity: "live" },
+  automations: { scope: "workspace", maturity: "live" },
+  "automation-runs": { scope: "workspace", maturity: "live" },
   skills: { scope: "global", maturity: "live" },
   memory: { scope: "workspace", maturity: "live" },
   docs: { scope: "global", maturity: "live" },

@@ -86,6 +86,13 @@ crons.interval(
   internal.factory.repetitiveTasks.scanScheduled
 );
 
+// LEVEL_1 Automations create approval-gated, read-only WorkOrders only.
+crons.interval(
+  "create due automation review gates",
+  { hours: 1 },
+  internal.automationScheduler.evaluateDue
+);
+
 // Evaluate alert rules (e.g. daily cost exceeded) every hour
 crons.interval(
   "evaluate alert rules",

@@ -27,6 +27,9 @@ vi.mock("../../../../../convex/_generated/api", () => ({
     scheduledJobs: {
       list: "scheduledJobs.list",
     },
+    automations: {
+      getControlPlane: "automations.getControlPlane",
+    },
     quotaTracking: {
       getLatestSnapshot: "quotaTracking.getLatestSnapshot",
       getProjectedBurnRate: "quotaTracking.getProjectedBurnRate",
@@ -127,6 +130,23 @@ vi.mock("convex/react", () => ({
             nextRun: Date.now() + 60_000,
           },
         ];
+      case "automations.getControlPlane":
+        return {
+          definitions: [{
+            _id: "automation-1",
+            name: "Weekly release review",
+            status: "ACTIVE",
+            nextRunAt: Date.now() + 120_000,
+          }],
+          metrics: {
+            active: 1,
+            paused: 0,
+            suspended: 0,
+            waitingApprovals: 2,
+            overdueReceipts: 1,
+            estimatedHumanMinutesSaved: 45,
+          },
+        };
       case "quotaTracking.getLatestSnapshot":
         return {
           usagePct: 42,
@@ -198,6 +218,8 @@ describe("CommandCenterView", () => {
     expect(screen.getByText("Provider capacity")).toBeInTheDocument();
     expect(screen.getByText("42.0%")).toBeInTheDocument();
     expect(screen.getByText(/Nightly verification sweep/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Governed Automations" })).toBeInTheDocument();
+    expect(screen.getByText("Weekly release review", { exact: false })).toBeInTheDocument();
 
     await waitFor(() => expect(screen.getByText("Connected")).toBeInTheDocument());
   });
@@ -210,6 +232,9 @@ describe("CommandCenterView", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open work orders" }));
 
     expect(onNavigate).toHaveBeenCalledWith("control-work-orders");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Automations" }));
+    expect(onNavigate).toHaveBeenCalledWith("automations");
 
     fireEvent.click(screen.getByRole("button", { name: /Planner/ }));
 
