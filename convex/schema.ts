@@ -4502,8 +4502,128 @@ export default defineSchema({
     createdAt: v.number(),
     resolvedAt: v.optional(v.number()),
   })
+    .index("by_project", ["projectId"])
     .index("by_project_status", ["projectId", "status"])
     .index("by_status", ["status"]),
+
+  // -------------------------------------------------------------------------
+  // AUTOMATION CONTROL PLANE
+  // -------------------------------------------------------------------------
+  automationDefinitions: defineTable({
+    projectId: v.id("projects"),
+    sourceCandidateId: v.id("metaLoopSuggestions"),
+    definitionVersion: v.number(),
+    name: v.string(),
+    description: v.string(),
+    ownerId: v.string(),
+    workflowId: v.string(),
+    workflowVersion: v.string(),
+    triggerType: v.union(
+      v.literal("SCHEDULE"),
+      v.literal("EVENT"),
+      v.literal("MANUAL"),
+      v.literal("CONDITION"),
+      v.literal("DEPENDENCY"),
+      v.literal("RECEIPT")
+    ),
+    triggerConfig: v.any(),
+    scope: v.string(),
+    repositoryIds: v.array(v.string()),
+    environmentIds: v.array(v.string()),
+    autonomyLevel: v.union(
+      v.literal("LEVEL_0"),
+      v.literal("LEVEL_1"),
+      v.literal("LEVEL_2"),
+      v.literal("LEVEL_3"),
+      v.literal("LEVEL_4"),
+      v.literal("LEVEL_5")
+    ),
+    isMutating: v.boolean(),
+    riskLevel: v.union(
+      v.literal("LOW"),
+      v.literal("MEDIUM"),
+      v.literal("HIGH"),
+      v.literal("CRITICAL")
+    ),
+    requiredApprovalTypes: v.array(v.string()),
+    verificationContract: v.any(),
+    evidenceRequirements: v.array(v.string()),
+    maxDurationSeconds: v.number(),
+    maxRetries: v.number(),
+    maxCostUsd: v.number(),
+    concurrencyLimit: v.number(),
+    idempotencyStrategy: v.string(),
+    overlapPolicy: v.union(
+      v.literal("SKIP"),
+      v.literal("QUEUE"),
+      v.literal("CANCEL_PREVIOUS"),
+      v.literal("ALLOW")
+    ),
+    catchUpPolicy: v.union(
+      v.literal("SKIP_MISSED"),
+      v.literal("RUN_ONCE"),
+      v.literal("RUN_EACH_MISSED")
+    ),
+    status: v.union(
+      v.literal("DRAFT"),
+      v.literal("DISABLED"),
+      v.literal("ACTIVE"),
+      v.literal("PAUSED"),
+      v.literal("SUSPENDED"),
+      v.literal("RETIRED")
+    ),
+    reliabilityState: v.union(
+      v.literal("PROBATION"),
+      v.literal("SUPERVISED"),
+      v.literal("TRUSTED_READ_ONLY"),
+      v.literal("TRUSTED_LOW_RISK"),
+      v.literal("SUSPENDED")
+    ),
+    health: v.union(
+      v.literal("HEALTHY"),
+      v.literal("ATTENTION"),
+      v.literal("DEGRADED"),
+      v.literal("UNKNOWN")
+    ),
+    activatedBy: v.optional(v.string()),
+    activatedAt: v.optional(v.number()),
+    activationReason: v.optional(v.string()),
+    activationPolicyVersion: v.optional(v.string()),
+    pausedBy: v.optional(v.string()),
+    pausedAt: v.optional(v.number()),
+    pauseReason: v.optional(v.string()),
+    lastRunAt: v.optional(v.number()),
+    nextRunAt: v.optional(v.number()),
+    lastResult: v.optional(v.string()),
+    lastReviewGateWorkOrderId: v.optional(v.id("workOrders")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_status", ["projectId", "status"])
+    .index("by_source_candidate", ["sourceCandidateId"])
+    .index("by_next_run", ["nextRunAt"]),
+
+  automationDecisions: defineTable({
+    projectId: v.id("projects"),
+    automationDefinitionId: v.id("automationDefinitions"),
+    decisionType: v.union(
+      v.literal("CREATED"),
+      v.literal("ACTIVATED"),
+      v.literal("PAUSED"),
+      v.literal("RESUMED"),
+      v.literal("SUSPENDED"),
+      v.literal("RETIRED")
+    ),
+    actorId: v.string(),
+    reason: v.string(),
+    policyVersion: v.string(),
+    definitionVersion: v.number(),
+    decidedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_definition", ["automationDefinitionId"])
+    .index("by_project_time", ["projectId", "decidedAt"]),
 
   // -------------------------------------------------------------------------
   // KNOWLEDGE GRAPH (Agentic-KB Graphify overlay + future Obsidian sync)

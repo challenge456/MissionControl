@@ -2,23 +2,29 @@
 
 import { v } from "convex/values";
 import { internalMutation, mutation, query } from "../_generated/server";
-import { detectRepetitiveTasks } from "../lib/repetitiveTasks";
+import { detectRepetitiveTasks, isEligibleAutomationReceipt } from "../lib/repetitiveTasks";
 
-async function candidatesForProject(ctx: { db: any }, projectId?: string) {
+export async function candidatesForProject(ctx: { db: any }, projectId?: string) {
   const workOrders = projectId
     ? await ctx.db.query("workOrders").withIndex("by_project", (q: any) => q.eq("projectId", projectId)).collect()
     : await ctx.db.query("workOrders").collect();
   const receipts = projectId
     ? await ctx.db.query("verificationReceipts").withIndex("by_project", (q: any) => q.eq("projectId", projectId)).collect()
     : await ctx.db.query("verificationReceipts").collect();
-  const workOrderIdsWithReceipts = new Set(receipts.map((receipt: any) => String(receipt.workOrderId)));
+  const eligibleReceiptsByWorkOrder = new Map<string, number>();
+  for (const receipt of receipts) {
+    if (!isEligibleAutomationReceipt(receipt)) continue;
+    const key = String(receipt.workOrderId);
+    eligibleReceiptsByWorkOrder.set(key, (eligibleReceiptsByWorkOrder.get(key) ?? 0) + 1);
+  }
 
   return detectRepetitiveTasks(
     workOrders.map((workOrder: any) => ({
+      workOrderId: String(workOrder._id),
       workflowId: workOrder.workflowId,
       repository: workOrder.repository,
       state: workOrder.state,
-      hasReceipt: workOrderIdsWithReceipts.has(String(workOrder._id)),
+      eligibleReceiptCount: eligibleReceiptsByWorkOrder.get(String(workOrder._id)) ?? 0,
     }))
   );
 }
@@ -40,6 +46,21 @@ async function createProposals(ctx: { db: any }, projectId?: string) {
       summary: `${candidate.occurrences} governed Work Orders; ${candidate.completedCount} completed; ${candidate.receiptCount} have verification receipts. Review and approve a bounded automation scope.`,
       status: "OPEN",
       sourceRef,
+      payload: {
+        type: "AUTOMATION_CANDIDATE",
+        candidateId: candidate.id,
+        pattern: candidate.pattern,
+        workflowId: candidate.workflowId,
+        repository: candidate.repository,
+        supportingWorkOrderIds: candidate.supportingWorkOrderIds,
+        occurrences: candidate.occurrences,
+        receiptCount: candidate.receiptCount,
+        suggestedCadence: candidate.suggestedCadence,
+        confidence: candidate.confidence,
+        riskLevel: candidate.riskLevel,
+        estimatedHumanMinutesSaved: candidate.estimatedHumanMinutesSaved,
+        recommendedAutonomyLevel: candidate.recommendedAutonomyLevel,
+      },
       createdAt: Date.now(),
     });
     createdIds.push(id);
