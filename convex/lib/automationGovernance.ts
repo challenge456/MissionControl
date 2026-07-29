@@ -1,5 +1,6 @@
 export const AUTOMATION_POLICY_VERSION = "automation-v1";
 export const AUTOMATION_CADENCE_MS = 7 * 24 * 60 * 60 * 1000;
+export const AUTOMATION_ACTOR_IDENTITY_SOURCE = "CLIENT_ASSERTED_TRUSTED_OPERATOR" as const;
 
 export type AutomationStatus = "DRAFT" | "DISABLED" | "ACTIVE" | "PAUSED" | "SUSPENDED" | "RETIRED";
 
@@ -26,6 +27,60 @@ export function isAutomationCandidatePayload(value: unknown): value is Automatio
     && typeof payload.candidateId === "string"
     && typeof payload.pattern === "string"
     && Array.isArray(payload.supportingWorkOrderIds);
+}
+
+export function buildDisabledAutomationDefinition<ProjectId, CandidateId>(input: {
+  projectId: ProjectId;
+  sourceCandidateId: CandidateId;
+  actorId: string;
+  candidate: {
+    pattern: string;
+    repository?: string;
+    suggestedCadence: string;
+    riskLevel: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  };
+  workflow: { workflowId: string; version: number };
+  now: number;
+}) {
+  return {
+    projectId: input.projectId,
+    sourceCandidateId: input.sourceCandidateId,
+    definitionVersion: 1,
+    name: input.candidate.pattern.replace(/^Workflow:\s*/, ""),
+    description: `Governed repetition of ${input.candidate.pattern}`,
+    ownerId: input.actorId,
+    workflowId: input.workflow.workflowId,
+    workflowVersion: `v${input.workflow.version}`,
+    triggerType: "SCHEDULE" as const,
+    triggerConfig: {
+      cron: input.candidate.suggestedCadence,
+      timezone: "America/Los_Angeles",
+    },
+    scope: input.candidate.repository ?? `workflow:${input.workflow.workflowId}`,
+    repositoryIds: input.candidate.repository ? [input.candidate.repository] : [],
+    environmentIds: [],
+    autonomyLevel: "LEVEL_1" as const,
+    isMutating: false,
+    riskLevel: input.candidate.riskLevel,
+    requiredApprovalTypes: ["operator"],
+    verificationContract: {
+      receiptRequired: true,
+      independentValidatorRequired: true,
+    },
+    evidenceRequirements: ["passing verification receipt", "operator scope review"],
+    maxDurationSeconds: 1800,
+    maxRetries: 1,
+    maxCostUsd: 5,
+    concurrencyLimit: 1,
+    idempotencyStrategy: "definition-and-cadence-window",
+    overlapPolicy: "SKIP" as const,
+    catchUpPolicy: "RUN_ONCE" as const,
+    status: "DISABLED" as const,
+    reliabilityState: "PROBATION" as const,
+    health: "UNKNOWN" as const,
+    createdAt: input.now,
+    updatedAt: input.now,
+  };
 }
 
 export function nextScheduledAt(now: number): number {

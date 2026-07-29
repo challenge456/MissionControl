@@ -17,7 +17,7 @@ export function AutomationSchedule({ projectId, definitions }: { projectId: Id<"
     setBusyId(definition._id);
     setMessage(null);
     try {
-      const result = await evaluate({ projectId, automationDefinitionId: definition._id, actorId: "operator" });
+      const result = await evaluate({ projectId, automationDefinitionId: definition._id });
       setMessage(result.created === 1 ? "One review-gate WorkOrder created." : `No duplicate created (${result.skipped} skipped).`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Evaluation failed");

@@ -1,14 +1,21 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { candidatesForProject } from "./factory/repetitiveTasks";
 import {
   AUTOMATION_POLICY_VERSION,
+  AUTOMATION_ACTOR_IDENTITY_SOURCE,
+  buildDisabledAutomationDefinition,
   calculateAutomationMetrics,
   isAutomationCandidatePayload,
   nextScheduledAt,
 } from "./lib/automationGovernance";
+import {
+  isCandidateEligibleForActivation,
+  loadRepetitiveTaskCandidates,
+} from "./lib/repetitiveTaskCandidates";
 
 const actorArgs = {
+  // V1 runs behind a trusted operator boundary. This is an audit label supplied
+  // by that deployment, not an independently authenticated Mission Control ID.
   actorId: v.string(),
   reason: v.string(),
   policyVersion: v.optional(v.string()),
@@ -32,7 +39,7 @@ export const getControlPlane = query({
       ctx.db.query("verificationReceipts").withIndex("by_project", (q: any) => q.eq("projectId", args.projectId)).collect(),
       ctx.db.query("scheduledJobs").withIndex("by_project", (q: any) => q.eq("projectId", args.projectId)).collect(),
     ]);
-    const detected = await candidatesForProject(ctx, args.projectId);
+    const detected = await loadRepetitiveTaskCandidates(ctx, args.projectId);
     const suggestionByCandidate = new Map(
       suggestions
         .filter((suggestion: any) => isAutomationCandidatePayload(suggestion.payload))
@@ -42,7 +49,7 @@ export const getControlPlane = query({
       ...candidate,
       suggestionId: suggestionByCandidate.get(candidate.id)?._id,
       status: suggestionByCandidate.get(candidate.id)?.status ?? "DETECTED",
-      eligible: !!candidate.workflowId && candidate.receiptCount > 0,
+      eligible: isCandidateEligibleForActivation(candidate),
     }));
     const reviewGates = workOrders.filter((workOrder: any) => workOrder.metadata?.automationDefinitionId);
     const receiptByWorkOrder = new Map<string, any[]>();
@@ -103,14 +110,17 @@ export const acceptCandidate = mutation({
   },
   handler: async (ctx, args) => {
     await assertProject(ctx, args.projectId);
-    const candidate = (await candidatesForProject(ctx, args.projectId))
+    const candidate = (await loadRepetitiveTaskCandidates(ctx, args.projectId))
       .find((item) => item.id === args.candidateId);
     if (!candidate) throw new Error("Automation Candidate is no longer eligible");
     if (!candidate.workflowId) throw new Error("Design and version a Workflow before accepting this candidate");
     if (candidate.receiptCount < 1) throw new Error("A passing, fresh verification receipt is required");
 
     const sourceRef = `repetitive-task:${args.projectId}:${candidate.id}`;
-    const suggestions = await ctx.db.query("metaLoopSuggestions").collect();
+    const suggestions = await ctx.db
+      .query("metaLoopSuggestions")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
     let suggestion = suggestions.find((item) => item.sourceRef === sourceRef);
     const payload = {
       type: "AUTOMATION_CANDIDATE" as const,
@@ -159,44 +169,23 @@ export const acceptCandidate = mutation({
     if (suggestion.status !== "ACCEPTED") {
       await ctx.db.patch(suggestion._id, { status: "ACCEPTED", resolvedAt: now, payload });
     }
-    const definitionId = await ctx.db.insert("automationDefinitions", {
-      projectId: args.projectId,
-      sourceCandidateId: suggestion._id,
-      definitionVersion: 1,
-      name: candidate.pattern.replace(/^Workflow:\s*/, ""),
-      description: `Governed repetition of ${candidate.pattern}`,
-      ownerId: args.actorId,
-      workflowId: workflow.workflowId,
-      workflowVersion: `v${workflow.version}`,
-      triggerType: "SCHEDULE",
-      triggerConfig: { cron: candidate.suggestedCadence, timezone: "America/Los_Angeles" },
-      scope: candidate.repository ?? `workflow:${workflow.workflowId}`,
-      repositoryIds: candidate.repository ? [candidate.repository] : [],
-      environmentIds: [],
-      autonomyLevel: "LEVEL_1",
-      isMutating: false,
-      riskLevel: candidate.riskLevel,
-      requiredApprovalTypes: ["operator"],
-      verificationContract: { receiptRequired: true, independentValidatorRequired: true },
-      evidenceRequirements: ["passing verification receipt", "operator scope review"],
-      maxDurationSeconds: 1800,
-      maxRetries: 1,
-      maxCostUsd: 5,
-      concurrencyLimit: 1,
-      idempotencyStrategy: "definition-and-cadence-window",
-      overlapPolicy: "SKIP",
-      catchUpPolicy: "RUN_ONCE",
-      status: "DISABLED",
-      reliabilityState: "PROBATION",
-      health: "UNKNOWN",
-      createdAt: now,
-      updatedAt: now,
-    });
+    const definitionId = await ctx.db.insert(
+      "automationDefinitions",
+      buildDisabledAutomationDefinition({
+        projectId: args.projectId,
+        sourceCandidateId: suggestion._id,
+        actorId: args.actorId,
+        candidate,
+        workflow,
+        now,
+      })
+    );
     await ctx.db.insert("automationDecisions", {
       projectId: args.projectId,
       automationDefinitionId: definitionId,
       decisionType: "CREATED",
       actorId: args.actorId,
+      actorIdentitySource: AUTOMATION_ACTOR_IDENTITY_SOURCE,
       reason: args.reason,
       policyVersion: args.policyVersion ?? AUTOMATION_POLICY_VERSION,
       definitionVersion: 1,
@@ -239,6 +228,7 @@ export const activate = mutation({
       automationDefinitionId: definition._id,
       decisionType: definition.status === "PAUSED" ? "RESUMED" : "ACTIVATED",
       actorId: args.actorId,
+      actorIdentitySource: AUTOMATION_ACTOR_IDENTITY_SOURCE,
       reason: args.reason,
       policyVersion: args.policyVersion ?? AUTOMATION_POLICY_VERSION,
       definitionVersion: definition.definitionVersion,
@@ -274,6 +264,7 @@ export const pause = mutation({
       automationDefinitionId: definition._id,
       decisionType: "PAUSED",
       actorId: args.actorId,
+      actorIdentitySource: AUTOMATION_ACTOR_IDENTITY_SOURCE,
       reason: args.reason,
       policyVersion: args.policyVersion ?? AUTOMATION_POLICY_VERSION,
       definitionVersion: definition.definitionVersion,

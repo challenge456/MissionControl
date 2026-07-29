@@ -91,6 +91,20 @@ explicit allowlist, independent verification, and separate product approval.
 - Cadence retries reuse a definition-and-window idempotency key.
 - Disabling or pausing stops future gates and leaves existing WorkOrders intact.
 
+## V1 authorization boundary
+
+Mission Control does not yet provide authenticated operator identity and
+workspace membership consistently across the application. V1 Automation
+controls therefore require a trusted-operator deployment boundary.
+
+The `actorId` accepted by candidate acceptance, activation, and pause is an audit
+label asserted by that trusted deployment. It is recorded with
+`CLIENT_ASSERTED_TRUSTED_OPERATOR` and must not be interpreted as an
+independently authenticated identity. `evaluateNow` does not accept an actor
+label because it cannot verify one. Workspace/entity mismatches still fail
+closed, but broad authenticated authorization is intentionally deferred to a
+[separate product slice](https://github.com/jaydubya818/MissionControl/issues/42).
+
 ## Suspension and reliability
 
 Verification failure, a missing required receipt, workflow-version drift, cost

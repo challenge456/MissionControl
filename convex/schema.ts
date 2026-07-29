@@ -4616,6 +4616,7 @@ export default defineSchema({
       v.literal("RETIRED")
     ),
     actorId: v.string(),
+    actorIdentitySource: v.optional(v.literal("CLIENT_ASSERTED_TRUSTED_OPERATOR")),
     reason: v.string(),
     policyVersion: v.string(),
     definitionVersion: v.number(),

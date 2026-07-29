@@ -2,35 +2,11 @@
 
 import { v } from "convex/values";
 import { internalMutation, mutation, query } from "../_generated/server";
-import { detectRepetitiveTasks, isEligibleAutomationReceipt } from "../lib/repetitiveTasks";
+import type { Id } from "../_generated/dataModel";
+import { loadRepetitiveTaskCandidates } from "../lib/repetitiveTaskCandidates";
 
-export async function candidatesForProject(ctx: { db: any }, projectId?: string) {
-  const workOrders = projectId
-    ? await ctx.db.query("workOrders").withIndex("by_project", (q: any) => q.eq("projectId", projectId)).collect()
-    : await ctx.db.query("workOrders").collect();
-  const receipts = projectId
-    ? await ctx.db.query("verificationReceipts").withIndex("by_project", (q: any) => q.eq("projectId", projectId)).collect()
-    : await ctx.db.query("verificationReceipts").collect();
-  const eligibleReceiptsByWorkOrder = new Map<string, number>();
-  for (const receipt of receipts) {
-    if (!isEligibleAutomationReceipt(receipt)) continue;
-    const key = String(receipt.workOrderId);
-    eligibleReceiptsByWorkOrder.set(key, (eligibleReceiptsByWorkOrder.get(key) ?? 0) + 1);
-  }
-
-  return detectRepetitiveTasks(
-    workOrders.map((workOrder: any) => ({
-      workOrderId: String(workOrder._id),
-      workflowId: workOrder.workflowId,
-      repository: workOrder.repository,
-      state: workOrder.state,
-      eligibleReceiptCount: eligibleReceiptsByWorkOrder.get(String(workOrder._id)) ?? 0,
-    }))
-  );
-}
-
-async function createProposals(ctx: { db: any }, projectId?: string) {
-  const candidates = await candidatesForProject(ctx, projectId);
+async function createProposals(ctx: { db: any }, projectId?: Id<"projects">) {
+  const candidates = await loadRepetitiveTaskCandidates(ctx, projectId);
   const existing = await ctx.db.query("metaLoopSuggestions").collect();
   const existingRefs = new Set(existing.map((suggestion: any) => suggestion.sourceRef).filter(Boolean));
   const createdIds = [];
@@ -75,7 +51,7 @@ export const listCandidates = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    return (await candidatesForProject(ctx, args.projectId)).slice(0, args.limit ?? 8);
+    return (await loadRepetitiveTaskCandidates(ctx, args.projectId)).slice(0, args.limit ?? 8);
   },
 });
 

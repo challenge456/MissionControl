@@ -36,5 +36,6 @@ describe("detectRepetitiveTasks", () => {
     expect(isEligibleAutomationReceipt({ status: "WAIVED" }, 100)).toBe(false);
     expect(isEligibleAutomationReceipt({ status: "STALE" }, 100)).toBe(false);
     expect(isEligibleAutomationReceipt({ status: "PASSED", validUntil: 99 }, 100)).toBe(false);
+    expect(isEligibleAutomationReceipt({ status: "PASSED", invalidatedAt: 99 }, 100)).toBe(false);
   });
 });

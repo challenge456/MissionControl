@@ -72,6 +72,12 @@ export function AutomationsView({
         icon={<Bot className="h-5 w-5" />}
       />
       <div className="mx-auto w-full max-w-[1500px] space-y-5 px-4 py-5 sm:px-6">
+        <Card className="border-amber-400/25 bg-amber-400/5 p-3 text-sm text-amber-100">
+          <span className="font-medium">V1 authorization boundary:</span>{" "}
+          Automation controls require a trusted-operator deployment. Audit actor
+          labels are client asserted and are not independently authenticated
+          Mission Control identities.
+        </Card>
         <div role="tablist" aria-label="Automation control plane" className="flex gap-1 overflow-x-auto rounded-xl border border-[var(--panel-line)] bg-card/40 p-1">
           {AUTOMATION_TABS.map((item) => (
             <button
@@ -109,11 +115,26 @@ export function AutomationsView({
                 <div className="mt-4 rounded-lg border border-border bg-muted/20 p-3 text-sm">
                   <div className="font-medium text-foreground">Latest governed decision</div>
                   <div className="mt-2 grid gap-2 text-muted-foreground sm:grid-cols-2 lg:grid-cols-4">
-                    <span>{selectedDecisions[0].decisionType} by {selectedDecisions[0].actorId}</span>
+                    <span>
+                      {selectedDecisions[0].decisionType} ·{" "}
+                      {selectedDecisions[0].actorIdentitySource
+                        ? "trusted deployment label"
+                        : selectedDecisions[0].actorId.startsWith("automation-")
+                          ? "system actor"
+                          : "legacy actor label"}{" "}
+                      {selectedDecisions[0].actorId}
+                    </span>
                     <span>{selectedDecisions[0].policyVersion}</span>
                     <span>Definition v{selectedDecisions[0].definitionVersion}</span>
                     <span>{new Date(selectedDecisions[0].decidedAt).toLocaleString()}</span>
                   </div>
+                  <p className="mt-2 text-xs text-amber-100/80">
+                    Attribution source:{" "}
+                    {selectedDecisions[0].actorIdentitySource
+                      ?? (selectedDecisions[0].actorId.startsWith("automation-")
+                        ? "SYSTEM"
+                        : "LEGACY_UNSPECIFIED")}
+                  </p>
                   <p className="mt-2 text-muted-foreground">{selectedDecisions[0].reason}</p>
                 </div>
               ) : null}

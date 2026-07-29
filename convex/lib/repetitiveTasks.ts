@@ -25,10 +25,12 @@ export interface RepetitiveTaskCandidate {
 }
 
 export function isEligibleAutomationReceipt(
-  receipt: { status: string; validUntil?: number },
+  receipt: { status: string; validUntil?: number; invalidatedAt?: number },
   now = Date.now()
 ): boolean {
-  return receipt.status === "PASSED" && (!receipt.validUntil || receipt.validUntil > now);
+  return receipt.status === "PASSED"
+    && receipt.invalidatedAt == null
+    && (!receipt.validUntil || receipt.validUntil > now);
 }
 
 function candidateKey(source: RepetitiveTaskSource): string | null {

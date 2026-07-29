@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   AUTOMATION_CADENCE_MS,
+  AUTOMATION_ACTOR_IDENTITY_SOURCE,
+  buildDisabledAutomationDefinition,
   buildReviewGate,
   calculateAutomationMetrics,
   isAutomationSelfApproval,
@@ -34,6 +36,45 @@ describe("automation governance", () => {
     });
     expect(first.idempotencyKey).toBe(retry.idempotencyKey);
     expect(first.acceptanceCriteria).toHaveLength(2);
+  });
+
+  it("keeps candidate acceptance disabled and non-mutating", () => {
+    const accepted = buildDisabledAutomationDefinition({
+      projectId: "project-a",
+      sourceCandidateId: "candidate-a",
+      actorId: "operator",
+      candidate: {
+        pattern: "Workflow: release-review",
+        suggestedCadence: "0 8 * * 1",
+        riskLevel: "MEDIUM",
+      },
+      workflow: { workflowId: "release-review", version: 3 },
+      now: 100,
+    });
+
+    expect(accepted).toMatchObject({
+      status: "DISABLED",
+      autonomyLevel: "LEVEL_1",
+      isMutating: false,
+      workflowId: "release-review",
+      workflowVersion: "v3",
+      ownerId: "operator",
+    });
+    expect(AUTOMATION_ACTOR_IDENTITY_SOURCE).toBe("CLIENT_ASSERTED_TRUSTED_OPERATOR");
+  });
+
+  it("converges concurrent scheduler attempts on one cadence key", async () => {
+    const scheduledAt = AUTOMATION_CADENCE_MS + 100;
+    const attempts = await Promise.all([
+      Promise.resolve(buildReviewGate(definition, scheduledAt)),
+      Promise.resolve(buildReviewGate(definition, scheduledAt)),
+      Promise.resolve(buildReviewGate(definition, scheduledAt)),
+    ]);
+
+    expect(new Set(attempts.map((attempt) => attempt.idempotencyKey)).size).toBe(1);
+    expect(attempts.every((attempt) =>
+      attempt.state === "AWAITING_APPROVAL" && attempt.isMutating === false
+    )).toBe(true);
   });
 
   it("only considers active definitions due", () => {

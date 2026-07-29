@@ -53,6 +53,15 @@ the same name, `Software Factory Research Lab`
 Local fixture state remains only in the isolated local deployment so the captured
 evidence stays reproducible.
 
+## Authorization constraint
+
+V1 requires deployment behind a trusted operator boundary. Automation decision
+actor labels are client asserted and recorded as
+`CLIENT_ASSERTED_TRUSTED_OPERATOR`; they are not authenticated Mission Control
+identities. Authenticated activation, pause, evaluation, and workspace access
+remain separately scoped follow-up work in
+[issue #42](https://github.com/jaydubya818/MissionControl/issues/42).
+
 ## Accessibility
 
 - One H1 and semantic, URL-backed tabs were present.

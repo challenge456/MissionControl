@@ -23,7 +23,6 @@ async function evaluate(
   args: {
     projectId?: Id<"projects">;
     automationDefinitionId?: Id<"automationDefinitions">;
-    actorId: string;
   }
 ): Promise<EvaluationResult> {
   const now = Date.now();
@@ -125,7 +124,7 @@ async function evaluate(
 export const evaluateDue = internalMutation({
   args: {},
   handler: async (ctx): Promise<EvaluationResult> =>
-    evaluate(ctx, { actorId: "automation-scheduler" }),
+    evaluate(ctx, {}),
 });
 
 /** Explicit deterministic operator control used for bounded validation and recovery. */
@@ -133,12 +132,15 @@ export const evaluateNow = mutation({
   args: {
     projectId: v.id("projects"),
     automationDefinitionId: v.id("automationDefinitions"),
-    actorId: v.string(),
   },
-  handler: async (ctx, args): Promise<EvaluationResult> =>
-    evaluate(ctx, {
+  handler: async (ctx, args): Promise<EvaluationResult> => {
+    const definition = await ctx.db.get(args.automationDefinitionId);
+    if (!definition || definition.projectId !== args.projectId) {
+      throw new Error("Automation is outside the selected workspace");
+    }
+    return evaluate(ctx, {
       projectId: args.projectId,
       automationDefinitionId: args.automationDefinitionId,
-      actorId: args.actorId,
-    }),
+    });
+  },
 });
