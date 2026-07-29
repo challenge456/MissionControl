@@ -218,3 +218,46 @@ Gaps:
   refresh/back/forward test, followed by PR 2’s reject/revise/approve/release
   test.
 
+## 2026-07-28 — PR 1 Mission draft verification
+
+PR 1 resolves the bounded Mission draft failures recorded above:
+
+- Mission cards now open `/v2/missions/:missionId?workspace=:workspaceId`.
+- Both legacy Mission URL forms normalize once to the canonical route while
+  retaining workspace state.
+- Direct load, refresh, browser back, and browser forward retain the selected
+  Mission.
+- DRAFT is presented as `Draft` / `Planning not started`, never `In progress`.
+- The existing Mission detail surface now edits title, objective, context,
+  constraints, source references, owner, budget, stop condition, read-only
+  concurrency, and corrective-iteration bounds.
+- Explicit save exposes dirty, saving, saved, validation, and recoverable error
+  states; duplicate submission is disabled and idempotent.
+- Scoped reads and updates distinguish not-found from active-workspace
+  mismatch.
+- Authenticated subject IDs are used when available. The unauthenticated local
+  demo records an explicitly labeled `DEVELOPMENT_FALLBACK` actor.
+- The shared detail layout now stacks its metadata rail below content at narrow
+  widths; the prior overlap found during visual review is resolved.
+
+Focused verification passed: 24 frontend tests, 11 Convex/governance tests,
+affected UI and Convex typechecks, the production UI build, and one Chromium
+journey. The focused axe scan reported zero critical violations. The browser
+journey reported zero page errors and zero failed requests after excluding the
+known gateway-status probe. Exactly one disposable Mission and one successful
+draft-update event were observed.
+
+Evidence:
+
+- `docs/testing/evidence/mission-draft-routing/01-portfolio-before-creation.png`
+- `docs/testing/evidence/mission-draft-routing/02-truthful-draft-card.png`
+- `docs/testing/evidence/mission-draft-routing/03-canonical-completed-draft.png`
+- `docs/testing/evidence/mission-draft-routing/04-persisted-after-refresh.png`
+- `docs/testing/evidence/mission-draft-routing/05-workspace-scope-mismatch.png`
+- `docs/testing/evidence/mission-draft-routing/06-narrow-viewport.png`
+- `docs/testing/evidence/mission-draft-routing/mission-draft-routing-trace.zip`
+- `docs/testing/evidence/mission-draft-routing/focused-test-results.md`
+
+Still deferred: plan authoring, plan review/rejection/approval, blueprint
+materialization, WorkOrder release, execution, validation, corrective work, and
+final Mission acceptance. Those remain PR 2 or later and were not started here.
