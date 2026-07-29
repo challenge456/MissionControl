@@ -6,6 +6,11 @@ status: proposed
 
 # Software Factory Information Architecture
 
+> Targeted V1 update: Operations now owns one canonical **Automations** surface
+> with Overview, Definitions, Runs, Schedule, Candidates, and Receipts tabs.
+> Calendar, scheduled jobs, Harness Automations, and Hybrid Workflows remain
+> legacy/preview capabilities and are not separate EOS navigation destinations.
+
 ## Principle
 
 Navigation represents operator jobs and authoritative objects, not every
@@ -272,4 +277,3 @@ Do not create:
 - Preview/demo/Labs are collapsed and visibly badged.
 - No capability has two authoritative list/detail routes.
 - Main navigation is usable by keyboard and at 320 px / 200% zoom.
-

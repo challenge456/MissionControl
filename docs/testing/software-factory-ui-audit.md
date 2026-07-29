@@ -117,6 +117,7 @@ Codes:
 | Content Pipeline | C | Labs/legacy | P/? | Mixed | Mixed | Unproven | Unproven | Overlaps code pipeline | Typed pipeline definition | — | CONSOLIDATE |
 | Calendar | C | Legacy/preview | P/? | Mixed | Mixed | Unproven | Unproven | Schedule relationship unclear | Automation tab | — | CONSOLIDATE |
 | Schedule(s) | C | Multiple routes | P/W | C/U mixed | Mixed | Partial | Unproven | Missed-run/incidents incomplete | One Automation page | partial | CONSOLIDATE |
+| Automations | A | `/v2/automations` | W | Convex definitions/candidates/WorkOrders/receipts | Governed | Candidate acceptance, activation, pause, due-gate evaluation | Focused V1 journey required | LEVEL_2+ disabled | Operations → Automations | pending evidence | ENHANCE |
 | Audit | C/R | Yes | L/W | R | L/E/R/S | Core audit | Scoped URL | Entity correlation partial | Decisions/Audit tab | prior B | CONSOLIDATE |
 | Telemetry | C | Yes | L/W | R | Mixed | Data audit only | Scoped route | Correlation/incident workflow partial | Incidents detail/tab | partial | ENHANCE |
 | System/Database | C | Preview | L/A | high-power R/U | Mixed | Role gate absent | Route | Search/data metrics; broad | Admin Developer Tool | — | MOVE |
@@ -217,4 +218,3 @@ Gaps:
 - The next audit should be PR 1’s deterministic Mission create/open/edit/
   refresh/back/forward test, followed by PR 2’s reject/revise/approve/release
   test.
-
