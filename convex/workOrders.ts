@@ -35,6 +35,7 @@ import {
   type RoutingPolicyInput,
   type RoutingTier,
 } from "./lib/modelRouting";
+import { isAutomationSelfApproval } from "./lib/automationGovernance";
 
 function generateRunId(): string {
   return Math.random().toString(36).substring(2, 10);
@@ -2005,6 +2006,15 @@ export const decideApprovalDecision = mutation({
     if (approvalDecision.status !== "PENDING") {
       throw new Error(`ApprovalDecision cannot transition from ${approvalDecision.status}`);
     }
+    const workOrder = await ctx.db.get(approvalDecision.workOrderId);
+    if (!workOrder) throw new Error("WorkOrder not found");
+    if (isAutomationSelfApproval({
+      automationDefinitionId: workOrder.metadata?.automationDefinitionId,
+      requestedBy: workOrder.requestedBy,
+      approver: args.approver,
+    })) {
+      throw new Error("An Automation cannot approve its own WorkOrder");
+    }
 
     const status = decisionToStatus(args.decision);
     await ctx.db.patch(args.approvalDecisionId, {
@@ -2016,9 +2026,6 @@ export const decideApprovalDecision = mutation({
       decidedAt: Date.now(),
       metadata: { ...(approvalDecision.metadata ?? {}), ...(args.metadata ?? {}) },
     });
-
-    const workOrder = await ctx.db.get(approvalDecision.workOrderId);
-    if (!workOrder) throw new Error("WorkOrder not found");
 
     await logWorkOrderEvent(ctx, {
       tenantId: workOrder.tenantId,
@@ -2756,6 +2763,37 @@ export const seedDemo = mutation({
 
     const firstProject = await ctx.db.query("projects").order("asc").first();
     const now = Date.now();
+    const featureWorkflow = await ctx.db
+      .query("workflows")
+      .withIndex("by_workflow_id", (q) => q.eq("workflowId", "feature-dev"))
+      .first();
+    if (!featureWorkflow) {
+      await ctx.db.insert("workflows", {
+        workflowId: "feature-dev",
+        name: "Feature development",
+        description: "Bounded read-only feature review workflow used by the software-factory demo.",
+        topology: "LINEAR",
+        maxConcurrency: 1,
+        agents: [{ id: "reviewer", persona: "software-factory-reviewer" }],
+        steps: [{
+          id: "review",
+          agent: "reviewer",
+          input: "{{task}}",
+          expects: "A review receipt",
+          retryLimit: 1,
+          timeoutMinutes: 30,
+          kind: "VERIFY",
+          isolation: "READ_ONLY",
+          failurePolicy: "BLOCK",
+        }],
+        active: true,
+        version: 1,
+        createdBy: "software-factory-demo",
+        createdAt: now,
+        updatedAt: now,
+        metadata: { seedTag: "software-factory-demo" },
+      });
+    }
 
     const demoOrders = [
       {
@@ -2773,7 +2811,7 @@ export const seedDemo = mutation({
         acceptanceCriteria: [
           { id: "ac-1", title: "Work queue renders real work orders", verificationMethod: "MANUAL" as const, status: "PASS" as const },
           { id: "ac-2", title: "Acceptance criteria are visible on detail view", verificationMethod: "MANUAL" as const, status: "PASS" as const },
-          { id: "ac-3", title: "Linked execution runs are visible", verificationMethod: "MANUAL" as const, status: "PENDING" as const },
+          { id: "ac-3", title: "Linked execution runs are visible", verificationMethod: "MANUAL" as const, status: "PASS" as const },
         ],
         constraints: ["No broad rewrite", "Keep Convex as source of truth"],
         sourceOfTruthRefs: [
@@ -2781,15 +2819,14 @@ export const seedDemo = mutation({
           { kind: "DOC" as const, label: "Software factory brief", location: "docs/software-factory/information-architecture.md" },
         ],
         requiredApprovals: ["UI behavior", "Schema change review"],
-        state: "IN_PROGRESS" as const,
-        approvalStatus: "PENDING" as const,
-        requiredHumanAction: "Review schema and UI slice before expanding into analytics.",
+        state: "DONE" as const,
+        approvalStatus: "APPROVED" as const,
       },
       {
         title: "Harden verification traceability",
         desiredOutcome: "Each acceptance criterion is paired with explicit evidence before work can be marked complete.",
         context: "Current MissionControl review surfaces do not yet form a criterion-level traceability matrix.",
-        workflowId: "quality-audit",
+        workflowId: "feature-dev",
         repository: "jaydubya818/MissionControl",
         branchStrategy: "verification-receipts follow-up branch",
         priority: 2 as const,
@@ -2798,15 +2835,15 @@ export const seedDemo = mutation({
         assignedAgent: "Pi",
         assignedSquad: "Quality",
         acceptanceCriteria: [
-          { id: "ac-1", title: "VerificationReceipt contract exists", verificationMethod: "CHECKLIST" as const, status: "PENDING" as const },
-          { id: "ac-2", title: "Criteria map to evidence", verificationMethod: "TEST" as const, status: "PENDING" as const },
+          { id: "ac-1", title: "VerificationReceipt contract exists", verificationMethod: "CHECKLIST" as const, status: "PASS" as const },
+          { id: "ac-2", title: "Criteria map to evidence", verificationMethod: "TEST" as const, status: "PASS" as const },
         ],
         constraints: ["Reuse QC and approval infrastructure where practical"],
         sourceOfTruthRefs: [
           { kind: "PRD" as const, label: "Factory requirements", location: "docs/software-factory/domain-contracts.md" },
         ],
-        state: "READY" as const,
-        approvalStatus: "NOT_REQUIRED" as const,
+        state: "DONE" as const,
+        approvalStatus: "APPROVED" as const,
       },
       {
         title: "Resume blocked SellerFi deployment fix",
@@ -2904,7 +2941,7 @@ export const seedDemo = mutation({
 
       inserted.push({ _id: workOrderId, title: order.title });
 
-      await ctx.db.insert("workflowRuns", {
+      const workflowRunId = await ctx.db.insert("workflowRuns", {
         tenantId: firstProject?.tenantId,
         runId: `wo-demo-${index + 1}`,
         workflowId: index === 2 ? "bug-fix" : "feature-dev",
@@ -2932,6 +2969,24 @@ export const seedDemo = mutation({
         completedAt: index === 2 ? now - 60_000 : undefined,
         metadata: { seedTag: "software-factory-demo" },
       });
+      if (index < 2) {
+        await ctx.db.insert("verificationReceipts", {
+          tenantId: firstProject?.tenantId,
+          projectId: firstProject?._id,
+          workOrderId,
+          acceptanceCriterionId: order.acceptanceCriteria[0].id,
+          workflowRunId,
+          idempotencyKey: `software-factory-demo:receipt:${index}`,
+          verificationMethod: "CHECKLIST",
+          result: "Disposable candidate fixture passed.",
+          evidenceLocation: "docs/testing/evidence/software-factory-plan",
+          verifier: "independent-demo-validator",
+          status: "PASSED",
+          workOrderRevisionNumber: 1,
+          recordedAt: now - index * 60_000,
+          metadata: { seedTag: "software-factory-demo" },
+        });
+      }
     }
 
     return {

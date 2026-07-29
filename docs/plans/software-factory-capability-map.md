@@ -52,6 +52,7 @@ CONSOLIDATE, MOVE, RENAME, DEPRECATE, REMOVE, REBUILD, or RESEARCH FURTHER.
 | Chat | Chat dock/Chat | mission chat and shared history | Live-partial | Empty messages disabled; prior E2E proves linked work/history | Factory Agent modes and failure-to-work handoff need clearer contract | Make requests create/link drafts, never hidden work | P1 | L | Mission/WO create | ENHANCE |
 | Search | Search/command palette | multiple queries | Live-partial | Shell search reachable | Cross-entity relevance, scope, and result actions unproven | Unified scoped entity search | P1 | L | Canonical IDs | CONSOLIDATE |
 | Calendar/schedules | Calendar, Schedule, Run Schedule, Agent Schedules | scheduled jobs/crons | Preview/mixed | Multiple routes/components | Duplicate concepts, missed-run/incidents not unified | One Automation & Schedule surface | P2 | L | Incident model | CONSOLIDATE |
+| Automations control plane | Operations → Automations | automation definitions, WorkOrders, workflows, receipts | V1 implementation | Candidate→disabled definition→explicit activation→idempotent review gate | Automatic dispatch and mutating levels intentionally disabled | Prove LEVEL_0/1 before autonomy expansion | P2 | M | WorkOrder governance | ENHANCE |
 | Deployments | Deployments | governance/deployments | Preview | Declared preview | Release gate and rollback not fully enforced | Promote only after evidence gate | P1 | L | Pipeline/QC | ENHANCE |
 | System/database | Database | Convex data explorer | Preview/admin | Route preview | High-power tool in operator nav; role gating absent | Move to role-gated Settings/Developer Tools | P0 | M | Auth | MOVE |
 | Meetings/Telegraph/collaboration | Labs and legacy routes | meetings/telegraph | Hidden/demo/secondary | Components exist outside live EOS default | Not core to governed delivery | Keep Labs until linked to durable work | P3 | M | IA | MOVE |
@@ -70,4 +71,3 @@ CONSOLIDATE, MOVE, RENAME, DEPRECATE, REMOVE, REBUILD, or RESEARCH FURTHER.
 4. The strongest removal candidates are live demo seeding and production-menu
    entries that only render fixtures. Most other experimental components should
    be hidden or consolidated before deletion.
-

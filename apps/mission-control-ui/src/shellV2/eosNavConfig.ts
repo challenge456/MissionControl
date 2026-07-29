@@ -32,6 +32,7 @@ export const EOS_NAV_GROUPS: NavGroup[] = [
   { id: "operations", label: "Operations", icon: Gauge, items: [
     { view: "agents" as MainView, label: "Agent Registry", icon: Bot },
     { view: "atc" as MainView, label: "Queue", icon: Radar },
+    { view: "automations" as MainView, label: "Automations", icon: Sparkles },
     { view: "audit" as MainView, label: "Approvals & Audit", icon: ScrollText },
     { view: "telemetry" as MainView, label: "Incidents", icon: Activity },
     { view: "analytics" as MainView, label: "Cost", icon: BarChart3 },
@@ -49,7 +50,6 @@ export const EOS_NAV_GROUPS: NavGroup[] = [
     { view: "harness-code-review-wizard" as MainView, label: "Code Review Setup", icon: CheckCircle2 },
     { view: "harness-change-review" as MainView, label: "Change Review", icon: FileSearch },
     { view: "registry-runs" as MainView, label: "Agent Code Quality", icon: FlaskConical },
-    { view: "harness-automations" as MainView, label: "Automations", icon: Sparkles },
     { view: "harness-meta-loop" as MainView, label: "Improvement Loop", icon: GitBranch },
   ]},
   { id: "knowledge", label: "Knowledge", icon: BookOpen, items: [
@@ -84,7 +84,6 @@ export const EOS_NAV_GROUPS: NavGroup[] = [
     { view: "agent-catalog" as MainView, label: "Agent Capability Catalog", icon: Bot },
     { view: "flaky-steps" as MainView, label: "Flaky Steps", icon: Activity },
     { view: "gherkin" as MainView, label: "Gherkin Studio", icon: ScrollText },
-    { view: "hybrid-workflows" as MainView, label: "Hybrid Workflows", icon: GitBranch },
     { view: "codegen" as MainView, label: "CodeGen", icon: Cog },
     { view: "pipeline" as MainView, label: "Build Pipeline", icon: Cog },
   ]},

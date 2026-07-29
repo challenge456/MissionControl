@@ -10,6 +10,7 @@ import { ScheduleView } from "../ScheduleView";
 import { AuditView } from "../AuditView";
 import { TelemetryView } from "../TelemetryView";
 import { GoalsView } from "../GoalsView";
+import { AutomationsView } from "../automations/AutomationsView";
 import { PageHeader } from "../components/PageHeader";
 import { TaskboardStats } from "../components/TaskboardStats";
 import { Button } from "@/components/ui/button";
@@ -185,6 +186,9 @@ export function OpsSection({
   }
 
   if (currentView === "calendar") return <CalendarView projectId={projectId} />;
+  if (currentView === "automations" || currentView === "automation-runs") {
+    return <AutomationsView projectId={projectId} forceRuns={currentView === "automation-runs"} />;
+  }
   if (currentView === "ops-schedule") {
     return (
       <ScheduleView

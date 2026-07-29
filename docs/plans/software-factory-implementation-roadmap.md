@@ -6,6 +6,10 @@ status: proposed
 
 # Software Factory Implementation Roadmap
 
+> Implementation note: the bounded Automation control-plane V1 implements
+> LEVEL_0 candidate review and LEVEL_1 approval-gate creation. LEVEL_2 automatic
+> dispatch and all mutating autonomy remain follow-up work.
+
 ## Delivery rules
 
 - One approved, bounded PR at a time across shared schema/navigation files.
@@ -352,4 +356,3 @@ Pause and obtain Product Owner direction if:
 - a route consolidation removes a unique live capability;
 - a PR exceeds its declared budget or corrective-iteration cap;
 - browser evidence contradicts unit tests or product claims.
-
