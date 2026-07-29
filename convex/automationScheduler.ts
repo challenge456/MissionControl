@@ -132,8 +132,12 @@ export const evaluateNow = mutation({
   args: {
     projectId: v.id("projects"),
     automationDefinitionId: v.id("automationDefinitions"),
+    reason: v.string(),
   },
   handler: async (ctx, args): Promise<EvaluationResult> => {
+    if (args.reason.trim().length < 5) {
+      throw new Error("A reason is required for manual evaluation");
+    }
     const definition = await ctx.db.get(args.automationDefinitionId);
     if (!definition || definition.projectId !== args.projectId) {
       throw new Error("Automation is outside the selected workspace");

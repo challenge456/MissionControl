@@ -33,6 +33,16 @@ describe("automation governance", () => {
       isMutating: false,
       requiredApprovals: ["operator"],
       workflowId: "release-review",
+      metadata: {
+        automationDefinitionName: "Weekly release review",
+        automationTrigger: "SCHEDULE",
+        automationPolicy: {
+          autonomyLevel: "LEVEL_1",
+          isMutating: false,
+          approvalRequired: true,
+          independentReceiptRequired: true,
+        },
+      },
     });
     expect(first.idempotencyKey).toBe(retry.idempotencyKey);
     expect(first.acceptanceCriteria).toHaveLength(2);

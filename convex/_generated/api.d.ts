@@ -102,6 +102,7 @@ import type * as lib_operatorControls from "../lib/operatorControls.js";
 import type * as lib_outputValidation from "../lib/outputValidation.js";
 import type * as lib_piBridgeEnvelope from "../lib/piBridgeEnvelope.js";
 import type * as lib_prdParser from "../lib/prdParser.js";
+import type * as lib_repetitiveTaskCandidates from "../lib/repetitiveTaskCandidates.js";
 import type * as lib_repetitiveTasks from "../lib/repetitiveTasks.js";
 import type * as lib_riskClassifier from "../lib/riskClassifier.js";
 import type * as lib_runInspector from "../lib/runInspector.js";
@@ -293,6 +294,7 @@ declare const fullApi: ApiFromModules<{
   "lib/outputValidation": typeof lib_outputValidation;
   "lib/piBridgeEnvelope": typeof lib_piBridgeEnvelope;
   "lib/prdParser": typeof lib_prdParser;
+  "lib/repetitiveTaskCandidates": typeof lib_repetitiveTaskCandidates;
   "lib/repetitiveTasks": typeof lib_repetitiveTasks;
   "lib/riskClassifier": typeof lib_riskClassifier;
   "lib/runInspector": typeof lib_runInspector;

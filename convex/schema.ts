@@ -4606,14 +4606,18 @@ export default defineSchema({
 
   automationDecisions: defineTable({
     projectId: v.id("projects"),
-    automationDefinitionId: v.id("automationDefinitions"),
+    automationDefinitionId: v.optional(v.id("automationDefinitions")),
+    candidateId: v.optional(v.string()),
     decisionType: v.union(
       v.literal("CREATED"),
+      v.literal("ACCEPTED"),
+      v.literal("REJECTED"),
       v.literal("ACTIVATED"),
       v.literal("PAUSED"),
       v.literal("RESUMED"),
       v.literal("SUSPENDED"),
-      v.literal("RETIRED")
+      v.literal("RETIRED"),
+      v.literal("POLICY_BLOCKED")
     ),
     actorId: v.string(),
     actorIdentitySource: v.optional(v.literal("CLIENT_ASSERTED_TRUSTED_OPERATOR")),

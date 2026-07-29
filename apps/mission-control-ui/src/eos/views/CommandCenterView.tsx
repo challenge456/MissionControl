@@ -11,7 +11,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import type { Doc, Id } from "../../../../../convex/_generated/dataModel";
-import { ArrowRight, Bot, ChevronRight, Plus } from "lucide-react";
+import { ArrowRight, Bot, ChevronRight, Clock3, Plus, Sparkles } from "lucide-react";
 import { PageHeader } from "../../components/factory/DetailLayout";
 import { StatusBadge } from "../../components/factory/badges";
 import { AttentionQueuePanel } from "../../components/AttentionQueuePanel";
@@ -92,6 +92,53 @@ function LoadingRows({ count = 3 }: { count?: number }): JSX.Element {
         <div key={i} className="h-4 animate-pulse rounded bg-surface-2" />
       ))}
     </div>
+  );
+}
+
+function AutomationPostureCard({
+  data,
+  onNavigate,
+}: {
+  data: any;
+  onNavigate: (view: string) => void;
+}): JSX.Element {
+  const next = data.definitions
+    .filter((definition: any) => definition.status === "ACTIVE" && definition.nextRunAt)
+    .sort((a: any, b: any) => a.nextRunAt - b.nextRunAt)[0];
+  const metrics = [
+    ["Active", data.metrics.active],
+    ["Paused", data.metrics.paused],
+    ["Suspended", data.metrics.suspended],
+    ["Awaiting approval", data.metrics.waitingApprovals],
+    ["Missing receipts", data.metrics.overdueReceipts],
+    ["Time saved", `${data.metrics.estimatedHumanMinutesSaved}m`],
+  ];
+  return (
+    <section className={cn(CARD_CLASS, "p-4")} aria-label="Automation posture">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <Sparkles className="mt-0.5 h-4 w-4 text-ok" aria-hidden />
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ok">Operations</div>
+            <h2 className="mt-1 text-[15px] font-semibold text-ink">Governed Automations</h2>
+            <p className="mt-1 text-[12.5px] text-ink-secondary">Read-only review gates with explicit approval and independent receipts.</p>
+          </div>
+        </div>
+        <ViewAllLink onClick={() => onNavigate("automations")} label="Open Automations" />
+      </div>
+      <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+        {metrics.map(([label, value]) => (
+          <div key={label} className="rounded-lg border border-line bg-surface-2/40 px-3 py-2.5">
+            <dt className="text-[11px] text-ink-muted">{label}</dt>
+            <dd className="mt-1 font-mono text-[15px] text-ink">{value}</dd>
+          </div>
+        ))}
+      </dl>
+      <div className="mt-3 flex items-center gap-2 text-[12px] text-ink-secondary">
+        <Clock3 className="h-3.5 w-3.5 text-ink-muted" aria-hidden />
+        {next ? <>Next evaluation: {next.name} · {new Date(next.nextRunAt).toLocaleString()}</> : "No active Automation is scheduled."}
+      </div>
+    </section>
   );
 }
 
@@ -473,6 +520,7 @@ export function CommandCenterView({
   const quotaSnapshot = useQuery(api.quotaTracking.getLatestSnapshot, {});
   const liveSignals = useQuery(api.eos.projections.getHealthSignals, { projectId });
   const liveRecs = useQuery(api.eos.projections.getRecommendations, { projectId });
+  const automationData = useQuery(api.automations.getControlPlane, { projectId });
 
   const healthSignals: HealthSignal[] =
     liveSignals && liveSignals.length > 0
@@ -607,6 +655,8 @@ export function CommandCenterView({
             onOpenAlerts={() => onNavigate("telemetry")}
           />
         )}
+
+        {!automationData ? <LoadingRows count={2} /> : <AutomationPostureCard data={automationData} onNavigate={onNavigate} />}
 
         {showDemoContent ? <MissionAnchorCard onNavigate={onNavigate} /> : null}
 

@@ -31,14 +31,17 @@ export const getControlPlane = query({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
     await assertProject(ctx, args.projectId);
-    const [definitions, decisions, suggestions, workOrders, receipts, scheduledJobs] = await Promise.all([
+    const [definitions, decisions, suggestions, workOrders, receipts, scheduledJobs, workflows] = await Promise.all([
       ctx.db.query("automationDefinitions").withIndex("by_project", (q: any) => q.eq("projectId", args.projectId)).collect(),
       ctx.db.query("automationDecisions").withIndex("by_project", (q: any) => q.eq("projectId", args.projectId)).collect(),
       ctx.db.query("metaLoopSuggestions").withIndex("by_project", (q: any) => q.eq("projectId", args.projectId)).collect(),
       ctx.db.query("workOrders").withIndex("by_project", (q: any) => q.eq("projectId", args.projectId)).collect(),
       ctx.db.query("verificationReceipts").withIndex("by_project", (q: any) => q.eq("projectId", args.projectId)).collect(),
       ctx.db.query("scheduledJobs").withIndex("by_project", (q: any) => q.eq("projectId", args.projectId)).collect(),
+      ctx.db.query("workflows").collect(),
     ]);
+    const now = Date.now();
+    const workflowById = new Map(workflows.map((workflow: any) => [workflow.workflowId, workflow]));
     const detected = await loadRepetitiveTaskCandidates(ctx, args.projectId);
     const suggestionByCandidate = new Map(
       suggestions
@@ -48,8 +51,29 @@ export const getControlPlane = query({
     const candidates = detected.map((candidate) => ({
       ...candidate,
       suggestionId: suggestionByCandidate.get(candidate.id)?._id,
-      status: suggestionByCandidate.get(candidate.id)?.status ?? "DETECTED",
+      status: suggestionByCandidate.get(candidate.id)?.status === "ACCEPTED"
+        ? "ACCEPTED"
+        : suggestionByCandidate.get(candidate.id)?.status === "DISMISSED"
+          ? "REJECTED"
+          : isCandidateEligibleForActivation(candidate)
+            ? "ELIGIBLE"
+            : "INELIGIBLE",
       eligible: isCandidateEligibleForActivation(candidate),
+      eligibilityReason: !candidate.workflowId
+        ? "A versioned Workflow is required."
+        : candidate.receiptCount < 1
+          ? "At least one fresh passing verification receipt is required."
+          : null,
+      workflow: candidate.workflowId ? workflowById.get(candidate.workflowId) ?? null : null,
+      supportingWorkOrders: candidate.supportingWorkOrderIds
+        .map((id) => workOrders.find((workOrder: any) => String(workOrder._id) === id))
+        .filter(Boolean)
+        .map((workOrder: any) => ({
+          _id: workOrder._id,
+          title: workOrder.title,
+          state: workOrder.state,
+          verificationStatus: workOrder.verificationStatus,
+        })),
     }));
     const reviewGates = workOrders.filter((workOrder: any) => workOrder.metadata?.automationDefinitionId);
     const receiptByWorkOrder = new Map<string, any[]>();
@@ -57,27 +81,115 @@ export const getControlPlane = query({
       const key = String(receipt.workOrderId);
       receiptByWorkOrder.set(key, [...(receiptByWorkOrder.get(key) ?? []), receipt]);
     }
-    const runs = reviewGates.map((workOrder: any) => ({
-      workOrder,
-      definition: definitions.find((definition: any) =>
-        String(definition._id) === String(workOrder.metadata?.automationDefinitionId)
-      ),
-      receipts: receiptByWorkOrder.get(String(workOrder._id)) ?? [],
-    }));
-    const metrics = calculateAutomationMetrics({
+    const runs = reviewGates.map((workOrder: any) => {
+      const definition = definitions.find((item: any) =>
+        String(item._id) === String(workOrder.metadata?.automationDefinitionId)
+      );
+      const runReceipts = (receiptByWorkOrder.get(String(workOrder._id)) ?? [])
+        .sort((a: any, b: any) => b.recordedAt - a.recordedAt);
+      const receiptState = runReceipts.some((receipt: any) => receipt.status === "FAILED")
+        ? "FAILED"
+        : runReceipts.some((receipt: any) => receipt.status === "PASSED" && !receipt.invalidatedAt && (!receipt.validUntil || receipt.validUntil > now))
+          ? "FRESH"
+          : runReceipts.some((receipt: any) => receipt.status === "STALE" || receipt.invalidatedAt || (receipt.validUntil && receipt.validUntil <= now))
+            ? "STALE"
+            : "MISSING";
+      const dispatchState = ["DISPATCHED", "IN_PROGRESS", "AWAITING_VERIFICATION", "DONE"].includes(workOrder.state)
+        ? "DISPATCHED"
+        : workOrder.approvalStatus === "APPROVED"
+          ? "APPROVED_AWAITING_DISPATCH"
+          : "NOT_DISPATCHED";
+      return {
+        workOrder,
+        definition,
+        receipts: runReceipts,
+        cadenceWindow: workOrder.metadata?.automationCadenceWindow ?? workOrder.idempotencyKey,
+        dispatchState,
+        receiptState,
+        idempotencyResult: "REVIEW_GATE_CREATED",
+        costUsd: workOrder.metadata?.costUsd ?? 0,
+        durationMs: workOrder.metadata?.durationMs,
+      };
+    });
+    const enrichedDefinitions = definitions.map((definition: any) => {
+      const definitionRuns = runs
+        .filter((run: any) => String(run.definition?._id) === String(definition._id))
+        .sort((a: any, b: any) => b.workOrder.createdAt - a.workOrder.createdAt);
+      const latestRun = definitionRuns[0];
+      const workflow = workflowById.get(definition.workflowId) ?? null;
+      const configuredVersion = Number(String(definition.workflowVersion).replace(/^v/, ""));
+      const scheduleConflict = definitions.some((other: any) =>
+        other._id !== definition._id
+        && other.status === "ACTIVE"
+        && definition.status === "ACTIVE"
+        && other.triggerConfig?.cron === definition.triggerConfig?.cron
+        && other.triggerConfig?.timezone === definition.triggerConfig?.timezone
+        && other.scope === definition.scope
+      );
+      return {
+        ...definition,
+        workflow,
+        workflowActive: workflow?.active ?? false,
+        workflowVersionMismatch: workflow ? workflow.version !== configuredVersion : true,
+        scheduleConflict,
+        approvalStatus: latestRun?.workOrder.approvalStatus ?? "NOT_STARTED",
+        verificationStatus: latestRun?.workOrder.verificationStatus ?? "NOT_STARTED",
+        actualCostUsd: definitionRuns.reduce((sum: number, run: any) => sum + run.costUsd, 0),
+        runCount: definitionRuns.length,
+      };
+    });
+    const baseMetrics = calculateAutomationMetrics({
       definitions,
       reviewGates,
     });
+    const receiptRows = runs.flatMap((run: any) => {
+      const criteria = run.workOrder.acceptanceCriteria ?? [];
+      return criteria.map((criterion: any) => {
+        const receipt = run.receipts.find((item: any) => item.acceptanceCriterionId === criterion.id);
+        const evidenceState = !receipt
+          ? "MISSING"
+          : receipt.status === "PASSED" && receipt.invalidatedAt == null && (!receipt.validUntil || receipt.validUntil > now)
+            ? "FRESH"
+            : receipt.status === "PASSED" && receipt.validUntil && receipt.validUntil <= now
+              ? "EXPIRED"
+              : receipt.invalidatedAt || receipt.status === "STALE"
+                ? "STALE"
+                : receipt.status;
+        return {
+          ...(receipt ?? {
+            _id: `missing:${run.workOrder._id}:${criterion.id}`,
+            workOrderId: run.workOrder._id,
+            acceptanceCriterionId: criterion.id,
+            status: "MISSING",
+          }),
+          evidenceState,
+          criterionTitle: criterion.title,
+          automationDefinitionId: run.definition?._id,
+          automationName: run.definition?.name,
+          workOrderTitle: run.workOrder.title,
+        };
+      });
+    });
+    const metrics = {
+      ...baseMetrics,
+      disabled: definitions.filter((definition: any) => definition.status === "DISABLED").length,
+      candidatesAwaitingReview: candidates.filter((candidate) => ["ELIGIBLE", "DETECTED"].includes(candidate.status)).length,
+      awaitingVerification: reviewGates.filter((workOrder: any) => workOrder.state === "AWAITING_VERIFICATION").length,
+      failedReviewGates: reviewGates.filter((workOrder: any) =>
+        workOrder.state === "BLOCKED" || workOrder.verificationStatus === "FAIL"
+      ).length,
+      overdueReceipts: receiptRows.filter((receipt: any) => ["MISSING", "EXPIRED", "STALE"].includes(receipt.evidenceState)).length,
+      estimatedHumanMinutesSaved: candidates
+        .filter((candidate) => candidate.status === "ACCEPTED")
+        .reduce((sum, candidate) => sum + candidate.estimatedHumanMinutesSaved, 0),
+      idempotentSkips: definitions.filter((definition: any) => definition.lastResult === "IDEMPOTENT_SKIP").length,
+    };
     return {
-      definitions: definitions.sort((a: any, b: any) => b.updatedAt - a.updatedAt),
+      definitions: enrichedDefinitions.sort((a: any, b: any) => b.updatedAt - a.updatedAt),
       decisions: decisions.sort((a: any, b: any) => b.decidedAt - a.decidedAt),
       candidates,
       runs,
-      receipts: runs.flatMap((run: any) => run.receipts.map((receipt: any) => ({
-        ...receipt,
-        automationDefinitionId: run.definition?._id,
-        automationName: run.definition?.name,
-      }))),
+      receipts: receiptRows,
       scheduledJobs,
       metrics,
     };
@@ -191,7 +303,111 @@ export const acceptCandidate = mutation({
       definitionVersion: 1,
       decidedAt: now,
     });
+    await ctx.db.insert("automationDecisions", {
+      projectId: args.projectId,
+      automationDefinitionId: definitionId,
+      candidateId: candidate.id,
+      decisionType: "ACCEPTED",
+      actorId: args.actorId,
+      actorIdentitySource: AUTOMATION_ACTOR_IDENTITY_SOURCE,
+      reason: args.reason,
+      policyVersion: args.policyVersion ?? AUTOMATION_POLICY_VERSION,
+      definitionVersion: 1,
+      decidedAt: now,
+    });
     return { definitionId, created: true };
+  },
+});
+
+export const rejectCandidate = mutation({
+  args: {
+    projectId: v.id("projects"),
+    candidateId: v.string(),
+    ...actorArgs,
+  },
+  handler: async (ctx, args) => {
+    await assertProject(ctx, args.projectId);
+    const candidate = (await loadRepetitiveTaskCandidates(ctx, args.projectId))
+      .find((item) => item.id === args.candidateId);
+    if (!candidate) throw new Error("Automation Candidate is no longer available");
+    const sourceRef = `repetitive-task:${args.projectId}:${candidate.id}`;
+    const suggestions = await ctx.db
+      .query("metaLoopSuggestions")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+    const existing = suggestions.find((item) => item.sourceRef === sourceRef);
+    const payload = {
+      type: "AUTOMATION_CANDIDATE" as const,
+      candidateId: candidate.id,
+      pattern: candidate.pattern,
+      workflowId: candidate.workflowId,
+      repository: candidate.repository,
+      supportingWorkOrderIds: candidate.supportingWorkOrderIds,
+      occurrences: candidate.occurrences,
+      receiptCount: candidate.receiptCount,
+      suggestedCadence: candidate.suggestedCadence,
+      confidence: candidate.confidence,
+      riskLevel: candidate.riskLevel,
+      estimatedHumanMinutesSaved: candidate.estimatedHumanMinutesSaved,
+      recommendedAutonomyLevel: candidate.recommendedAutonomyLevel,
+    };
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        status: "DISMISSED",
+        payload,
+        resolvedAt: Date.now(),
+      });
+    } else {
+      await ctx.db.insert("metaLoopSuggestions", {
+        projectId: args.projectId,
+        kind: "DELEGATION",
+        title: `Automation Candidate: ${candidate.pattern}`,
+        summary: args.reason,
+        status: "DISMISSED",
+        sourceRef,
+        payload,
+        createdAt: Date.now(),
+        resolvedAt: Date.now(),
+      });
+    }
+    await ctx.db.insert("automationDecisions", {
+      projectId: args.projectId,
+      candidateId: candidate.id,
+      decisionType: "REJECTED",
+      actorId: args.actorId,
+      actorIdentitySource: AUTOMATION_ACTOR_IDENTITY_SOURCE,
+      reason: args.reason,
+      policyVersion: args.policyVersion ?? AUTOMATION_POLICY_VERSION,
+      definitionVersion: 0,
+      decidedAt: Date.now(),
+    });
+    return { changed: true };
+  },
+});
+
+export const requestCandidateEvidence = mutation({
+  args: {
+    projectId: v.id("projects"),
+    candidateId: v.string(),
+    ...actorArgs,
+  },
+  handler: async (ctx, args) => {
+    await assertProject(ctx, args.projectId);
+    const candidate = (await loadRepetitiveTaskCandidates(ctx, args.projectId))
+      .find((item) => item.id === args.candidateId);
+    if (!candidate) throw new Error("Automation Candidate is no longer available");
+    await ctx.db.insert("automationDecisions", {
+      projectId: args.projectId,
+      candidateId: candidate.id,
+      decisionType: "POLICY_BLOCKED",
+      actorId: args.actorId,
+      actorIdentitySource: AUTOMATION_ACTOR_IDENTITY_SOURCE,
+      reason: `More evidence requested: ${args.reason}`,
+      policyVersion: args.policyVersion ?? AUTOMATION_POLICY_VERSION,
+      definitionVersion: 0,
+      decidedAt: Date.now(),
+    });
+    return { changed: true };
   },
 });
 
@@ -263,6 +479,43 @@ export const pause = mutation({
       projectId: args.projectId,
       automationDefinitionId: definition._id,
       decisionType: "PAUSED",
+      actorId: args.actorId,
+      actorIdentitySource: AUTOMATION_ACTOR_IDENTITY_SOURCE,
+      reason: args.reason,
+      policyVersion: args.policyVersion ?? AUTOMATION_POLICY_VERSION,
+      definitionVersion: definition.definitionVersion,
+      decidedAt: now,
+    });
+    return { changed: true };
+  },
+});
+
+export const retire = mutation({
+  args: {
+    projectId: v.id("projects"),
+    automationDefinitionId: v.id("automationDefinitions"),
+    ...actorArgs,
+  },
+  handler: async (ctx, args) => {
+    const definition = await ctx.db.get(args.automationDefinitionId);
+    if (!definition || definition.projectId !== args.projectId) {
+      throw new Error("Automation is outside the selected workspace");
+    }
+    if (definition.status === "RETIRED") return { changed: false };
+    if (definition.status === "ACTIVE") {
+      throw new Error("Pause the Automation before retiring it");
+    }
+    const now = Date.now();
+    await ctx.db.patch(definition._id, {
+      status: "RETIRED",
+      nextRunAt: undefined,
+      health: "UNKNOWN",
+      updatedAt: now,
+    });
+    await ctx.db.insert("automationDecisions", {
+      projectId: args.projectId,
+      automationDefinitionId: definition._id,
+      decisionType: "RETIRED",
       actorId: args.actorId,
       actorIdentitySource: AUTOMATION_ACTOR_IDENTITY_SOURCE,
       reason: args.reason,

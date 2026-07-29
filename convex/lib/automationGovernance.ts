@@ -157,9 +157,18 @@ export function buildReviewGate(
     ],
     metadata: {
       automationDefinitionId: definition.id,
+      automationDefinitionName: definition.name,
       automationWorkflowVersion: definition.workflowVersion,
+      automationCadenceWindow: reviewGateIdempotencyKey(definition.id, scheduledAt),
       automationCadence: definition.triggerConfig,
+      automationTrigger: "SCHEDULE",
       automationScope: definition.scope,
+      automationPolicy: {
+        autonomyLevel: "LEVEL_1",
+        isMutating: false,
+        approvalRequired: true,
+        independentReceiptRequired: true,
+      },
       verificationContract: definition.verificationContract,
     },
   };
