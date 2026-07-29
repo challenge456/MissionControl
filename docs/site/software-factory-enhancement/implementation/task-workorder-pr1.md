@@ -4,6 +4,10 @@ This bounded implementation establishes the canonical delivery relationship with
 
 `Mission → Work Order → Task → Attempt`
 
+Implementation commit: `e428937da51e450de50264775716a45afb7e5681`
+
+Draft pull request: https://github.com/jaydubya818/MissionControl/pull/45
+
 ## What changed
 
 - Tasks can reference one governed Work Order.

@@ -3,8 +3,8 @@
 Date: 2026-07-28
 Branch: `codex/task-workorder-linkage-pr1`
 Design source: PR #41
-Implementation commit: pending publication
-Draft pull request: pending publication
+Implementation commit: `e428937da51e450de50264775716a45afb7e5681`
+Draft pull request: https://github.com/jaydubya818/MissionControl/pull/45
 
 ## Product hierarchy
 
