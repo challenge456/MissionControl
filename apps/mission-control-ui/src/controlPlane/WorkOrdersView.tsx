@@ -310,6 +310,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                       <Badge variant="outline">{item.repository ?? "No repo"}</Badge>
                       <Badge variant="outline">Workflow: {item.workflowId ?? "—"}</Badge>
                       <Badge variant="outline">Verification: {item.verificationStatus}</Badge>
+                      {item.metadata?.automationDefinitionId ? <Badge variant="outline" className="border-registry-accent/30 text-registry-accent">Automation review gate</Badge> : null}
                       {item.latestExecutionRun ? (
                         <Badge variant="outline">
                           Run: {item.latestExecutionRun.status} · {item.latestExecutionRun.workflowId}
@@ -383,6 +384,20 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                     <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{selected.workOrder.context}</p>
                   ) : null}
                 </Section>
+
+                {selected.workOrder.metadata?.automationDefinitionId ? (
+                  <Section title="Automation lineage">
+                    <dl className="grid gap-3 text-sm md:grid-cols-2">
+                      <MetaRow label="Automation" value={selected.workOrder.metadata.automationDefinitionId} />
+                      <MetaRow label="Workflow version" value={selected.workOrder.metadata.automationWorkflowVersion} />
+                      <MetaRow label="Cadence" value={selected.workOrder.metadata.automationCadence?.cron} />
+                      <MetaRow label="Scope" value={selected.workOrder.metadata.automationScope} />
+                    </dl>
+                    <p className="mt-3 text-xs text-muted-foreground">
+                      This read-only WorkOrder requires normal approval and explicit dispatch. The originating Automation cannot approve it.
+                    </p>
+                  </Section>
+                ) : null}
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <Section title="Execution setup">

@@ -155,7 +155,7 @@ function ProjectSwitcher({
 const STORAGE_KEY_VIEW = "mc.last_view";
 const STORAGE_KEY_PROJECT = "mc.last_project";
 
-function readRequestedProjectId(): Id<"projects"> | null {
+function readRequestedProjectId(): string | null {
   if (typeof window === "undefined") return null;
   try {
     const fromUrl = new URL(window.location.href).searchParams.get("workspace");
@@ -168,7 +168,7 @@ function readRequestedProjectId(): Id<"projects"> | null {
 }
 
 const VALID_MAIN_VIEWS: MainView[] = [
-  "home", "atc", "tasks", "agents", "directory", "policies", "deployments", "audit", "telemetry",
+  "home", "atc", "tasks", "agents", "directory", "policies", "deployments", "audit", "telemetry", "automations", "automation-runs",
   "dag", "chat", "council", "calendar", "projects", "model-routing", "memory", "captures", "docs", "skills", "people", "org",
   "design-system",
   "office", "live-office", "search", "identity", "telegraph", "meetings", "voice", "content-pipeline",
@@ -232,6 +232,7 @@ const SECTION_TABS: Record<CommandSection, TabItem[] | null> = {
     { id: "ops-schedule", label: "Schedule" },
     { id: "audit", label: "Audit" },
     { id: "telemetry", label: "Telemetry" },
+    { id: "automations", label: "Automations" },
   ],
   agents: [
     { id: "atc", label: "ATC" },
@@ -341,7 +342,7 @@ function viewToSection(view: MainView): CommandSection {
   ) {
     return "control";
   }
-  if (["tasks", "goals", "dag", "calendar", "ops-schedule", "audit", "telemetry"].includes(view)) return "ops";
+  if (["tasks", "goals", "dag", "calendar", "ops-schedule", "audit", "telemetry", "automations", "automation-runs"].includes(view)) return "ops";
   if (["atc", "agents", "directory", "identity", "policies", "deployments", "gateway", "schedules"].includes(view)) return "agents";
   if (["chat", "live-chat", "council", "command"].includes(view)) return "chat";
   if (["captures", "projects", "content-pipeline"].includes(view)) return "content";
@@ -549,9 +550,11 @@ export default function App() {
   const [searchParams, setSearchParams] = useSearchParams();
   // ── Navigation & selection (persist last view so UI reopens where operator left off) ─
   const [currentView, setCurrentView] = useState<MainView>(() => readPersistedView() ?? "home");
-  const [projectId, setProjectId] = useState<Id<"projects"> | null>(
-    readRequestedProjectId
-  );
+  // Treat a URL/local-storage workspace value as untrusted until it is found
+  // in the project list. A foreign Convex ID otherwise crashes v.id("projects")
+  // validation before the normal workspace fallback can run.
+  const [requestedProjectId] = useState(readRequestedProjectId);
+  const [projectId, setProjectId] = useState<Id<"projects"> | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<Id<"tasks"> | null>(null);
   const [selectedQcRunId, setSelectedQcRunId] = useState<Id<"qcRuns"> | null>(null);
 
@@ -597,6 +600,7 @@ export default function App() {
     ) {
       const preferred =
         availableProjects.find((p) => p._id === projectId) ??
+        availableProjects.find((p) => p._id === requestedProjectId) ??
         availableProjects.find((p) => p.name.trim().toLowerCase() === "mission control") ??
         availableProjects.find((p) => p.name.toLowerCase().includes("mission control")) ??
         availableProjects[0];
@@ -604,7 +608,7 @@ export default function App() {
     } else if (availableProjects && availableProjects.length === 0 && projectId) {
       setProjectId(null);
     }
-  }, [availableProjects, projectId]);
+  }, [availableProjects, projectId, requestedProjectId]);
 
   useEffect(() => {
     if (!projectId || typeof window === "undefined") return;
