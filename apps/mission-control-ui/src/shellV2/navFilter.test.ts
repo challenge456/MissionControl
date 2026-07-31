@@ -46,6 +46,7 @@ describe("filterNavGroups", () => {
       "memory",
       "docs",
       "identity",
+      "deployments",
       "projects",
       "model-routing",
     ]);

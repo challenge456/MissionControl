@@ -3,6 +3,7 @@ import type { MainView } from "../../TopNav";
 import { Sparkles } from "lucide-react";
 import { HarnessPage } from "../components/HarnessUi";
 import { HarnessAutomationsCatalog } from "../components/HarnessAutomationsCatalog";
+import { HarnessAutomationDefinitionsPanel } from "../components/HarnessAutomationDefinitionsPanel";
 import { HarnessRepetitiveTasksPanel } from "../components/HarnessRepetitiveTasksPanel";
 import { HarnessAutomatePanel } from "../components/HarnessAutomatePanel";
 
@@ -26,6 +27,7 @@ export function HarnessAutomationsView({
           onScheduled={() => onNavigate("harness-launch")}
         />
         <HarnessRepetitiveTasksPanel projectId={projectId} />
+        <HarnessAutomationDefinitionsPanel projectId={projectId} />
         <HarnessAutomatePanel projectId={projectId} onNavigate={onNavigate} />
       </div>
     </HarnessPage>

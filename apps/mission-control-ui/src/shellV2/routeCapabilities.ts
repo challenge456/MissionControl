@@ -30,7 +30,7 @@ export const ROUTE_CAPABILITIES: Partial<Record<MainView, RouteCapability>> = {
   docs: { scope: "global", maturity: "live" },
   policies: { scope: "workspace", maturity: "preview" },
   identity: { scope: "workspace", maturity: "live" },
-  deployments: { scope: "workspace", maturity: "preview" },
+  deployments: { scope: "workspace", maturity: "live" },
   projects: { scope: "workspace", maturity: "live" },
   "model-routing": { scope: "workspace", maturity: "live" },
 

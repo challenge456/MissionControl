@@ -54,6 +54,10 @@ export function ExecutionRunInspector({
     () => filterEvidenceArtifacts((inspector?.artifacts ?? []) as any, { verificationReceiptId: verificationReceiptId ?? undefined, acceptanceCriterionId: acceptanceCriterionId ?? undefined }),
     [inspector?.artifacts, verificationReceiptId, acceptanceCriterionId]
   );
+  const receiptOnlyCompletion = inspector?.run.status === "COMPLETED"
+    && ((inspector.run.metadata as { completionMode?: string; receiptPacketKey?: string } | undefined)?.completionMode === "VERIFICATION_ONLY"
+      || ((inspector.run.metadata as { receiptPacketKey?: string } | undefined)?.receiptPacketKey
+        && (inspector.run.steps ?? []).every((step: any) => step.status === "PENDING")));
   const navigateToRecords = (target: EvidenceLineageStage["target"]) => {
     document.getElementById(`run-${target}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
@@ -83,9 +87,15 @@ export function ExecutionRunInspector({
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Badge variant="outline">{inspector.run.status}</Badge>
+                    {receiptOnlyCompletion ? <Badge variant="outline" className="border-amber-500/30 text-amber-300">Verification-only closeout</Badge> : null}
                     <Badge variant="outline">{inspector.run.workflowId}</Badge>
                   </div>
                 </div>
+                {receiptOnlyCompletion ? (
+                  <div className="mt-4 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-sm text-amber-100">
+                    Completed via verification receipt — workflow steps were not executed.
+                  </div>
+                ) : null}
                 <div className="mt-4 grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
                   <Meta label="WorkOrder" value={inspector.workOrder?._id} />
                   <Meta label="Runtime / model" value={[inspector.run.runtime, inspector.run.model].filter(Boolean).join(" / ") || "—"} />
@@ -158,7 +168,9 @@ export function ExecutionRunInspector({
                     </div>
                   </div>
                   <Badge variant="outline">
-                    {inspector.observability.usageComplete ? "Complete rollup" : "Bounded partial rollup"}
+                    {receiptOnlyCompletion
+                      ? "Verification-only closeout"
+                      : inspector.observability.usageComplete ? "Complete rollup" : "Bounded partial rollup"}
                   </Badge>
                 </div>
                 <div className="mt-4 grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
@@ -177,7 +189,9 @@ export function ExecutionRunInspector({
                   <div>
                     <div className="text-sm font-medium text-foreground">Graph execution plan</div>
                     <div className="mt-1 text-xs text-muted-foreground">
-                      Dependencies, isolation, and node state from the durable run record.
+                      {receiptOnlyCompletion
+                        ? "No workflow nodes executed; completion evidence came from a verification receipt."
+                        : "Dependencies, isolation, and node state from the durable run record."}
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2">

@@ -362,6 +362,7 @@ export const ingestPullRequest = action({
   args: {
     prUrl: v.string(),
     projectId: v.optional(v.id("projects")),
+    releaseDeploymentId: v.optional(v.id("deployments")),
   },
   handler: async (
     ctx,
@@ -389,6 +390,7 @@ export const ingestPullRequest = action({
       internal.factory.githubCi.applyCiIngest,
       {
       projectId: args.projectId,
+      releaseDeploymentId: args.releaseDeploymentId,
       prUrl: payload.prUrl,
       prNumber: payload.prNumber,
       repoFullName: payload.repoFullName,

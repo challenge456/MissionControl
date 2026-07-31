@@ -354,6 +354,7 @@ export const diff = query({
 export const start = mutation({
   args: {
     projectId: v.optional(v.id("projects")),
+    releaseDeploymentId: v.optional(v.id("deployments")),
     repoUrl: v.string(),
     commitSha: v.optional(v.string()),
     branch: v.optional(v.string()),
@@ -389,6 +390,13 @@ export const start = mutation({
     )),
   },
   handler: async (ctx, args) => {
+    if (args.releaseDeploymentId) {
+      const deployment = await ctx.db.get(args.releaseDeploymentId);
+      if (!deployment) throw new Error("Linked deployment not found");
+      if (deployment.status !== "PENDING") {
+        throw new Error("Release evidence can only be linked to a pending deployment");
+      }
+    }
     // Validate scopeType/scopeSpec alignment
     if (args.scopeType === "FULL_REPO") {
       if (args.scopeSpec !== null && args.scopeSpec !== undefined) {
@@ -455,6 +463,7 @@ export const start = mutation({
     const id = await ctx.db.insert("qcRuns", {
       tenantId: undefined, // TODO: resolve from project
       projectId: args.projectId,
+      releaseDeploymentId: args.releaseDeploymentId,
       runId,
       runSequence,
       status: "PENDING",
@@ -572,6 +581,7 @@ export const complete = internalMutation({
         durationMs,
       },
     });
+    await ctx.scheduler.runAfter(0, internal.governance.releaseGateAutomation.fromQcRun, { qcRunId: args.id });
     
     return { success: true };
   },

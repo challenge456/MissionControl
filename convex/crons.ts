@@ -86,11 +86,25 @@ crons.interval(
   internal.factory.repetitiveTasks.scanScheduled
 );
 
+// Active automation definitions produce non-mutating Work Order drafts only.
+crons.interval(
+  "create automation review drafts",
+  { hours: 1 },
+  internal.factory.automationDispatch.createDueDrafts
+);
+
 // Evaluate alert rules (e.g. daily cost exceeded) every hour
 crons.interval(
   "evaluate alert rules",
   { hours: 1 },
   internal.alertRules.evaluateRules
+);
+
+// Consolidate completed run episodes into durable, reviewable knowledge nodes.
+crons.interval(
+  "consolidate durable memory",
+  { minutes: 15 },
+  internal.memoryLifecycle.consolidateEpisodes
 );
 
 export default crons;

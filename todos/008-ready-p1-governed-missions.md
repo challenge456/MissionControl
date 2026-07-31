@@ -97,3 +97,24 @@ direct WorkOrders and keep one mutating WorkOrder per Mission in V1.
   acceptance criteria continue to own execution-level checks.
 - Mission enforcement belongs at the existing WorkOrder dispatch boundary, not
   in a parallel scheduler or UI-only guard.
+
+### 2026-07-28 - Runtime and live operator slice
+
+**By:** Codex
+
+**Actions:**
+- Extended Pi receipt-packet ingestion to optionally submit a structured Mission
+  handoff through the same Convex lifecycle command.
+- Added authenticated orchestration-server endpoints for Mission handoffs,
+  validator results, and acceptance.
+- Added distinct `WORKER` and `VALIDATOR` Mission blueprint/run roles.
+- Replaced the EOS Mission portfolio and detail views' seeded fallback with
+  live Convex Mission records, URL-backed selection, a draft creation dialog,
+  and explicit decision/evidence states.
+- Promoted Missions to a live left-navigation route and updated its visibility
+  contract test.
+- Created and inspected a local demo Mission draft at `http://localhost:5199`.
+
+**Learnings:**
+- A generic provenance component can make live data look simulated; Mission
+  views now state their Convex source and validation semantics directly.

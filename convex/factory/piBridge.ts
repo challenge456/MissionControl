@@ -50,6 +50,7 @@ export const ingestReceiptPacket = mutation({
       nextOwner: v.optional(v.string()),
     })),
     idempotencyKey: v.optional(v.string()),
+    contextActivationReceiptId: v.optional(v.id("workflowContextActivationReceipts")),
   },
   handler: async (ctx, args) => {
     const workOrder = await ctx.db.get(args.workOrderId);
@@ -68,6 +69,16 @@ export const ingestReceiptPacket = mutation({
     const run = await ctx.db.get(args.workflowRunId);
     if (!run || run.workOrderId !== workOrder._id) {
       throw new Error("Workflow run does not belong to this WorkOrder");
+    }
+    const expectedActivationReceiptId = (run.metadata as { contextActivationReceiptId?: string } | undefined)?.contextActivationReceiptId;
+    if (expectedActivationReceiptId) {
+      if (args.contextActivationReceiptId !== expectedActivationReceiptId) {
+        throw new Error("Pi receipt packet must include the workflow context activation receipt");
+      }
+      const activation = await ctx.db.get(args.contextActivationReceiptId);
+      if (!activation || activation.workflowRunId !== run._id) {
+        throw new Error("Context activation receipt does not belong to this workflow run");
+      }
     }
 
     validateReceiptPacket({
@@ -89,6 +100,9 @@ export const ingestReceiptPacket = mutation({
     }
 
     if (args.markRunCompleted && run.status !== "COMPLETED") {
+      const executedStepCount = run.steps.filter((step: any) =>
+        ["RUNNING", "DONE", "FAILED", "SKIPPED"].includes(step.status)
+      ).length;
       await ctx.db.patch(run._id, {
         status: "COMPLETED",
         completedAt: Date.now(),
@@ -97,6 +111,10 @@ export const ingestReceiptPacket = mutation({
           piSessionId: args.piSessionId,
           piExecutionId: args.piExecutionId,
           receiptPacketKey: args.idempotencyKey,
+          contextActivationReceiptId: args.contextActivationReceiptId,
+          // Receipt packets can close a verification-only run. Preserve that
+          // distinction rather than implying its workflow graph executed.
+          ...(executedStepCount === 0 ? { completionMode: "VERIFICATION_ONLY" } : {}),
         },
       });
     }

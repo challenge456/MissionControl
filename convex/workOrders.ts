@@ -1388,6 +1388,8 @@ export const dispatch = mutation({
     actorId: v.optional(v.string()),
     idempotencyKey: v.string(),
     runtime: v.optional(v.string()),
+    /** Explicit operator-approved exception; normal runtime model metadata must not bypass policy. */
+    authorizedModelOverride: v.optional(v.string()),
     model: v.optional(v.string()),
     worktree: v.optional(v.string()),
     retryOfWorkflowRunId: v.optional(v.id("workflowRuns")),
@@ -1514,7 +1516,7 @@ export const dispatch = mutation({
     const routing = await resolveDispatchRouting(ctx, {
       workOrder: refreshedWorkOrder,
       workflow,
-      authorizedRunOverride: args.model,
+      authorizedRunOverride: args.authorizedModelOverride,
     });
     if (routing?.enabled && routing.mode === "EXHAUSTED") {
       await ctx.db.insert("alerts", {

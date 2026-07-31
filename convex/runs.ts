@@ -6,6 +6,7 @@
 
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { logTaskEvent } from "./lib/taskEvents";
 import { evaluateOperatorGate, getEffectiveOperatorControl } from "./lib/operatorControls";
@@ -753,6 +754,18 @@ export const complete = mutation({
     });
     const updatedRun = await ctx.db.get(args.runId);
     if (updatedRun) {
+      await ctx.scheduler.runAfter(0, internal.memoryLifecycle.recordRunEvidence, {
+        runId: updatedRun._id,
+        status: args.error ? "FAILED" : "COMPLETED",
+        summary: args.error
+          ? `Run failed: ${args.error}`
+          : `Run completed using ${updatedRun.model} in ${durationMs}ms.`,
+        durationMs,
+        costUsd: args.costUsd,
+        inputTokens: args.inputTokens,
+        outputTokens: args.outputTokens,
+        error: args.error,
+      });
       await appendOpEvent(ctx.db as any, {
         tenantId: updatedRun.tenantId,
         projectId: updatedRun.projectId,

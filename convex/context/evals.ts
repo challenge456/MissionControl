@@ -8,6 +8,7 @@
 
 import { v } from "convex/values";
 import { mutation, query } from "../_generated/server";
+import { internal } from "../_generated/api";
 import {
   aggregateEvalRun,
   buildCriterionResults,
@@ -409,12 +410,20 @@ export const runProxyEval = mutation({
     idempotencyKey: v.optional(v.string()),
     actorId: v.optional(v.string()),
     projectId: v.optional(v.id("projects")),
+    releaseDeploymentId: v.optional(v.id("deployments")),
   },
   handler: async (ctx, args) => {
     const pkg = await ctx.db.get(args.packageId);
     if (!pkg) throw new Error("Package not found");
     if (args.projectId && !(await ctx.db.get(args.projectId))) {
       throw new Error("Workspace not found");
+    }
+    if (args.releaseDeploymentId) {
+      const deployment = await ctx.db.get(args.releaseDeploymentId);
+      if (!deployment) throw new Error("Linked deployment not found");
+      if (deployment.status !== "PENDING") {
+        throw new Error("Release evidence can only be linked to a pending deployment");
+      }
     }
     const projectId = args.projectId ?? pkg.projectId;
     await requireEvalFrameworkEnabled(ctx, projectId);
@@ -460,6 +469,7 @@ export const runProxyEval = mutation({
       idempotencyKey: args.idempotencyKey,
       actorId: args.actorId,
       projectId,
+      releaseDeploymentId: args.releaseDeploymentId,
       startedAt: now,
       createdAt: now,
     });
@@ -488,6 +498,7 @@ export const runProxyEval = mutation({
     });
 
     await ctx.db.patch(version._id, { impactScore: aggregate.impactScore });
+    await ctx.scheduler.runAfter(0, internal.governance.releaseGateAutomation.fromContextEvalRun, { contextEvalRunId: runId });
 
     await insertAudit(ctx, {
       projectId: pkg.projectId,
@@ -510,6 +521,7 @@ export const createRun = mutation({
     versionId: v.id("contextPackageVersions"),
     idempotencyKey: v.optional(v.string()),
     actorId: v.optional(v.string()),
+    releaseDeploymentId: v.optional(v.id("deployments")),
   },
   handler: async (ctx, args) => {
     const pkg = await ctx.db.get(args.packageId);
@@ -517,6 +529,13 @@ export const createRun = mutation({
     const version = await ctx.db.get(args.versionId);
     if (!version || version.packageId !== args.packageId) {
       throw new Error("Version not found for package");
+    }
+    if (args.releaseDeploymentId) {
+      const deployment = await ctx.db.get(args.releaseDeploymentId);
+      if (!deployment) throw new Error("Linked deployment not found");
+      if (deployment.status !== "PENDING") {
+        throw new Error("Release evidence can only be linked to a pending deployment");
+      }
     }
     await requireEvalFrameworkEnabled(ctx, pkg.projectId);
 
@@ -571,6 +590,7 @@ export const createRun = mutation({
       idempotencyKey: args.idempotencyKey,
       actorId: args.actorId,
       projectId: pkg.projectId,
+      releaseDeploymentId: args.releaseDeploymentId,
       startedAt: now,
       createdAt: now,
     });
@@ -665,6 +685,7 @@ export const submitRunResults = mutation({
     await ctx.db.patch(run.versionId, {
       impactScore: aggregate.impactScore,
     });
+    await ctx.scheduler.runAfter(0, internal.governance.releaseGateAutomation.fromContextEvalRun, { contextEvalRunId: args.runId });
 
     const pkg = await ctx.db.get(run.packageId);
     const version = await ctx.db.get(run.versionId);
@@ -779,6 +800,7 @@ export const failRun = mutation({
       errorMessage: args.errorMessage,
       completedAt: Date.now(),
     });
+    await ctx.scheduler.runAfter(0, internal.governance.releaseGateAutomation.fromContextEvalRun, { contextEvalRunId: args.runId });
 
     return await ctx.db.get(args.runId);
   },

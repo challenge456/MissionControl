@@ -49,6 +49,9 @@ export function HarnessMetaLoopView({
                     <p className="mt-1 text-xs text-ink-muted">
                       Lineage: {s.sourceRef}
                       {s.kind === "EVAL_SCENARIO" ? " → accept creates eval scenario in Registry" : ""}
+                      {s.kind === "DELEGATION" && s.payload?.type === "REPETITIVE_TASK_AUTOMATION"
+                        ? " → accept creates a disabled automation definition"
+                        : ""}
                     </p>
                   )}
                 </div>

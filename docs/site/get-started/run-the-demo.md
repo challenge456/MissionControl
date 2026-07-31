@@ -11,6 +11,35 @@ pnpm convex:seed:demo:force
 
 Open `http://localhost:5199` — EOS sidebar is enabled by default.
 
+## Verify the server root
+
+Port 5199 can appear healthy while an older worktree-owned Vite process serves
+stale modules. If a page reports `Failed to fetch dynamically imported module`,
+check which checkout owns the listener:
+
+```bash
+lsof -nP -iTCP:5199 -sTCP:LISTEN
+lsof -a -p <vite-pid> -d cwd -Fn
+```
+
+The supported demo UI process must run from the main Mission Control checkout:
+
+```text
+/Users/jaywest/MissionControl/apps/mission-control-ui
+```
+
+Stop only the stale UI process, preserve the running Convex backend, and start:
+
+```bash
+pnpm run dev:demo:ui
+```
+
+Then reload the failed route in a clean browser session. A successful Tasks
+smoke test must show the requested workspace, the Tasks heading, board counts,
+and no page or console errors. See
+`docs/validation/2026-07-28-tasks-demo-server-recovery.md` for the verified
+incident record.
+
 ## Overview
 
 | Section | Pages to check |

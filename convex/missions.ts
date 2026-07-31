@@ -210,6 +210,11 @@ export const start = mutation({
     const mission = await ctx.db.get(args.missionId);
     if (!mission) throw new Error("Mission not found");
     if (mission.state === "IN_PROGRESS") return { mission, created: false };
+    const releasedWorkOrder = await ctx.db
+      .query("workOrders")
+      .withIndex("by_mission", (q) => q.eq("missionId", mission._id))
+      .first();
+    if (!releasedWorkOrder) throw new Error("Release at least one approved WorkOrder before starting the Mission");
     assertTransition(mission, "IN_PROGRESS");
     const now = Date.now();
     await ctx.db.patch(mission._id, { state: "IN_PROGRESS", updatedAt: now, blockingReason: undefined, requiredHumanAction: undefined });
@@ -235,6 +240,9 @@ export const recordValidationResult = mutation({
     }
     if (run.missionRole !== "VALIDATOR" && assertion.requiresIndependentValidation) {
       throw new Error("Independent validation requires a validator WorkflowRun");
+    }
+    if (args.status === "PASS" && run.status !== "COMPLETED") {
+      throw new Error("A passing Mission assertion requires a completed validator WorkflowRun");
     }
     if (args.status === "WAIVED" && (!assertion.waiverAllowed || !args.waiverApprovalDecisionId)) {
       throw new Error("Mission assertion waiver requires an authorized approval");
@@ -263,6 +271,39 @@ export const recordValidationResult = mutation({
     const updated = await ctx.db.get(mission._id);
     if (updated) await logMissionEvent(ctx, { mission: updated, eventType: "VALIDATION_RECORDED", actorType: "AGENT", actorId: args.actorId, summary: `Validation ${args.status} for ${assertion.assertionId}`, idempotencyKey: args.idempotencyKey, metadata: { validationAssertionId: assertion._id, workflowRunId: run._id, verificationReceiptId: args.verificationReceiptId } });
     return { assertion: await ctx.db.get(assertion._id), mission: updated, acceptance, created: true };
+  },
+});
+
+export const requestCorrectiveWork = mutation({
+  args: { missionId: v.id("missions"), requestedBy: v.string(), reason: v.string(), idempotencyKey: v.string() },
+  handler: async (ctx, args) => {
+    const mission = await ctx.db.get(args.missionId);
+    if (!mission) throw new Error("Mission not found");
+    if (mission.state !== "BLOCKED") throw new Error(`Corrective work can only be requested while Mission is BLOCKED (currently ${mission.state})`);
+    if (mission.correctiveIterations >= mission.maxCorrectiveIterations) {
+      throw new Error("Mission corrective-iteration limit reached; revise the plan or rescope with an operator");
+    }
+    const failedAssertions = await ctx.db
+      .query("validationAssertions")
+      .withIndex("by_mission", (q) => q.eq("missionId", mission._id))
+      .collect();
+    const failedAssertionIds = failedAssertions.filter((assertion) => ["FAIL", "STALE", "UNKNOWN"].includes(assertion.status)).map((assertion) => assertion.assertionId);
+    if (failedAssertionIds.length === 0) throw new Error("Corrective work requires failed, stale, or unknown validation evidence");
+    const duplicate = await ctx.db.query("missionEvents").withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.idempotencyKey)).first();
+    if (duplicate) return { mission, failedAssertionIds, created: false };
+    const now = Date.now();
+    await ctx.db.patch(mission._id, {
+      state: "READY", correctiveIterations: mission.correctiveIterations + 1, updatedAt: now,
+      blockingReason: undefined,
+      requiredHumanAction: "Release a corrective Worker Work Order, then re-run independent validation.",
+    });
+    const updated = await ctx.db.get(mission._id);
+    if (updated) await logMissionEvent(ctx, {
+      mission: updated, eventType: "CORRECTIVE_WORK_REQUESTED", actorType: "HUMAN", actorId: args.requestedBy,
+      summary: `Corrective iteration ${updated.correctiveIterations} requested for ${failedAssertionIds.join(", ")}`,
+      idempotencyKey: args.idempotencyKey, metadata: { failedAssertionIds, reason: args.reason },
+    });
+    return { mission: updated, failedAssertionIds, created: true };
   },
 });
 

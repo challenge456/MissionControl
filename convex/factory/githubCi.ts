@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internalMutation } from "../_generated/server";
+import { internal } from "../_generated/api";
 import {
   buildChangeReviewLenses,
   buildMutationTestingReport,
@@ -9,6 +10,7 @@ import {
 export const applyCiIngest = internalMutation({
   args: {
     projectId: v.optional(v.id("projects")),
+    releaseDeploymentId: v.optional(v.id("deployments")),
     prUrl: v.string(),
     prNumber: v.optional(v.number()),
     repoFullName: v.string(),
@@ -31,6 +33,7 @@ export const applyCiIngest = internalMutation({
           status: v.string(),
           conclusion: v.optional(v.union(v.string(), v.null())),
           html_url: v.optional(v.string()),
+          details_url: v.optional(v.string()),
         })
       )
     ),
@@ -40,6 +43,14 @@ export const applyCiIngest = internalMutation({
         testFailCount: v.optional(v.number()),
         diffLineCount: v.optional(v.number()),
         verificationPassRate: v.optional(v.number()),
+        ciStatus: v.optional(
+          v.union(
+            v.literal("PASS"),
+            v.literal("FAIL"),
+            v.literal("PENDING"),
+            v.literal("UNKNOWN")
+          )
+        ),
         securityFindingCount: v.optional(v.number()),
         qcFindings: v.optional(
           v.array(
@@ -55,6 +66,13 @@ export const applyCiIngest = internalMutation({
     sourceRef: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    if (args.releaseDeploymentId) {
+      const deployment = await ctx.db.get(args.releaseDeploymentId);
+      if (!deployment) throw new Error("Linked deployment not found");
+      if (deployment.status !== "PENDING") {
+        throw new Error("GitHub CI evidence can only be linked to a pending deployment");
+      }
+    }
     const signals: PrCheckSignals = {
       qcFindings: args.signals?.qcFindings ?? [],
       testPassCount: args.signals?.testPassCount,
@@ -72,9 +90,11 @@ export const applyCiIngest = internalMutation({
       .query("harnessPrChecks")
       .withIndex("by_pr_url", (q) => q.eq("prUrl", args.prUrl))
       .unique();
+    const releaseDeploymentId = args.releaseDeploymentId ?? existing?.releaseDeploymentId;
 
     const doc = {
       projectId: args.projectId,
+      releaseDeploymentId,
       prUrl: args.prUrl,
       prNumber: args.prNumber,
       repoFullName: args.repoFullName,
@@ -96,10 +116,15 @@ export const applyCiIngest = internalMutation({
       },
     };
 
+    const id = existing
+      ? existing._id
+      : await ctx.db.insert("harnessPrChecks", doc);
     if (existing) {
       await ctx.db.patch(existing._id, doc);
-      return existing._id;
     }
-    return ctx.db.insert("harnessPrChecks", doc);
+    if (releaseDeploymentId) {
+      await ctx.scheduler.runAfter(0, internal.governance.releaseGateAutomation.fromGithubCi, { harnessPrCheckId: id });
+    }
+    return id;
   },
 });

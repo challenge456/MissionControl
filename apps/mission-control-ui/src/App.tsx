@@ -155,7 +155,7 @@ function ProjectSwitcher({
 const STORAGE_KEY_VIEW = "mc.last_view";
 const STORAGE_KEY_PROJECT = "mc.last_project";
 
-function readRequestedProjectId(): Id<"projects"> | null {
+function readRequestedProjectId(): string | null {
   if (typeof window === "undefined") return null;
   try {
     const fromUrl = new URL(window.location.href).searchParams.get("workspace");
@@ -549,9 +549,11 @@ export default function App() {
   const [searchParams, setSearchParams] = useSearchParams();
   // ── Navigation & selection (persist last view so UI reopens where operator left off) ─
   const [currentView, setCurrentView] = useState<MainView>(() => readPersistedView() ?? "home");
-  const [projectId, setProjectId] = useState<Id<"projects"> | null>(
-    readRequestedProjectId
-  );
+  // A URL/local-storage value is untrusted until it is matched against the
+  // project list. Passing a foreign Convex ID to a v.id("projects") query
+  // throws before the normal workspace fallback can repair it.
+  const [requestedProjectId] = useState(readRequestedProjectId);
+  const [projectId, setProjectId] = useState<Id<"projects"> | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<Id<"tasks"> | null>(null);
   const [selectedQcRunId, setSelectedQcRunId] = useState<Id<"qcRuns"> | null>(null);
 
@@ -597,6 +599,7 @@ export default function App() {
     ) {
       const preferred =
         availableProjects.find((p) => p._id === projectId) ??
+        availableProjects.find((p) => p._id === requestedProjectId) ??
         availableProjects.find((p) => p.name.trim().toLowerCase() === "mission control") ??
         availableProjects.find((p) => p.name.toLowerCase().includes("mission control")) ??
         availableProjects[0];
@@ -604,7 +607,7 @@ export default function App() {
     } else if (availableProjects && availableProjects.length === 0 && projectId) {
       setProjectId(null);
     }
-  }, [availableProjects, projectId]);
+  }, [availableProjects, projectId, requestedProjectId]);
 
   useEffect(() => {
     if (!projectId || typeof window === "undefined") return;

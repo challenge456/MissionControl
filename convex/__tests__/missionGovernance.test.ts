@@ -36,6 +36,15 @@ describe("mission governance", () => {
     })).toEqual({ ok: true });
   });
 
+  it("requires an operator recovery path after failed validation", () => {
+    expect(canTransitionMission("BLOCKED", "READY")).toBe(true);
+    expect(validateMissionWorkOrderDispatch({
+      missionState: "READY", planApproved: true, executionPolicy: "SERIAL_MUTATIONS",
+      workOrderReleased: true, isMutating: true, hasActiveMutatingWorkOrder: false,
+      predecessorHandoffValid: true, budgetRemaining: true, correctiveIterationsRemaining: false,
+    })).toEqual({ ok: false, reason: "corrective-iteration-limit" });
+  });
+
   it("rejects a complete handoff with unknown assertions", () => {
     expect(validateMissionHandoff({
       role: "WORKER", outcome: "COMPLETE", completedAssertionIds: ["a-1"],

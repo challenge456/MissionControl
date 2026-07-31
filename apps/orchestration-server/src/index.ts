@@ -380,6 +380,16 @@ app.post("/workorders/:workOrderId/dispatch", async (c) => {
         409
       );
     }
+    const run = (result as any)?.run;
+    if (body.contextRepoSlug && run?._id) {
+      const activation = await client.mutation(ConvexMutations.context.activateForWorkflowRun as any, {
+        repoSlug: body.contextRepoSlug,
+        workflowRunId: run._id,
+        idempotencyKey: `${body.idempotencyKey ?? `orch-dispatch:${workOrderId}`}:context-activation`,
+        actorId: body.actorId ?? "orchestration-server",
+      });
+      return c.json({ success: true, result, contextActivation: activation });
+    }
     return c.json({ success: true, result });
   } catch (err: any) {
     return c.json({ error: err.message }, 400);
@@ -438,6 +448,7 @@ app.post("/workorders/:workOrderId/receipt-packets", async (c) => {
       receipts: body.receipts ?? [],
       handoff: body.handoff,
       idempotencyKey: body.idempotencyKey,
+      contextActivationReceiptId: body.contextActivationReceiptId,
     });
     return c.json({ success: true, result });
   } catch (err: any) {

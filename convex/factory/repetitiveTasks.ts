@@ -40,6 +40,12 @@ async function createProposals(ctx: { db: any }, projectId?: string) {
       summary: `${candidate.occurrences} governed Work Orders; ${candidate.completedCount} completed; ${candidate.receiptCount} have verification receipts. Review and approve a bounded automation scope.`,
       status: "OPEN",
       sourceRef,
+      payload: {
+        type: "REPETITIVE_TASK_AUTOMATION",
+        candidateId: candidate.id,
+        pattern: candidate.pattern,
+        recommendedSchedule: "0 8 * * 1",
+      },
       createdAt: Date.now(),
     });
     createdIds.push(id);

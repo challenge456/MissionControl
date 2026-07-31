@@ -58,6 +58,14 @@ const STATE_STYLES: Record<string, string> = {
   SUPERSEDED: "border-slate-500/30 text-slate-300",
 };
 
+const VERIFICATION_STYLES: Record<string, string> = {
+  PASS: "border-emerald-500/30 text-emerald-300",
+  PENDING: "border-amber-500/30 text-amber-300",
+  FAIL: "border-red-500/30 text-red-300",
+  WAIVED: "border-purple-500/30 text-purple-200",
+  STALE: "border-slate-500/30 text-slate-300",
+};
+
 const QUICK_FILTERS: Array<{ id: WorkOrderQuickFilter; label: string }> = [
   { id: "all", label: "All" },
   { id: "needs_attention", label: "Needs attention" },
@@ -302,17 +310,19 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                         <div className="text-sm font-medium text-foreground">{item.title}</div>
                         <div className="mt-1 text-xs text-muted-foreground line-clamp-2">{item.desiredOutcome}</div>
                       </div>
-                      <Badge variant="outline" className={RISK_STYLES[item.riskLevel] ?? ""}>{item.riskLevel}</Badge>
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <Badge variant="outline" className={RISK_STYLES[item.riskLevel] ?? ""}>{item.riskLevel}</Badge>
+                        <Badge variant="outline" className={STATE_STYLES[item.state] ?? ""}>{prettyLabel(item.state)}</Badge>
+                      </div>
                     </div>
 
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <Badge variant="outline" className={STATE_STYLES[item.state] ?? ""}>{prettyLabel(item.state)}</Badge>
                       <Badge variant="outline">{item.repository ?? "No repo"}</Badge>
                       <Badge variant="outline">Workflow: {item.workflowId ?? "—"}</Badge>
-                      <Badge variant="outline">Verification: {item.verificationStatus}</Badge>
+                      <Badge variant="outline" className={VERIFICATION_STYLES[item.verificationStatus] ?? ""}>Verification: {item.verificationStatus}</Badge>
                       {item.latestExecutionRun ? (
                         <Badge variant="outline">
-                          Run: {item.latestExecutionRun.status} · {item.latestExecutionRun.workflowId}
+                          Run: {prettyLabel(item.latestExecutionRun.status)} · {item.latestExecutionRun.workflowId}
                         </Badge>
                       ) : null}
                     </div>

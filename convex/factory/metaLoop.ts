@@ -133,6 +133,32 @@ export const resolve = mutation({
         targetId: args.suggestionId,
       });
     }
+    if (
+      args.action === "ACCEPT" &&
+      row.kind === "DELEGATION" &&
+      row.payload?.type === "REPETITIVE_TASK_AUTOMATION"
+    ) {
+      const existingDefinition = await ctx.db
+        .query("automationDefinitions")
+        .withIndex("by_source_suggestion", (q) => q.eq("sourceSuggestionId", row._id))
+        .first();
+      if (!existingDefinition) {
+        const now = Date.now();
+        await ctx.db.insert("automationDefinitions", {
+          projectId: row.projectId,
+          sourceSuggestionId: row._id,
+          name: row.title.replace(/^Automation proposal:\s*/, ""),
+          sourcePattern: row.payload.pattern,
+          trigger: "SCHEDULE",
+          schedule: row.payload.recommendedSchedule ?? "0 8 * * 1",
+          requiresHumanApproval: true,
+          requiresVerificationReceipt: true,
+          enabled: false,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+    }
     return args.suggestionId;
   },
 });

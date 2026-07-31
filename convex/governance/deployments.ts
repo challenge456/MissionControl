@@ -63,6 +63,14 @@ export const activateDeployment = mutation({
     const deployment = await ctx.db.get(args.deploymentId);
     if (!deployment) throw new Error("Deployment not found");
 
+    // Shadow mode is deliberately non-blocking: activation remains operator
+    // controlled while release evidence accumulates for a future enforced gate.
+    const latestGate = await ctx.db
+      .query("releaseGateEvaluations")
+      .withIndex("by_deployment", (q) => q.eq("deploymentId", args.deploymentId))
+      .order("desc")
+      .first();
+
     await ctx.db.patch(args.deploymentId, {
       status: "ACTIVE",
       approvedBy: args.approvedBy,
@@ -88,9 +96,78 @@ export const activateDeployment = mutation({
       summary: `Deployment activated: ${args.deploymentId}`,
       relatedTable: "deployments",
       relatedId: args.deploymentId,
+      payload: latestGate ? { shadowGate: latestGate.status, rationale: latestGate.rationale } : { shadowGate: "MISSING" },
     });
 
     return await ctx.db.get(args.deploymentId);
+  },
+});
+
+export const recordShadowGate = mutation({
+  args: {
+    deploymentId: v.id("deployments"),
+    status: v.union(v.literal("PASS"), v.literal("WARN"), v.literal("FAIL")),
+    rationale: v.string(),
+    evidenceRefs: v.array(v.string()),
+    qcRunId: v.optional(v.id("qcRuns")),
+    contextEvalRunId: v.optional(v.id("contextEvalRuns")),
+    createdBy: v.optional(v.id("operators")),
+  },
+  handler: async (ctx, args) => {
+    const deployment = await ctx.db.get(args.deploymentId);
+    if (!deployment) throw new Error("Deployment not found");
+    if (!args.rationale.trim()) throw new Error("Release gate rationale is required");
+    if (args.evidenceRefs.length === 0) throw new Error("At least one evidence reference is required");
+    const id = await ctx.db.insert("releaseGateEvaluations", { ...args, mode: "SHADOW", rationale: args.rationale.trim(), createdAt: Date.now() });
+    await appendChangeRecord(ctx.db as any, {
+      tenantId: deployment.tenantId,
+      templateId: deployment.templateId,
+      versionId: deployment.targetVersionId,
+      type: "DEPLOYMENT_CREATED",
+      summary: `Shadow release gate ${args.status}: ${args.rationale.trim()}`,
+      relatedTable: "releaseGateEvaluations",
+      relatedId: id,
+    });
+    return await ctx.db.get(id);
+  },
+});
+
+export const listShadowGates = query({
+  args: { deploymentId: v.id("deployments") },
+  handler: async (ctx, args) =>
+    await ctx.db.query("releaseGateEvaluations").withIndex("by_deployment", (q) => q.eq("deploymentId", args.deploymentId)).order("desc").collect(),
+});
+
+export const listLatestShadowGates = query({
+  args: { deploymentIds: v.array(v.id("deployments")) },
+  handler: async (ctx, args) => {
+    const gates = await Promise.all(
+      args.deploymentIds.map(async (deploymentId) =>
+        await ctx.db
+          .query("releaseGateEvaluations")
+          .withIndex("by_deployment", (q) => q.eq("deploymentId", deploymentId))
+          .order("desc")
+          .first()
+      )
+    );
+
+    return gates.filter((gate): gate is NonNullable<typeof gate> => gate !== null);
+  },
+});
+
+export const listShadowGateHistory = query({
+  args: { deploymentIds: v.array(v.id("deployments")) },
+  handler: async (ctx, args) => {
+    const rows = await Promise.all(
+      args.deploymentIds.map((deploymentId) =>
+        ctx.db
+          .query("releaseGateEvaluations")
+          .withIndex("by_deployment", (q) => q.eq("deploymentId", deploymentId))
+          .order("desc")
+          .collect()
+      )
+    );
+    return rows.flat().sort((a, b) => b.createdAt - a.createdAt);
   },
 });
 

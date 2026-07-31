@@ -612,6 +612,25 @@ export default defineSchema({
     .index("by_status", ["status"])
     .index("by_target_version", ["targetVersionId"]),
 
+  // Shadow-mode release decisions. These are intentionally separate from a
+  // deployment so the decision evidence remains immutable and auditable.
+  releaseGateEvaluations: defineTable({
+    deploymentId: v.id("deployments"),
+    status: v.union(v.literal("PASS"), v.literal("WARN"), v.literal("FAIL")),
+    mode: v.literal("SHADOW"),
+    rationale: v.string(),
+    evidenceRefs: v.array(v.string()),
+    qcRunId: v.optional(v.id("qcRuns")),
+    contextEvalRunId: v.optional(v.id("contextEvalRuns")),
+    harnessPrCheckId: v.optional(v.id("harnessPrChecks")),
+    automationKey: v.optional(v.string()),
+    createdBy: v.optional(v.id("operators")),
+    createdAt: v.number(),
+  })
+    .index("by_deployment", ["deploymentId"])
+    .index("by_status", ["status"])
+    .index("by_automation_key", ["automationKey"]),
+
   // -------------------------------------------------------------------------
   // ARM: OP EVENTS (Operational Telemetry)
   // -------------------------------------------------------------------------
@@ -3066,6 +3085,8 @@ export default defineSchema({
   qcRuns: defineTable({
     tenantId: v.optional(v.id("tenants")),
     projectId: v.optional(v.id("projects")),
+    // Explicit release association. Never infer this from project or time.
+    releaseDeploymentId: v.optional(v.id("deployments")),
 
     // Display ID and ordering
     runId: v.string(),
@@ -4051,6 +4072,48 @@ export default defineSchema({
     .index("by_package", ["packageSlug"]),
 
   // -------------------------------------------------------------------------
+  // CONTEXT REGISTRY: ACTIVATION RECEIPTS
+  // -------------------------------------------------------------------------
+  // Immutable evidence that an executor received the exact packages pinned by
+  // a repository lock for a context workflow run. Package content is returned
+  // only by the activation mutation and is intentionally not retained here.
+  contextActivationReceipts: defineTable({
+    repoSlug: v.string(),
+    workflowRunId: v.id("contextWorkflowRuns"),
+    lockManifestHash: v.string(),
+    packages: v.array(v.object({
+      packageSlug: v.string(),
+      packageId: v.id("contextPackages"),
+      versionId: v.id("contextPackageVersions"),
+      version: v.string(),
+      contentHash: v.string(),
+    })),
+    idempotencyKey: v.string(),
+    actorId: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_workflow_run", ["workflowRunId"])
+    .index("by_idempotency", ["idempotencyKey"]),
+
+  workflowContextActivationReceipts: defineTable({
+    repoSlug: v.string(),
+    workflowRunId: v.id("workflowRuns"),
+    lockManifestHash: v.string(),
+    packages: v.array(v.object({
+      packageSlug: v.string(),
+      packageId: v.id("contextPackages"),
+      versionId: v.id("contextPackageVersions"),
+      version: v.string(),
+      contentHash: v.string(),
+    })),
+    idempotencyKey: v.string(),
+    actorId: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_workflow_run", ["workflowRunId"])
+    .index("by_idempotency", ["idempotencyKey"]),
+
+  // -------------------------------------------------------------------------
   // CONTEXT REGISTRY: EVAL SCENARIOS (Software Factory Epic 4)
   // -------------------------------------------------------------------------
   contextEvalScenarios: defineTable({
@@ -4079,6 +4142,8 @@ export default defineSchema({
   contextEvalRuns: defineTable({
     packageId: v.id("contextPackages"),
     versionId: v.id("contextPackageVersions"),
+    // Optional, explicit target for derived shadow release evidence.
+    releaseDeploymentId: v.optional(v.id("deployments")),
     status: contextEvalRunStatus,
     scenarioCount: v.number(),
     completedScenarios: v.number(),
@@ -4385,6 +4450,8 @@ export default defineSchema({
   // -------------------------------------------------------------------------
   harnessPrChecks: defineTable({
     projectId: v.optional(v.id("projects")),
+    // Explicit release association for CI-backed shadow gate evidence.
+    releaseDeploymentId: v.optional(v.id("deployments")),
     prUrl: v.string(),
     prNumber: v.optional(v.number()),
     repoFullName: v.string(),
@@ -4433,6 +4500,7 @@ export default defineSchema({
     metadata: v.optional(v.any()),
   })
     .index("by_project", ["projectId"])
+    .index("by_release_deployment", ["releaseDeploymentId"])
     .index("by_pr_url", ["prUrl"])
     .index("by_repo", ["repoFullName"]),
 
@@ -4464,6 +4532,33 @@ export default defineSchema({
   })
     .index("by_project_status", ["projectId", "status"])
     .index("by_status", ["status"]),
+
+  // -------------------------------------------------------------------------
+  // HARNESS ENGINEERING: AUTOMATION DEFINITIONS
+  // -------------------------------------------------------------------------
+  // Created only when an operator accepts an evidence-backed delegation proposal.
+  // Definitions are intentionally disabled until a separate activation decision.
+  automationDefinitions: defineTable({
+    projectId: v.optional(v.id("projects")),
+    sourceSuggestionId: v.id("metaLoopSuggestions"),
+    name: v.string(),
+    sourcePattern: v.string(),
+    trigger: v.literal("SCHEDULE"),
+    schedule: v.string(),
+    requiresHumanApproval: v.boolean(),
+    requiresVerificationReceipt: v.boolean(),
+    enabled: v.boolean(),
+    activatedAt: v.optional(v.number()),
+    activatedBy: v.optional(v.string()),
+    deactivatedAt: v.optional(v.number()),
+    deactivatedBy: v.optional(v.string()),
+    lastDraftAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_source_suggestion", ["sourceSuggestionId"])
+    .index("by_project_enabled", ["projectId", "enabled"]),
 
   // -------------------------------------------------------------------------
   // KNOWLEDGE GRAPH (Agentic-KB Graphify overlay + future Obsidian sync)
