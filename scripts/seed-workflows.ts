@@ -31,6 +31,17 @@ async function main() {
   console.log("🔄 Seeding workflows into Convex...\n");
   
   const client = new ConvexHttpClient(CONVEX_URL);
+
+  const deadline = Date.now() + 30_000;
+  while (true) {
+    try {
+      await client.query(api.workflows.list, { activeOnly: false });
+      break;
+    } catch (error) {
+      if (Date.now() >= deadline) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+    }
+  }
   
   // Load all workflows from workflows/ directory
   const workflowsDir = path.join(scriptDirectory, "..", "workflows");

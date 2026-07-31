@@ -1,4 +1,5 @@
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
+import { useState } from "react";
 import {
   ArrowUpRight,
   CalendarClock,
@@ -42,6 +43,76 @@ export function AutomationDefinitionDetail({
     projectId,
     automationDefinitionId: definition._id,
   });
+  const submitForReview = useMutation(api.skillAutomations.submitForReview);
+  const approve = useMutation(api.skillAutomations.approve);
+  const validateDefinition = useMutation(api.skillAutomations.validateDefinition);
+  const updateDefinition = useMutation(api.skillAutomations.updateDefinition);
+  const activate = useMutation(api.automations.activate);
+  const evaluateNow = useMutation(api.automationScheduler.evaluateNow);
+  const transition = useMutation(api.skillAutomations.transitionDefinition);
+  const clone = useMutation(api.skillAutomations.cloneDefinition);
+  const [governanceMessage, setGovernanceMessage] = useState("");
+  async function validate() {
+    const reason = window.prompt("Reason for validating this Definition");
+    if (!reason || reason.trim().length < 5) return;
+    try {
+      const result = await validateDefinition({ definitionId: definition._id, actorId: "operator", reason: reason.trim() });
+      setGovernanceMessage(result.status === "PASSED" ? "All activation gates passed validation." : `Validation failed: ${result.findings.join("; ")}`);
+    } catch (error) {
+      setGovernanceMessage(error instanceof Error ? error.message : "Validation failed");
+    }
+  }
+  async function edit() {
+    const name = window.prompt("Automation name", definition.name);
+    if (!name) return;
+    const description = window.prompt("Automation description", definition.description);
+    if (!description) return;
+    const runtime = window.prompt("Maximum runtime in seconds", String(definition.maxDurationSeconds));
+    const cost = window.prompt("Maximum estimated cost in USD", String(definition.maxCostUsd));
+    const reason = window.prompt("Reason for editing this Definition");
+    if (!runtime || !cost || !reason || reason.trim().length < 5) return;
+    try {
+      await updateDefinition({
+        definitionId: definition._id, name, description,
+        maxDurationSeconds: Number(runtime), maxCostUsd: Number(cost),
+        actorId: "operator", reason: reason.trim(),
+      });
+      setGovernanceMessage("Definition updated. Validation was reset and must pass again.");
+    } catch (error) {
+      setGovernanceMessage(error instanceof Error ? error.message : "Definition update failed");
+    }
+  }
+  async function decideReview(action: "SUBMIT" | "APPROVE") {
+    const reason = window.prompt(action === "SUBMIT" ? "Reason for requesting review" : "Approval reason");
+    if (!reason || reason.trim().length < 5) return;
+    try {
+      if (action === "SUBMIT") await submitForReview({ definitionId: definition._id, actorId: "operator", reason: reason.trim() });
+      else await approve({ definitionId: definition._id, actorId: "operator", reason: reason.trim() });
+      setGovernanceMessage(action === "SUBMIT" ? "Review requested and recorded." : "Definition approved. Activation remains separate.");
+    } catch (error) {
+      setGovernanceMessage(error instanceof Error ? error.message : "Review decision failed");
+    }
+  }
+  async function lifecycle(action: "ACTIVATE" | "EVALUATE" | "PAUSE" | "RESUME" | "SUSPEND" | "DISABLE" | "ARCHIVE" | "CLONE" | "NEW_VERSION") {
+    const reason = window.prompt(`Reason for ${action.toLowerCase().replace("_", " ")}`);
+    if (!reason || reason.trim().length < 5) return;
+    try {
+      if (action === "ACTIVATE") {
+        await activate({ projectId, automationDefinitionId: definition._id, actorId: "operator", reason: reason.trim(), policyVersion: "skill-automation-v1" });
+      } else if (action === "EVALUATE") {
+        await evaluateNow({ projectId, automationDefinitionId: definition._id, reason: reason.trim() });
+      } else if (action === "CLONE" || action === "NEW_VERSION") {
+        const result = await clone({ definitionId: definition._id, mode: action, actorId: "operator", reason: reason.trim() });
+        window.location.href = workspacePath(`/v2/automations?tab=definitions&definition=${result.definitionId}`, projectId);
+        return;
+      } else {
+        await transition({ definitionId: definition._id, action, actorId: "operator", reason: reason.trim() });
+      }
+      setGovernanceMessage(`${action.toLowerCase().replace("_", " ")} completed and audited.`);
+    } catch (error) {
+      setGovernanceMessage(error instanceof Error ? error.message : "Lifecycle action failed");
+    }
+  }
   const definitionRuns = runs.filter((run) => run.definition?._id === definition._id);
   const definitionReceipts = receipts.filter((receipt) => receipt.automationDefinitionId === definition._id);
   const definitionDecisions = decisions.filter((decision) => decision.automationDefinitionId === definition._id);
@@ -60,7 +131,28 @@ export function AutomationDefinitionDetail({
             <Badge variant="outline" className={definition.isMutating ? "border-red-500/30 text-red-200" : "border-emerald-500/30 text-emerald-300"}>
               {definition.isMutating ? "Mutating" : "Read-only"}
             </Badge>
+            {definition.sourceSkillId ? <Badge variant="outline">Skill v{definition.sourceSkillVersion}</Badge> : null}
+            {definition.reviewStatus ? <Badge variant="outline">Review: {definition.reviewStatus}</Badge> : null}
           </div>
+          {definition.sourceSkillId ? (
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              {definition.reviewStatus === "DRAFT" ? <Button size="sm" variant="outline" onClick={() => void edit()}>Edit</Button> : null}
+              {["DRAFT", "REJECTED"].includes(definition.reviewStatus) ? <Button size="sm" variant="outline" onClick={() => void validate()}>Validate</Button> : null}
+              {definition.reviewStatus === "DRAFT" ? <Button size="sm" onClick={() => void decideReview("SUBMIT")}>Submit for review</Button> : null}
+              {definition.reviewStatus === "READY_FOR_REVIEW" ? <Button size="sm" onClick={() => void decideReview("APPROVE")}>Approve Definition</Button> : null}
+              {definition.status === "DISABLED" && definition.reviewStatus === "APPROVED" ? <Button size="sm" onClick={() => void lifecycle("ACTIVATE")}>Activate</Button> : null}
+              {definition.status === "ACTIVE" ? <Button size="sm" onClick={() => void lifecycle("EVALUATE")}>Run evaluation now</Button> : null}
+              {definition.status === "ACTIVE" ? <Button size="sm" variant="outline" onClick={() => void lifecycle("PAUSE")}>Pause</Button> : null}
+              {definition.status === "PAUSED" ? <Button size="sm" onClick={() => void lifecycle("RESUME")}>Resume</Button> : null}
+              {["ACTIVE", "PAUSED"].includes(definition.status) ? <Button size="sm" variant="outline" onClick={() => void lifecycle("SUSPEND")}>Suspend</Button> : null}
+              {["ACTIVE", "PAUSED", "SUSPENDED"].includes(definition.status) ? <Button size="sm" variant="outline" onClick={() => void lifecycle("DISABLE")}>Disable</Button> : null}
+              {["DISABLED", "RETIRED"].includes(definition.status) ? <Button size="sm" variant="outline" onClick={() => void lifecycle("ARCHIVE")}>Archive</Button> : null}
+              <Button size="sm" variant="outline" onClick={() => void lifecycle("CLONE")}>Clone</Button>
+              <Button size="sm" variant="outline" onClick={() => void lifecycle("NEW_VERSION")}>New version</Button>
+              <span className="text-xs text-muted-foreground">Validation: {definition.validationStatus ?? "PENDING"} · activation requires approval</span>
+            </div>
+          ) : null}
+          {governanceMessage ? <p role="status" className="mt-2 text-xs text-emerald-200">{governanceMessage}</p> : null}
         </div>
         <Button size="sm" variant="outline" onClick={onClose} aria-label="Close Automation Definition details">
           <X className="h-4 w-4" /> Close
@@ -78,6 +170,11 @@ export function AutomationDefinitionDetail({
             ["Risk", definition.riskLevel],
             ["Autonomy", definition.autonomyLevel],
             ["Mutation policy", definition.isMutating ? "Mutating" : "Read-only"],
+            ["Source skill version", definition.sourceSkillVersion],
+            ["Adapter", definition.adapterType],
+            ["Artifact path", definition.artifactPath],
+            ["Validation", definition.validationStatus],
+            ["Definition review", definition.reviewStatus],
           ]} />
         </DetailSection>
         <DetailSection icon={Workflow} title="Workflow">

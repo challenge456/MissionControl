@@ -148,7 +148,7 @@ export function PageHeader({
   eyebrow?: string;
 }): JSX.Element {
   return (
-    <div className="flex items-start justify-between gap-6 px-6 pb-4 pt-5">
+    <div className="flex flex-col items-start justify-between gap-4 px-6 pb-4 pt-5 sm:flex-row sm:gap-6">
       <div className="min-w-0">
         {eyebrow ? <div className="registry-kicker">{eyebrow}</div> : null}
         <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-ink">
@@ -158,7 +158,7 @@ export function PageHeader({
           <p className="mt-1.5 text-[14px] leading-relaxed text-ink-secondary">{description}</p>
         ) : null}
       </div>
-      {actions ? <div className="shrink-0">{actions}</div> : null}
+      {actions ? <div className="w-full shrink-0 sm:w-auto">{actions}</div> : null}
     </div>
   );
 }

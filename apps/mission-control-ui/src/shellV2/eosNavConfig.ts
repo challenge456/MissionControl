@@ -38,7 +38,8 @@ export const EOS_NAV_GROUPS: NavGroup[] = [
     { view: "analytics" as MainView, label: "Cost", icon: BarChart3 },
   ]},
   { id: "intelligence", label: "Intelligence", icon: Brain, items: [
-    { view: "harness-loops" as MainView, label: "Loop Engineering", icon: GitBranch },
+    { view: "operator-evals" as MainView, label: "Operator Evals", icon: FlaskConical },
+    { view: "harness-loops" as MainView, label: "Graph Engineering", icon: GitBranch },
     { view: "effectiveness" as MainView, label: "AI Effectiveness", icon: Gauge },
     { view: "factory-health" as MainView, label: "Factory Health", icon: CheckCircle2 },
     { view: "readiness" as MainView, label: "Environment Readiness", icon: Landmark },

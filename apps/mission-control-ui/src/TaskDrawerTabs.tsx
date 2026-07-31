@@ -579,6 +579,8 @@ function OverviewTab({
         onNavigateToMission={onNavigateToMission}
       />
 
+      <TaskModelRoutingSection taskId={taskId} />
+
       {task.description && (
         <Section title="Description">
           <p className="text-sm text-ink-secondary leading-relaxed">{task.description}</p>
@@ -730,6 +732,110 @@ function OverviewTab({
         </div>
       </Section>
     </div>
+  );
+}
+
+function TaskModelRoutingSection({ taskId }: { taskId: Id<"tasks"> }) {
+  const routing = useQuery(api.modelRoutingDecisions.getForTask, { taskId });
+  const catalog = useQuery(api.modelCatalog.list);
+  const setOverride = useMutation(api.workOrders.setAuthorizedModelOverride);
+  const { toast } = useToast();
+  const [modelId, setModelId] = useState("");
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setModelId(routing?.overrideModelId ?? "");
+    setReason(routing?.overrideReason ?? "");
+  }, [routing?.overrideModelId, routing?.overrideReason]);
+
+  if (routing === undefined || catalog === undefined) {
+    return <Section title="Model routing"><p className="text-sm text-ink-muted">Loading route…</p></Section>;
+  }
+  if (!routing?.workOrderId) {
+    return (
+      <Section title="Model routing">
+        <p className="text-sm text-ink-muted">Link this task to a Work Order before selecting a model route.</p>
+      </Section>
+    );
+  }
+
+  const decision = routing.decision;
+  const save = async () => {
+    if (!modelId || !reason.trim()) return;
+    setSaving(true);
+    try {
+      await setOverride({
+        workOrderId: routing.workOrderId!,
+        modelId,
+        reason: reason.trim(),
+        actorId: "operator",
+      });
+      toast("Model override saved for the next dispatch");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Unable to save model override", true);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Section title="Model routing">
+      <div className="space-y-3 rounded-lg border border-line bg-surface-2 p-4">
+        <div className="grid gap-1 text-sm">
+          <span className="text-xs text-ink-muted">Selected route</span>
+          <span className="font-mono font-medium text-ink">{decision?.selectedModelId ?? "Not routed yet"}</span>
+          {decision && <span className="text-xs leading-5 text-ink-secondary">{decision.explanation}</span>}
+          {decision && <span className="text-xs text-ink-muted">{decision.complexity ?? "STANDARD"} complexity · {decision.riskLevel} risk · {decision.mode.toLowerCase()} mode</span>}
+        </div>
+        {!routing.canChange ? (
+          <p className="border-t border-line pt-3 text-xs leading-5 text-ink-muted">
+            This run is active. Cancel or complete it before changing the model; the next dispatch will record a new route.
+          </p>
+        ) : (
+          <div className="space-y-2 border-t border-line pt-3">
+            <Label htmlFor={`task-model-${taskId}`} className="text-xs">Next dispatch override</Label>
+            <select
+              id={`task-model-${taskId}`}
+              value={modelId}
+              onChange={(event) => setModelId(event.target.value)}
+              className="w-full rounded-md border border-line bg-surface-1 px-3 py-2 text-sm text-ink"
+            >
+              <option value="">Follow workspace policy</option>
+              {catalog.filter((model) => !model.deprecated && model.availability === "HEALTHY").map((model) => (
+                <option key={model._id} value={model.modelId}>{model.displayName} · {model.tier}</option>
+              ))}
+            </select>
+            {modelId && (
+              <textarea
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+                placeholder="Why is this exception needed?"
+                rows={2}
+                className="w-full rounded-md border border-line bg-surface-1 px-3 py-2 text-sm text-ink placeholder:text-ink-muted"
+              />
+            )}
+            <div className="flex gap-2">
+              {modelId ? (
+                <Button size="sm" onClick={save} disabled={saving || !reason.trim()}>{saving ? "Saving…" : "Save override"}</Button>
+              ) : routing.overrideModelId ? (
+                <Button size="sm" variant="outline" onClick={async () => {
+                  setSaving(true);
+                  try {
+                    await setOverride({ workOrderId: routing.workOrderId!, actorId: "operator" });
+                    toast("Model override cleared; workspace policy will apply");
+                  } catch (error) {
+                    toast(error instanceof Error ? error.message : "Unable to clear model override", true);
+                  } finally {
+                    setSaving(false);
+                  }
+                }} disabled={saving}>Clear override</Button>
+              ) : null}
+            </div>
+          </div>
+        )}
+      </div>
+    </Section>
   );
 }
 

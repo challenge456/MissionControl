@@ -7,6 +7,7 @@ import {
   Rocket,
   Shield,
   Wrench,
+  Bot,
 } from "lucide-react";
 
 export type DocsSitePage = {
@@ -26,6 +27,68 @@ export type DocsSiteSection = {
 
 /** Tessl-style information architecture for Mission Control docs. */
 export const DOCS_SITE_SECTIONS: DocsSiteSection[] = [
+  {
+    id: "operator-control-plane",
+    label: "Operator Control Plane",
+    icon: Shield,
+    pages: [
+      {
+        id: "operator-control-plane-overview",
+        title: "Decision Center and Operator Evals",
+        description: "Governed decisions, explicit dispatch, proof, and persona evaluation",
+        path: "operator-control-plane/overview",
+      },
+    ],
+  },
+  {
+    id: "deterministic-skill-automations",
+    label: "Skill Automations",
+    icon: Bot,
+    pages: [
+      {
+        id: "skill-automations-overview",
+        title: "Deterministic Skill Automations",
+        description: "Governed conversion, execution, verification, and delivery record",
+        path: "skill-automations/overview",
+      },
+      {
+        id: "skill-automations-design",
+        title: "Implementation Design",
+        description: "Architecture, decisions, extension points, and safety boundary",
+        path: "skill-automations/implementation-design",
+      },
+      {
+        id: "skill-automations-evidence",
+        title: "Browser and E2E Evidence",
+        description: "Screenshots, live adapter proof, accessibility, and validation",
+        path: "skill-automations/browser-evidence",
+      },
+      {
+        id: "skill-automations-roadmap",
+        title: "Factory Enhancement Roadmap",
+        description: "Prioritized P0, P1, and P2 improvements",
+        path: "skill-automations/factory-roadmap",
+      },
+      {
+        id: "skill-automations-runtime",
+        title: "Bounded Adapter Runtime",
+        description: "Execution manifest, adapter behavior, and runtime safeguards",
+        path: "skill-automations/bounded-adapter-runtime",
+      },
+      {
+        id: "skill-automations-backend",
+        title: "Automation Backend Reference",
+        description: "Convex candidate, conversion, Definition, execution, and receipt API",
+        path: "skill-automations/automation-backend",
+      },
+      {
+        id: "skill-automations-completion",
+        title: "Completed Implementation Record",
+        description: "Acceptance criteria, work log, and exact validation results",
+        path: "skill-automations/completed-implementation",
+      },
+    ],
+  },
   {
     id: "software-factory-enhancement",
     label: "Software Factory Enhancement",
@@ -168,8 +231,8 @@ export const DOCS_SITE_SECTIONS: DocsSiteSection[] = [
     ],
   },
   {
-    id: "software-factory-enhancement",
-    label: "Software Factory Enhancement",
+    id: "software-factory-task-work-orders",
+    label: "Task and Work Order Delivery",
     icon: ClipboardCheck,
     pages: [
       {

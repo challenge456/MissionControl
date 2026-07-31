@@ -8,6 +8,7 @@ import {
   isReviewGateDue,
   nextScheduledAt,
   suspensionReason,
+  reviewGateIdempotencyKey,
 } from "./lib/automationGovernance";
 
 type EvaluationResult = {
@@ -23,6 +24,7 @@ async function evaluate(
   args: {
     projectId?: Id<"projects">;
     automationDefinitionId?: Id<"automationDefinitions">;
+    manual?: boolean;
   }
 ): Promise<EvaluationResult> {
   const now = Date.now();
@@ -39,7 +41,19 @@ async function evaluate(
   const workOrderIds: string[] = [];
 
   for (const definition of definitions) {
-    if (!isReviewGateDue(definition, now)) {
+    const scheduledAt = args.manual ? now : definition.nextRunAt ?? now;
+    const evaluationKey = args.manual
+      ? `automation:${definition._id}:manual-evaluation:${Math.floor(now / (5 * 60_000))}`
+      : reviewGateIdempotencyKey(String(definition._id), scheduledAt);
+    const existingEvaluation = await ctx.db
+      .query("automationEvaluations")
+      .withIndex("by_evaluation_key", (q: any) => q.eq("evaluationKey", evaluationKey))
+      .first();
+    if (existingEvaluation) {
+      skipped += 1;
+      continue;
+    }
+    if (!args.manual && !isReviewGateDue(definition, now)) {
       skipped += 1;
       continue;
     }
@@ -55,6 +69,44 @@ async function evaluate(
     const relevantReceipts = priorReceipts.filter((receipt: any) =>
       priorGates.some((gate: any) => gate._id === receipt.workOrderId)
     );
+    const activeGate = priorGates.find((gate: any) =>
+      ["DISPATCHED", "IN_PROGRESS", "AWAITING_VERIFICATION"].includes(gate.state)
+    );
+    if (activeGate) {
+      await ctx.db.insert("automationEvaluations", {
+        projectId: definition.projectId,
+        automationDefinitionId: definition._id,
+        workOrderId: activeGate._id,
+        evaluationKey,
+        triggerType: definition.triggerType,
+        status: "SKIPPED",
+        reason: "Concurrency limit reached; an earlier review gate is still active",
+        checks: { idempotency: "PASS", concurrency: "BLOCKED", safety: "PASS" },
+        correlationId: definition.correlationId ?? evaluationKey,
+        causationId: String(activeGate._id),
+        createdBy: "automation-policy",
+        createdAt: now,
+        updatedAt: now,
+      });
+      await ctx.db.insert("automationDecisions", {
+        projectId: definition.projectId,
+        automationDefinitionId: definition._id,
+        decisionType: "EVALUATION_SKIPPED",
+        actorId: "automation-policy",
+        reason: "Concurrency limit reached",
+        policyVersion: AUTOMATION_POLICY_VERSION,
+        definitionVersion: definition.definitionVersion,
+        decidedAt: now,
+        entityType: "AUTOMATION_EVALUATION",
+        entityId: evaluationKey,
+        previousState: "CREATED",
+        newState: "SKIPPED",
+        correlationId: definition.correlationId ?? evaluationKey,
+        causationId: String(activeGate._id),
+      });
+      skipped += 1;
+      continue;
+    }
     const reason = suspensionReason({
       verificationFailed: relevantReceipts.some((receipt: any) => receipt.status === "FAILED"),
       requiredReceiptMissing: priorGates.some((gate: any) =>
@@ -84,6 +136,19 @@ async function evaluate(
         definitionVersion: definition.definitionVersion,
         decidedAt: now,
       });
+      await ctx.db.insert("automationEvaluations", {
+        projectId: definition.projectId,
+        automationDefinitionId: definition._id,
+        evaluationKey,
+        triggerType: definition.triggerType,
+        status: "FAILED",
+        reason,
+        checks: { idempotency: "PASS", concurrency: "PASS", suspension: "BLOCKED" },
+        correlationId: definition.correlationId ?? evaluationKey,
+        createdBy: "automation-policy",
+        createdAt: now,
+        updatedAt: now,
+      });
       suspended += 1;
       continue;
     }
@@ -98,7 +163,7 @@ async function evaluate(
       requiredApprovalTypes: definition.requiredApprovalTypes,
       verificationContract: definition.verificationContract,
       triggerConfig: definition.triggerConfig,
-    }, definition.nextRunAt ?? now);
+    }, scheduledAt);
     const result: { workOrder: { _id: Id<"workOrders"> }; created: boolean } = await ctx.runMutation(
       api.workOrders.create,
       {
@@ -109,10 +174,50 @@ async function evaluate(
     );
     await ctx.db.patch(definition._id, {
       lastRunAt: now,
-      nextRunAt: nextScheduledAt(now),
+      nextRunAt: args.manual ? definition.nextRunAt : nextScheduledAt(now),
       lastResult: result.created ? "REVIEW_GATE_CREATED" : "IDEMPOTENT_SKIP",
       lastReviewGateWorkOrderId: result.workOrder._id,
       updatedAt: now,
+    });
+    await ctx.db.insert("automationEvaluations", {
+      projectId: definition.projectId,
+      automationDefinitionId: definition._id,
+      workOrderId: result.workOrder._id,
+      evaluationKey,
+      triggerType: definition.triggerType,
+      status: "AWAITING_APPROVAL",
+      reason: result.created ? "Governed review-gate WorkOrder created" : "Idempotent WorkOrder replay",
+      checks: {
+        active: true,
+        level: definition.autonomyLevel,
+        readOnly: !definition.isMutating,
+        approvalRequired: definition.requiredApprovalTypes.length > 0,
+        receiptRequired: true,
+        idempotency: result.created ? "NEW" : "REPLAY",
+        concurrency: "PASS",
+        artifactValidation: definition.validationStatus ?? "LEGACY",
+      },
+      correlationId: definition.correlationId ?? evaluationKey,
+      causationId: String(definition._id),
+      createdBy: "automation-policy",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await ctx.db.insert("automationDecisions", {
+      projectId: definition.projectId,
+      automationDefinitionId: definition._id,
+      decisionType: result.created ? "EVALUATED" : "EVALUATION_SKIPPED",
+      actorId: "automation-policy",
+      reason: result.created ? "Evaluation passed; review gate created" : "Idempotent evaluation replay",
+      policyVersion: AUTOMATION_POLICY_VERSION,
+      definitionVersion: definition.definitionVersion,
+      decidedAt: now,
+      entityType: "AUTOMATION_EVALUATION",
+      entityId: evaluationKey,
+      previousState: "CREATED",
+      newState: result.created ? "AWAITING_APPROVAL" : "SKIPPED",
+      correlationId: definition.correlationId ?? evaluationKey,
+      causationId: String(result.workOrder._id),
     });
     if (result.created) created += 1;
     else skipped += 1;
@@ -145,6 +250,7 @@ export const evaluateNow = mutation({
     return evaluate(ctx, {
       projectId: args.projectId,
       automationDefinitionId: args.automationDefinitionId,
+      manual: true,
     });
   },
 });

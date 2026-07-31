@@ -25,6 +25,7 @@ import {
   statusTone,
   workspacePath,
 } from "./automationModel";
+import { SkillAutomationCandidates } from "./SkillAutomationCandidates";
 
 type CandidateAction = "accept" | "reject" | "evidence";
 
@@ -80,18 +81,34 @@ export function AutomationCandidates({
 
   if (candidates.length === 0) {
     return (
-      <Card className="border-dashed p-8 text-center">
-        <Sparkles className="mx-auto h-5 w-5 text-muted-foreground" />
-        <h2 className="mt-3 text-sm font-semibold text-foreground">No repeated governed work has enough evidence yet</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Two completed comparable WorkOrders and fresh verification evidence are required.
-        </p>
-      </Card>
+      <div className="space-y-5">
+        <div>
+          <h2 className="text-sm font-semibold text-foreground">Registry skill candidates</h2>
+          <p className="mt-1 text-xs text-muted-foreground">Published deterministic skills assessed against the governed Automation contract.</p>
+        </div>
+        <SkillAutomationCandidates projectId={projectId} />
+        <Card className="border-dashed p-8 text-center">
+          <Sparkles className="mx-auto h-5 w-5 text-muted-foreground" />
+          <h2 className="mt-3 text-sm font-semibold text-foreground">No repeated governed work has enough evidence yet</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Two completed comparable WorkOrders and fresh verification evidence are required.
+          </p>
+        </Card>
+      </div>
     );
   }
 
   return (
     <div className="space-y-4">
+      <div>
+        <h2 className="text-sm font-semibold text-foreground">Registry skill candidates</h2>
+        <p className="mt-1 text-xs text-muted-foreground">Published deterministic skills assessed against the governed Automation contract.</p>
+      </div>
+      <SkillAutomationCandidates projectId={projectId} />
+      <div className="border-t border-[var(--panel-line)] pt-5">
+        <h2 className="text-sm font-semibold text-foreground">Repeated WorkOrder candidates</h2>
+        <p className="mt-1 text-xs text-muted-foreground">Evidence-backed repetition discovered from completed governed work.</p>
+      </div>
       {message ? (
         <p
           role={message.error ? "alert" : "status"}

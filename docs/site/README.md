@@ -8,6 +8,18 @@ Open **Knowledge → Docs → Documentation** in the EOS sidebar (`pnpm dev:demo
 
 ## Site map
 
+### Operator control plane
+- [Decision Center and Operator Evals](./operator-control-plane/overview.md)
+
+### Deterministic Skill Automations
+- [Overview](./skill-automations/overview.md)
+- [Implementation design](./skill-automations/implementation-design.md)
+- [Browser and E2E evidence](./skill-automations/browser-evidence.md)
+- [Factory enhancement roadmap](./skill-automations/factory-roadmap.md)
+- [Bounded adapter runtime](./skill-automations/bounded-adapter-runtime.md)
+- [Automation backend reference](./skill-automations/automation-backend.md)
+- [Completed implementation record](./skill-automations/completed-implementation.md)
+
 ### Overview
 - [What is Mission Control?](./overview/readme.md)
 - [Platform components](./overview/platform-components.md)

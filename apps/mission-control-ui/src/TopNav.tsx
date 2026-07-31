@@ -76,6 +76,7 @@ export type MainView =
   | "mission-detail"
   | "trace-inspector"
   | "effectiveness"
+  | "operator-evals"
   | "factory-health"
   | "readiness"
   | "friction"

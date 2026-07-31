@@ -8,6 +8,7 @@ import {
   validateLoopAdvance,
   type LoopPhase,
 } from "./lib/loopEngineering";
+import { GRAPH_ENGINEERING_PERSONAS } from "./lib/graphEngineering";
 
 function cycleRef(cycleId: Id<"loopEngineeringCycles">) {
   return `loop-engineering:${cycleId}`;
@@ -193,6 +194,25 @@ export const create = action({
 
     const project = await ctx.runQuery(api.projects.get, { projectId: args.projectId });
     if (!project) throw new Error("Project not found.");
+
+    for (const persona of GRAPH_ENGINEERING_PERSONAS) {
+      await ctx.runMutation(api.agents.register, {
+        projectId: args.projectId,
+        name: persona.name,
+        emoji: persona.emoji,
+        role: persona.role,
+        workspacePath: project.githubRepo ?? project.slug ?? "mission-control",
+        allowedTaskTypes: [...persona.allowedTaskTypes],
+        budgetDaily: persona.budgetDaily,
+        budgetPerRun: persona.budgetPerRun,
+        canSpawn: false,
+        maxSubAgents: 0,
+        metadata: {
+          builtInPersona: true,
+          graphEngineering: true,
+        },
+      });
+    }
 
     const iteration = args.iteration ?? 1;
     const taskTitle = `Loop ${iteration} · ${objective}`;

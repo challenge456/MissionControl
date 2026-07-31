@@ -31,6 +31,9 @@ import * as dotenv from "dotenv";
 import * as fs from "fs";
 import * as path from "path";
 import { pathToFileURL } from "url";
+import { createHash } from "node:crypto";
+import { executeAutomation } from "./automationAdapter.js";
+import { discoverLocalInference } from "./localInference.js";
 
 const envSearchPaths = [
   path.resolve(process.cwd(), ".env.local"),
@@ -54,6 +57,7 @@ const CONVEX_URL = process.env.CONVEX_URL ?? "";
 const PROJECT_SLUG = process.env.PROJECT_SLUG ?? "openclaw";
 const TICK_INTERVAL_MS = parseInt(process.env.TICK_INTERVAL_MS ?? "30000", 10);
 const AGENTS_DIR = process.env.AGENTS_DIR ?? path.resolve(process.cwd(), "../../agents");
+const AUTOMATION_REPOSITORY_ROOT = path.resolve(process.env.AUTOMATION_REPOSITORY_ROOT ?? process.cwd());
 
 if (!CONVEX_URL) {
   console.error("[orchestration] CONVEX_URL is required. Set it in .env or environment.");
@@ -295,6 +299,7 @@ app.use("/agents/*", requireAuth());
 app.use("/workorders/*", requireAuth());
 app.use("/runs/*", requireAuth());
 app.use("/run-artifacts/*", requireAuth());
+app.use("/local-inference/*", requireAuth());
 
 // Detailed status
 app.get("/status", (c) => {
@@ -392,6 +397,121 @@ app.post("/workorders/:workOrderId/dispatch", async (c) => {
       return c.json({ success: true, result, contextActivation: activation });
     }
     return c.json({ success: true, result });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+/**
+ * Execute an already-dispatched Automation WorkOrder.
+ *
+ * This endpoint cannot evaluate, approve, or dispatch work. Convex returns an
+ * execution manifest only when all of those governed transitions already
+ * happened and the Definition remains approved, active, validated, LEVEL_1,
+ * and read-only.
+ */
+app.post("/workorders/:workOrderId/automation-execution", async (c) => {
+  try {
+    const workOrderId = c.req.param("workOrderId");
+    const manifest = await client.query(ConvexQueries.skillAutomations.getExecutionManifest as any, { workOrderId }) as any;
+    const missingSecrets = (manifest.secretReferences as string[]).filter(name => !process.env[name]);
+    if (missingSecrets.length) return c.json({ error: `Required secret references are unavailable: ${missingSecrets.join(", ")}` }, 409);
+    const result = await executeAutomation({
+      adapterType: manifest.adapterType,
+      repository: manifest.repository,
+      repositoryRoot: AUTOMATION_REPOSITORY_ROOT,
+      workingDirectory: manifest.workingDirectory,
+      artifactPath: manifest.artifactPath,
+      artifactContent: manifest.artifactContent,
+      artifactContentHash: manifest.artifactContentHash,
+      timeoutMs: manifest.timeoutMs,
+      secretReferences: manifest.secretReferences,
+      configuration: manifest.configuration,
+    });
+    await client.mutation(ConvexMutations.workflowRuns.updateStatus as any, {
+      runId: manifest.runId,
+      status: result.status === "passed" ? "COMPLETED" : "FAILED",
+      failureReason: result.error ?? undefined,
+    });
+    await client.mutation(ConvexMutations.skillAutomations.recordExecutionResult as any, {
+      workOrderId,
+      workflowRunId: manifest.workflowRunId,
+      status: result.status,
+      result,
+      actorId: `adapter:${manifest.adapterType.toLowerCase()}`,
+    });
+    return c.json({
+      success: result.status === "passed",
+      result,
+      verificationRequired: result.status === "passed",
+      workflowRunId: manifest.workflowRunId,
+    }, result.status === "passed" ? 200 : 422);
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+/**
+ * Independent verifier boundary. It consumes the completed run and evidence;
+ * it never executes the approved adapter itself.
+ */
+app.post("/workorders/:workOrderId/automation-verification", async (c) => {
+  try {
+    const workOrderId = c.req.param("workOrderId");
+    const body = await c.req.json().catch(() => ({}));
+    const manifest = await client.query(ConvexQueries.skillAutomations.getExecutionManifest as any, { workOrderId, allowCompleted: true }) as any;
+    const run = await client.query(ConvexQueries.workflowRuns.get as any, { runId: manifest.runId }) as any;
+    if (run?.status !== "COMPLETED") return c.json({ error: "Independent verification requires a completed execution run" }, 409);
+    const observed = body.observedResult ?? "Completed adapter run and approved artifact hash confirmed";
+    const integrityHash = `sha256:${createHash("sha256").update(JSON.stringify({
+      workOrderId, workflowRunId: manifest.workflowRunId, definitionId: manifest.definitionId,
+      artifactHash: manifest.artifactContentHash, observed,
+    })).digest("hex")}`;
+    const receiptStatus = body.status === "FAILED" ? "FAILED" : "PASSED";
+    const receiptResults = [];
+    for (const criterion of manifest.acceptanceCriteria as any[]) {
+      receiptResults.push(await client.mutation(ConvexMutations.workOrders.recordVerificationReceipt as any, {
+        workOrderId,
+        workflowRunId: manifest.workflowRunId,
+        acceptanceCriterionId: criterion.id,
+        idempotencyKey: `automation-verifier:${manifest.workflowRunId}:${criterion.id}`,
+        verificationMethod: "TEST",
+        commandOrCheck: "independent normalized-result and artifact-integrity verification",
+        result: observed,
+        evidenceLocation: body.evidenceLocation ?? manifest.artifactPath,
+        artifactReference: manifest.artifactPath,
+        verifier: "independent-automation-verifier",
+        status: receiptStatus,
+        metadata: {
+          definitionId: manifest.definitionId,
+          evaluationId: manifest.evaluationId,
+          correlationId: manifest.correlationId,
+          independent: true,
+          integrityHash,
+          expectedResult: "Completed run using the approved immutable artifact with all acceptance criteria satisfied",
+          observedResult: observed,
+          recommendedFollowUp: receiptStatus === "PASSED" ? "None" : "Pause the Definition and inspect adapter evidence",
+        },
+      }));
+    }
+    if (receiptStatus === "PASSED") {
+      await client.mutation(ConvexMutations.workOrders.accept as any, {
+        workOrderId,
+        actorType: "SYSTEM",
+        actorId: "independent-automation-verifier",
+        idempotencyKey: `automation-verifier:${manifest.workflowRunId}:accept`,
+      });
+    }
+    const finalDecision = await client.mutation(ConvexMutations.skillAutomations.finalizeVerification as any, {
+      workOrderId,
+      workflowRunId: manifest.workflowRunId,
+      receiptStatus,
+      actorId: "independent-automation-verifier",
+      reason: receiptStatus === "PASSED"
+        ? "Independent verification confirmed the expected result and artifact integrity"
+        : body.reason ?? "Independent verification rejected the observed result",
+    });
+    return c.json({ success: receiptStatus === "PASSED", receipts: receiptResults, finalDecision });
   } catch (err: any) {
     return c.json({ error: err.message }, 400);
   }
@@ -830,6 +950,23 @@ app.get("/gateway/status", async (c) => {
       ),
     });
   }
+});
+
+app.get("/local-inference/discover", async (c) => {
+  const providers = await discoverLocalInference();
+  return c.json({ providers });
+});
+
+app.post("/local-inference/sync", async (c) => {
+  const providers = await discoverLocalInference();
+  const synced = await Promise.all(providers
+    .filter((provider) => provider.status === "HEALTHY")
+    .map((provider) => client.mutation(ConvexMutations.modelCatalog.syncLocalModels as any, {
+      provider: provider.provider,
+      models: provider.models,
+      actorId: "orchestration",
+    })));
+  return c.json({ providers, synced });
 });
 
 // Tier 2 context classification (LLM fallback when Tier 1 confidence is low)

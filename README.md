@@ -39,19 +39,22 @@ The full v2 operator experience — EOS Command Center, context registry, knowle
 
 ### Quick start (main repo — recommended)
 
-**Terminal 1 — backend + UI (one command)**
+**Terminal 1 — backend + graph executor + UI (one command)**
 
 ```bash
 pnpm run dev:demo
 ```
 
-Or split across two terminals:
+Or split across three terminals:
 
 ```bash
 # Terminal 1
 npx convex dev
 
 # Terminal 2 (after Convex is ready)
+pnpm run dev:workflow-executor
+
+# Terminal 3
 pnpm run dev:demo:ui
 ```
 
@@ -64,7 +67,7 @@ pnpm run import:knowledge-graph:demo   # optional: Memory → Graph tab
 
 Open [http://localhost:5199/v2/command-center](http://localhost:5199/v2/command-center). Select workspace **Software Factory Demo**.
 
-Required env: `.env.local` with `CONVEX_URL` / `VITE_CONVEX_URL` (created by `npx convex dev` on first run).
+Required env: `.env.local` with `CONVEX_URL` / `VITE_CONVEX_URL` (created by `npx convex dev` on first run). The demo command idempotently installs the built-in workflow definitions before starting the executor. Without the executor, dispatched Graph Engineering runs remain safely queued.
 
 ### Legacy: git worktree demo
 
@@ -202,6 +205,18 @@ After seeding, expect Overview metrics like **5 agents working / 4 in progress /
 - **CLI:** `mc` command (see `scripts/mc`). Diagnostics: `./scripts/mc-doctor.sh`
 - **Monorepo:** pnpm workspaces + Turborepo (`apps/`, `packages/`, `convex/`)
 
+## Operator control plane
+
+Mission Control separates human authorization from agent execution. Operators
+review exceptions in **Governance → Approvals**, make a reasoned decision, open
+the governed WorkOrder to dispatch it, and inspect independent receipts before
+acceptance. **Intelligence → Operator Evals** pressure-tests this workflow with
+fixed scenarios, durability variants, and human calibration.
+
+- [Mission Control North Star](docs/product/mission-control-north-star.md)
+- [Operator control-plane guide](docs/site/operator-control-plane/overview.md)
+- [Integrated validation evidence](docs/validation/2026-07-31-integrated-control-plane-evidence.md)
+
 ## CLI Usage
 
 ```bash
@@ -231,6 +246,10 @@ Demo-specific commands (`mc demo seed|clear|status`) are available in the `sf-90
 - Software Factory v2 operator shell (feature-flagged: `ui.shell.v2`)
 - Context registry and manifest locking (`context.registry`)
 - Work order delivery control plane (`delivery.workorders`)
+- Governed deterministic skill automations with bounded adapters and independent receipts
+- Complexity-aware model routing with operating-lane pools and local-inference safeguards
+- Persona-tested operator approval flows with durable evaluation evidence
+- Graph Engineering cycles with version-pinned DAG execution, explicit dispatch, and run inspection
 - Structured logging, exponential backoff, idempotency keys on creates
 
 ## Documentation
@@ -244,6 +263,10 @@ Demo-specific commands (`mc demo seed|clear|status`) are available in the `sf-90
 - [Troubleshooting](docs/guides/TROUBLESHOOTING.md) — Diagnostics and common fixes
 - [Setup Guide](docs/BOOT_CONTRACT.md)
 - [Workflows](docs/WORKFLOWS.md)
+- [Graph Engineering](docs/software-factory/GRAPH_ENGINEERING.md) — Governed graph lifecycle, dispatch, execution, and evidence
+- [Model Routing Operations](docs/software-factory/MODEL_ROUTING_OPERATIONS.md) — Lane pools, complexity policy, and operational safeguards
+- [Skill Automations](docs/site/skill-automations/overview.md) — Candidate assessment, governance, execution, and receipts
+- [Product North Star](docs/product/mission-control-north-star.md) — Product hierarchy and operator principles
 - [PRD](docs/PRD_V2.md) — Product requirements and roadmap
 
 ## License

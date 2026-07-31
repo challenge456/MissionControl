@@ -32,11 +32,14 @@ import {
   fallbackRoutingPolicy,
   resolveModelRoute,
   type CatalogModel,
+  type OperatingLane,
+  type RoutingComplexity,
   type RoutingPolicyInput,
   type RoutingTier,
 } from "./lib/modelRouting";
 import { isAutomationSelfApproval } from "./lib/automationGovernance";
 import { loadTaskProjections } from "./lib/taskProjection";
+import { snapshotWorkflowDefinition } from "./lib/workflowSnapshot";
 
 function generateRunId(): string {
   return Math.random().toString(36).substring(2, 10);
@@ -48,6 +51,37 @@ function isInCanary(id: string, percent: number): boolean {
   let hash = 0;
   for (const character of id) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
   return hash % 100 < percent;
+}
+
+/**
+ * Prefer an explicit operator estimate. The fallback is deliberately stable
+ * and inspectable so model selection never depends on a hidden LLM guess.
+ */
+function resolveWorkOrderComplexity(workOrder: any, workflow: any): RoutingComplexity {
+  if (workOrder.modelComplexity) return workOrder.modelComplexity as RoutingComplexity;
+  const stepCount = workflow.steps?.length ?? 0;
+  if (
+    workOrder.riskLevel === "HIGH" ||
+    workOrder.riskLevel === "CRITICAL" ||
+    workflow.topology === "DAG" ||
+    stepCount >= 4
+  ) return "LARGE";
+  if (workOrder.riskLevel === "LOW" && stepCount <= 2) return "SMALL";
+  return "STANDARD";
+}
+
+function resolveOperatingLane(workOrder: any, workflow: any, task: any): OperatingLane {
+  const explicit = (workOrder.metadata as { operatingLane?: OperatingLane } | undefined)?.operatingLane;
+  if (explicit) return explicit;
+  const text = [task?.type, task?.title, workOrder.title, workflow.name]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  if (/review|audit|approval|verify/.test(text)) return "REVIEW";
+  if (/plan|architect|design|decompos/.test(text)) return "PLAN";
+  if (/qa|test|document|docs|automation|classif/.test(text)) return "LOCAL";
+  if (/overnight|weekend|long[- ]running/.test(text)) return "LONG_RUNNING";
+  return "EXECUTE";
 }
 
 async function resolveDispatchRouting(
@@ -97,6 +131,7 @@ async function resolveDispatchRouting(
         safeFallbackModelId: activePolicy.safeFallbackModelId,
         fallbackChain: activePolicy.fallbackChain,
         rules: activePolicy.rules,
+        lanePools: activePolicy.lanePools ?? [],
         budgetLimitUsd: activePolicy.budgetLimitUsd,
         killSwitch: activePolicy.killSwitch,
       }
@@ -107,15 +142,43 @@ async function resolveDispatchRouting(
   const requestedTier = workflow.steps.find((step: any) => step.modelTier)?.modelTier as
     | RoutingTier
     | undefined;
+  const complexity = resolveWorkOrderComplexity(workOrder, workflow);
+  const operatingLane = resolveOperatingLane(workOrder, workflow, task);
+  const lanePoolConfig = policy.lanePools?.find((pool) => pool.lane === operatingLane);
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const recentDecisions = lanePoolConfig
+    ? await ctx.db
+        .query("modelRoutingDecisions")
+        .withIndex("by_project_created", (q: any) => q.eq("projectId", workOrder.projectId).gte("createdAt", monthStart))
+        .collect()
+    : [];
+  const costByModel = new Map((catalog as CatalogModel[]).map((model) => [model.modelId, model.estimatedCostPerRunUsd ?? 0]));
+  const laneDecisions = recentDecisions.filter((decision: any) => decision.operatingLane === operatingLane);
+  const monthlySpendUsd = laneDecisions.reduce((sum: number, decision: any) => sum + (costByModel.get(decision.selectedModelId ?? "") ?? 0), 0);
+  const dailySpendUsd = laneDecisions
+    .filter((decision: any) => decision.createdAt >= dayStart)
+    .reduce((sum: number, decision: any) => sum + (costByModel.get(decision.selectedModelId ?? "") ?? 0), 0);
+  const laneBudgetRemainingUsd = lanePoolConfig
+    ? Math.min(
+        lanePoolConfig.dailyBudgetUsd == null ? Infinity : Math.max(0, lanePoolConfig.dailyBudgetUsd - dailySpendUsd),
+        lanePoolConfig.monthlyBudgetUsd == null ? Infinity : Math.max(0, lanePoolConfig.monthlyBudgetUsd - monthlySpendUsd),
+      )
+    : undefined;
   const result = resolveModelRoute(catalog as CatalogModel[], policy, {
     taskType: task?.type,
+    operatingLane,
     riskLevel: workOrder.riskLevel,
+    complexity,
     requestedTier,
     requiredCapabilities,
     budgetRemainingUsd:
       (workOrder.metadata as { modelBudgetRemainingUsd?: number } | undefined)
         ?.modelBudgetRemainingUsd,
-    authorizedRunOverride: args.authorizedRunOverride,
+    laneBudgetRemainingUsd,
+    allowCanary: isInCanary(String(workOrder._id), lanePoolConfig?.canaryPercent ?? 10),
+    authorizedRunOverride: args.authorizedRunOverride ?? workOrder.authorizedModelOverride,
     agentOverrideModelId:
       agentOverride && (!agentOverride.expiresAt || agentOverride.expiresAt > Date.now())
         ? agentOverride.modelId
@@ -147,7 +210,9 @@ async function resolveDispatchRouting(
     taskId: workOrder.legacyTaskId,
     agentId: agent?._id,
     taskType: task?.type,
+    operatingLane,
     riskLevel: workOrder.riskLevel,
+    complexity,
     requestedTier,
     requiredCapabilities,
     selectedProvider: result.selectedProvider,
@@ -1214,6 +1279,7 @@ export const create = mutation({
     branchStrategy: v.optional(v.string()),
     priority: v.optional(v.union(v.literal(1), v.literal(2), v.literal(3), v.literal(4))),
     riskLevel: v.optional(workOrderRisk),
+    modelComplexity: v.optional(v.union(v.literal("SMALL"), v.literal("STANDARD"), v.literal("LARGE"))),
     requestedBy: v.optional(v.string()),
     assignedAgent: v.optional(v.string()),
     assignedSquad: v.optional(v.string()),
@@ -1284,6 +1350,7 @@ export const create = mutation({
       branchStrategy: args.branchStrategy,
       priority: args.priority ?? 3,
       riskLevel: args.riskLevel ?? "MEDIUM",
+      modelComplexity: args.modelComplexity,
       requestedBy: args.requestedBy,
       assignedAgent: args.assignedAgent,
       assignedSquad: args.assignedSquad,
@@ -1602,10 +1669,13 @@ export const dispatch = mutation({
 
     const now = Date.now();
     const runId = generateRunId();
+    const workflowSnapshot = snapshotWorkflowDefinition(workflow);
     const runDocId = await ctx.db.insert("workflowRuns", {
       tenantId: refreshedWorkOrder.tenantId,
       runId,
       workflowId: resolvedWorkflowId,
+      workflowVersion: workflow.version,
+      workflowSnapshot,
       projectId: refreshedWorkOrder.projectId,
       missionId: refreshedWorkOrder.missionId,
       missionRole: refreshedWorkOrder.missionId ? (refreshedWorkOrder.missionRole ?? "WORKER") : undefined,
@@ -1647,7 +1717,6 @@ export const dispatch = mutation({
         routingPolicyVersion: routing?.policyVersion,
       },
     });
-
     if (routing) {
       await ctx.db.patch(routing.decisionId, { workflowRunId: runDocId });
     }
@@ -1752,6 +1821,79 @@ export const dispatch = mutation({
 
     const run = await ctx.db.get(runDocId);
     return { created: true, run };
+  },
+});
+
+/**
+ * Records a narrow operator exception for the next dispatch only. A model can
+ * never be swapped while work is running because that would invalidate the
+ * execution evidence already attached to the Work Order.
+ */
+export const setAuthorizedModelOverride = mutation({
+  args: {
+    workOrderId: v.id("workOrders"),
+    modelId: v.optional(v.string()),
+    reason: v.optional(v.string()),
+    actorId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const workOrder = await ctx.db.get(args.workOrderId);
+    if (!workOrder) throw new Error("Work Order not found");
+    const runs = await ctx.db
+      .query("workflowRuns")
+      .withIndex("by_work_order", (q) => q.eq("workOrderId", workOrder._id))
+      .collect();
+    if (runs.some((run) => ACTIVE_RUN_STATUSES.includes(run.status as any))) {
+      throw new Error("Cancel or complete the active run before changing its model route");
+    }
+
+    if (!args.modelId) {
+      await ctx.db.patch(workOrder._id, {
+        authorizedModelOverride: undefined,
+        authorizedModelOverrideReason: undefined,
+        authorizedModelOverrideUpdatedAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+      return { cleared: true };
+    }
+    if (!args.reason?.trim()) throw new Error("A reason is required for a model override");
+
+    const model = await ctx.db
+      .query("modelCatalog")
+      .withIndex("by_model_id", (q) => q.eq("modelId", args.modelId!))
+      .first();
+    if (!model || model.deprecated || model.availability === "UNAVAILABLE" || model.availability === "RATE_LIMITED") {
+      throw new Error("Selected model route is unavailable");
+    }
+    if ((workOrder.riskLevel === "HIGH" || workOrder.riskLevel === "CRITICAL") && !model.riskApproved) {
+      throw new Error("Selected model is not approved for this Work Order risk level");
+    }
+    const capabilities = (workOrder.metadata as { requiredModelCapabilities?: string[] } | undefined)
+      ?.requiredModelCapabilities ?? ["tools"];
+    const missing = capabilities.filter((capability) =>
+      capability === "tools" ? !model.supportsTools : !model.capabilities.includes(capability)
+    );
+    if (missing.length) throw new Error(`Selected model lacks required capabilities: ${missing.join(", ")}`);
+
+    const now = Date.now();
+    await ctx.db.patch(workOrder._id, {
+      authorizedModelOverride: model.modelId,
+      authorizedModelOverrideReason: args.reason.trim(),
+      authorizedModelOverrideUpdatedAt: now,
+      updatedAt: now,
+    });
+    await ctx.db.insert("activities", {
+      tenantId: workOrder.tenantId,
+      projectId: workOrder.projectId,
+      actorType: "HUMAN",
+      actorId: args.actorId ?? "operator",
+      action: "WORK_ORDER_MODEL_OVERRIDE_SET",
+      description: `Set the next dispatch model for ${workOrder.title} to ${model.displayName}`,
+      targetType: "WORK_ORDER",
+      targetId: workOrder._id,
+      metadata: { modelId: model.modelId, reason: args.reason.trim() },
+    });
+    return { cleared: false, modelId: model.modelId };
   },
 });
 
@@ -1898,20 +2040,39 @@ export const approvalQueue = query({
       ]);
 
       const evidenceAvailable = receipts.filter((receipt: any) => ["PASSED", "WAIVED"].includes(receipt.status)).length;
-      const latestRun = workOrder ? await latestExecutionRunForWorkOrder(ctx, workOrder._id) : null;
+      const [latestRun, approvalDecisions, revisions, policy] = workOrder
+        ? await Promise.all([
+            latestExecutionRunForWorkOrder(ctx, workOrder._id),
+            listApprovalDecisionsForWorkOrder(ctx, workOrder._id),
+            listRevisionsForWorkOrder(ctx, workOrder._id),
+            resolveGovernancePolicy(ctx, workOrder),
+          ])
+        : [null, [], [], null];
       const acceptance = workOrder ? evaluateAcceptance({
         riskLevel: workOrder.riskLevel as any,
         requiredApprovals: workOrder.requiredApprovals,
-        approvalDecisions: await listApprovalDecisionsForWorkOrder(ctx, workOrder._id),
+        approvalDecisions,
         acceptanceCriteria: workOrder.acceptanceCriteria as any,
         verificationReceipts: receipts,
       }) : null;
+      const governanceStatus = workOrder && acceptance && policy
+        ? buildGovernanceStatus({
+            workOrder,
+            revisions,
+            approvalDecisions,
+            verificationReceipts: receipts,
+            policy,
+            acceptance,
+          })
+        : null;
 
       return {
         ...approval,
         workOrder,
         latestRun: latestRun ? summarizeRun(latestRun) : null,
         evidenceAvailable,
+        verificationReceipts: receipts,
+        governanceStatus,
         remainingUncertainty: acceptance?.blockingReasons ?? [],
       };
     }));
@@ -2004,6 +2165,7 @@ export const requestApprovalDecision = mutation({
 export const decideApprovalDecision = mutation({
   args: {
     approvalDecisionId: v.id("approvalDecisions"),
+    projectId: v.optional(v.id("projects")),
     decision: approvalDecisionAction,
     approver: v.optional(v.string()),
     reason: v.optional(v.string()),
@@ -2013,6 +2175,9 @@ export const decideApprovalDecision = mutation({
   handler: async (ctx, args) => {
     const approvalDecision = await ctx.db.get(args.approvalDecisionId);
     if (!approvalDecision) throw new Error("ApprovalDecision not found");
+    if (args.projectId && approvalDecision.projectId !== args.projectId) {
+      throw new Error("ApprovalDecision does not belong to the selected workspace");
+    }
     if (approvalDecision.expiresAt && approvalDecision.expiresAt <= Date.now()) {
       await ctx.db.patch(args.approvalDecisionId, { status: "EXPIRED", expiredAt: Date.now() });
       throw new Error("ApprovalDecision has expired");
@@ -2022,6 +2187,11 @@ export const decideApprovalDecision = mutation({
     }
     const workOrder = await ctx.db.get(approvalDecision.workOrderId);
     if (!workOrder) throw new Error("WorkOrder not found");
+    const reason = args.reason?.trim();
+    if (!reason) throw new Error("A decision reason is required");
+    if (args.decision === "APPROVE_WITH_CONDITIONS" && !(args.conditions ?? []).some((condition) => condition.trim())) {
+      throw new Error("Conditional approval requires at least one condition");
+    }
     if (isAutomationSelfApproval({
       automationDefinitionId: workOrder.metadata?.automationDefinitionId,
       requestedBy: workOrder.requestedBy,
@@ -2035,8 +2205,8 @@ export const decideApprovalDecision = mutation({
       status,
       decision: args.decision,
       approver: args.approver,
-      reason: args.reason,
-      conditions: args.conditions,
+      reason,
+      conditions: args.conditions?.map((condition) => condition.trim()).filter(Boolean),
       decidedAt: Date.now(),
       metadata: { ...(approvalDecision.metadata ?? {}), ...(args.metadata ?? {}) },
     });
@@ -2057,7 +2227,7 @@ export const decideApprovalDecision = mutation({
       actorType: "HUMAN",
       actorId: args.approver,
       summary: `Approval ${approvalDecision.approvalType} ${status.toLowerCase()}`,
-      metadata: { approvalDecisionId: approvalDecision._id, conditions: args.conditions, reason: args.reason },
+      metadata: { approvalDecisionId: approvalDecision._id, conditions: args.conditions, reason },
     });
 
     await refreshWorkOrderGovernance(ctx, workOrder._id);

@@ -50,6 +50,9 @@ next in the file.
 10. Maximum concurrency, retries, timeouts, and iterations are bounded.
 11. Checkpoints and partial node state survive refresh and executor restart.
 12. Costs and latency are measured per node and summarized for the graph.
+13. Each run stores the exact workflow version and executable definition used at
+    dispatch; installed workflow updates cannot alter an in-flight graph.
+14. Dispatch is explicit and idempotent. Creating a cycle does not start agents.
 
 ## Loop Engineering topology
 
@@ -70,7 +73,9 @@ approval
 
 | UI action | Agent/API capability | Shared state |
 | --- | --- | --- |
-| Create a loop cycle | `loopEngineering.create` | Convex cycle + Tasks + WorkOrders |
+| Create a loop cycle | `loopEngineering.create` | Project personas + Convex cycle + root Task + WorkOrder |
+| Dispatch the graph | `workOrders.dispatch` | Version-pinned workflow run + node state |
+| Inspect the graph | `workflowRuns.getInspector` | Events + artifacts + routing + evidence lineage |
 | Record a source | `loopEngineering.addSource` | Cycle evidence ledger |
 | Accept/reject evidence | `loopEngineering.decideSource` | Cycle + activity |
 | Add recommendation | `loopEngineering.addRecommendation` | Cycle recommendation ledger |
@@ -83,6 +88,15 @@ approval
 The UI and agents use the same Convex functions and reactive records. There is
 no agent-only shadow state.
 
+## Local runtime
+
+`pnpm run dev:demo` starts Convex, idempotently installs built-in workflow
+definitions, starts the workflow executor, and serves the EOS UI. Cycle creation
+idempotently provisions the project-scoped `Research Scout` and
+`Evidence Reviewer` identities referenced by the built-in graph. A separate
+agent runtime must still claim the node Tasks and submit contract-valid
+deliverables; Mission Control never fabricates node completion.
+
 ## Deliberate first-slice limits
 
 - Dynamic fan-out from an unbounded collection is compiled into concrete nodes
@@ -93,4 +107,3 @@ no agent-only shadow state.
   repository-changing route that bypasses approval.
 - No automatic merge of parallel worktrees. Verification and merge remain
   explicit governed nodes.
-

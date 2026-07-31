@@ -6,6 +6,9 @@ node_modules/
 # Testing
 coverage/
 *.lcov
+.playwright-cli/
+/output/
+/test-results/
 
 # Production
 dist/

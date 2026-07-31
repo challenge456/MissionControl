@@ -4,6 +4,11 @@ import { api } from "../../../../../convex/_generated/api";
 import type { Doc, Id } from "../../../../../convex/_generated/dataModel";
 import type { MainView } from "../../TopNav";
 import { useToast } from "../../Toast";
+import { ExecutionRunInspector } from "../../controlPlane/ExecutionRunInspector";
+import {
+  graphDispatchState,
+  summarizeGraphExecution,
+} from "../../lib/graphEngineering";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,11 +30,14 @@ import {
 } from "@/components/ui/select";
 import { StatusBadge } from "@/components/factory/badges";
 import {
+  AlertTriangle,
   ArrowRight,
   CheckCircle2,
   Circle,
   ExternalLink,
+  GitBranch,
   Loader2,
+  Play,
   Plus,
   RotateCcw,
   ShieldCheck,
@@ -88,7 +96,7 @@ function parseDate(value: string): number | undefined {
 function PhaseProgress({ phase }: { phase: LoopCycle["phase"] }) {
   const currentIndex = PHASES.indexOf(phase);
   return (
-    <ol className="grid gap-2 md:grid-cols-3 xl:grid-cols-9" aria-label="Loop Engineering phases">
+    <ol className="grid gap-2 md:grid-cols-3 xl:grid-cols-9" aria-label="Graph Engineering phases">
       {PHASES.map((item, index) => {
         const complete = currentIndex > index || phase === "COMPLETE";
         const active = item === phase;
@@ -136,6 +144,7 @@ export function LoopEngineeringWorkspace({
   );
   const tasks = useQuery(api.tasks.listAll, projectId ? { projectId } : {});
   const createCycle = useAction(api.loopEngineering.create);
+  const dispatchGraph = useMutation(api.workOrders.dispatch);
   const addSource = useMutation(api.loopEngineering.addSource);
   const decideSource = useMutation(api.loopEngineering.decideSource);
   const addClaim = useMutation(api.loopEngineering.addClaim);
@@ -153,6 +162,7 @@ export function LoopEngineeringWorkspace({
   const [createOpen, setCreateOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [freshnessFilter, setFreshnessFilter] = useState<"ALL" | Freshness>("ALL");
+  const [inspectedRunId, setInspectedRunId] = useState<Id<"workflowRuns"> | null>(null);
 
   useEffect(() => {
     if (!cycles?.length) {
@@ -165,10 +175,22 @@ export function LoopEngineeringWorkspace({
   }, [cycles, selectedId]);
 
   const cycle = cycles?.find((item) => item._id === selectedId) ?? cycles?.[0];
+  const workOrderDetail = useQuery(
+    api.workOrders.get,
+    cycle?.workOrderIds[0] ? { workOrderId: cycle.workOrderIds[0] } : "skip"
+  );
+  const latestGraphRunSummary = workOrderDetail?.executionRuns[0];
+  const latestGraphRun = useQuery(
+    api.workflowRuns.getById,
+    latestGraphRunSummary ? { id: latestGraphRunSummary._id } : "skip"
+  );
   const taskById = useMemo(
     () => new Map((tasks ?? []).map((task) => [task._id, task])),
     [tasks]
   );
+  const rootWorkOrder = workOrderDetail?.workOrder;
+  const graphLoading = workOrderDetail === undefined
+    || (latestGraphRunSummary !== undefined && latestGraphRun === undefined);
 
   const run = async (operation: () => Promise<unknown>, success: string) => {
     setBusy(true);
@@ -176,7 +198,7 @@ export function LoopEngineeringWorkspace({
       await operation();
       toast(success);
     } catch (error) {
-      toast(error instanceof Error ? error.message : "Loop Engineering action failed", true);
+      toast(error instanceof Error ? error.message : "Graph Engineering action failed", true);
     } finally {
       setBusy(false);
     }
@@ -186,7 +208,7 @@ export function LoopEngineeringWorkspace({
     return (
       <div className="rounded-xl border border-line bg-surface-1 p-8 text-center">
         <p className="text-sm text-ink-secondary">
-          Select a workspace before starting a Loop Engineering cycle.
+          Select a workspace before starting a Graph Engineering cycle.
         </p>
       </div>
     );
@@ -210,7 +232,7 @@ export function LoopEngineeringWorkspace({
             onValueChange={(value) => setSelectedId(value as Id<"loopEngineeringCycles">)}
             disabled={cycles.length === 0}
           >
-            <SelectTrigger className="w-[320px]" aria-label="Selected Loop Engineering cycle">
+            <SelectTrigger className="w-[320px]" aria-label="Selected Graph Engineering cycle">
               <SelectValue placeholder="No cycles yet" />
             </SelectTrigger>
             <SelectContent>
@@ -243,6 +265,37 @@ export function LoopEngineeringWorkspace({
       ) : (
         <>
           <PhaseProgress phase={cycle.phase} />
+
+          <GraphExecutionCard
+            loading={graphLoading}
+            workOrder={rootWorkOrder}
+            run={latestGraphRun}
+            busy={busy}
+            onDispatch={() => {
+              if (!rootWorkOrder) return;
+              void run(
+                async () => {
+                  const result = await dispatchGraph({
+                    workOrderId: rootWorkOrder._id,
+                    actorType: "HUMAN",
+                    actorId: ACTOR_ID,
+                    idempotencyKey: `graph-cycle:${cycle._id}:dispatch:${rootWorkOrder.currentRevisionNumber ?? 1}`,
+                  });
+                  if (!result.run) {
+                    throw new Error(
+                      result.reason === "routing-exhausted"
+                        ? "No approved model route is currently available for this graph. Review Model Routing before retrying."
+                        : "The graph could not be dispatched. Review the WorkOrder for the blocking condition."
+                    );
+                  }
+                  setInspectedRunId(result.run._id);
+                },
+                "Graph dispatched"
+              );
+            }}
+            onInspect={() => latestGraphRun && setInspectedRunId(latestGraphRun._id)}
+            onOpenWorkOrder={() => onNavigate("control-work-orders")}
+          />
 
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
             <div className="space-y-4">
@@ -492,10 +545,177 @@ export function LoopEngineeringWorkspace({
               if (result.cycle?._id) setSelectedId(result.cycle._id);
               setCreateOpen(false);
             },
-            "Loop Engineering cycle created"
+            "Graph Engineering cycle created"
           )
         }
       />
+      <ExecutionRunInspector
+        open={inspectedRunId !== null}
+        workflowRunId={inspectedRunId}
+        onClose={() => setInspectedRunId(null)}
+      />
+    </div>
+  );
+}
+
+function GraphExecutionCard({
+  loading,
+  workOrder,
+  run,
+  busy,
+  onDispatch,
+  onInspect,
+  onOpenWorkOrder,
+}: {
+  loading: boolean;
+  workOrder?: {
+    _id: Id<"workOrders">;
+    title: string;
+    state: string;
+    currentRevisionNumber?: number;
+  } | null;
+  run?: Doc<"workflowRuns"> | null;
+  busy: boolean;
+  onDispatch: () => void;
+  onInspect: () => void;
+  onOpenWorkOrder: () => void;
+}) {
+  const state = graphDispatchState({ loading, workOrder, run });
+  const summary = run ? summarizeGraphExecution(run) : null;
+  const stateCopy: Record<typeof state, { label: string; detail: string }> = {
+    LOADING: {
+      label: "Loading",
+      detail: "Resolving the governed WorkOrder and its latest graph run.",
+    },
+    MISSING_WORK_ORDER: {
+      label: "WorkOrder missing",
+      detail: "This cycle is missing its root WorkOrder and cannot be dispatched safely.",
+    },
+    READY: {
+      label: "Ready to dispatch",
+      detail: "Review the WorkOrder, then explicitly start the bounded read-only research graph.",
+    },
+    QUEUED: {
+      label: "Queued",
+      detail: "The graph is waiting for the workflow executor to claim its first runnable nodes.",
+    },
+    RUNNING: {
+      label: "Running",
+      detail: "Independent nodes are executing within the configured concurrency limit.",
+    },
+    AWAITING_APPROVAL: {
+      label: "Awaiting approval",
+      detail: "Evidence synthesis is complete. The graph cannot cross its terminal gate without an operator decision.",
+    },
+    COMPLETED: {
+      label: "Completed",
+      detail: "The graph reached a terminal state with its evidence-linked approval intact.",
+    },
+    RECOVERY_REQUIRED: {
+      label: "Recovery required",
+      detail: summary?.failureReason ?? "The run stopped and requires governed recovery from its WorkOrder.",
+    },
+    UNAVAILABLE: {
+      label: "Not dispatchable",
+      detail: "Review the WorkOrder state and governance requirements before dispatching this graph.",
+    },
+  };
+  const tone = state === "COMPLETED"
+    ? "success" as const
+    : state === "RECOVERY_REQUIRED" || state === "MISSING_WORK_ORDER"
+      ? "error" as const
+      : state === "AWAITING_APPROVAL"
+        ? "warning" as const
+        : "info" as const;
+
+  return (
+    <section className="rounded-xl border border-line bg-surface-1 p-5" aria-labelledby="graph-execution-title">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <GitBranch className="h-4 w-4 text-registry-accent" aria-hidden />
+            <h2 id="graph-execution-title" className="text-[16px] font-semibold text-ink">
+              Multi-agent execution graph
+            </h2>
+            <StatusBadge tone={tone}>{stateCopy[state].label}</StatusBadge>
+          </div>
+          <p className="mt-2 max-w-[78ch] text-[12.5px] leading-relaxed text-ink-secondary">
+            {stateCopy[state].detail}
+          </p>
+          {workOrder && (
+            <p className="mt-2 text-[11.5px] text-ink-muted">
+              {workOrder.title} · revision {workOrder.currentRevisionNumber ?? 1}
+              {run ? ` · ${run.workflowId}@v${run.workflowVersion ?? "legacy"}` : ""}
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {state === "READY" && (
+            <Button size="sm" disabled={busy} onClick={onDispatch}>
+              {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Play className="mr-1.5 h-4 w-4" />}
+              Dispatch graph
+            </Button>
+          )}
+          {run && (
+            <Button size="sm" variant="outline" onClick={onInspect}>
+              Inspect run
+            </Button>
+          )}
+          <Button size="sm" variant="outline" onClick={onOpenWorkOrder}>
+            View WorkOrder
+          </Button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="mt-4 grid gap-3 sm:grid-cols-4">
+          {[0, 1, 2, 3].map((item) => (
+            <div key={item} className="h-16 animate-pulse rounded-lg bg-surface-2" />
+          ))}
+        </div>
+      ) : summary && run ? (
+        <>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <GraphMetric label="Nodes complete" value={`${summary.complete}/${summary.total}`} />
+            <GraphMetric label="Active now" value={String(summary.active)} />
+            <GraphMetric label="Independent verification" value={`${summary.verificationComplete}/${summary.verificationTotal}`} />
+            <GraphMetric label="Parallel limit" value={String(run.maxConcurrency ?? 1)} />
+          </div>
+          <div className="mt-4" aria-label={`${summary.progressPercent}% of graph nodes complete`}>
+            <div className="mb-1.5 flex items-center justify-between text-[11.5px] text-ink-muted">
+              <span>{run.topology ?? "LINEAR"} execution</span>
+              <span>{summary.progressPercent}%</span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-surface-3">
+              <div
+                className="h-full rounded-full bg-registry-accent transition-[width]"
+                style={{ width: `${summary.progressPercent}%` }}
+              />
+            </div>
+          </div>
+          {(summary.failed > 0 || summary.blocked > 0) && (
+            <div className="mt-4 flex items-start gap-2 rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-[12px] text-ink-secondary">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-danger" />
+              <span>{summary.failed} failed and {summary.blocked} blocked node(s). Inspect the run before recovery.</span>
+            </div>
+          )}
+        </>
+      ) : state === "READY" ? (
+        <div className="mt-4 flex items-start gap-2 rounded-lg border border-line bg-surface-2 px-3 py-2 text-[12px] text-ink-secondary">
+          <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ok" />
+          <span>Dispatch starts research and verification Tasks only. Repository changes still require the cycle's explicit approval gate.</span>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function GraphMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-line bg-surface-2 px-3 py-2.5">
+      <div className="text-[11px] uppercase tracking-[0.08em] text-ink-muted">{label}</div>
+      <div className="mt-1 text-[17px] font-semibold tabular-nums text-ink">{value}</div>
     </div>
   );
 }
@@ -1262,7 +1482,7 @@ function CreateCycleDialog({
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Start Loop Engineering cycle</DialogTitle>
+          <DialogTitle>Start Graph Engineering cycle</DialogTitle>
           <DialogDescription>
             Define one measurable objective. Research work is created immediately; repository-changing work waits for approval.
           </DialogDescription>

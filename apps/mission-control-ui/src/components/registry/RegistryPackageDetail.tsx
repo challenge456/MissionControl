@@ -49,6 +49,7 @@ type DetailTab = (typeof DETAIL_TABS)[number]["id"];
 
 export interface RegistryPackageDetailProps {
   entry: RegistryEntry;
+  projectId?: Id<"projects">;
   allEntries?: RegistryEntry[];
   onBack: () => void;
   onSelectEntry?: (entry: RegistryEntry) => void;
@@ -57,6 +58,7 @@ export interface RegistryPackageDetailProps {
 /** Tessl-style package detail (themis layout). */
 export function RegistryPackageDetail({
   entry,
+  projectId,
   allEntries = [],
   onBack,
   onSelectEntry,
@@ -81,6 +83,12 @@ export function RegistryPackageDetail({
   const versions = useQuery(api.context.packages.listVersions, {
     packageId: entry._id as Id<"contextPackages">,
   });
+  const automationAssessment = useQuery(
+    api.skillAutomations.getAssessment,
+    projectId && entry.type === "SKILL"
+      ? { projectId, packageId: entry._id as Id<"contextPackages"> }
+      : "skip"
+  );
 
   useEffect(() => {
     if (evalProfile === undefined || ensuredEvalRef.current) return;
@@ -207,6 +215,33 @@ export function RegistryPackageDetail({
       <p className="mt-2 max-w-3xl text-[14px] leading-relaxed text-ink-secondary">
         {entry.description}
       </p>
+      {entry.type === "SKILL" && projectId ? (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-cyan-500/20 bg-cyan-500/[0.035] p-4">
+          <div>
+            <div className="flex items-center gap-2 text-sm font-semibold text-ink">
+              <Shield size={15} /> Automation eligibility
+              <span className="rounded-full border border-border px-2 py-0.5 text-[11px]">
+                {automationAssessment?.eligibility.status ?? "ASSESSING"}
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-ink-muted">
+              {automationAssessment?.eligibility.status === "ELIGIBLE"
+                ? `${automationAssessment.eligibility.recommendedAdapter} adapter recommended · LEVEL_1 read-only boundary`
+                : [...(automationAssessment?.eligibility.blockers ?? []), ...(automationAssessment?.eligibility.missing ?? [])].join(" · ") || "Evaluating the published skill version."}
+            </p>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => {
+              window.location.href = `/v2/automations?workspace=${projectId}&tab=candidates`;
+            }}
+          >
+            {automationAssessment?.eligibility.status === "INELIGIBLE"
+              ? "Review Automation Eligibility"
+              : "Convert to Automation"}
+          </Button>
+        </div>
+      ) : null}
 
       <div className="mt-6 flex flex-wrap items-start gap-6">
         <RegistryScoreHex score={score} size="lg" delta={impactDeltaMultiplier} />

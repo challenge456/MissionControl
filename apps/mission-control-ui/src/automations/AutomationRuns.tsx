@@ -1,7 +1,10 @@
-import { ArrowUpRight, ClipboardList } from "lucide-react";
+import { useState } from "react";
+import { ArrowUpRight, ClipboardList, PlayCircle, ShieldCheck } from "lucide-react";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { getOrchestrationBaseUrl } from "@/lib/orchestrationUrl";
 import { formatDate, formatDuration, runStatusLabel, statusTone, workspacePath } from "./automationModel";
 
 export function AutomationRuns({
@@ -13,6 +16,23 @@ export function AutomationRuns({
   runs: any[];
   onSelectDefinition: (definitionId: string) => void;
 }) {
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ error?: boolean; text: string } | null>(null);
+  async function invoke(run: any, operation: "execution" | "verification") {
+    setBusyId(run.workOrder._id); setMessage(null);
+    try {
+      const baseUrl = getOrchestrationBaseUrl() || "http://localhost:4100";
+      const response = await fetch(`${baseUrl}/workorders/${run.workOrder._id}/automation-${operation}`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: operation === "verification" ? JSON.stringify({ evidenceLocation: run.definition?.artifactPath }) : "{}",
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? `${operation} failed`);
+      setMessage({ text: operation === "execution" ? "Adapter run completed. Independent verification is still required." : "Independent receipts and final decision recorded." });
+    } catch (error) {
+      setMessage({ error: true, text: error instanceof Error ? error.message : `${operation} failed` });
+    } finally { setBusyId(null); }
+  }
   if (runs.length === 0) {
     return (
       <Card className="border-dashed p-8 text-center">
@@ -25,6 +45,8 @@ export function AutomationRuns({
     );
   }
   return (
+    <div className="space-y-3">
+      {message ? <p role={message.error ? "alert" : "status"} className={message.error ? "text-sm text-red-300" : "text-sm text-emerald-300"}>{message.text}</p> : null}
     <div className="overflow-x-auto rounded-xl border border-[var(--panel-line)]">
       <table className="min-w-[1760px] w-full text-left text-sm">
         <thead className="bg-card/70 text-[11px] uppercase tracking-[0.13em] text-muted-foreground">
@@ -65,6 +87,9 @@ export function AutomationRuns({
                 <td className="max-w-[280px] px-3 py-3">
                   <div className="text-amber-100">{run.workOrder.requiredHumanAction ?? "No action recorded"}</div>
                   {run.workOrder.blockingIssue ? <div className="mt-2 text-xs text-red-200">{run.workOrder.blockingIssue}</div> : null}
+                  {run.workflowRun?.failureReason ? <div className="mt-2 text-xs text-red-200">{run.workflowRun.failureReason}</div> : null}
+                  {run.events?.length ? <details className="mt-2"><summary className="cursor-pointer text-xs text-cyan-200">Logs and events ({run.events.length})</summary><ul className="mt-1 space-y-1 text-xs text-muted-foreground">{run.events.slice(-8).map((event: any) => <li key={event._id}>{event.eventType}: {event.commandSummary ?? event.errorSummary ?? event.status}</li>)}</ul></details> : null}
+                  {run.artifacts?.length ? <div className="mt-2 text-xs text-muted-foreground">Evidence: {run.artifacts.map((artifact: any) => artifact.name).join(", ")}</div> : null}
                 </td>
                 <td className="px-3 py-3">
                   <div className="flex flex-col items-start gap-2 text-xs">
@@ -72,6 +97,12 @@ export function AutomationRuns({
                     <a href={workspacePath(`/v2/harness-workshop?workflow=${run.workOrder.workflowId}`, projectId)} className="inline-flex items-center gap-1 text-registry-accent hover:text-foreground">Workflow <ArrowUpRight className="h-3 w-3" /></a>
                     {run.receipts[0] ? <a href={`?workspace=${projectId}&tab=receipts&receipt=${run.receipts[0]._id}`} className="inline-flex items-center gap-1 text-registry-accent hover:text-foreground">Receipt <ArrowUpRight className="h-3 w-3" /></a> : null}
                     <button type="button" onClick={() => run.definition && onSelectDefinition(run.definition._id)} className="inline-flex items-center gap-1 text-registry-accent hover:text-foreground">Definition / decisions <ArrowUpRight className="h-3 w-3" /></button>
+                    {["DISPATCHED", "IN_PROGRESS"].includes(run.workOrder.state) && run.definition?.adapterType ? (
+                      <Button size="sm" disabled={busyId === run.workOrder._id} onClick={() => void invoke(run, "execution")}><PlayCircle className="h-3.5 w-3.5" /> Execute adapter</Button>
+                    ) : null}
+                    {run.workOrder.state === "AWAITING_VERIFICATION" && run.definition?.adapterType ? (
+                      <Button size="sm" disabled={busyId === run.workOrder._id} onClick={() => void invoke(run, "verification")}><ShieldCheck className="h-3.5 w-3.5" /> Verify independently</Button>
+                    ) : null}
                   </div>
                 </td>
               </tr>
@@ -79,6 +110,7 @@ export function AutomationRuns({
           })}
         </tbody>
       </table>
+    </div>
     </div>
   );
 }

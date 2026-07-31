@@ -5,6 +5,7 @@ Exact commands to run Mission Control locally.
 > **Software Factory demo (v2 shell + EOS Command Center + registry):** see the root
 > [README § Software Factory Demo](../README.md#software-factory-demo-local-end-to-end).
 > Run `pnpm run dev:demo` from the main repo (UI on **http://localhost:5199**).
+> This command starts Convex, the workflow graph executor, and the UI together.
 > Legacy worktree flow (`sf-19-ui-migration` + `sf-90-demo`) still works but is optional.
 
 ## Prerequisites
@@ -72,6 +73,12 @@ This runs:
 
 - `npx convex dev` – Convex backend (syncs schema/functions, provides backend)
 - `turbo run dev --filter=mission-control-ui` – Vite dev server for the UI
+
+For the v2 demo and Graph Engineering flow, use `pnpm run dev:demo`. It also
+starts `pnpm run dev:workflow-executor`, which claims queued workflow runs and
+idempotently installs the built-in workflow definitions, then materializes
+dependency-ready node Tasks. If the executor is not running, a
+dispatched graph remains queued rather than reporting false progress.
 
 ## Expected URLs
 

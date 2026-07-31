@@ -8,6 +8,7 @@
 import { v } from "convex/values";
 import { mutation, query, action } from "./_generated/server";
 import { Doc, Id } from "./_generated/dataModel";
+import { workflowDefinitionChanged } from "./lib/workflowSnapshot";
 
 // ============================================================================
 // QUERIES
@@ -135,6 +136,13 @@ export const upsert = mutation({
     const now = Date.now();
     
     if (existing) {
+      const nextDefinition = {
+        ...args,
+        active: args.active ?? existing.active,
+      };
+      if (!workflowDefinitionChanged(existing, nextDefinition)) {
+        return existing._id;
+      }
       // Update existing workflow
       await ctx.db.patch(existing._id, {
         name: args.name,
@@ -144,7 +152,7 @@ export const upsert = mutation({
         convergence: args.convergence,
         agents: args.agents,
         steps: args.steps,
-        active: args.active ?? existing.active,
+        active: nextDefinition.active,
         version: existing.version + 1,
         updatedAt: now,
       });

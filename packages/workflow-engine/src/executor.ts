@@ -42,6 +42,26 @@ export async function workflowEvidenceDigest(input: string): Promise<string> {
   return `sha256:${hex}`;
 }
 
+export function workflowDefinitionForRun(
+  runSnapshot: { workflowSnapshot?: unknown },
+  installedWorkflow: unknown
+): any | null {
+  if (runSnapshot.workflowSnapshot !== undefined) {
+    const snapshot = runSnapshot.workflowSnapshot as Record<string, unknown> | null;
+    if (
+      !snapshot ||
+      typeof snapshot.workflowId !== "string" ||
+      typeof snapshot.version !== "number" ||
+      !Array.isArray(snapshot.agents) ||
+      !Array.isArray(snapshot.steps)
+    ) {
+      return null;
+    }
+    return snapshot;
+  }
+  return installedWorkflow ?? null;
+}
+
 export class WorkflowExecutor {
   private client: ConvexHttpClient;
   private pollIntervalMs: number;
@@ -96,11 +116,17 @@ export class WorkflowExecutor {
   }
 
   private async processRun(runSnapshot: any): Promise<void> {
-    const workflow = await this.client.query(api.workflows.get, {
-      workflowId: runSnapshot.workflowId,
-    });
+    const installedWorkflow = runSnapshot.workflowSnapshot === undefined
+      ? await this.client.query(api.workflows.get, {
+          workflowId: runSnapshot.workflowId,
+        })
+      : null;
+    const workflow = workflowDefinitionForRun(runSnapshot, installedWorkflow);
     if (!workflow) {
-      await this.failRun(runSnapshot, `Workflow not found: ${runSnapshot.workflowId}`);
+      const reason = runSnapshot.workflowSnapshot === undefined
+        ? `Workflow not found: ${runSnapshot.workflowId}`
+        : `Workflow snapshot is invalid: ${runSnapshot.workflowId}`;
+      await this.failRun(runSnapshot, reason);
       return;
     }
 

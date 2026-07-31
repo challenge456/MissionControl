@@ -424,6 +424,7 @@ export function RegistryView({
         >
           <RegistryPackageDetail
             entry={detailEntry}
+            projectId={projectId ?? undefined}
             allEntries={entries ?? []}
             onBack={() => setDetailEntry(null)}
             onSelectEntry={setDetailEntry}

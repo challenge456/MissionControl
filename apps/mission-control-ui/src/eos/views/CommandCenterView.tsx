@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import type { Doc, Id } from "../../../../../convex/_generated/dataModel";
 import { ArrowRight, Bot, ChevronRight, Clock3, Plus, Sparkles } from "lucide-react";
@@ -495,8 +495,6 @@ export function CommandCenterView({
   onNavigate,
 }: CommandCenterViewProps): JSX.Element {
   const [gatewayConfigured, setGatewayConfigured] = useState<boolean | null>(null);
-  const approveApproval = useMutation(api.approvals.approve);
-  const transitionTask = useMutation(api.tasks.transition);
   const showDemoContent = useFlag("ui.navigation.demo-routes");
 
   useEffect(() => {
@@ -556,25 +554,6 @@ export function CommandCenterView({
     openTask,
     openApprovalsModal: () => onNavigate("audit"),
     openAlertRules: () => onNavigate("telemetry"),
-    approveApproval: async (approvalId) => {
-      await approveApproval({
-        approvalId,
-        projectId,
-        decidedByUserId: "operator",
-        reason: "Approved from Command Center",
-      });
-    },
-    unblockTask: async (taskId) => {
-      await transitionTask({
-        taskId,
-        projectId,
-        toStatus: "ASSIGNED",
-        actorType: "HUMAN",
-        actorUserId: "operator",
-        reason: "Unblocked from Command Center",
-        idempotencyKey: `command-center-unblock-${taskId}-${Date.now()}`,
-      });
-    },
   });
 
   const exceptions = exceptionCounts({

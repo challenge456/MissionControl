@@ -63,8 +63,10 @@ Orders. Agent activity is supporting evidence, not the primary content.
 
 ## Runtime contract
 
-Creating a cycle creates one root Task and one governed WorkOrder. Dispatching
-that WorkOrder materializes the bounded Graph Engineering nodes:
+Creating a cycle idempotently provisions the project-scoped `Research Scout`
+and `Evidence Reviewer` identities, then creates one root Task and one governed
+WorkOrder. The operator reviews that WorkOrder and explicitly dispatches it;
+dispatch materializes the bounded Graph Engineering nodes:
 
 1. Independent research lanes run in parallel.
 2. Verification nodes independently decide evidence and conflicts.
@@ -73,6 +75,8 @@ that WorkOrder materializes the bounded Graph Engineering nodes:
 
 This avoids duplicate phase Tasks and duplicate WorkOrders. The graph executor
 creates each concrete node Task only when its dependencies are satisfied.
+Every new run stores the exact workflow version and executable definition used
+at dispatch, so later workflow updates cannot alter an in-flight graph.
 
 Approval creates implementation and validation work only for approved
 recommendations. A runtime may claim and execute the work, but it must write

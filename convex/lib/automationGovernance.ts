@@ -2,7 +2,7 @@ export const AUTOMATION_POLICY_VERSION = "automation-v1";
 export const AUTOMATION_CADENCE_MS = 7 * 24 * 60 * 60 * 1000;
 export const AUTOMATION_ACTOR_IDENTITY_SOURCE = "CLIENT_ASSERTED_TRUSTED_OPERATOR" as const;
 
-export type AutomationStatus = "DRAFT" | "DISABLED" | "ACTIVE" | "PAUSED" | "SUSPENDED" | "RETIRED";
+export type AutomationStatus = "DRAFT" | "DISABLED" | "ACTIVE" | "PAUSED" | "SUSPENDED" | "RETIRED" | "ARCHIVED";
 
 export interface AutomationCandidatePayload {
   type: "AUTOMATION_CANDIDATE";

@@ -14,6 +14,8 @@
 export {
   WorkflowExecutor,
   createExecutor,
+  workflowDefinitionForRun,
+  workflowEvidenceDigest,
   type WorkflowExecutorConfig,
   type StepExecutionResult,
 } from "./executor";

@@ -97,3 +97,62 @@ export const reportHealth = mutation({
     return model._id;
   },
 });
+
+/** Registers models discovered by the trusted orchestration server. */
+export const syncLocalModels = mutation({
+  args: {
+    provider: v.union(v.literal("OLLAMA"), v.literal("LM_STUDIO"), v.literal("MLX"), v.literal("VLLM")),
+    models: v.array(v.object({
+      modelId: v.string(),
+      displayName: v.string(),
+      capabilities: v.array(v.string()),
+      supportsTools: v.boolean(),
+      contextWindow: v.number(),
+    })),
+    actorId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const provider = `local:${args.provider.toLowerCase()}`;
+    let created = 0;
+    let updated = 0;
+    for (const discovered of args.models) {
+      const modelId = `${provider}:${discovered.modelId}`;
+      const existing = await ctx.db
+        .query("modelCatalog")
+        .withIndex("by_model_id", (q) => q.eq("modelId", modelId))
+        .first();
+      const record = {
+        provider,
+        modelId,
+        displayName: discovered.displayName,
+        tier: "FAST" as const,
+        capabilities: [...new Set(["local", ...discovered.capabilities])],
+        supportsTools: discovered.supportsTools,
+        riskApproved: false,
+        contextWindow: discovered.contextWindow,
+        availability: "HEALTHY" as const,
+        estimatedCostPerRunUsd: 0,
+        deprecated: false,
+        updatedAt: now,
+      };
+      if (existing) {
+        await ctx.db.patch(existing._id, record);
+        updated += 1;
+      } else {
+        await ctx.db.insert("modelCatalog", record);
+        created += 1;
+      }
+    }
+    await ctx.db.insert("activities", {
+      actorType: "SYSTEM",
+      actorId: args.actorId ?? "orchestration",
+      action: "LOCAL_MODEL_CATALOG_SYNCED",
+      description: `Synced ${args.models.length} local ${args.provider} model route(s)`,
+      targetType: "MODEL_CATALOG",
+      targetId: provider,
+      metadata: { created, updated },
+    });
+    return { created, updated, provider };
+  },
+});

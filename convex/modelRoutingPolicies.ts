@@ -18,11 +18,34 @@ const risk = v.union(
   v.literal("HIGH"),
   v.literal("CRITICAL")
 );
+const complexity = v.union(
+  v.literal("SMALL"),
+  v.literal("STANDARD"),
+  v.literal("LARGE")
+);
+const operatingLane = v.union(
+  v.literal("PLAN"),
+  v.literal("EXECUTE"),
+  v.literal("REVIEW"),
+  v.literal("LOCAL"),
+  v.literal("LONG_RUNNING")
+);
+const lanePool = v.object({
+  lane: operatingLane,
+  modelIds: v.array(v.string()),
+  canaryModelIds: v.optional(v.array(v.string())),
+  dailyBudgetUsd: v.optional(v.number()),
+  monthlyBudgetUsd: v.optional(v.number()),
+  minProviderCount: v.optional(v.number()),
+  canaryPercent: v.optional(v.number()),
+});
 const rule = v.object({
   id: v.string(),
   order: v.number(),
   taskType: v.optional(v.string()),
+  operatingLane: v.optional(operatingLane),
   riskLevel: v.optional(risk),
+  complexity: v.optional(complexity),
   requiredCapabilities: v.optional(v.array(v.string())),
   modelId: v.string(),
 });
@@ -166,6 +189,7 @@ export const save = mutation({
     defaultModelId: v.optional(v.string()),
     safeFallbackModelId: v.optional(v.string()),
     rules: v.array(rule),
+    lanePools: v.optional(v.array(lanePool)),
     fallbackChain: v.array(v.string()),
     budgetLimitUsd: v.optional(v.number()),
     latencyTargetMs: v.optional(v.number()),
@@ -183,11 +207,27 @@ export const save = mutation({
     if (args.budgetLimitUsd !== undefined && args.budgetLimitUsd < 0) {
       throw new Error("Budget limit cannot be negative");
     }
+    for (const pool of args.lanePools ?? []) {
+      if ((pool.dailyBudgetUsd ?? 0) < 0 || (pool.monthlyBudgetUsd ?? 0) < 0) {
+        throw new Error(`${pool.lane} lane budgets cannot be negative`);
+      }
+      if ((pool.minProviderCount ?? 1) < 1) {
+        throw new Error(`${pool.lane} provider requirement must be at least 1`);
+      }
+      if ((pool.canaryPercent ?? 10) < 0 || (pool.canaryPercent ?? 10) > 100) {
+        throw new Error(`${pool.lane} canary percentage must be between 0 and 100`);
+      }
+      const approved = new Set(pool.modelIds);
+      if ((pool.canaryModelIds ?? []).some((modelId) => !approved.has(modelId))) {
+        throw new Error(`${pool.lane} canary models must also be approved`);
+      }
+    }
     const ids = [
       args.defaultModelId,
       args.safeFallbackModelId,
       ...args.fallbackChain,
       ...args.rules.map((item) => item.modelId),
+      ...(args.lanePools ?? []).flatMap((pool) => pool.modelIds),
     ].filter((value): value is string => Boolean(value));
     const uniqueIds = [...new Set(ids)];
     for (const modelId of uniqueIds) {
@@ -211,6 +251,7 @@ export const save = mutation({
       defaultModelId: args.defaultModelId,
       safeFallbackModelId: args.safeFallbackModelId,
       rules: args.rules,
+      lanePools: args.lanePools ?? [],
       fallbackChain: [...new Set(args.fallbackChain)],
       budgetLimitUsd: args.budgetLimitUsd,
       latencyTargetMs: args.latencyTargetMs,
@@ -241,12 +282,15 @@ export const simulate = query({
   args: {
     projectId: v.id("projects"),
     taskType: v.optional(v.string()),
+    operatingLane: v.optional(operatingLane),
     riskLevel: risk,
+    complexity: v.optional(complexity),
     requestedTier: v.optional(tier),
     requiredCapabilities: v.array(v.string()),
     budgetRemainingUsd: v.optional(v.number()),
     agentId: v.optional(v.id("agents")),
     authorizedRunOverride: v.optional(v.string()),
+    allowCanary: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const project = await ctx.db.get(args.projectId);
@@ -269,19 +313,46 @@ export const simulate = query({
           safeFallbackModelId: active.safeFallbackModelId,
           fallbackChain: active.fallbackChain,
           rules: active.rules,
+          lanePools: active.lanePools ?? [],
           budgetLimitUsd: active.budgetLimitUsd,
           killSwitch: active.killSwitch,
         }
       : fallbackRoutingPolicy(project.swarmConfig?.defaultModel);
+    const lanePoolConfig = policy.lanePools?.find((pool) => pool.lane === args.operatingLane);
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const recentDecisions = lanePoolConfig
+      ? await ctx.db
+          .query("modelRoutingDecisions")
+          .withIndex("by_project_created", (q) => q.eq("projectId", args.projectId).gte("createdAt", monthStart))
+          .collect()
+      : [];
+    const costByModel = new Map(catalog.map((model) => [model.modelId, model.estimatedCostPerRunUsd ?? 0]));
+    const laneDecisions = recentDecisions.filter((decision) => decision.operatingLane === args.operatingLane);
+    const monthlySpendUsd = laneDecisions.reduce((sum, decision) => sum + (costByModel.get(decision.selectedModelId ?? "") ?? 0), 0);
+    const dailySpendUsd = laneDecisions
+      .filter((decision) => decision.createdAt >= dayStart)
+      .reduce((sum, decision) => sum + (costByModel.get(decision.selectedModelId ?? "") ?? 0), 0);
+    const laneBudgetRemainingUsd = lanePoolConfig
+      ? Math.min(
+          lanePoolConfig.dailyBudgetUsd == null ? Infinity : Math.max(0, lanePoolConfig.dailyBudgetUsd - dailySpendUsd),
+          lanePoolConfig.monthlyBudgetUsd == null ? Infinity : Math.max(0, lanePoolConfig.monthlyBudgetUsd - monthlySpendUsd),
+        )
+      : undefined;
     return {
       policyId: active?._id,
       policyVersion: policy.version,
       result: resolveModelRoute(catalog, policy, {
         taskType: args.taskType,
+        operatingLane: args.operatingLane,
         riskLevel: args.riskLevel,
+        complexity: args.complexity,
         requestedTier: args.requestedTier,
         requiredCapabilities: args.requiredCapabilities,
         budgetRemainingUsd: args.budgetRemainingUsd,
+        laneBudgetRemainingUsd,
+        allowCanary: args.allowCanary,
         authorizedRunOverride: args.authorizedRunOverride,
         agentOverrideModelId:
           override && (!override.expiresAt || override.expiresAt > Date.now())
@@ -289,6 +360,11 @@ export const simulate = query({
             : undefined,
         systemDefaultModelId: "operator-default",
       }),
+      laneTelemetry: lanePoolConfig ? {
+        dailySpendUsd,
+        monthlySpendUsd,
+        laneBudgetRemainingUsd: Number.isFinite(laneBudgetRemainingUsd) ? laneBudgetRemainingUsd : undefined,
+      } : undefined,
     };
   },
 });

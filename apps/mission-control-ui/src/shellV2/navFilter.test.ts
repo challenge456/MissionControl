@@ -43,6 +43,8 @@ describe("filterNavGroups", () => {
       "automations",
       "audit",
       "telemetry",
+      "operator-evals",
+      "harness-loops",
       "skills",
       "memory",
       "docs",

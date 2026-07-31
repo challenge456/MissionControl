@@ -6,15 +6,16 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { formatDate, statusTone, workspacePath } from "./automationModel";
 
-const FILTERS = ["ALL", "FRESH", "FAILED", "MISSING", "STALE", "EXPIRED", "WAIVED"] as const;
+const FILTERS = ["ALL", "FRESH", "REJECTED", "INCONCLUSIVE", "MISSING", "STALE", "EXPIRED", "WAIVED"] as const;
 
 export function AutomationReceipts({ projectId, receipts }: { projectId: Id<"projects">; receipts: any[] }) {
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("ALL");
-  const filtered = receipts.filter((receipt) =>
-    filter === "ALL"
-    || receipt.evidenceState === filter
-    || (filter === "FAILED" && receipt.status === "FAILED")
-  );
+  const matches = (receipt: any, value: (typeof FILTERS)[number]) =>
+    value === "ALL"
+    || receipt.evidenceState === value
+    || (value === "REJECTED" && receipt.status === "FAILED")
+    || (value === "INCONCLUSIVE" && receipt.status === "PENDING");
+  const filtered = receipts.filter((receipt) => matches(receipt, filter));
   if (receipts.length === 0) {
     return (
       <Card className="border-dashed p-8 text-center">
@@ -29,7 +30,7 @@ export function AutomationReceipts({ projectId, receipts }: { projectId: Id<"pro
       <div className="flex flex-wrap gap-2" aria-label="Receipt filters">
         {FILTERS.map((item) => (
           <Button key={item} size="sm" variant={filter === item ? "default" : "outline"} onClick={() => setFilter(item)}>
-            {item} ({item === "ALL" ? receipts.length : receipts.filter((receipt) => receipt.evidenceState === item || (item === "FAILED" && receipt.status === "FAILED")).length})
+            {item} ({receipts.filter((receipt) => matches(receipt, item)).length})
           </Button>
         ))}
       </div>
@@ -55,7 +56,24 @@ export function AutomationReceipts({ projectId, receipts }: { projectId: Id<"pro
                 <Item label="Evidence" value={receipt.evidenceLocation ?? receipt.artifactReference ?? "Missing"} />
                 <Item label="Recorded" value={formatDate(receipt.recordedAt)} />
                 <Item label="Valid until" value={formatDate(receipt.validUntil)} />
+                <Item label="Expected result" value={receipt.metadata?.expectedResult ?? "Not recorded"} />
+                <Item label="Observed result" value={receipt.metadata?.observedResult ?? receipt.result ?? "Not recorded"} />
+                <Item label="Integrity hash" value={receipt.metadata?.integrityHash ?? "Not recorded"} />
+                <Item label="Recommended follow-up" value={receipt.metadata?.recommendedFollowUp ?? (receipt.status === "PASSED" ? "None" : "Operator review required")} />
               </dl>
+              <details className="mt-3 rounded-lg border border-[var(--panel-line)] bg-muted/10 p-3 text-xs">
+                <summary className="cursor-pointer font-medium text-registry-accent">Receipt evidence and lineage</summary>
+                <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-all text-muted-foreground">{JSON.stringify({
+                  receiptId: receipt._id,
+                  definitionId: receipt.automationDefinitionId,
+                  workOrderId: receipt.workOrderId,
+                  runId: receipt.workflowRunId,
+                  criterionId: receipt.acceptanceCriterionId,
+                  evidence: receipt.evidenceLocation ?? receipt.artifactReference ?? null,
+                  integrityHash: receipt.metadata?.integrityHash ?? null,
+                  correlationId: receipt.metadata?.correlationId ?? null,
+                }, null, 2)}</pre>
+              </details>
               <div className="mt-3 flex flex-wrap gap-3 text-xs">
                 <a href={workspacePath(`/v2/control-work-orders?workOrder=${receipt.workOrderId}`, projectId)} className="inline-flex items-center gap-1 text-registry-accent hover:text-foreground">Open WorkOrder <ArrowUpRight className="h-3 w-3" /></a>
                 {receipt.evidenceLocation ? <a href={receipt.evidenceLocation} className="inline-flex items-center gap-1 text-registry-accent hover:text-foreground">Open evidence <ArrowUpRight className="h-3 w-3" /></a> : null}

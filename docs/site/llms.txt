@@ -1,6 +1,16 @@
 # Mission Control Software Factory — documentation index for AI agents
 # Base URL (in-app): Knowledge → Docs → Documentation tab
 
+operator-control-plane/overview.md — Governed Decision Center, dispatch and proof separation, Fleet Operator persona evaluations, and North Star alignment.
+
+skill-automations/overview.md — Governed deterministic skill Automation lifecycle, architecture, status, and source map.
+skill-automations/implementation-design.md — Architecture decisions, extension points, and LEVEL_1 safety boundary.
+skill-automations/browser-evidence.md — Browser screenshots, live API-adapter E2E proof, accessibility, and validation results.
+skill-automations/factory-roadmap.md — Prioritized P0, P1, and P2 factory enhancements.
+skill-automations/bounded-adapter-runtime.md — Adapter manifest, execution behavior, path/hash/command/secret/timeout safeguards, and normalized result contract.
+skill-automations/automation-backend.md — Convex candidate, conversion, Definition lifecycle, execution, verification, and audit API reference.
+skill-automations/completed-implementation.md — Completed acceptance criteria, work log, validation results, and known boundary.
+
 overview/readme.md — What is Mission Control? Platform overview and six core components.
 overview/platform-components.md — Registry, Governance, Evals, Factory, Observability, Harness.
 get-started/set-up-mission-control.md — Install, seed demo data, run EOS Command Center preview.

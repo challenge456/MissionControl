@@ -10,13 +10,14 @@ import { FrictionView } from "./views/FrictionView";
 import { AgentCatalogView } from "./views/AgentCatalogView";
 import { DossierView } from "./views/DossierView";
 import { RecommendationsView } from "./views/RecommendationsView";
+import { OperatorEvalsView } from "./views/OperatorEvalsView";
 import { DemoTourBar } from "./components";
 import { useFlag } from "../hooks/useFlag";
 import type { Id } from "../../../../convex/_generated/dataModel";
 
 export const EOS_VIEWS = [
   "command-center", "missions", "mission-detail", "trace-inspector",
-  "effectiveness", "factory-health", "readiness", "friction",
+  "effectiveness", "operator-evals", "factory-health", "readiness", "friction",
   "agent-catalog", "dossier", "recommendations",
 ] as const;
 
@@ -59,6 +60,7 @@ function EosViewBody({
     case "mission-detail": return <MissionDetailView projectId={projectId} onNavigate={onNavigate} />;
     case "trace-inspector": return <ExecutionInspectorView projectId={projectId} onNavigate={onNavigate} />;
     case "effectiveness": return <EffectivenessView onNavigate={onNavigate} />;
+    case "operator-evals": return <OperatorEvalsView projectId={projectId} />;
     case "factory-health":
       return (
         <>

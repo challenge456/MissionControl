@@ -12,6 +12,7 @@ import { resolveAgentRef } from "./lib/agentResolver";
 import { buildContinuousEvidenceLineage, buildEvidenceLineage, buildFileChanges, buildRetryTimeline, orderRunEvents, summarizeRunEvents } from "./lib/runInspector";
 import { summarizeWorkflowObservability } from "./lib/workflowObservability";
 import { reconcileTerminalWorkflowSteps } from "./lib/workflowRunState";
+import { snapshotWorkflowDefinition } from "./lib/workflowSnapshot";
 
 // ============================================================================
 // HELPERS
@@ -296,7 +297,7 @@ export const getInspector = query({
     const run = await ctx.db.get(args.workflowRunId);
     if (!run) return null;
 
-    const [workflow, workOrder, events, artifacts, receipts, linkedAgentRuns] = await Promise.all([
+    const [installedWorkflow, workOrder, events, artifacts, receipts, linkedAgentRuns] = await Promise.all([
       ctx.db.query("workflows").withIndex("by_workflow_id", (q) => q.eq("workflowId", run.workflowId)).first(),
       run.workOrderId ? ctx.db.get(run.workOrderId) : null,
       ctx.db.query("runEvents").withIndex("by_run_sequence", (q) => q.eq("workflowRunId", run._id)).collect(),
@@ -331,7 +332,7 @@ export const getInspector = query({
 
     return {
       run,
-      workflow,
+      workflow: run.workflowSnapshot ?? installedWorkflow,
       workOrder,
       events: orderedEvents,
       artifacts,
@@ -446,11 +447,14 @@ export const start = mutation({
     
     const now = Date.now();
     const runId = generateRunId();
+    const workflowSnapshot = snapshotWorkflowDefinition(workflow);
     
     // Create workflow run
     const id = await ctx.db.insert("workflowRuns", {
       runId,
       workflowId: args.workflowId,
+      workflowVersion: workflow.version,
+      workflowSnapshot,
       projectId: args.projectId,
       workOrderId: args.workOrderId,
       workOrderRevisionNumber: args.workOrderRevisionNumber,

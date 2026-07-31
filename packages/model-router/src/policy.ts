@@ -1,7 +1,10 @@
 export type RoutingTier = "FAST" | "BALANCED" | "POWERFUL";
 export type RoutingRisk = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+export type RoutingComplexity = "SMALL" | "STANDARD" | "LARGE";
+export type OperatingLane = "PLAN" | "EXECUTE" | "REVIEW" | "LOCAL" | "LONG_RUNNING";
 export type RoutingSource =
   | "RUN_OVERRIDE"
+  | "LANE_POOL"
   | "WORKFLOW_TIER"
   | "AGENT_OVERRIDE"
   | "POLICY_RULE"
@@ -25,9 +28,21 @@ export interface RoutingRule {
   id: string;
   order: number;
   taskType?: string;
+  operatingLane?: OperatingLane;
   riskLevel?: RoutingRisk;
+  complexity?: RoutingComplexity;
   requiredCapabilities?: string[];
   modelId: string;
+}
+
+export interface LanePool {
+  lane: OperatingLane;
+  modelIds: string[];
+  canaryModelIds?: string[];
+  dailyBudgetUsd?: number;
+  monthlyBudgetUsd?: number;
+  minProviderCount?: number;
+  canaryPercent?: number;
 }
 
 export interface RoutingPolicyInput {
@@ -37,19 +52,50 @@ export interface RoutingPolicyInput {
   safeFallbackModelId?: string;
   fallbackChain: string[];
   rules: RoutingRule[];
+  lanePools?: LanePool[];
   budgetLimitUsd?: number;
   killSwitch: boolean;
 }
 
 export interface RouteModelInput {
   taskType?: string;
+  operatingLane?: OperatingLane;
   riskLevel: RoutingRisk;
+  complexity?: RoutingComplexity;
   requestedTier?: RoutingTier;
   requiredCapabilities: string[];
   budgetRemainingUsd?: number;
+  laneBudgetRemainingUsd?: number;
+  allowCanary?: boolean;
   authorizedRunOverride?: string;
   agentOverrideModelId?: string;
   systemDefaultModelId?: string;
+}
+
+const TIER_RANK: Record<RoutingTier, number> = { FAST: 0, BALANCED: 1, POWERFUL: 2 };
+
+function requiredTier(input: RouteModelInput): RoutingTier {
+  if (input.riskLevel === "HIGH" || input.riskLevel === "CRITICAL" || input.complexity === "LARGE") return "POWERFUL";
+  if (input.riskLevel === "MEDIUM" || input.complexity === "STANDARD") return "BALANCED";
+  return "FAST";
+}
+
+function laneCandidateIds(catalog: CatalogModel[], policy: RoutingPolicyInput, input: RouteModelInput) {
+  if (!input.operatingLane) return [];
+  const pool = policy.lanePools?.find((item) => item.lane === input.operatingLane);
+  if (!pool) return [];
+  const floor = requiredTier(input);
+  const canaries = new Set(pool.canaryModelIds ?? []);
+  const byId = new Map(catalog.map((model) => [model.modelId, model]));
+  return pool.modelIds
+    .map((modelId) => byId.get(modelId))
+    .filter((model): model is CatalogModel => Boolean(model))
+    .filter((model) => input.allowCanary || !canaries.has(model.modelId))
+    .filter((model) => TIER_RANK[model.tier] >= TIER_RANK[floor])
+    .sort((left, right) => TIER_RANK[left.tier] - TIER_RANK[right.tier]
+      || (left.estimatedCostPerRunUsd ?? Number.MAX_SAFE_INTEGER) - (right.estimatedCostPerRunUsd ?? Number.MAX_SAFE_INTEGER)
+      || left.modelId.localeCompare(right.modelId))
+    .map((model) => model.modelId);
 }
 
 export interface ModelRoutingResult {
@@ -88,6 +134,7 @@ function modelEligibility(
   }
   const budget = Math.min(
     input.budgetRemainingUsd ?? Number.POSITIVE_INFINITY,
+    input.laneBudgetRemainingUsd ?? Number.POSITIVE_INFINITY,
     policy.budgetLimitUsd ?? Number.POSITIVE_INFINITY
   );
   if (
@@ -119,7 +166,9 @@ export function resolveModelRoute(
     .find(
       (rule) =>
         (!rule.taskType || rule.taskType === input.taskType) &&
+        (!rule.operatingLane || rule.operatingLane === input.operatingLane) &&
         (!rule.riskLevel || rule.riskLevel === input.riskLevel) &&
+        (!rule.complexity || rule.complexity === input.complexity) &&
         (rule.requiredCapabilities ?? []).every((capability) =>
           input.requiredCapabilities.includes(capability)
         )
@@ -146,6 +195,17 @@ export function resolveModelRoute(
       reason: "Authorized per-run override",
     },
     {
+      modelId: matchingRule?.modelId,
+      source: "POLICY_RULE",
+      ruleId: matchingRule?.id,
+      reason: matchingRule ? `Matched policy rule ${matchingRule.id}` : "No matching policy rule",
+    },
+    ...laneCandidateIds(catalog, policy, input).map((modelId) => ({
+      modelId,
+      source: "LANE_POOL" as const,
+      reason: `${input.operatingLane} lane approved pool; ${requiredTier(input)} quality floor`,
+    })),
+    {
       modelId: tierModel,
       source: "WORKFLOW_TIER",
       reason: `Workflow requested ${input.requestedTier ?? "no"} tier`,
@@ -154,12 +214,6 @@ export function resolveModelRoute(
       modelId: input.agentOverrideModelId,
       source: "AGENT_OVERRIDE",
       reason: "Agent override",
-    },
-    {
-      modelId: matchingRule?.modelId,
-      source: "POLICY_RULE",
-      ruleId: matchingRule?.id,
-      reason: matchingRule ? `Matched policy rule ${matchingRule.id}` : "No matching policy rule",
     },
     {
       modelId: policy.defaultModelId,

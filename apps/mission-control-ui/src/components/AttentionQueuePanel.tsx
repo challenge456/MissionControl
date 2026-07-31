@@ -121,24 +121,6 @@ export function NeedsAttentionCard({
                 </button>
                 <div className="flex flex-wrap items-center gap-1.5 sm:shrink-0">
                   <StatusBadge tone={item.badgeTone}>{item.badgeLabel}</StatusBadge>
-                  {item.onApprove && (
-                    <button
-                      type="button"
-                      className={ACTION_BUTTON}
-                      onClick={() => void item.onApprove?.()}
-                    >
-                      Approve
-                    </button>
-                  )}
-                  {item.onUnblock && (
-                    <button
-                      type="button"
-                      className={ACTION_BUTTON}
-                      onClick={() => void item.onUnblock?.()}
-                    >
-                      Unblock
-                    </button>
-                  )}
                   {item.onOpen && (
                     <button type="button" className={ACTION_BUTTON} onClick={item.onOpen}>
                       Open

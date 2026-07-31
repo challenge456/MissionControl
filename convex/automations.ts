@@ -31,7 +31,7 @@ export const getControlPlane = query({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
     await assertProject(ctx, args.projectId);
-    const [definitions, decisions, suggestions, workOrders, receipts, scheduledJobs, workflows] = await Promise.all([
+    const [definitions, decisions, suggestions, workOrders, receipts, scheduledJobs, workflows, evaluations, workflowRuns, runEvents, runArtifacts] = await Promise.all([
       ctx.db.query("automationDefinitions").withIndex("by_project", (q: any) => q.eq("projectId", args.projectId)).collect(),
       ctx.db.query("automationDecisions").withIndex("by_project", (q: any) => q.eq("projectId", args.projectId)).collect(),
       ctx.db.query("metaLoopSuggestions").withIndex("by_project", (q: any) => q.eq("projectId", args.projectId)).collect(),
@@ -39,6 +39,10 @@ export const getControlPlane = query({
       ctx.db.query("verificationReceipts").withIndex("by_project", (q: any) => q.eq("projectId", args.projectId)).collect(),
       ctx.db.query("scheduledJobs").withIndex("by_project", (q: any) => q.eq("projectId", args.projectId)).collect(),
       ctx.db.query("workflows").collect(),
+      ctx.db.query("automationEvaluations").withIndex("by_project", (q: any) => q.eq("projectId", args.projectId)).collect(),
+      ctx.db.query("workflowRuns").withIndex("by_project", (q: any) => q.eq("projectId", args.projectId)).collect(),
+      ctx.db.query("runEvents").withIndex("by_project", (q: any) => q.eq("projectId", args.projectId)).collect(),
+      ctx.db.query("runArtifacts").collect(),
     ]);
     const now = Date.now();
     const workflowById = new Map(workflows.map((workflow: any) => [workflow.workflowId, workflow]));
@@ -109,6 +113,10 @@ export const getControlPlane = query({
         idempotencyResult: "REVIEW_GATE_CREATED",
         costUsd: workOrder.metadata?.costUsd ?? 0,
         durationMs: workOrder.metadata?.durationMs,
+        evaluation: evaluations.find((item: any) => item.workOrderId === workOrder._id) ?? null,
+        workflowRun: workflowRuns.filter((item: any) => item.workOrderId === workOrder._id).sort((a: any, b: any) => b.startedAt - a.startedAt)[0] ?? null,
+        events: runEvents.filter((item: any) => item.workOrderId === workOrder._id).sort((a: any, b: any) => a.sequenceNumber - b.sequenceNumber),
+        artifacts: runArtifacts.filter((item: any) => item.workOrderId === workOrder._id),
       };
     });
     const enrichedDefinitions = definitions.map((definition: any) => {
@@ -191,6 +199,7 @@ export const getControlPlane = query({
       runs,
       receipts: receiptRows,
       scheduledJobs,
+      evaluations: evaluations.sort((a: any, b: any) => b.createdAt - a.createdAt),
       metrics,
     };
   },
@@ -422,6 +431,9 @@ export const activate = mutation({
     if (!definition || definition.projectId !== args.projectId) throw new Error("Automation is outside the selected workspace");
     if (definition.isMutating || definition.autonomyLevel !== "LEVEL_1") {
       throw new Error("V1 activation only supports read-only LEVEL_1 Automations");
+    }
+    if (definition.sourceSkillId && (definition.validationStatus !== "PASSED" || definition.reviewStatus !== "APPROVED")) {
+      throw new Error("Skill Automations require passed validation and explicit approval before activation");
     }
     if (definition.status === "ACTIVE") return { changed: false, definitionId: definition._id };
     if (!["DISABLED", "PAUSED"].includes(definition.status)) throw new Error(`Cannot activate an Automation from ${definition.status}`);

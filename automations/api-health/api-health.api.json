@@ -1,0 +1,5 @@
+{
+  "method": "GET",
+  "endpoint": "/health",
+  "expectedStatus": 200
+}

@@ -120,7 +120,24 @@ describe("resolveModelRoute", () => {
     });
   });
 
-  it("uses workflow tier before an agent override", () => {
+  it("uses a matching complexity policy before a workflow tier", () => {
+    const result = resolveModelRoute(catalog, {
+      ...policy,
+      rules: [{ id: "small-low-risk", order: 0, complexity: "SMALL", riskLevel: "LOW", modelId: "safe" }],
+    }, {
+      riskLevel: "LOW",
+      complexity: "SMALL",
+      requestedTier: "FAST",
+      requiredCapabilities: [],
+    });
+    expect(result).toMatchObject({
+      selectedModelId: "safe",
+      source: "POLICY_RULE",
+      ruleId: "small-low-risk",
+    });
+  });
+
+  it("uses workflow tier before an agent override when policy has no match", () => {
     const result = resolveModelRoute(catalog, policy, {
       riskLevel: "LOW",
       requestedTier: "FAST",
@@ -139,5 +156,127 @@ describe("resolveModelRoute", () => {
       requiredCapabilities: ["vision"],
     });
     expect(result.status).toBe("EXHAUSTED");
+  });
+
+  it("selects a policy-approved local model for low-risk work", () => {
+    const localCatalog = [
+      ...catalog,
+      {
+        modelId: "local:ollama:qwen3",
+        provider: "local:ollama",
+        displayName: "Local Qwen",
+        tier: "FAST" as const,
+        capabilities: ["local", "text", "code"],
+        supportsTools: true,
+        riskApproved: false,
+        availability: "HEALTHY" as const,
+        deprecated: false,
+        estimatedCostPerRunUsd: 0,
+      },
+    ];
+    const result = resolveModelRoute(localCatalog, {
+      ...policy,
+      rules: [{ id: "local-low-risk", order: 0, complexity: "SMALL", riskLevel: "LOW", modelId: "local:ollama:qwen3" }],
+    }, {
+      riskLevel: "LOW",
+      complexity: "SMALL",
+      requiredCapabilities: ["tools"],
+    });
+    expect(result).toMatchObject({
+      status: "SELECTED",
+      selectedModelId: "local:ollama:qwen3",
+      selectedProvider: "local:ollama",
+      source: "POLICY_RULE",
+    });
+  });
+
+  it("uses a cheaper approved reviewer for a straightforward review", () => {
+    const result = resolveModelRoute(catalog, {
+      ...policy,
+      lanePools: [{ lane: "REVIEW", modelIds: ["safe", "fast"] }],
+    }, {
+      operatingLane: "REVIEW",
+      riskLevel: "LOW",
+      complexity: "SMALL",
+      requestedTier: "POWERFUL",
+      requiredCapabilities: ["text"],
+    });
+    expect(result).toMatchObject({
+      selectedModelId: "fast",
+      source: "LANE_POOL",
+    });
+    expect(result.explanation).toContain("FAST quality floor");
+  });
+
+  it("escalates consequential reviews to an approved powerful model", () => {
+    const result = resolveModelRoute(catalog, {
+      ...policy,
+      lanePools: [{ lane: "REVIEW", modelIds: ["fast", "safe"] }],
+    }, {
+      operatingLane: "REVIEW",
+      riskLevel: "HIGH",
+      complexity: "SMALL",
+      requiredCapabilities: ["tools"],
+    });
+    expect(result).toMatchObject({
+      selectedModelId: "safe",
+      source: "LANE_POOL",
+    });
+    expect(result.explanation).toContain("POWERFUL quality floor");
+  });
+
+  it("does not apply a local-lane rule to review work", () => {
+    const result = resolveModelRoute(catalog, {
+      ...policy,
+      rules: [{ id: "local-small", order: 0, operatingLane: "LOCAL", riskLevel: "LOW", complexity: "SMALL", modelId: "fast" }],
+      lanePools: [{ lane: "REVIEW", modelIds: ["safe"] }],
+    }, {
+      operatingLane: "REVIEW",
+      riskLevel: "LOW",
+      complexity: "SMALL",
+      requiredCapabilities: ["text"],
+    });
+    expect(result).toMatchObject({ selectedModelId: "safe", source: "LANE_POOL" });
+  });
+
+  it("keeps new lane models out of normal traffic until their canary cohort", () => {
+    const canaryPolicy = {
+      ...policy,
+      lanePools: [{ lane: "REVIEW" as const, modelIds: ["fast", "safe"], canaryModelIds: ["fast"] }],
+    };
+    const normal = resolveModelRoute(catalog, canaryPolicy, {
+      operatingLane: "REVIEW",
+      riskLevel: "LOW",
+      complexity: "SMALL",
+      requiredCapabilities: ["text"],
+      allowCanary: false,
+    });
+    const canary = resolveModelRoute(catalog, canaryPolicy, {
+      operatingLane: "REVIEW",
+      riskLevel: "LOW",
+      complexity: "SMALL",
+      requiredCapabilities: ["text"],
+      allowCanary: true,
+    });
+    expect(normal.selectedModelId).toBe("safe");
+    expect(canary.selectedModelId).toBe("fast");
+  });
+
+  it("rejects lane candidates when the lane spend envelope is exhausted", () => {
+    const result = resolveModelRoute(catalog, {
+      ...policy,
+      defaultModelId: undefined,
+      safeFallbackModelId: undefined,
+      fallbackChain: [],
+      lanePools: [{ lane: "REVIEW", modelIds: ["fast", "safe"] }],
+    }, {
+      operatingLane: "REVIEW",
+      riskLevel: "LOW",
+      complexity: "SMALL",
+      requiredCapabilities: ["text"],
+      laneBudgetRemainingUsd: 0,
+    });
+    expect(result.status).toBe("EXHAUSTED");
+    expect(result.alternativesConsidered[0]?.reason).toContain("Estimated cost exceeds");
   });
 });

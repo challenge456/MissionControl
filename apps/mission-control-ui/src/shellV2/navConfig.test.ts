@@ -39,7 +39,7 @@ describe("navConfig", () => {
       "harness-workshop", "harness-automations", "harness-agent-fleet", "harness-software-factory", "harness-architect", "harness-patterns",
       "registry-lifecycle", "registry-evaluate", "registry-inventory", "registry-installations", "registry-runs",
       "analytics", "command-center", "missions", "trace-inspector", "effectiveness", "factory-health",
-      "readiness", "friction", "agent-catalog", "dossier", "recommendations",
+      "readiness", "friction", "agent-catalog", "dossier", "recommendations", "operator-evals",
     ];
     const reachable = new Set(allNavViews());
     const missing = required.filter((v) => !reachable.has(v as never));
@@ -51,7 +51,7 @@ describe("navConfig", () => {
     const eosViews = EOS_NAV_GROUPS.flatMap((g) => g.items.map((i) => i.view));
     const required = [
       "command-center", "missions", "trace-inspector", "effectiveness", "factory-health",
-      "readiness", "friction", "agent-catalog", "dossier", "recommendations",
+      "readiness", "friction", "agent-catalog", "dossier", "recommendations", "operator-evals",
     ];
     const missing = required.filter((v) => !eosViews.includes(v as never));
     expect(missing).toEqual([]);
@@ -69,6 +69,7 @@ describe("navConfig", () => {
     expect(groupForView("tasks")?.id).toBe("operate");
     expect(groupForView("policies")?.id).toBe("govern");
     expect(itemForView("skills")?.label).toBe("Discover skills");
+    expect(itemForView("harness-loops")?.label).toBe("Graph Engineering");
     expect(itemForView("nonexistent" as never)).toBeUndefined();
   });
 });

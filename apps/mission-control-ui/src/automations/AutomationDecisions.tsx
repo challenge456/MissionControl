@@ -75,11 +75,21 @@ export function AutomationDecisions({
                       {decision.actorIdentitySource ?? (decision.actorId.startsWith("automation-") ? "SYSTEM" : "LEGACY_UNSPECIFIED")}
                     </div>
                   </td>
-                  <td className="max-w-[320px] px-3 py-3 text-muted-foreground">{decision.reason}</td>
+                  <td className="max-w-[320px] px-3 py-3 text-muted-foreground">
+                    <div>{decision.reason}</div>
+                    {(decision.correlationId || decision.causationId) ? (
+                      <details className="mt-2 text-[11px]">
+                        <summary className="cursor-pointer text-registry-accent">Correlation lineage</summary>
+                        <div className="mt-1 break-all">Correlation: {decision.correlationId ?? "Not recorded"}</div>
+                        <div className="mt-1 break-all">Caused by: {decision.causationId ?? "Root decision"}</div>
+                        <div className="mt-1 break-all">Entity: {decision.entityType ?? "Automation"} / {decision.entityId ?? decision.automationDefinitionId ?? decision.candidateId}</div>
+                      </details>
+                    ) : null}
+                  </td>
                   <td className="px-3 py-3 text-muted-foreground">{decision.policyVersion}</td>
                   <td className="px-3 py-3 text-muted-foreground">v{decision.definitionVersion}</td>
                   <td className="px-3 py-3 text-muted-foreground">{formatDate(decision.decidedAt)}</td>
-                  <td className="px-3 py-3 text-muted-foreground">Recorded</td>
+                  <td className="px-3 py-3 text-muted-foreground">{decision.previousState || decision.newState ? `${decision.previousState ?? "—"} → ${decision.newState ?? "—"}` : "Recorded"}</td>
                 </tr>
               );
             })}

@@ -35,11 +35,12 @@ describe("NeedsAttentionCard", () => {
     expect(screen.getByRole("heading", { name: "Needs attention" })).toBeInTheDocument();
   });
 
-  it("renders attention rows with action buttons", () => {
+  it("routes attention rows to their governed detail without quick decisions", () => {
     render(<NeedsAttentionCard items={ITEMS} scannedAt={Date.now()} />);
     expect(screen.getByText("Deploy to production")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Unblock" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Open" })).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Unblock" })).not.toBeInTheDocument();
   });
 });
 
@@ -70,11 +71,13 @@ describe("AttentionQueuePanel", () => {
     expect(screen.getByText("Approvals")).toBeInTheDocument();
   });
 
-  it("fires approve handler from attention row", () => {
+  it("opens the governed surface without firing a quick approval", () => {
+    const onOpen = vi.fn();
     const onApprove = vi.fn();
     const items: AttentionItem[] = [
       {
         ...ITEMS[0],
+        onOpen,
         onApprove,
       },
     ];
@@ -85,7 +88,8 @@ describe("AttentionQueuePanel", () => {
         counts={{ approvals: 1, blocked: 0, failed: 0, alerts: 0 }}
       />
     );
-    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
-    expect(onApprove).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    expect(onOpen).toHaveBeenCalled();
+    expect(onApprove).not.toHaveBeenCalled();
   });
 });

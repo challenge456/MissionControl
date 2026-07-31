@@ -241,31 +241,19 @@ describe("CommandCenterView", () => {
     expect(onNavigate).toHaveBeenCalledWith("agents");
   });
 
-  it("executes Command Center approval and unblock mutations with operator audit context", async () => {
-    renderCommandCenter();
+  it("routes exceptions to governed detail instead of exposing context-free quick actions", async () => {
+    const { onNavigate } = renderCommandCenter();
 
     await screen.findByText("Connected");
 
-    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
-    fireEvent.click(screen.getByRole("button", { name: "Unblock" }));
+    expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Unblock" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Approve checkout rollback waiver/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Unblock payment smoke test/ }));
 
-    await waitFor(() => {
-      expect(mocks.approveApproval).toHaveBeenCalledWith({
-        approvalId: "approval-1",
-        projectId: "project-1",
-        decidedByUserId: "operator",
-        reason: "Approved from Command Center",
-      });
-      expect(mocks.transitionTask).toHaveBeenCalledWith(
-        expect.objectContaining({
-          taskId: "task-blocked",
-          projectId: "project-1",
-          toStatus: "ASSIGNED",
-          actorType: "HUMAN",
-          actorUserId: "operator",
-          reason: "Unblocked from Command Center",
-        })
-      );
-    });
+    expect(onNavigate).toHaveBeenCalledWith("audit");
+    expect(onNavigate).toHaveBeenCalledWith("tasks");
+    expect(mocks.approveApproval).not.toHaveBeenCalled();
+    expect(mocks.transitionTask).not.toHaveBeenCalled();
   });
 });

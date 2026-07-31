@@ -782,10 +782,37 @@ export default defineSchema({
       id: v.string(),
       order: v.number(),
       taskType: v.optional(v.string()),
+      operatingLane: v.optional(v.union(
+        v.literal("PLAN"),
+        v.literal("EXECUTE"),
+        v.literal("REVIEW"),
+        v.literal("LOCAL"),
+        v.literal("LONG_RUNNING")
+      )),
       riskLevel: v.optional(workOrderRiskLevel),
+      complexity: v.optional(v.union(
+        v.literal("SMALL"),
+        v.literal("STANDARD"),
+        v.literal("LARGE")
+      )),
       requiredCapabilities: v.optional(v.array(v.string())),
       modelId: v.string(),
     })),
+    lanePools: v.optional(v.array(v.object({
+      lane: v.union(
+        v.literal("PLAN"),
+        v.literal("EXECUTE"),
+        v.literal("REVIEW"),
+        v.literal("LOCAL"),
+        v.literal("LONG_RUNNING")
+      ),
+      modelIds: v.array(v.string()),
+      canaryModelIds: v.optional(v.array(v.string())),
+      dailyBudgetUsd: v.optional(v.number()),
+      monthlyBudgetUsd: v.optional(v.number()),
+      minProviderCount: v.optional(v.number()),
+      canaryPercent: v.optional(v.number()),
+    }))),
     fallbackChain: v.array(v.string()),
     budgetLimitUsd: v.optional(v.number()),
     latencyTargetMs: v.optional(v.number()),
@@ -823,7 +850,19 @@ export default defineSchema({
     workflowRunId: v.optional(v.id("workflowRuns")),
     agentId: v.optional(v.id("agents")),
     taskType: v.optional(v.string()),
+    operatingLane: v.optional(v.union(
+      v.literal("PLAN"),
+      v.literal("EXECUTE"),
+      v.literal("REVIEW"),
+      v.literal("LOCAL"),
+      v.literal("LONG_RUNNING")
+    )),
     riskLevel: workOrderRiskLevel,
+    complexity: v.optional(v.union(
+      v.literal("SMALL"),
+      v.literal("STANDARD"),
+      v.literal("LARGE")
+    )),
     requestedTier: v.optional(v.union(
       v.literal("FAST"),
       v.literal("BALANCED"),
@@ -834,6 +873,7 @@ export default defineSchema({
     selectedModelId: v.optional(v.string()),
     source: v.union(
       v.literal("RUN_OVERRIDE"),
+      v.literal("LANE_POOL"),
       v.literal("WORKFLOW_TIER"),
       v.literal("AGENT_OVERRIDE"),
       v.literal("POLICY_RULE"),
@@ -1021,6 +1061,14 @@ export default defineSchema({
     branchStrategy: v.optional(v.string()),
     priority: taskPriority,
     riskLevel: workOrderRiskLevel,
+    modelComplexity: v.optional(v.union(
+      v.literal("SMALL"),
+      v.literal("STANDARD"),
+      v.literal("LARGE")
+    )),
+    authorizedModelOverride: v.optional(v.string()),
+    authorizedModelOverrideReason: v.optional(v.string()),
+    authorizedModelOverrideUpdatedAt: v.optional(v.number()),
     requestedBy: v.optional(v.string()),
     assignedAgent: v.optional(v.string()),
     assignedSquad: v.optional(v.string()),
@@ -1319,6 +1367,7 @@ export default defineSchema({
     errorSummary: v.optional(v.string()),
     metadata: v.optional(v.any()),
   })
+    .index("by_project", ["projectId"])
     .index("by_run", ["workflowRunId"])
     .index("by_run_sequence", ["workflowRunId", "sequenceNumber"])
     .index("by_work_order", ["workOrderId"])
@@ -2961,6 +3010,8 @@ export default defineSchema({
     // Identity
     runId: v.string(), // Short ID for CLI/UI display
     workflowId: v.string(),
+    workflowVersion: v.optional(v.number()),
+    workflowSnapshot: v.optional(v.any()),
     projectId: v.optional(v.id("projects")),
     missionId: v.optional(v.id("missions")),
     missionRole: v.optional(v.union(v.literal("ORCHESTRATOR"), v.literal("WORKER"), v.literal("VALIDATOR"))),
@@ -3072,6 +3123,7 @@ export default defineSchema({
   qcRuns: defineTable({
     tenantId: v.optional(v.id("tenants")),
     projectId: v.optional(v.id("projects")),
+    releaseDeploymentId: v.optional(v.id("deployments")),
 
     // Display ID and ordering
     runId: v.string(),
@@ -3963,6 +4015,9 @@ export default defineSchema({
     // Compatibility + declared capabilities
     compatibility: v.optional(v.any()),
     capabilities: v.optional(v.array(v.string())),
+    // Structured deterministic-execution contract used by the governed
+    // skill-to-Automation conversion flow.
+    automationProfile: v.optional(v.any()),
     dependencies: v.optional(
       v.array(v.object({ slug: v.string(), range: v.string() }))
     ),
@@ -4157,6 +4212,7 @@ export default defineSchema({
     idempotencyKey: v.optional(v.string()),
     actorId: v.optional(v.string()),
     projectId: v.optional(v.id("projects")),
+    releaseDeploymentId: v.optional(v.id("deployments")),
     errorMessage: v.optional(v.string()),
     startedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
@@ -4166,6 +4222,99 @@ export default defineSchema({
     .index("by_version", ["versionId"])
     .index("by_status", ["status"])
     .index("by_idempotency", ["idempotencyKey"]),
+
+  // -------------------------------------------------------------------------
+  // OPERATOR PERSONA EVALUATIONS
+  // Synthetic operator forecasts are isolated from production decisions.
+  // -------------------------------------------------------------------------
+  operatorPersonaProfiles: defineTable({
+    projectId: v.id("projects"),
+    slug: v.string(),
+    version: v.number(),
+    name: v.string(),
+    role: v.string(),
+    responsibility: v.string(),
+    successCriteria: v.array(v.string()),
+    pressures: v.array(v.string()),
+    may: v.array(v.string()),
+    mayNot: v.array(v.string()),
+    decisionRules: v.array(v.string()),
+    evidenceThresholds: v.array(v.string()),
+    fixedWorldRules: v.array(v.string()),
+    active: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_slug", ["projectId", "slug"]),
+
+  operatorEvalScenarios: defineTable({
+    projectId: v.id("projects"),
+    personaId: v.id("operatorPersonaProfiles"),
+    slug: v.string(),
+    name: v.string(),
+    category: v.string(),
+    description: v.string(),
+    fixedContext: v.any(),
+    taskPrompt: v.string(),
+    rubric: v.any(),
+    variants: v.array(v.object({
+      id: v.string(),
+      kind: v.union(v.literal("REORDER"), v.literal("REWORD"), v.literal("MISSING_EVIDENCE"), v.literal("ADVERSARIAL")),
+      description: v.string(),
+    })),
+    active: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_persona", ["personaId"])
+    .index("by_project_slug", ["projectId", "slug"]),
+
+  operatorEvalRuns: defineTable({
+    projectId: v.id("projects"),
+    personaId: v.id("operatorPersonaProfiles"),
+    mode: v.union(v.literal("PROXY"), v.literal("MODEL"), v.literal("HUMAN")),
+    status: v.union(v.literal("PENDING"), v.literal("RUNNING"), v.literal("COMPLETED"), v.literal("FAILED"), v.literal("CANCELED")),
+    scenarioCount: v.number(),
+    completedScenarios: v.number(),
+    overallScore: v.optional(v.number()),
+    dimensionScores: v.optional(v.any()),
+    durabilityScore: v.optional(v.number()),
+    unsupportedAssumptionCount: v.optional(v.number()),
+    results: v.optional(v.array(v.any())),
+    humanObservationCount: v.number(),
+    idempotencyKey: v.optional(v.string()),
+    actorId: v.optional(v.string()),
+    modelId: v.optional(v.string()),
+    runnerVersion: v.optional(v.string()),
+    caveat: v.string(),
+    errorMessage: v.optional(v.string()),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_persona", ["personaId"])
+    .index("by_project_status", ["projectId", "status"])
+    .index("by_idempotency", ["idempotencyKey"]),
+
+  operatorHumanObservations: defineTable({
+    projectId: v.id("projects"),
+    personaId: v.id("operatorPersonaProfiles"),
+    scenarioId: v.id("operatorEvalScenarios"),
+    sessionKey: v.string(),
+    operatorRef: v.string(),
+    decision: v.string(),
+    evidenceRequired: v.array(v.string()),
+    assumptions: v.array(v.string()),
+    notes: v.optional(v.string()),
+    recordedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_persona", ["personaId"])
+    .index("by_scenario", ["scenarioId"])
+    .index("by_session", ["sessionKey"]),
 
   // -------------------------------------------------------------------------
   // DURABLE MEMORY + EXECUTION EVIDENCE
@@ -4431,6 +4580,7 @@ export default defineSchema({
   // -------------------------------------------------------------------------
   harnessPrChecks: defineTable({
     projectId: v.optional(v.id("projects")),
+    releaseDeploymentId: v.optional(v.id("deployments")),
     prUrl: v.string(),
     prNumber: v.optional(v.number()),
     repoFullName: v.string(),
@@ -4522,6 +4672,44 @@ export default defineSchema({
     name: v.string(),
     description: v.string(),
     ownerId: v.string(),
+    // Compatibility fields for the existing review-only meta-loop scheduler.
+    // Skill-backed definitions use the richer governed fields below.
+    sourceSuggestionId: v.optional(v.id("metaLoopSuggestions")),
+    sourcePattern: v.optional(v.string()),
+    trigger: v.optional(v.string()),
+    schedule: v.optional(v.string()),
+    requiresHumanApproval: v.optional(v.boolean()),
+    requiresVerificationReceipt: v.optional(v.boolean()),
+    enabled: v.optional(v.boolean()),
+    lastDraftAt: v.optional(v.number()),
+    deactivatedAt: v.optional(v.number()),
+    deactivatedBy: v.optional(v.string()),
+    sourceSkillId: v.optional(v.id("contextPackages")),
+    sourceSkillVersionId: v.optional(v.id("contextPackageVersions")),
+    sourceSkillVersion: v.optional(v.string()),
+    adapterType: v.optional(v.union(
+      v.literal("PLAYWRIGHT"),
+      v.literal("API"),
+      v.literal("TYPESCRIPT"),
+      v.literal("PYTHON"),
+      v.literal("SHELL"),
+      v.literal("WORKFLOW"),
+      v.literal("SKILL_PIPELINE")
+    )),
+    artifactId: v.optional(v.id("automationArtifacts")),
+    artifactPath: v.optional(v.string()),
+    branch: v.optional(v.string()),
+    workingDirectory: v.optional(v.string()),
+    runtime: v.optional(v.string()),
+    inputBindings: v.optional(v.any()),
+    outputContract: v.optional(v.any()),
+    requiredPermissions: v.optional(v.array(v.string())),
+    secretReferences: v.optional(v.array(v.string())),
+    validationStatus: v.optional(v.union(v.literal("PENDING"), v.literal("PASSED"), v.literal("FAILED"))),
+    reviewStatus: v.optional(v.union(v.literal("DRAFT"), v.literal("READY_FOR_REVIEW"), v.literal("APPROVED"), v.literal("REJECTED"))),
+    approvedBy: v.optional(v.string()),
+    approvedAt: v.optional(v.number()),
+    correlationId: v.optional(v.string()),
     workflowId: v.string(),
     workflowVersion: v.string(),
     triggerType: v.union(
@@ -4576,7 +4764,8 @@ export default defineSchema({
       v.literal("ACTIVE"),
       v.literal("PAUSED"),
       v.literal("SUSPENDED"),
-      v.literal("RETIRED")
+      v.literal("RETIRED"),
+      v.literal("ARCHIVED")
     ),
     reliabilityState: v.union(
       v.literal("PROBATION"),
@@ -4608,6 +4797,7 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_project_status", ["projectId", "status"])
     .index("by_source_candidate", ["sourceCandidateId"])
+    .index("by_source_suggestion", ["sourceSuggestionId"])
     .index("by_next_run", ["nextRunAt"]),
 
   automationDecisions: defineTable({
@@ -4623,7 +4813,30 @@ export default defineSchema({
       v.literal("RESUMED"),
       v.literal("SUSPENDED"),
       v.literal("RETIRED"),
-      v.literal("POLICY_BLOCKED")
+      v.literal("POLICY_BLOCKED"),
+      v.literal("ELIGIBILITY_REVIEWED"),
+      v.literal("DEFERRED"),
+      v.literal("DISMISSED"),
+      v.literal("RESTORED"),
+      v.literal("CONVERSION_STARTED"),
+      v.literal("ARTIFACT_GENERATED"),
+      v.literal("ARTIFACT_VALIDATED"),
+      v.literal("REVIEW_REQUESTED"),
+      v.literal("APPROVED"),
+      v.literal("EVALUATED"),
+      v.literal("EVALUATION_SKIPPED"),
+      v.literal("VERIFIED"),
+      v.literal("UPDATED"),
+      v.literal("VALIDATED"),
+      v.literal("DISABLED"),
+      v.literal("ARCHIVED"),
+      v.literal("CLONED"),
+      v.literal("VERSION_CREATED"),
+      v.literal("EXECUTION_STARTED"),
+      v.literal("EXECUTION_COMPLETED"),
+      v.literal("EXECUTION_FAILED"),
+      v.literal("RECEIPT_CREATED"),
+      v.literal("FINALIZED")
     ),
     actorId: v.string(),
     actorIdentitySource: v.optional(v.literal("CLIENT_ASSERTED_TRUSTED_OPERATOR")),
@@ -4631,10 +4844,106 @@ export default defineSchema({
     policyVersion: v.string(),
     definitionVersion: v.number(),
     decidedAt: v.number(),
+    entityType: v.optional(v.string()),
+    entityId: v.optional(v.string()),
+    previousState: v.optional(v.string()),
+    newState: v.optional(v.string()),
+    correlationId: v.optional(v.string()),
+    causationId: v.optional(v.string()),
+    metadata: v.optional(v.any()),
   })
     .index("by_project", ["projectId"])
     .index("by_definition", ["automationDefinitionId"])
     .index("by_project_time", ["projectId", "decidedAt"]),
+
+  automationConversionDrafts: defineTable({
+    projectId: v.id("projects"),
+    sourceSkillId: v.id("contextPackages"),
+    sourceSkillVersionId: v.id("contextPackageVersions"),
+    candidateId: v.string(),
+    currentStep: v.number(),
+    status: v.union(v.literal("IN_PROGRESS"), v.literal("COMPLETED"), v.literal("ABANDONED")),
+    adapterType: v.optional(v.string()),
+    configuration: v.any(),
+    eligibilitySnapshot: v.any(),
+    artifactPreview: v.optional(v.any()),
+    validationResult: v.optional(v.any()),
+    correlationId: v.string(),
+    createdBy: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_skill", ["projectId", "sourceSkillId"])
+    .index("by_correlation", ["correlationId"]),
+
+  automationArtifacts: defineTable({
+    projectId: v.id("projects"),
+    sourceSkillId: v.id("contextPackages"),
+    sourceSkillVersionId: v.id("contextPackageVersions"),
+    adapterType: v.string(),
+    mode: v.union(v.literal("GENERATED"), v.literal("LINKED")),
+    repository: v.string(),
+    branch: v.string(),
+    workingDirectory: v.string(),
+    path: v.string(),
+    content: v.optional(v.string()),
+    contentHash: v.string(),
+    manifest: v.any(),
+    validationStatus: v.union(v.literal("PENDING"), v.literal("PASSED"), v.literal("FAILED")),
+    validationFindings: v.array(v.string()),
+    createdBy: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_path", ["projectId", "repository", "path"])
+    .index("by_skill", ["sourceSkillId"]),
+
+  automationEvaluations: defineTable({
+    projectId: v.id("projects"),
+    automationDefinitionId: v.id("automationDefinitions"),
+    workOrderId: v.optional(v.id("workOrders")),
+    evaluationKey: v.string(),
+    triggerType: v.string(),
+    status: v.union(
+      v.literal("CREATED"),
+      v.literal("SKIPPED"),
+      v.literal("AWAITING_APPROVAL"),
+      v.literal("DISPATCHED"),
+      v.literal("AWAITING_VERIFICATION"),
+      v.literal("VERIFIED"),
+      v.literal("REJECTED"),
+      v.literal("FAILED")
+    ),
+    reason: v.string(),
+    checks: v.any(),
+    correlationId: v.string(),
+    causationId: v.optional(v.string()),
+    createdBy: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_definition", ["automationDefinitionId"])
+    .index("by_evaluation_key", ["evaluationKey"])
+    .index("by_work_order", ["workOrderId"]),
+
+  releaseGateEvaluations: defineTable({
+    deploymentId: v.id("deployments"),
+    status: v.union(v.literal("PASS"), v.literal("WARN"), v.literal("FAIL")),
+    mode: v.literal("SHADOW"),
+    rationale: v.string(),
+    evidenceRefs: v.array(v.string()),
+    qcRunId: v.optional(v.id("qcRuns")),
+    contextEvalRunId: v.optional(v.id("contextEvalRuns")),
+    harnessPrCheckId: v.optional(v.id("harnessPrChecks")),
+    automationKey: v.optional(v.string()),
+    createdBy: v.optional(v.id("operators")),
+    createdAt: v.number(),
+  })
+    .index("by_deployment", ["deploymentId"])
+    .index("by_automation_key", ["automationKey"]),
 
   // -------------------------------------------------------------------------
   // KNOWLEDGE GRAPH (Agentic-KB Graphify overlay + future Obsidian sync)

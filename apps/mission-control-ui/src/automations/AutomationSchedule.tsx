@@ -145,6 +145,16 @@ function ScheduleGroup({
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">{humanizeCron(definition.triggerConfig?.cron)} · {definition.triggerConfig?.timezone ?? "UTC"}</p>
                 <p className="mt-1 font-mono text-xs text-muted-foreground">{definition.triggerConfig?.cron}</p>
+                <details className="mt-2 text-xs text-muted-foreground">
+                  <summary className="cursor-pointer text-registry-accent">Next five projected evaluations</summary>
+                  <ol className="mt-2 list-decimal space-y-1 pl-4">
+                    {Array.from({ length: 5 }, (_, index) => {
+                      const first = definition.nextRunAt ?? Date.now();
+                      const cadenceMs = Number(definition.triggerConfig?.intervalMs) || 7 * 24 * 60 * 60 * 1000;
+                      return <li key={index}>{formatDate(first + cadenceMs * index)} ({definition.triggerConfig?.timezone ?? "UTC"})</li>;
+                    })}
+                  </ol>
+                </details>
               </div>
               <dl className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
                 <div><dt>Next evaluation</dt><dd className="mt-1 text-foreground">{formatDate(definition.nextRunAt)}</dd></div>

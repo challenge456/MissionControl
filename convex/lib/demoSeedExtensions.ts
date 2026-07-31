@@ -5,6 +5,7 @@
 
 import type { Id } from "../_generated/dataModel";
 import { deriveVerificationStatus } from "./workOrderGovernance";
+import { sha256Hex } from "./harnessPrChecks";
 
 export type DemoSeedContext = {
   tenantId: Id<"tenants">;
@@ -109,6 +110,28 @@ function hashForIndex(index: number): string {
   return `sha256:${hex.repeat(32).slice(0, 64)}`;
 }
 
+function automationProfileForSkill(index: number, spec: (typeof SKILL_PACKAGES)[number]) {
+  const base = {
+    deterministic: true,
+    category: index === 0 ? "browser validation" : index === 1 ? "api quality gate" : "typescript verification",
+    inputSchema: { type: "object", properties: { workspace: { type: "string" } } },
+    outputSchema: { type: "object", required: ["status", "evidence"] },
+    preconditions: ["Selected workspace repository is available", "Required runtime is installed"],
+    successCriteria: ["All deterministic assertions pass", "Evidence artifact is emitted"],
+    failureConditions: ["Any required assertion fails", "Runtime exits non-zero"],
+    runtimeRequirements: [index === 0 ? "Playwright" : index === 1 ? "HTTP API client" : "Node.js 20"],
+    requiredPermissions: ["repository:read", "network:local"],
+    secretReferences: [] as string[],
+    recommendedAdapter: index === 0 ? "PLAYWRIGHT" : index === 1 ? "API" : "TYPESCRIPT",
+    verificationMethod: "Independent receipt validates exit status and evidence hash",
+    existingTests: [`tests/automations/${spec.name}.test.ts`],
+    deterministicSteps: ["Load bounded input", "Run explicit assertions", "Emit normalized evidence"],
+  };
+  if (index === 3) return { ...base, outputSchema: undefined };
+  if (index >= 4) return { ...base, deterministic: false, unrestrictedReasoning: true };
+  return base;
+}
+
 async function ensureWorkflow(ctx: any, workflowId: string, name: string, now: number) {
   const existing = await ctx.db
     .query("workflows")
@@ -136,6 +159,138 @@ async function ensureWorkflow(ctx: any, workflowId: string, name: string, now: n
   return await ctx.db.get(id);
 }
 
+async function seedSkillAutomationScenarios(ctx: any, input: DemoSeedContext, packageIds: Id<"contextPackages">[], versionByPackage: Map<string, Id<"contextPackageVersions">>) {
+  const { tenantId, projectId, now, withSeedMeta } = input;
+  const scenarios = [
+    { key: "playwright-login-draft", packageIndex: 0, adapterType: "PLAYWRIGHT", state: "DISABLED", reviewStatus: "DRAFT", outcome: null },
+    { key: "api-health-verified", packageIndex: 1, adapterType: "API", state: "ACTIVE", reviewStatus: "APPROVED", outcome: "PASSED" },
+    { key: "typescript-health-rejected", packageIndex: 2, adapterType: "TYPESCRIPT", state: "ACTIVE", reviewStatus: "APPROVED", outcome: "FAILED" },
+  ] as const;
+  let created = 0;
+  for (const [index, scenario] of scenarios.entries()) {
+    const sourceRef = `skill-automation-demo:${scenario.key}`;
+    let suggestion = (await ctx.db.query("metaLoopSuggestions").withIndex("by_project", (q: any) => q.eq("projectId", projectId)).collect())
+      .find((row: any) => row.sourceRef === sourceRef);
+    if (!suggestion) {
+      const suggestionId = await ctx.db.insert("metaLoopSuggestions", {
+        projectId, kind: "DELEGATION", title: `Automation candidate: ${SKILL_PACKAGES[scenario.packageIndex].displayName}`,
+        summary: "Deterministic skill awaiting governed conversion or lifecycle review.",
+        status: scenario.state === "DISABLED" ? "OPEN" : "ACCEPTED", sourceRef,
+        packageId: packageIds[scenario.packageIndex],
+        payload: { type: "SKILL_AUTOMATION_CANDIDATE", candidateId: sourceRef },
+        createdAt: now - (index + 1) * 3_600_000,
+      });
+      suggestion = await ctx.db.get(suggestionId);
+    }
+    const existing = await ctx.db.query("automationDefinitions").withIndex("by_source_candidate", (q: any) => q.eq("sourceCandidateId", suggestion._id)).first();
+    if (existing) continue;
+    const spec = SKILL_PACKAGES[scenario.packageIndex];
+    const versionId = versionByPackage.get(spec.slug)!;
+    const artifactPath = scenario.adapterType === "PLAYWRIGHT"
+      ? "tests/automations/login-validation/login-validation.spec.ts"
+      : scenario.adapterType === "API"
+        ? "automations/api-health/api-health.api.json"
+        : "automations/factory-health/factory-health.ts";
+    const artifactContent = scenario.adapterType === "API"
+      ? JSON.stringify({ method: "GET", endpoint: "/health", expectedStatus: 200 }, null, 2)
+      : scenario.adapterType === "TYPESCRIPT"
+        ? `console.log(JSON.stringify({ status: "passed", automation: ${JSON.stringify(spec.displayName)} }));\n`
+        : `// Seeded deterministic ${scenario.adapterType} artifact for ${spec.displayName}\n`;
+    const artifactId = await ctx.db.insert("automationArtifacts", {
+      projectId, sourceSkillId: packageIds[scenario.packageIndex], sourceSkillVersionId: versionId,
+      adapterType: scenario.adapterType, mode: "GENERATED", repository: REPO_SLUG, branch: "main",
+      workingDirectory: ".", path: artifactPath, content: artifactContent,
+      contentHash: `sha256:${await sha256Hex(artifactContent)}`, manifest: {
+        adapterType: scenario.adapterType, method: "GET", endpoint: "/health", expectedStatus: 200,
+        readOnly: true, evidenceCollection: ["stdout", "artifact-hash"],
+      },
+      validationStatus: "PASSED", validationFindings: [], createdBy: "seedMissionControlDemo",
+      createdAt: now - (index + 1) * 3_600_000, updatedAt: now,
+    });
+    const definitionId = await ctx.db.insert("automationDefinitions", {
+      projectId, sourceCandidateId: suggestion._id, definitionVersion: 1,
+      name: `${spec.displayName} Automation`, description: spec.description, ownerId: "mission-control-demo",
+      sourceSkillId: packageIds[scenario.packageIndex], sourceSkillVersionId: versionId, sourceSkillVersion: "1.1.0",
+      adapterType: scenario.adapterType, artifactId, artifactPath, branch: "main", workingDirectory: ".",
+      runtime: scenario.adapterType.toLowerCase(), inputBindings: {}, outputContract: { status: "passed|failed" },
+      requiredPermissions: ["repository:read", "network:local"], secretReferences: [],
+      validationStatus: "PASSED", reviewStatus: scenario.reviewStatus,
+      approvedBy: scenario.reviewStatus === "APPROVED" ? "demo-operator" : undefined,
+      approvedAt: scenario.reviewStatus === "APPROVED" ? now - 2 * 3_600_000 : undefined,
+      correlationId: `demo-automation:${scenario.key}`,
+      workflowId: "automation-execution", workflowVersion: "v1",
+      triggerType: scenario.state === "ACTIVE" ? "SCHEDULE" : "MANUAL",
+      triggerConfig: { cron: "0 8 * * 1", timezone: "America/Los_Angeles", intervalMs: 604_800_000 },
+      scope: String(projectId), repositoryIds: [REPO_SLUG], environmentIds: ["local"],
+      autonomyLevel: "LEVEL_1", isMutating: false, riskLevel: "LOW", requiredApprovalTypes: ["OPERATOR"],
+      verificationContract: { independent: true, receiptRequired: true, method: "artifact-integrity-and-result" },
+      evidenceRequirements: ["Approved artifact hash", "Normalized result", "Independent receipt"],
+      maxDurationSeconds: 900, maxRetries: 0, maxCostUsd: 1, concurrencyLimit: 1,
+      idempotencyStrategy: "definition-version:trigger-window", overlapPolicy: "SKIP", catchUpPolicy: "SKIP_MISSED",
+      status: scenario.state, reliabilityState: "PROBATION",
+      health: scenario.outcome === "PASSED" ? "HEALTHY" : scenario.outcome === "FAILED" ? "DEGRADED" : "UNKNOWN",
+      activatedBy: scenario.state === "ACTIVE" ? "demo-operator" : undefined,
+      activatedAt: scenario.state === "ACTIVE" ? now - 2 * 3_600_000 : undefined,
+      nextRunAt: scenario.state === "ACTIVE" ? now + 5 * 86_400_000 : undefined,
+      lastResult: scenario.outcome === "PASSED" ? "VERIFIED" : scenario.outcome === "FAILED" ? "REJECTED" : undefined,
+      createdAt: now - (index + 2) * 86_400_000, updatedAt: now,
+    });
+    created += 1;
+    await ctx.db.insert("automationDecisions", {
+      projectId, automationDefinitionId: definitionId, decisionType: "CREATED",
+      actorId: "seedMissionControlDemo", reason: "Seeded through the normal demo-data lifecycle",
+      policyVersion: "skill-automation-v1", definitionVersion: 1, decidedAt: now - (index + 2) * 86_400_000,
+      entityType: "AutomationDefinition", entityId: String(definitionId),
+      newState: scenario.state, correlationId: `demo-automation:${scenario.key}`,
+    });
+    if (!scenario.outcome) continue;
+    const acceptanceCriteria = [{
+      id: "independent-verification", title: "Independent result and artifact integrity verified",
+      verificationMethod: "TEST" as const, status: scenario.outcome === "PASSED" ? "PASS" as const : "FAIL" as const,
+    }];
+    const workOrderId = await ctx.db.insert("workOrders", {
+      tenantId, projectId, idempotencyKey: `mc-demo:automation-work-order:${scenario.key}`,
+      title: `Execute ${spec.displayName} Automation`, desiredOutcome: "Produce a verified deterministic result",
+      context: "Seeded governed Automation execution history.", workflowId: "automation-execution",
+      repository: REPO_SLUG, branchStrategy: "main", priority: 2, riskLevel: "LOW",
+      requestedBy: "automation-scheduler", assignedAgent: "bounded-adapter",
+      acceptanceCriteria, constraints: ["LEVEL_1", "Read-only", "Independent receipt required"],
+      sourceOfTruthRefs: [{ kind: "REPO", label: "Approved artifact", location: artifactPath }],
+      state: scenario.outcome === "PASSED" ? "DONE" : "BLOCKED",
+      verificationStatus: scenario.outcome === "PASSED" ? "PASS" : "FAIL", approvalStatus: "APPROVED",
+      currentRevisionNumber: 1, createdAt: now - 90 * 60_000, updatedAt: now - 60 * 60_000,
+      metadata: { ...withSeedMeta(`automation-work-order:${scenario.key}`), automationDefinitionId: definitionId, automationWorkflowVersion: "v1", automationScope: String(projectId), durationMs: 42_000, costUsd: 0.04 },
+    });
+    const workflowRunId = await ctx.db.insert("workflowRuns", {
+      tenantId, projectId, workOrderId, workOrderRevisionNumber: 1,
+      runId: `auto-demo-${index + 1}`, workflowId: "automation-execution",
+      status: scenario.outcome === "PASSED" ? "COMPLETED" : "FAILED", currentStepIndex: 2, totalSteps: 3,
+      steps: ["approve", "execute", "verify"].map((stepId) => ({ stepId, status: scenario.outcome === "PASSED" ? "DONE" : stepId === "verify" ? "FAILED" : "DONE", retryCount: 0 })),
+      context: { automationDefinitionId: definitionId }, initialInput: `Execute ${spec.displayName}`,
+      runtime: scenario.adapterType.toLowerCase(), startedAt: now - 75 * 60_000, completedAt: now - 60 * 60_000,
+      failureReason: scenario.outcome === "FAILED" ? "Independent verifier observed an unexpected result" : undefined,
+      metadata: withSeedMeta(`automation-run:${scenario.key}`),
+    });
+    await ctx.db.patch(workOrderId, { currentExecutionRunId: workflowRunId });
+    await ctx.db.insert("verificationReceipts", {
+      tenantId, projectId, workOrderId, workflowRunId, acceptanceCriterionId: "independent-verification",
+      idempotencyKey: `mc-demo:automation-receipt:${scenario.key}`, verificationMethod: "TEST",
+      commandOrCheck: "independent normalized-result and artifact-integrity verification",
+      result: scenario.outcome === "PASSED" ? "Expected read-only result observed" : "Observed output did not match the expected contract",
+      evidenceLocation: artifactPath, artifactReference: artifactPath, verifier: "independent-automation-verifier",
+      status: scenario.outcome, workOrderRevisionNumber: 1, validUntil: now + 7 * 86_400_000,
+      recordedAt: now - 60 * 60_000,
+      metadata: {
+        definitionId, correlationId: `demo-automation:${scenario.key}`, independent: true,
+        integrityHash: hashForIndex(70 + index), expectedResult: "Approved immutable artifact completes with expected output",
+        observedResult: scenario.outcome === "PASSED" ? "Expected result observed" : "Unexpected result observed",
+        recommendedFollowUp: scenario.outcome === "PASSED" ? "None" : "Pause Definition and inspect evidence",
+      },
+    });
+  }
+  return created;
+}
+
 export async function seedDemoExtensions(ctx: any, input: DemoSeedContext) {
   const { tenantId, projectId, now, withSeedMeta } = input;
   const counts = {
@@ -148,6 +303,7 @@ export async function seedDemoExtensions(ctx: any, input: DemoSeedContext) {
     contextEvalRuns: 0,
     contextInstallations: 0,
     alerts: 0,
+    automationDefinitions: 0,
   };
 
   const agents = await ctx.db
@@ -188,22 +344,24 @@ export async function seedDemoExtensions(ctx: any, input: DemoSeedContext) {
 
     packageIds.push(pkg!._id);
 
+    const demoVersion = "1.1.0";
     const existingVersion = await ctx.db
       .query("contextPackageVersions")
-      .withIndex("by_package_version", (q: any) => q.eq("packageId", pkg!._id).eq("version", "1.0.0"))
+      .withIndex("by_package_version", (q: any) => q.eq("packageId", pkg!._id).eq("version", demoVersion))
       .first();
 
     let versionId = existingVersion?._id;
     if (!existingVersion) {
       versionId = await ctx.db.insert("contextPackageVersions", {
         packageId: pkg!._id,
-        version: "1.0.0",
+        version: demoVersion,
         status: "PUBLISHED",
         contentHash: hashForIndex(i + 1),
         inlineContent: `# ${spec.displayName}\n\n${spec.description}\n\n## Usage\n\nLoad via registry discover or mc context install.`,
         manifestVersion: "1",
         sourceRepo: REPO_SLUG,
         sourcePath: `.claude/skills/${spec.name}/SKILL.md`,
+        automationProfile: automationProfileForSkill(i, spec),
         qualityScore: spec.qualityScore,
         reviewAxes: {
           validation: spec.qualityScore - 2,
@@ -217,7 +375,7 @@ export async function seedDemoExtensions(ctx: any, input: DemoSeedContext) {
     }
 
     versionByPackage.set(spec.slug, versionId!);
-    if (!pkg!.currentVersionId) {
+    if (pkg!.currentVersionId !== versionId) {
       await ctx.db.patch(pkg!._id, {
         status: "ACTIVE",
         currentVersionId: versionId,
@@ -373,6 +531,8 @@ export async function seedDemoExtensions(ctx: any, input: DemoSeedContext) {
   }
 
   await ensureWorkflow(ctx, "mc-demo-delivery", "MC Demo Delivery", now);
+  await ensureWorkflow(ctx, "automation-execution", "Governed deterministic Automation", now);
+  counts.automationDefinitions = await seedSkillAutomationScenarios(ctx, input, packageIds, versionByPackage);
 
   const workOrderSpecs = [
     {

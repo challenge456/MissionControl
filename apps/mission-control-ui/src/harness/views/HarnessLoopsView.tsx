@@ -13,8 +13,8 @@ export function HarnessLoopsView({
 }): JSX.Element {
   return (
     <HarnessPage
-      title="Loop Engineering"
-      description="Turn verified research into approved implementation, measured results, and the next bounded learning cycle."
+      title="Graph Engineering"
+      description="Dispatch bounded multi-agent graphs for independent research, verification, synthesis, and explicit approval."
       icon={<GitBranch className="h-5 w-5 text-registry-accent" />}
     >
       <div className="mx-auto max-w-[1400px] px-1">

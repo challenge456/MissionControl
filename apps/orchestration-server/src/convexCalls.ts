@@ -26,6 +26,9 @@ export const ConvexQueries = {
     listExpiredApprovals: "workOrders:listExpiredApprovals",
     listStaleEvidence: "workOrders:listStaleEvidence",
   },
+  skillAutomations: {
+    getExecutionManifest: "skillAutomations:getExecutionManifest",
+  },
   missions: {
     get: "missions:get",
   },
@@ -62,11 +65,19 @@ export const ConvexMutations = {
     recordEvent: "workflowRuns:recordEvent",
     createArtifact: "workflowRuns:createArtifact",
     linkArtifactToVerificationReceipt: "workflowRuns:linkArtifactToVerificationReceipt",
+    updateStatus: "workflowRuns:updateStatus",
+  },
+  skillAutomations: {
+    recordExecutionResult: "skillAutomations:recordExecutionResult",
+    finalizeVerification: "skillAutomations:finalizeVerification",
   },
   taskRouter: {
     autoAssign: "taskRouter:autoAssign",
   },
   alerts: {
     create: "alerts:create",
+  },
+  modelCatalog: {
+    syncLocalModels: "modelCatalog:syncLocalModels",
   },
 } as const;

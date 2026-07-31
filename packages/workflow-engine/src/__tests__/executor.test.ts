@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { WorkflowExecutor, workflowEvidenceDigest } from "../executor";
+import {
+  WorkflowExecutor,
+  workflowDefinitionForRun,
+  workflowEvidenceDigest,
+} from "../executor";
 
 function executorWithClient(client: {
   query?: ReturnType<typeof vi.fn>;
@@ -51,6 +55,22 @@ const gateRun = {
 };
 
 describe("WorkflowExecutor reliability", () => {
+  it("executes a run from its pinned workflow definition", () => {
+    const installedWorkflow = { ...gateWorkflow, version: 5 };
+    const pinnedWorkflow = { ...gateWorkflow, version: 4 };
+
+    expect(workflowDefinitionForRun(
+      { workflowSnapshot: pinnedWorkflow },
+      installedWorkflow
+    )).toBe(pinnedWorkflow);
+  });
+
+  it("uses the installed definition only for legacy runs without a snapshot", () => {
+    expect(workflowDefinitionForRun({}, gateWorkflow)).toBe(gateWorkflow);
+    expect(workflowDefinitionForRun({ workflowSnapshot: { version: 4 } }, gateWorkflow))
+      .toBeNull();
+  });
+
   it("stores the required output fields on workflow-created tasks", async () => {
     const query = vi.fn().mockResolvedValue({
       _id: "agent-1",
