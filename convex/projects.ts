@@ -9,7 +9,95 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { buildFactoryProjectSeed } from "./lib/factoryProjectSeed";
 import { deriveVerificationStatus } from "./lib/workOrders";
-import { isValidRepositorySlug } from "./lib/workspaceBindings";
+import {
+  canonicalRepositoryKey,
+  findOverlappingScopes,
+  normalizeCodePaths,
+  repositoryDisplayName,
+  validateCodeScopeInput,
+  validateRepositoryInput,
+} from "./lib/workspaceRepositories";
+
+async function syncDefaultRepositoryConnection(
+  ctx: any,
+  project: any,
+  input: {
+    repository: string;
+    defaultBranch: string;
+    status: "CONFIGURED" | "READY" | "DEGRADED" | "ERROR";
+    validatedAt?: number;
+    validationError?: string;
+  }
+) {
+  const connections = await ctx.db
+    .query("workspaceRepositories")
+    .withIndex("by_project", (q: any) => q.eq("projectId", project._id))
+    .collect();
+  const repositoryKey = canonicalRepositoryKey(input.repository);
+  const matching = connections.find(
+    (connection: any) => canonicalRepositoryKey(connection.repository) === repositoryKey
+  );
+  const currentDefault = connections.find((connection: any) => connection.isDefault);
+  const now = Date.now();
+
+  for (const connection of connections) {
+    if (connection.isDefault && connection._id !== matching?._id) {
+      await ctx.db.patch(connection._id, { isDefault: false, updatedAt: now });
+    }
+  }
+
+  if (matching) {
+    await ctx.db.patch(matching._id, {
+      defaultBranch: input.defaultBranch,
+      isDefault: true,
+      status: input.status,
+      validatedAt: input.validatedAt,
+      validationError: input.validationError,
+      webhookStatus: project.githubWebhookSecret ? "CONFIGURED" : "MISSING",
+      updatedAt: now,
+    });
+    return matching._id;
+  }
+
+  // The legacy edit flow means “replace the default repository.” Preserve that
+  // behavior when a default connection exists and has no governed code scopes.
+  if (currentDefault) {
+    const scopes = await ctx.db
+      .query("repositoryCodeScopes")
+      .withIndex("by_repository", (q: any) => q.eq("repositoryId", currentDefault._id))
+      .take(1);
+    if (scopes.length === 0) {
+      await ctx.db.patch(currentDefault._id, {
+        repository: input.repository,
+        displayName: repositoryDisplayName(input.repository),
+        defaultBranch: input.defaultBranch,
+        isDefault: true,
+        status: input.status,
+        validatedAt: input.validatedAt,
+        validationError: input.validationError,
+        webhookStatus: project.githubWebhookSecret ? "CONFIGURED" : "MISSING",
+        updatedAt: now,
+      });
+      return currentDefault._id;
+    }
+  }
+
+  return await ctx.db.insert("workspaceRepositories", {
+    tenantId: project.tenantId,
+    projectId: project._id,
+    provider: "GITHUB",
+    repository: input.repository,
+    displayName: repositoryDisplayName(input.repository),
+    defaultBranch: input.defaultBranch,
+    isDefault: true,
+    status: input.status,
+    validatedAt: input.validatedAt,
+    validationError: input.validationError,
+    webhookStatus: project.githubWebhookSecret ? "CONFIGURED" : "MISSING",
+    createdAt: now,
+    updatedAt: now,
+  });
+}
 
 // ============================================================================
 // QUERIES
@@ -107,6 +195,99 @@ export const getStats = query({
   },
 });
 
+/**
+ * Portfolio-level repository counts used by workspace settings. Legacy project
+ * fields count until their additive repository record has been backfilled.
+ */
+export const getRepositoryPortfolioSummary = query({
+  args: {},
+  handler: async (ctx) => {
+    const [projects, connections] = await Promise.all([
+      ctx.db.query("projects").collect(),
+      ctx.db.query("workspaceRepositories").collect(),
+    ]);
+    const projectsWithConnections = new Set(
+      connections.map((connection) => connection.projectId)
+    );
+    const legacyOnly = projects.filter(
+      (project) => project.githubRepo && !projectsWithConnections.has(project._id)
+    );
+    return {
+      repositories: connections.length + legacyOnly.length,
+      workspacesWithRepositories: new Set([
+        ...connections.map((connection) => connection.projectId),
+        ...legacyOnly.map((project) => project._id),
+      ]).size,
+      legacyConnections: legacyOnly.length,
+    };
+  },
+});
+
+/**
+ * Read repository connections for one workspace. A legacy single-repository
+ * project is returned as a compatibility row until the idempotent backfill runs.
+ */
+export const listRepositories = query({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    const project = await ctx.db.get(args.projectId);
+    if (!project) return [];
+    const connections = await ctx.db
+      .query("workspaceRepositories")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+    if (connections.length === 0 && project.githubRepo) {
+      return [{
+        repositoryId: null,
+        source: "LEGACY" as const,
+        repository: project.githubRepo,
+        displayName: repositoryDisplayName(project.githubRepo),
+        defaultBranch: project.githubBranch ?? "main",
+        isDefault: true,
+        status: project.repositoryStatus ?? "CONFIGURED",
+        validatedAt: project.repositoryValidatedAt,
+        validationError: project.repositoryValidationError,
+        webhookStatus: project.githubWebhookSecret ? "CONFIGURED" as const : "MISSING" as const,
+        scopeCount: 0,
+      }];
+    }
+
+    return await Promise.all(
+      connections
+        .sort((left, right) => Number(right.isDefault) - Number(left.isDefault))
+        .map(async (connection) => {
+          const scopes = await ctx.db
+            .query("repositoryCodeScopes")
+            .withIndex("by_repository", (q) => q.eq("repositoryId", connection._id))
+            .collect();
+          return {
+            repositoryId: connection._id,
+            source: "CONNECTION" as const,
+            repository: connection.repository,
+            displayName: connection.displayName,
+            defaultBranch: connection.defaultBranch,
+            isDefault: connection.isDefault,
+            status: connection.status,
+            validatedAt: connection.validatedAt,
+            validationError: connection.validationError,
+            webhookStatus: connection.webhookStatus,
+            scopeCount: scopes.filter((scope) => scope.active).length,
+          };
+        })
+    );
+  },
+});
+
+export const listCodeScopes = query({
+  args: { repositoryId: v.id("workspaceRepositories") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("repositoryCodeScopes")
+      .withIndex("by_repository", (q) => q.eq("repositoryId", args.repositoryId))
+      .collect();
+  },
+});
+
 // ============================================================================
 // MUTATIONS
 // ============================================================================
@@ -187,6 +368,15 @@ export const create = mutation({
       policyDefaults: args.policyDefaults,
       metadata: args.metadata,
     });
+
+    const createdProject = await ctx.db.get(projectId);
+    if (createdProject?.githubRepo) {
+      await syncDefaultRepositoryConnection(ctx, createdProject, {
+        repository: createdProject.githubRepo,
+        defaultBranch: createdProject.githubBranch ?? "main",
+        status: "CONFIGURED",
+      });
+    }
 
     // Log activity
     await ctx.db.insert("activities", {
@@ -283,15 +473,8 @@ export const connectRepository = mutation({
     const repository = args.repository.trim();
     const defaultBranch = args.defaultBranch.trim();
 
-    if (!isValidRepositorySlug(repository)) {
-      return {
-        success: false,
-        error: "Use the repository format owner/repository.",
-      };
-    }
-    if (!defaultBranch) {
-      return { success: false, error: "Default branch is required." };
-    }
+    const validationError = validateRepositoryInput({ repository, defaultBranch });
+    if (validationError) return { success: false, error: validationError };
 
     const previousRepository = project.githubRepo;
     await ctx.db.patch(args.projectId, {
@@ -300,6 +483,11 @@ export const connectRepository = mutation({
       repositoryStatus: "CONFIGURED",
       repositoryValidatedAt: undefined,
       repositoryValidationError: undefined,
+    });
+    await syncDefaultRepositoryConnection(ctx, project, {
+      repository,
+      defaultBranch,
+      status: "CONFIGURED",
     });
 
     await ctx.db.insert("activities", {
@@ -353,6 +541,13 @@ export const reportRepositoryValidation = mutation({
       repositoryValidatedAt: validatedAt,
       repositoryValidationError: args.error,
     });
+    await syncDefaultRepositoryConnection(ctx, project, {
+      repository: project.githubRepo,
+      defaultBranch: project.githubBranch ?? "main",
+      status: args.status,
+      validatedAt,
+      validationError: args.error,
+    });
     await ctx.db.insert("activities", {
       projectId: args.projectId,
       actorType: "SYSTEM",
@@ -368,6 +563,253 @@ export const reportRepositoryValidation = mutation({
     });
 
     return { success: true, project: await ctx.db.get(args.projectId) };
+  },
+});
+
+/** Add another repository to a workspace without replacing the default one. */
+export const createRepositoryConnection = mutation({
+  args: {
+    projectId: v.id("projects"),
+    repository: v.string(),
+    defaultBranch: v.string(),
+    makeDefault: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const project = await ctx.db.get(args.projectId);
+    if (!project) return { success: false, error: "Workspace not found" };
+    const repository = args.repository.trim();
+    const defaultBranch = args.defaultBranch.trim();
+    const validationError = validateRepositoryInput({ repository, defaultBranch });
+    if (validationError) return { success: false, error: validationError };
+
+    const connections = await ctx.db
+      .query("workspaceRepositories")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+    const duplicate = connections.find(
+      (connection) =>
+        canonicalRepositoryKey(connection.repository) === canonicalRepositoryKey(repository)
+    );
+    if (duplicate) {
+      return { success: false, error: "This repository is already connected to the workspace." };
+    }
+
+    const now = Date.now();
+    const makeDefault = args.makeDefault === true || connections.length === 0;
+    if (makeDefault) {
+      for (const connection of connections.filter((item) => item.isDefault)) {
+        await ctx.db.patch(connection._id, { isDefault: false, updatedAt: now });
+      }
+    }
+    const repositoryId = await ctx.db.insert("workspaceRepositories", {
+      tenantId: project.tenantId,
+      projectId: project._id,
+      provider: "GITHUB",
+      repository,
+      displayName: repositoryDisplayName(repository),
+      defaultBranch,
+      isDefault: makeDefault,
+      status: "CONFIGURED",
+      webhookStatus: "MISSING",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    if (makeDefault) {
+      await ctx.db.patch(project._id, {
+        githubRepo: repository,
+        githubBranch: defaultBranch,
+        repositoryStatus: "CONFIGURED",
+        repositoryValidatedAt: undefined,
+        repositoryValidationError: undefined,
+      });
+    }
+    await ctx.db.insert("activities", {
+      projectId: project._id,
+      actorType: "HUMAN",
+      action: "WORKSPACE_REPOSITORY_CONNECTED",
+      description: `${repository} connected to workspace "${project.name}"`,
+      targetType: "WORKSPACE_REPOSITORY",
+      targetId: repositoryId,
+      metadata: { repository, defaultBranch, makeDefault },
+    });
+    return { success: true, repositoryId };
+  },
+});
+
+/** Promote a connected repository and synchronize the legacy default projection. */
+export const setDefaultRepository = mutation({
+  args: { repositoryId: v.id("workspaceRepositories") },
+  handler: async (ctx, args) => {
+    const selected = await ctx.db.get(args.repositoryId);
+    if (!selected) return { success: false, error: "Repository connection not found" };
+    const project = await ctx.db.get(selected.projectId);
+    if (!project) return { success: false, error: "Workspace not found" };
+    const connections = await ctx.db
+      .query("workspaceRepositories")
+      .withIndex("by_project", (q) => q.eq("projectId", selected.projectId))
+      .collect();
+    const now = Date.now();
+    for (const connection of connections) {
+      if (connection.isDefault !== (connection._id === selected._id)) {
+        await ctx.db.patch(connection._id, {
+          isDefault: connection._id === selected._id,
+          updatedAt: now,
+        });
+      }
+    }
+    await ctx.db.patch(project._id, {
+      githubRepo: selected.repository,
+      githubBranch: selected.defaultBranch,
+      repositoryStatus: selected.status,
+      repositoryValidatedAt: selected.validatedAt,
+      repositoryValidationError: selected.validationError,
+    });
+    await ctx.db.insert("activities", {
+      projectId: project._id,
+      actorType: "HUMAN",
+      action: "WORKSPACE_DEFAULT_REPOSITORY_CHANGED",
+      description: `${selected.repository} is now the default repository for "${project.name}"`,
+      targetType: "WORKSPACE_REPOSITORY",
+      targetId: selected._id,
+    });
+    return { success: true };
+  },
+});
+
+/** Idempotently materialize legacy project repository fields as connections. */
+export const backfillLegacyRepositories = mutation({
+  args: { projectId: v.optional(v.id("projects")) },
+  handler: async (ctx, args) => {
+    const projects = args.projectId
+      ? [await ctx.db.get(args.projectId)].filter(Boolean)
+      : await ctx.db.query("projects").collect();
+    const result = { created: 0, existing: 0, skipped: 0, failed: 0 };
+
+    for (const project of projects) {
+      if (!project?.githubRepo) {
+        result.skipped += 1;
+        continue;
+      }
+      try {
+        const existing = await ctx.db
+          .query("workspaceRepositories")
+          .withIndex("by_project", (q) => q.eq("projectId", project._id))
+          .collect();
+        const match = existing.find(
+          (connection) =>
+            canonicalRepositoryKey(connection.repository) ===
+            canonicalRepositoryKey(project.githubRepo!)
+        );
+        if (match) {
+          result.existing += 1;
+          continue;
+        }
+        await syncDefaultRepositoryConnection(ctx, project, {
+          repository: project.githubRepo,
+          defaultBranch: project.githubBranch ?? "main",
+          status:
+            !project.repositoryStatus || project.repositoryStatus === "UNCONFIGURED"
+              ? "CONFIGURED"
+              : project.repositoryStatus,
+          validatedAt: project.repositoryValidatedAt,
+          validationError: project.repositoryValidationError,
+        });
+        result.created += 1;
+      } catch {
+        result.failed += 1;
+      }
+    }
+    return result;
+  },
+});
+
+/** Add a governed monorepo path boundary. Overlap requires explicit confirmation. */
+export const createRepositoryCodeScope = mutation({
+  args: {
+    repositoryId: v.id("workspaceRepositories"),
+    name: v.string(),
+    slug: v.string(),
+    description: v.optional(v.string()),
+    includePaths: v.array(v.string()),
+    excludePaths: v.array(v.string()),
+    owningTeam: v.optional(v.string()),
+    requiredReviewers: v.array(v.string()),
+    allowedEnvironments: v.array(
+      v.union(v.literal("LOCAL"), v.literal("CLOUD"))
+    ),
+    verificationPolicy: v.optional(v.string()),
+    allowOverlap: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const repository = await ctx.db.get(args.repositoryId);
+    if (!repository) return { success: false, error: "Repository connection not found" };
+    const validationError = validateCodeScopeInput(args);
+    if (validationError) return { success: false, error: validationError };
+
+    const scopes = await ctx.db
+      .query("repositoryCodeScopes")
+      .withIndex("by_repository", (q) => q.eq("repositoryId", args.repositoryId))
+      .collect();
+    if (scopes.some((scope) => scope.slug === args.slug.trim())) {
+      return { success: false, error: "A code scope with this slug already exists." };
+    }
+    const overlaps = findOverlappingScopes(args.includePaths, scopes.filter((scope) => scope.active));
+    if (overlaps.length > 0 && !args.allowOverlap) {
+      return {
+        success: false,
+        error: `This path overlaps ${overlaps.join(", ")}. Review ownership before saving.`,
+        overlaps,
+      };
+    }
+
+    const now = Date.now();
+    const scopeId = await ctx.db.insert("repositoryCodeScopes", {
+      tenantId: repository.tenantId,
+      projectId: repository.projectId,
+      repositoryId: repository._id,
+      name: args.name.trim(),
+      slug: args.slug.trim(),
+      description: args.description?.trim() || undefined,
+      includePaths: normalizeCodePaths(args.includePaths),
+      excludePaths: normalizeCodePaths(args.excludePaths),
+      owningTeam: args.owningTeam?.trim() || undefined,
+      requiredReviewers: args.requiredReviewers.map((item) => item.trim()).filter(Boolean),
+      allowedEnvironments: args.allowedEnvironments,
+      verificationPolicy: args.verificationPolicy?.trim() || undefined,
+      active: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await ctx.db.insert("activities", {
+      projectId: repository.projectId,
+      actorType: "HUMAN",
+      action: "REPOSITORY_CODE_SCOPE_CREATED",
+      description: `${args.name.trim()} code scope created for ${repository.repository}`,
+      targetType: "REPOSITORY_CODE_SCOPE",
+      targetId: scopeId,
+      metadata: { repositoryId: repository._id, includePaths: normalizeCodePaths(args.includePaths) },
+    });
+    return { success: true, scopeId, overlaps };
+  },
+});
+
+export const archiveRepositoryCodeScope = mutation({
+  args: { scopeId: v.id("repositoryCodeScopes") },
+  handler: async (ctx, args) => {
+    const scope = await ctx.db.get(args.scopeId);
+    if (!scope) return { success: false, error: "Code scope not found" };
+    await ctx.db.patch(scope._id, { active: false, updatedAt: Date.now() });
+    await ctx.db.insert("activities", {
+      projectId: scope.projectId,
+      actorType: "HUMAN",
+      action: "REPOSITORY_CODE_SCOPE_ARCHIVED",
+      description: `${scope.name} code scope archived`,
+      targetType: "REPOSITORY_CODE_SCOPE",
+      targetId: scope._id,
+      metadata: { repositoryId: scope.repositoryId },
+    });
+    return { success: true };
   },
 });
 
@@ -413,6 +855,24 @@ export const remove = mutation({
       };
     }
 
+    // Convex does not enforce foreign keys. Delete the additive repository
+    // configuration in the same mutation so workspace removal cannot leave
+    // orphaned code scopes or repository connections behind.
+    const repositoryScopes = await ctx.db
+      .query("repositoryCodeScopes")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+    const repositoryConnections = await ctx.db
+      .query("workspaceRepositories")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+
+    for (const scope of repositoryScopes) {
+      await ctx.db.delete(scope._id);
+    }
+    for (const connection of repositoryConnections) {
+      await ctx.db.delete(connection._id);
+    }
     await ctx.db.delete(args.projectId);
 
     // Log activity (to a null project since we're deleting it)
@@ -859,6 +1319,24 @@ export const updateGitHubIntegration = mutation({
       updates.githubWebhookSecret = args.githubWebhookSecret;
 
     await ctx.db.patch(args.projectId, updates);
+
+    const nextRepository = args.githubRepo ?? project.githubRepo;
+    if (nextRepository) {
+      await syncDefaultRepositoryConnection(ctx, {
+        ...project,
+        githubWebhookSecret:
+          args.githubWebhookSecret ?? project.githubWebhookSecret,
+      }, {
+        repository: nextRepository,
+        defaultBranch: args.githubBranch ?? project.githubBranch ?? "main",
+        status:
+          !project.repositoryStatus || project.repositoryStatus === "UNCONFIGURED"
+            ? "CONFIGURED"
+            : project.repositoryStatus,
+        validatedAt: project.repositoryValidatedAt,
+        validationError: project.repositoryValidationError,
+      });
+    }
 
     // Sanitize updates for activity log (remove webhook secret)
     const sanitizedUpdates = { ...updates };

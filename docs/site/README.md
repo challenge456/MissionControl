@@ -27,6 +27,7 @@ Open **Knowledge → Docs → Documentation** in the EOS sidebar (`pnpm dev:demo
 
 ### Get started
 - [Set up Mission Control](./get-started/set-up-mission-control.md)
+- [Configure workspaces and repositories](./get-started/configure-workspaces-and-repositories.md)
 - [Run the demo](./get-started/run-the-demo.md)
 - [Improve your first skill](./get-started/improve-your-first-skill.md)
 

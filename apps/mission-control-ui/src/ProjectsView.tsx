@@ -19,6 +19,7 @@ import {
 import { PageHeader } from "./components/PageHeader";
 import { StatusBadge } from "./components/factory/badges";
 import { MetricBlock } from "./components/factory/MetricBlock";
+import { WorkspaceRepositoriesPanel } from "./workspace/WorkspaceRepositoriesPanel";
 import {
   Clock3,
   FolderKanban,
@@ -28,7 +29,6 @@ import {
   Link2,
   Orbit,
   Plus,
-  RadioTower,
   Server,
   Sparkles,
 } from "lucide-react";
@@ -40,6 +40,7 @@ interface ProjectsViewProps {
 
 export function ProjectsView({ projectId, onProjectSelect }: ProjectsViewProps) {
   const projects = useQuery(api.projects.list);
+  const repositorySummary = useQuery(api.projects.getRepositoryPortfolioSummary);
   const [selectedProject, setSelectedProject] = useState<Id<"projects"> | null>(projectId);
   const [createOpen, setCreateOpen] = useState(false);
 
@@ -54,13 +55,14 @@ export function ProjectsView({ projectId, onProjectSelect }: ProjectsViewProps) 
   }, [projects, selectedProject]);
 
   const totals = useMemo(() => {
-    if (!projects) return null;
+    if (!projects || !repositorySummary) return null;
     return {
       total: projects.length,
-      connected: projects.filter((project) => Boolean(project.githubRepo)).length,
+      connected: repositorySummary.repositories,
+      connectedWorkspaces: repositorySummary.workspacesWithRepositories,
       swarms: projects.filter((project) => Boolean(project.swarmConfig)).length,
     };
-  }, [projects]);
+  }, [projects, repositorySummary]);
 
   if (!projects || !totals) {
     return (
@@ -89,7 +91,7 @@ export function ProjectsView({ projectId, onProjectSelect }: ProjectsViewProps) 
         description="Define the repository and execution boundary used by Work Orders, agents, runs, and context."
         icon={<FolderKanban size={16} strokeWidth={1.7} />}
         status={
-          <StatusBadge tone="neutral">{totals.total} tracked projects</StatusBadge>
+          <StatusBadge tone="neutral">{totals.total} workspaces</StatusBadge>
         }
         actions={
           <Button size="sm" onClick={() => setCreateOpen(true)}>
@@ -105,21 +107,21 @@ export function ProjectsView({ projectId, onProjectSelect }: ProjectsViewProps) 
             <MetricBlock
               label="Portfolio"
               value={totals.total}
-              detail="Active project workspaces under Mission Control."
+              detail="Active operating workspaces in this company account."
             />
           </Card>
           <Card className="p-5">
             <MetricBlock
               label="Connected repos"
               value={totals.connected}
-              detail="Projects with a linked GitHub repository and branch context."
+              detail={`Across ${totals.connectedWorkspaces} workspace${totals.connectedWorkspaces === 1 ? "" : "s"}.`}
             />
           </Card>
           <Card className="p-5">
             <MetricBlock
               label="Swarm-ready"
               value={totals.swarms}
-              detail="Projects that already define a swarm configuration."
+              detail="Workspaces that already define a swarm configuration."
             />
           </Card>
         </div>
@@ -127,7 +129,7 @@ export function ProjectsView({ projectId, onProjectSelect }: ProjectsViewProps) 
         <div className="grid gap-4 xl:grid-cols-[380px_minmax(0,1fr)]">
           <Card className="overflow-hidden">
             <div className="border-b border-line px-5 py-4">
-              <div className="text-[12.5px] font-medium text-ink-secondary">Project registry</div>
+              <div className="text-[12.5px] font-medium text-ink-secondary">Workspace registry</div>
               <div className="mt-1 text-[15px] font-semibold text-ink">Choose where you want to operate</div>
             </div>
             <div className="space-y-3 p-4">
@@ -150,9 +152,9 @@ export function ProjectsView({ projectId, onProjectSelect }: ProjectsViewProps) 
                 <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl border border-line bg-surface-2 text-ink-muted">
                   <Sparkles size={16} strokeWidth={1.7} />
                 </div>
-                <div className="mt-4 text-[15px] font-semibold text-ink">Select a project</div>
+                <div className="mt-4 text-[15px] font-semibold text-ink">Select a workspace</div>
                 <div className="mt-2 max-w-md text-[13.5px] leading-relaxed text-ink-secondary">
-                  Use the registry on the left to inspect agent staffing, GitHub connectivity, and swarm configuration for the project you want to drive next.
+                  Use the registry on the left to inspect agent staffing, repositories, and swarm configuration for the workspace you want to operate.
                 </div>
               </div>
             </Card>
@@ -179,7 +181,7 @@ interface ProjectCardProps {
 function ProjectCard({ project, isSelected, onSelect }: ProjectCardProps) {
   const stats = useQuery(api.projects.getStats, { projectId: project._id });
   const agents = useQuery(api.agents.list, { projectId: project._id });
-  const activeAgents = agents?.filter((agent) => agent.status === "ACTIVE").length ?? 0;
+  const activeAgents = agents?.filter((agent) => agent.status === "ACTIVE").length;
 
   return (
     <button
@@ -191,13 +193,13 @@ function ProjectCard({ project, isSelected, onSelect }: ProjectCardProps) {
           ? "border-line-strong bg-surface-2"
           : "border-line bg-surface-1 hover:border-line-strong hover:bg-surface-2"
       )}
-      aria-label={`Project ${project.name}`}
+      aria-label={`Workspace ${project.name}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="truncate text-[15px] font-semibold text-ink">{project.name}</div>
           <div className="mt-1 text-[12.5px] leading-relaxed text-ink-secondary">
-            {project.description || "No description yet. Define the operating scope for this project."}
+            {project.description || "No description yet. Define the operating scope for this workspace."}
           </div>
         </div>
         {project.githubRepo && (
@@ -206,9 +208,9 @@ function ProjectCard({ project, isSelected, onSelect }: ProjectCardProps) {
       </div>
 
       <div className="mt-4 grid grid-cols-3 gap-2">
-        <StatPill label="Tasks" value={stats?.tasks.total ?? 0} />
-        <StatPill label="Active" value={activeAgents} />
-        <StatPill label="Approvals" value={stats?.approvals.pending ?? 0} />
+        <StatPill label="Tasks" value={stats?.tasks.total ?? "—"} />
+        <StatPill label="Active" value={activeAgents ?? "—"} />
+        <StatPill label="Approvals" value={stats?.approvals.pending ?? "—"} />
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
@@ -227,7 +229,7 @@ function ProjectCard({ project, isSelected, onSelect }: ProjectCardProps) {
   );
 }
 
-function StatPill({ label, value }: { label: string; value: number }) {
+function StatPill({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="rounded-lg border border-line bg-surface-2 px-3 py-2">
       <div className="text-[15px] font-semibold text-ink">{value}</div>
@@ -254,11 +256,11 @@ function ProjectDetails({ project }: { project: Doc<"projects"> }) {
       <div className="border-b border-line px-6 py-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <div className="text-[12.5px] font-medium text-ink-secondary">Project detail</div>
+            <div className="text-[12.5px] font-medium text-ink-secondary">Workspace detail</div>
             <div className="mt-2">
               <div className="text-[19px] font-semibold tracking-tight text-ink">{project.name}</div>
               <div className="mt-1 max-w-3xl text-[13.5px] leading-relaxed text-ink-secondary">
-                {project.description || "Add a project description so operators understand the project outcome, constraints, and current business purpose."}
+                {project.description || "Add a workspace description so operators understand its outcome, constraints, and business purpose."}
               </div>
             </div>
           </div>
@@ -294,21 +296,21 @@ function ProjectDetails({ project }: { project: Doc<"projects"> }) {
             <Card className="p-4">
               <MetricBlock
                 label="Task load"
-                value={stats?.tasks.total ?? 0}
-                detail="Total tasks attached to this project."
+                value={stats?.tasks.total ?? "—"}
+                detail="Total tasks attached to this workspace."
               />
             </Card>
             <Card className="p-4">
               <MetricBlock
                 label="Agent capacity"
-                value={activeAgents.length}
+                value={agents === undefined ? "—" : activeAgents.length}
                 detail="Agents actively operating right now."
               />
             </Card>
             <Card className="p-4">
               <MetricBlock
                 label="Approvals"
-                value={stats?.approvals.pending ?? 0}
+                value={stats?.approvals.pending ?? "—"}
                 detail="Human decisions still waiting in queue."
               />
             </Card>
@@ -326,36 +328,7 @@ function ProjectDetails({ project }: { project: Doc<"projects"> }) {
             </div>
           </Card>
 
-          <Card className="p-5">
-            <div className="text-[12.5px] font-medium text-ink-secondary">Integration posture</div>
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              <IntegrationRow
-                icon={<Github size={15} strokeWidth={1.7} />}
-                label="Repository"
-                value={project.githubRepo || "Not connected"}
-                detail={
-                  project.githubRepo
-                    ? `${repositoryStatus.toLowerCase()} · default branch ${project.githubBranch || "main"}${
-                        project.repositoryValidatedAt
-                          ? ` · validated ${new Date(project.repositoryValidatedAt).toLocaleString()}`
-                          : ""
-                      }`
-                    : "Link a repository for release and code context."
-                }
-              />
-              <IntegrationRow
-                icon={<RadioTower size={15} strokeWidth={1.7} />}
-                label="Webhook"
-                value={project.githubWebhookSecret ? "Configured" : "Missing"}
-                detail={project.githubWebhookSecret ? "Inbound repo events are enabled." : "Set a webhook secret if this project should react to GitHub events."}
-              />
-            </div>
-            {project.repositoryValidationError ? (
-              <div className="mt-3 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-[12.5px] text-danger">
-                {project.repositoryValidationError}
-              </div>
-            ) : null}
-          </Card>
+          <WorkspaceRepositoriesPanel project={project} />
 
           <Card className="p-5">
             <div className="flex items-center justify-between gap-3">
@@ -429,6 +402,12 @@ function ProjectDetails({ project }: { project: Doc<"projects"> }) {
         </div>
 
         <div className="space-y-4">
+          <WorkspaceRecommendations
+            project={project}
+            hostBindings={hostBindings}
+            onConnectRepository={() => setRepositoryOpen(true)}
+          />
+
           <Card className="p-5">
             <div className="text-[12.5px] font-medium text-ink-secondary">Swarm settings</div>
             <div className="mt-3 space-y-3">
@@ -449,7 +428,7 @@ function ProjectDetails({ project }: { project: Doc<"projects"> }) {
                 </>
               ) : (
                 <div className="rounded-xl border border-line bg-surface-2 px-4 py-4 text-[13.5px] leading-relaxed text-ink-secondary">
-                  This project does not have swarm settings yet. Add one before expecting repeatable routing and capacity behavior.
+                  This workspace does not have swarm settings yet. Add one before expecting repeatable routing and capacity behavior.
                 </div>
               )}
             </div>
@@ -471,6 +450,64 @@ function ProjectDetails({ project }: { project: Doc<"projects"> }) {
           onClose={() => setRepositoryOpen(false)}
         />
       ) : null}
+    </Card>
+  );
+}
+
+function WorkspaceRecommendations({
+  project,
+  hostBindings,
+  onConnectRepository,
+}: {
+  project: Doc<"projects">;
+  hostBindings: Array<{ status: string }> | undefined;
+  onConnectRepository: () => void;
+}) {
+  const recommendations = [
+    ...(!project.purpose || !project.owner || !project.defaultPolicy
+      ? [{ id: "contract", title: "Complete the workspace contract", detail: "Purpose, owner, and default policy make responsibility and governance explicit." }]
+      : []),
+    ...(!project.githubRepo
+      ? [{ id: "repository", title: "Connect the default repository", detail: "Repository-backed WorkOrders need a visible source and branch boundary." }]
+      : project.repositoryStatus !== "READY"
+        ? [{ id: "validation", title: "Validate repository readiness", detail: "Confirm repository access, branch context, webhook posture, and executor checkout." }]
+        : []),
+    ...(!project.swarmConfig
+      ? [{ id: "capacity", title: "Define fleet capacity", detail: "Set an agent limit and default routing posture before repeatable dispatch." }]
+      : []),
+    ...(hostBindings !== undefined && hostBindings.length === 0
+      ? [{ id: "executor", title: "Register an execution checkout", detail: "No local or cloud executor has reported a checkout for this workspace." }]
+      : hostBindings?.length && !hostBindings.some((binding) => binding.status === "READY")
+        ? [{ id: "executor-health", title: "Repair executor readiness", detail: "Connected execution hosts are not currently ready for repository-backed work." }]
+        : []),
+  ];
+
+  return (
+    <Card className="p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[12.5px] font-medium text-ink-secondary">Setup recommendations</div>
+          <div className="mt-1 text-[12px] text-ink-muted">Deterministic next steps based on the workspace contract and live readiness.</div>
+        </div>
+        <Sparkles size={15} className="text-ink-muted" aria-hidden />
+      </div>
+      <div className="mt-3 space-y-2">
+        {recommendations.length === 0 ? (
+          <div className="rounded-lg border border-ok/20 bg-ok-soft px-3 py-3 text-[12.5px] text-ok">
+            Workspace foundation is ready. No setup exception needs attention.
+          </div>
+        ) : (
+          recommendations.map((recommendation) => (
+            <div key={recommendation.id} className="rounded-lg border border-line bg-surface-2 px-3 py-3">
+              <div className="text-[12.5px] font-medium text-ink">{recommendation.title}</div>
+              <div className="mt-1 text-[11.5px] leading-relaxed text-ink-muted">{recommendation.detail}</div>
+              {recommendation.id === "repository" ? (
+                <Button variant="ghost" size="sm" className="mt-2" onClick={onConnectRepository}>Connect repository</Button>
+              ) : null}
+            </div>
+          ))
+        )}
+      </div>
     </Card>
   );
 }

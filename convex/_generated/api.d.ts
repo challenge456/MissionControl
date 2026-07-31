@@ -132,6 +132,7 @@ import type * as lib_workflowRunState from "../lib/workflowRunState.js";
 import type * as lib_workflowSnapshot from "../lib/workflowSnapshot.js";
 import type * as lib_workflowTaskGuards from "../lib/workflowTaskGuards.js";
 import type * as lib_workspaceBindings from "../lib/workspaceBindings.js";
+import type * as lib_workspaceRepositories from "../lib/workspaceRepositories.js";
 import type * as loopEngineering from "../loopEngineering.js";
 import type * as loops from "../loops.js";
 import type * as meetings from "../meetings.js";
@@ -339,6 +340,7 @@ declare const fullApi: ApiFromModules<{
   "lib/workflowSnapshot": typeof lib_workflowSnapshot;
   "lib/workflowTaskGuards": typeof lib_workflowTaskGuards;
   "lib/workspaceBindings": typeof lib_workspaceBindings;
+  "lib/workspaceRepositories": typeof lib_workspaceRepositories;
   loopEngineering: typeof loopEngineering;
   loops: typeof loops;
   meetings: typeof meetings;

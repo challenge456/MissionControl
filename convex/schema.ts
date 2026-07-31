@@ -715,6 +715,66 @@ export default defineSchema({
     .index("by_github_repo", ["githubRepo"])
     .index("by_tenant_slug", ["tenantId", "slug"]),
 
+  // Portable repository connections for a workspace. The legacy repository
+  // fields on projects remain the compatibility projection for the default
+  // connection while consumers migrate to this one-to-many model.
+  workspaceRepositories: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.id("projects"),
+    provider: v.union(v.literal("GITHUB")),
+    repository: v.string(),
+    displayName: v.string(),
+    providerRepositoryId: v.optional(v.string()),
+    defaultBranch: v.string(),
+    isDefault: v.boolean(),
+    status: v.union(
+      v.literal("CONFIGURED"),
+      v.literal("READY"),
+      v.literal("DEGRADED"),
+      v.literal("ERROR")
+    ),
+    validatedAt: v.optional(v.number()),
+    validationError: v.optional(v.string()),
+    webhookStatus: v.union(
+      v.literal("MISSING"),
+      v.literal("CONFIGURED"),
+      v.literal("READY"),
+      v.literal("ERROR")
+    ),
+    policyOverrides: v.optional(v.any()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_repository", ["projectId", "repository"])
+    .index("by_project_default", ["projectId", "isDefault"])
+    .index("by_tenant", ["tenantId"]),
+
+  // Governed paths/components inside a repository. This is the execution and
+  // review boundary for monorepos; it deliberately does not store local paths.
+  repositoryCodeScopes: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.id("projects"),
+    repositoryId: v.id("workspaceRepositories"),
+    name: v.string(),
+    slug: v.string(),
+    description: v.optional(v.string()),
+    includePaths: v.array(v.string()),
+    excludePaths: v.array(v.string()),
+    owningTeam: v.optional(v.string()),
+    requiredReviewers: v.array(v.string()),
+    allowedEnvironments: v.array(
+      v.union(v.literal("LOCAL"), v.literal("CLOUD"))
+    ),
+    verificationPolicy: v.optional(v.string()),
+    active: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_repository", ["repositoryId"])
+    .index("by_repository_slug", ["repositoryId", "slug"]),
+
   // Executor-local checkout reports for a project repository. A checkout path
   // belongs to one host and is never treated as a portable project property.
   workspaceHostBindings: defineTable({

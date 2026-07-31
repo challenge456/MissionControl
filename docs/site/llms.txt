@@ -15,6 +15,7 @@ skill-automations/completed-implementation.md — Completed acceptance criteria,
 overview/readme.md — What is Mission Control? Platform overview and six core components.
 overview/platform-components.md — Registry, Governance, Evals, Factory, Observability, Harness.
 get-started/set-up-mission-control.md — Install, seed demo data, run EOS Command Center preview.
+get-started/configure-workspaces-and-repositories.md — Company/workspace/repository hierarchy, multi-repo connections, monorepo code scopes, compatibility, and release boundaries.
 get-started/run-the-demo.md — pnpm dev:demo, convex:seed:demo:force, page walkthrough.
 get-started/improve-your-first-skill.md — Import, lint, eval, and publish a registry skill.
 tutorials/tutorials.md — Tutorial index mapped to common agentic development problems.
