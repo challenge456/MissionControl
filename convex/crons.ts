@@ -86,11 +86,11 @@ crons.interval(
   internal.factory.repetitiveTasks.scanScheduled
 );
 
-// Active automation definitions produce non-mutating Work Order drafts only.
+// LEVEL_1 Automations create approval-gated, read-only WorkOrders only.
 crons.interval(
-  "create automation review drafts",
+  "create due automation review gates",
   { hours: 1 },
-  internal.factory.automationDispatch.createDueDrafts
+  internal.automationScheduler.evaluateDue
 );
 
 // Evaluate alert rules (e.g. daily cost exceeded) every hour
@@ -98,13 +98,6 @@ crons.interval(
   "evaluate alert rules",
   { hours: 1 },
   internal.alertRules.evaluateRules
-);
-
-// Consolidate completed run episodes into durable, reviewable knowledge nodes.
-crons.interval(
-  "consolidate durable memory",
-  { minutes: 15 },
-  internal.memoryLifecycle.consolidateEpisodes
 );
 
 export default crons;

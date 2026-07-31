@@ -47,9 +47,7 @@ export function parseResolvedContextLock(lockJson: string): ResolvedContextLock 
     entries[slug] = {
       version: entry.version,
       contentHash: entry.contentHash,
-      ...(typeof entry.sourceCommitSha === "string"
-        ? { sourceCommitSha: entry.sourceCommitSha }
-        : {}),
+      ...(typeof entry.sourceCommitSha === "string" ? { sourceCommitSha: entry.sourceCommitSha } : {}),
     };
   }
   return entries;

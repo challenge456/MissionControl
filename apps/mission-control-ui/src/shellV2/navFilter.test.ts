@@ -40,6 +40,7 @@ describe("filterNavGroups", () => {
       "tasks",
       "agents",
       "atc",
+      "automations",
       "audit",
       "telemetry",
       "skills",

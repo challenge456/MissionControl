@@ -100,9 +100,6 @@ export const ingestReceiptPacket = mutation({
     }
 
     if (args.markRunCompleted && run.status !== "COMPLETED") {
-      const executedStepCount = run.steps.filter((step: any) =>
-        ["RUNNING", "DONE", "FAILED", "SKIPPED"].includes(step.status)
-      ).length;
       await ctx.db.patch(run._id, {
         status: "COMPLETED",
         completedAt: Date.now(),
@@ -112,9 +109,6 @@ export const ingestReceiptPacket = mutation({
           piExecutionId: args.piExecutionId,
           receiptPacketKey: args.idempotencyKey,
           contextActivationReceiptId: args.contextActivationReceiptId,
-          // Receipt packets can close a verification-only run. Preserve that
-          // distinction rather than implying its workflow graph executed.
-          ...(executedStepCount === 0 ? { completionMode: "VERIFICATION_ONLY" } : {}),
         },
       });
     }
@@ -133,7 +127,11 @@ export const ingestReceiptPacket = mutation({
         artifactReference: receipt.artifactReference,
         verifier: receipt.verifier ?? "pi-runtime",
         status: receipt.status,
-        metadata: { source: "piBridge.ingestReceiptPacket", piSessionId: args.piSessionId },
+        metadata: {
+          source: "piBridge.ingestReceiptPacket",
+          piSessionId: args.piSessionId,
+          contextActivationReceiptId: args.contextActivationReceiptId,
+        },
       });
       created += 1;
     }

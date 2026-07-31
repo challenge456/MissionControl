@@ -1,0 +1,108 @@
+import AxeBuilder from "@axe-core/playwright";
+import { expect, test } from "@playwright/test";
+import { mkdir } from "node:fs/promises";
+import path from "node:path";
+
+const APP_URL = process.env.MISSION_CONTROL_URL ?? "http://127.0.0.1:5199";
+const INVALID_WORKSPACE = "w17bnnjbwzws1rdyvg97s9cwxd8bfda8";
+const SECOND_INVALID_WORKSPACE = "w27bnnjbwzws1rdyvg97s9cwxd8bfda8";
+const RESEARCH_LAB = "sn71gskbdemgf4z1trt9zdmm5h8bde69";
+const WARNING =
+  "The requested workspace was unavailable. Mission Control opened an accessible workspace instead.";
+const EVIDENCE = path.resolve("docs/testing/evidence/docs-workspace-routing");
+
+test.use({ trace: "off" });
+
+test("invalid Docs workspace fails closed, preserves route state, and remains stable", async ({
+  page,
+  context,
+}) => {
+  await mkdir(EVIDENCE, { recursive: true });
+  await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
+  const pageErrors: string[] = [];
+  const consoleErrors: string[] = [];
+  const failedRequests: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  page.on("requestfailed", (request) => {
+    const failure = request.failure()?.errorText ?? "";
+    const expectedNavigationAbort =
+      request.resourceType() === "font" &&
+      request.url().startsWith("https://fonts.gstatic.com/") &&
+      failure === "net::ERR_ABORTED";
+    if (!request.url().includes("/gateway/status") && !expectedNavigationAbort) {
+      failedRequests.push(`${request.method()} ${request.url()} ${request.failure()?.errorText}`);
+    }
+  });
+
+  try {
+    await page.goto(`${APP_URL}/v2/docs?workspace=${RESEARCH_LAB}`);
+    await expect(page.getByRole("heading", { name: "Documentation" })).toBeVisible();
+
+    await page.goto(
+      `${APP_URL}/v2/docs?workspace=${INVALID_WORKSPACE}` +
+        "&doc=sfe-overview&mission=m1&task=t1&workOrder=w1&tab=evidence&filters=open" +
+        "&view=operator&automation=a1&definition=d1"
+    );
+    const warningStatus = page.getByRole("status").filter({ hasText: WARNING });
+    await expect(warningStatus).toBeVisible();
+    await expect(page.getByRole("button", { name: "Close toast" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Documentation" })).toBeVisible();
+    await expect(page).not.toHaveURL(new RegExp(INVALID_WORKSPACE));
+    for (const parameter of [
+      "doc=sfe-overview",
+      "mission=m1",
+      "task=t1",
+      "workOrder=w1",
+      "tab=evidence",
+      "filters=open",
+      "view=operator",
+      "automation=a1",
+      "definition=d1",
+    ]) {
+      await expect(page).toHaveURL(new RegExp(parameter));
+    }
+
+    await page.screenshot({
+      path: path.join(EVIDENCE, "docs-001-recovered.png"),
+      fullPage: true,
+    });
+    const accessibility = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+      .analyze();
+    expect(accessibility.violations.filter((item) => item.impact === "critical")).toEqual([]);
+
+    await page.getByRole("button", { name: "Close toast" }).click();
+    await expect(warningStatus).toHaveCount(0);
+    await page.screenshot({
+      path: path.join(EVIDENCE, "docs-001-dismissed.png"),
+      fullPage: true,
+    });
+    await page.reload();
+    await expect(page.getByText(WARNING, { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Documentation" })).toBeVisible();
+
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`workspace=${RESEARCH_LAB}`));
+    await page.goForward();
+    await expect(page).not.toHaveURL(new RegExp(INVALID_WORKSPACE));
+    await expect(page.getByRole("heading", { name: "Documentation" })).toBeVisible();
+
+    const current = new URL(page.url());
+    current.searchParams.set("workspace", SECOND_INVALID_WORKSPACE);
+    await page.goto(current.toString());
+    await expect(page.getByRole("status").filter({ hasText: WARNING })).toBeVisible();
+    await expect(page).not.toHaveURL(new RegExp(SECOND_INVALID_WORKSPACE));
+    await expect(page).toHaveURL(/doc=sfe-overview/);
+
+    expect(pageErrors).toEqual([]);
+    expect(consoleErrors).toEqual([]);
+    expect(failedRequests).toEqual([]);
+  } finally {
+    await context.tracing.stop({
+      path: path.join(EVIDENCE, "docs-001-workspace-routing-trace.zip"),
+    });
+  }
+});

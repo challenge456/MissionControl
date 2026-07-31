@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectRepetitiveTasks } from "../lib/repetitiveTasks";
+import { detectRepetitiveTasks, isEligibleAutomationReceipt } from "../lib/repetitiveTasks";
 
 describe("detectRepetitiveTasks", () => {
   it("only promotes repeated governed work and reports evidence coverage", () => {
@@ -28,5 +28,14 @@ describe("detectRepetitiveTasks", () => {
 
     expect(candidates[0]).toMatchObject({ id: "repository:sellerfi/app", occurrences: 2 });
     expect(candidates[0]?.suggestion).toContain("verification receipt");
+  });
+
+  it("only treats fresh passing receipts as promotion evidence", () => {
+    expect(isEligibleAutomationReceipt({ status: "PASSED" }, 100)).toBe(true);
+    expect(isEligibleAutomationReceipt({ status: "FAILED" }, 100)).toBe(false);
+    expect(isEligibleAutomationReceipt({ status: "WAIVED" }, 100)).toBe(false);
+    expect(isEligibleAutomationReceipt({ status: "STALE" }, 100)).toBe(false);
+    expect(isEligibleAutomationReceipt({ status: "PASSED", validUntil: 99 }, 100)).toBe(false);
+    expect(isEligibleAutomationReceipt({ status: "PASSED", invalidatedAt: 99 }, 100)).toBe(false);
   });
 });

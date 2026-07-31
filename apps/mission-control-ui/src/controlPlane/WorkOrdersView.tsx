@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { Badge } from "@/components/ui/badge";
@@ -58,14 +59,6 @@ const STATE_STYLES: Record<string, string> = {
   SUPERSEDED: "border-slate-500/30 text-slate-300",
 };
 
-const VERIFICATION_STYLES: Record<string, string> = {
-  PASS: "border-emerald-500/30 text-emerald-300",
-  PENDING: "border-amber-500/30 text-amber-300",
-  FAIL: "border-red-500/30 text-red-300",
-  WAIVED: "border-purple-500/30 text-purple-200",
-  STALE: "border-slate-500/30 text-slate-300",
-};
-
 const QUICK_FILTERS: Array<{ id: WorkOrderQuickFilter; label: string }> = [
   { id: "all", label: "All" },
   { id: "needs_attention", label: "Needs attention" },
@@ -105,8 +98,10 @@ function latestByCriterion<T extends { acceptanceCriterionId: string; recordedAt
 }
 
 export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null }) {
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [filters, setFilters] = useState<WorkOrderQueueFilters>(DEFAULT_WORK_ORDER_FILTERS);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("workOrder"));
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [approvalOpen, setApprovalOpen] = useState(false);
@@ -134,6 +129,14 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
     api.workOrders.get,
     selectedId ? { workOrderId: selectedId as Id<"workOrders"> } : "skip"
   );
+
+  useEffect(() => {
+    const requested = searchParams.get("workOrder");
+    if (requested && requested !== selectedId) {
+      setSelectedId(requested);
+      setMobileDetailOpen(true);
+    }
+  }, [searchParams, selectedId]);
   const createWorkOrder = useMutation(api.workOrders.create);
   const dispatchWorkOrder = useMutation(api.workOrders.dispatch);
   const requestApprovalDecision = useMutation(api.workOrders.requestApprovalDecision);
@@ -301,6 +304,9 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                     onClick={() => {
                       setSelectedId(item._id);
                       setMobileDetailOpen(true);
+                      const next = new URLSearchParams(searchParams);
+                      next.set("workOrder", item._id);
+                      setSearchParams(next);
                     }}
                     aria-label={`${item.title} — next action: ${deriveNextAction(item)}`}
                     className={`w-full rounded-xl border p-4 text-left transition-colors ${selectedRow ? "border-registry-accent/40 bg-registry-accent-soft" : "border-[var(--panel-line)] bg-card/40 hover:border-registry-accent/20"}`}
@@ -310,19 +316,18 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                         <div className="text-sm font-medium text-foreground">{item.title}</div>
                         <div className="mt-1 text-xs text-muted-foreground line-clamp-2">{item.desiredOutcome}</div>
                       </div>
-                      <div className="flex flex-wrap justify-end gap-2">
-                        <Badge variant="outline" className={RISK_STYLES[item.riskLevel] ?? ""}>{item.riskLevel}</Badge>
-                        <Badge variant="outline" className={STATE_STYLES[item.state] ?? ""}>{prettyLabel(item.state)}</Badge>
-                      </div>
+                      <Badge variant="outline" className={RISK_STYLES[item.riskLevel] ?? ""}>{item.riskLevel}</Badge>
                     </div>
 
                     <div className="mt-3 flex flex-wrap gap-2">
+                      <Badge variant="outline" className={STATE_STYLES[item.state] ?? ""}>{prettyLabel(item.state)}</Badge>
                       <Badge variant="outline">{item.repository ?? "No repo"}</Badge>
                       <Badge variant="outline">Workflow: {item.workflowId ?? "—"}</Badge>
-                      <Badge variant="outline" className={VERIFICATION_STYLES[item.verificationStatus] ?? ""}>Verification: {item.verificationStatus}</Badge>
+                      <Badge variant="outline">Verification: {item.verificationStatus}</Badge>
+                      {item.metadata?.automationDefinitionId ? <Badge variant="outline" className="border-registry-accent/30 text-registry-accent">Automation review gate</Badge> : null}
                       {item.latestExecutionRun ? (
                         <Badge variant="outline">
-                          Run: {prettyLabel(item.latestExecutionRun.status)} · {item.latestExecutionRun.workflowId}
+                          Run: {item.latestExecutionRun.status} · {item.latestExecutionRun.workflowId}
                         </Badge>
                       ) : null}
                     </div>
@@ -393,6 +398,47 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                     <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{selected.workOrder.context}</p>
                   ) : null}
                 </Section>
+
+                {selected.workOrder.metadata?.automationDefinitionId ? (
+                  <Section title="Automation lineage">
+                    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <Badge variant="outline" className="border-registry-accent/30 text-registry-accent">Automation review gate</Badge>
+                        <p className="mt-2 text-sm font-medium text-foreground">
+                          {selected.workOrder.metadata.automationDefinitionName ?? selected.workOrder.metadata.automationDefinitionId}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => navigate(`/v2/automations?tab=runs&definition=${selected.workOrder.metadata.automationDefinitionId}${projectId ? `&workspace=${projectId}` : ""}`)}
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" /> Open Automation
+                      </Button>
+                    </div>
+                    <dl className="grid gap-3 text-sm md:grid-cols-2">
+                      <MetaRow label="Definition ID" value={selected.workOrder.metadata.automationDefinitionId} />
+                      <MetaRow label="Workflow version" value={selected.workOrder.metadata.automationWorkflowVersion} />
+                      <MetaRow label="Cadence window" value={selected.workOrder.metadata.automationCadenceWindow} />
+                      <MetaRow label="Trigger" value={`${selected.workOrder.metadata.automationTrigger ?? "SCHEDULE"} · ${selected.workOrder.metadata.automationCadence?.cron ?? "Not recorded"}`} />
+                      <MetaRow label="Scope" value={selected.workOrder.metadata.automationScope} />
+                      <MetaRow label="Autonomy" value={selected.workOrder.metadata.automationPolicy?.autonomyLevel ?? "LEVEL_1"} />
+                      <MetaRow label="Mutation policy" value={selected.workOrder.metadata.automationPolicy?.isMutating ? "Mutating" : "Read-only"} />
+                      <MetaRow label="Approval" value={selected.workOrder.metadata.automationPolicy?.approvalRequired ? "Required" : "Not configured"} />
+                      <MetaRow label="Verification" value={selected.workOrder.metadata.automationPolicy?.independentReceiptRequired ? "Independent receipt required" : "Not configured"} />
+                    </dl>
+                    <ol className="mt-4 grid gap-2 text-xs text-muted-foreground sm:grid-cols-5" aria-label="Automation governance sequence">
+                      {["Automation evaluated", "Review gate created", "Approval required", "Explicit dispatch required", "Independent verification required"].map((step, index) => (
+                        <li key={step} className="rounded-lg border border-[var(--panel-line)] bg-muted/10 p-2">
+                          <span className="mr-1 font-mono text-registry-accent">{index + 1}.</span> {step}
+                        </li>
+                      ))}
+                    </ol>
+                    <p className="mt-3 text-xs text-amber-100">
+                      This WorkOrder has not been automatically executed. The originating Automation cannot approve it.
+                    </p>
+                  </Section>
+                ) : null}
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <Section title="Execution setup">

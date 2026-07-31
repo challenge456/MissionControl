@@ -20,6 +20,7 @@ import {
   WorkspaceScopeProvider,
   useWorkspaceScope,
 } from "./workspace/WorkspaceScopeProvider";
+import { selectAccessibleWorkspace } from "./workspace/workspaceSelection";
 
 const DashboardOverview = lazy(() =>
   import("./DashboardOverview").then((module) => ({ default: module.DashboardOverview }))
@@ -154,21 +155,48 @@ function ProjectSwitcher({
 
 const STORAGE_KEY_VIEW = "mc.last_view";
 const STORAGE_KEY_PROJECT = "mc.last_project";
+const WORKSPACE_RECOVERY_WARNING =
+  "The requested workspace was unavailable. Mission Control opened an accessible workspace instead.";
 
-function readRequestedProjectId(): string | null {
+function readPersistedProjectId(): string | null {
   if (typeof window === "undefined") return null;
   try {
-    const fromUrl = new URL(window.location.href).searchParams.get("workspace");
-    if (fromUrl) return fromUrl as Id<"projects">;
-    const persisted = window.localStorage.getItem(STORAGE_KEY_PROJECT);
-    return persisted ? (persisted as Id<"projects">) : null;
+    return window.localStorage.getItem(STORAGE_KEY_PROJECT);
   } catch {
     return null;
   }
 }
 
+function WorkspaceRecoveryNotice({
+  visible,
+  onDismiss,
+}: {
+  visible: boolean;
+  onDismiss: () => void;
+}) {
+  if (!visible) return null;
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="fixed left-1/2 top-4 z-[100] flex w-[min(44rem,calc(100vw-2rem))] -translate-x-1/2 items-start justify-between gap-4 rounded-lg border border-amber-500/30 bg-card px-4 py-3 text-sm text-card-foreground shadow-lg"
+    >
+      <span>{WORKSPACE_RECOVERY_WARNING}</span>
+      <button
+        type="button"
+        aria-label="Close toast"
+        onClick={onDismiss}
+        className="shrink-0 rounded px-2 py-1 text-xs font-medium text-muted-foreground outline-none hover:bg-secondary hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        Dismiss
+      </button>
+    </div>
+  );
+}
+
 const VALID_MAIN_VIEWS: MainView[] = [
-  "home", "atc", "tasks", "agents", "directory", "policies", "deployments", "audit", "telemetry",
+  "home", "atc", "tasks", "agents", "directory", "policies", "deployments", "audit", "telemetry", "automations", "automation-runs",
   "dag", "chat", "council", "calendar", "projects", "model-routing", "memory", "captures", "docs", "skills", "people", "org",
   "design-system",
   "office", "live-office", "search", "identity", "telegraph", "meetings", "voice", "content-pipeline",
@@ -232,6 +260,7 @@ const SECTION_TABS: Record<CommandSection, TabItem[] | null> = {
     { id: "ops-schedule", label: "Schedule" },
     { id: "audit", label: "Audit" },
     { id: "telemetry", label: "Telemetry" },
+    { id: "automations", label: "Automations" },
   ],
   agents: [
     { id: "atc", label: "ATC" },
@@ -341,7 +370,7 @@ function viewToSection(view: MainView): CommandSection {
   ) {
     return "control";
   }
-  if (["tasks", "goals", "dag", "calendar", "ops-schedule", "audit", "telemetry"].includes(view)) return "ops";
+  if (["tasks", "goals", "dag", "calendar", "ops-schedule", "audit", "telemetry", "automations", "automation-runs"].includes(view)) return "ops";
   if (["atc", "agents", "directory", "identity", "policies", "deployments", "gateway", "schedules"].includes(view)) return "agents";
   if (["chat", "live-chat", "council", "command"].includes(view)) return "chat";
   if (["captures", "projects", "content-pipeline"].includes(view)) return "content";
@@ -549,11 +578,11 @@ export default function App() {
   const [searchParams, setSearchParams] = useSearchParams();
   // ── Navigation & selection (persist last view so UI reopens where operator left off) ─
   const [currentView, setCurrentView] = useState<MainView>(() => readPersistedView() ?? "home");
-  // A URL/local-storage value is untrusted until it is matched against the
-  // project list. Passing a foreign Convex ID to a v.id("projects") query
-  // throws before the normal workspace fallback can repair it.
-  const [requestedProjectId] = useState(readRequestedProjectId);
   const [projectId, setProjectId] = useState<Id<"projects"> | null>(null);
+  const [workspaceWarning, setWorkspaceWarning] = useState<{
+    requestedWorkspace: string;
+    visible: boolean;
+  } | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<Id<"tasks"> | null>(null);
   const [selectedQcRunId, setSelectedQcRunId] = useState<Id<"qcRuns"> | null>(null);
 
@@ -584,6 +613,20 @@ export default function App() {
     () => projects?.filter((item) => item.status !== "ARCHIVED"),
     [projects]
   );
+  const requestedProjectId = searchParams.get("workspace");
+  const workspaceSelection = useMemo(
+    () => {
+      if (!availableProjects) {
+        return { projectId: null, requestedUnavailable: false };
+      }
+      return selectAccessibleWorkspace({
+        requestedWorkspace: requestedProjectId,
+        persistedWorkspace: readPersistedProjectId(),
+        workspaces: availableProjects,
+      });
+    },
+    [availableProjects, requestedProjectId]
+  );
   const pendingApprovals = useQuery(
     api.approvals.listPending,
     projectId ? { projectId, limit: 10 } : "skip"
@@ -597,17 +640,11 @@ export default function App() {
       availableProjects.length > 0 &&
       (!projectId || !availableProjects.some((item) => item._id === projectId))
     ) {
-      const preferred =
-        availableProjects.find((p) => p._id === projectId) ??
-        availableProjects.find((p) => p._id === requestedProjectId) ??
-        availableProjects.find((p) => p.name.trim().toLowerCase() === "mission control") ??
-        availableProjects.find((p) => p.name.toLowerCase().includes("mission control")) ??
-        availableProjects[0];
-      setProjectId(preferred._id);
+      setProjectId(workspaceSelection.projectId);
     } else if (availableProjects && availableProjects.length === 0 && projectId) {
       setProjectId(null);
     }
-  }, [availableProjects, projectId, requestedProjectId]);
+  }, [availableProjects, projectId, workspaceSelection.projectId]);
 
   useEffect(() => {
     if (!projectId || typeof window === "undefined") return;
@@ -666,6 +703,15 @@ export default function App() {
   const pauseAll = useMutation(api.agents.pauseAll);
   const resumeAll = useMutation(api.agents.resumeAll);
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (!workspaceSelection.requestedUnavailable || !requestedProjectId) return;
+    setWorkspaceWarning((current) =>
+      current?.requestedWorkspace === requestedProjectId
+        ? current
+        : { requestedWorkspace: requestedProjectId, visible: true }
+    );
+  }, [requestedProjectId, workspaceSelection.requestedUnavailable]);
 
   // ── Keyboard shortcuts ───────────────────────────────────────────────────
   useKeyboardShortcuts({
@@ -957,6 +1003,14 @@ export default function App() {
     return (
       <WorkspaceScopeProvider value={{ projectId, setProjectId, project }}>
         <PrivacyProvider>
+          <WorkspaceRecoveryNotice
+            visible={workspaceWarning?.visible === true}
+            onDismiss={() =>
+              setWorkspaceWarning((current) =>
+                current ? { ...current, visible: false } : current
+              )
+            }
+          />
           <AppShellV2
             activeView={currentView}
             onNavigate={setCurrentView}
@@ -1005,6 +1059,14 @@ export default function App() {
   return (
     <WorkspaceScopeProvider value={{ projectId, setProjectId, project }}>
       <PrivacyProvider>
+      <WorkspaceRecoveryNotice
+        visible={workspaceWarning?.visible === true}
+        onDismiss={() =>
+          setWorkspaceWarning((current) =>
+            current ? { ...current, visible: false } : current
+          )
+        }
+      />
       <div className="flex h-screen flex-col bg-background text-foreground">
         <AppTopBar
           projectSwitcher={<ProjectSwitcher />}

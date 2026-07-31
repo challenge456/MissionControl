@@ -612,25 +612,6 @@ export default defineSchema({
     .index("by_status", ["status"])
     .index("by_target_version", ["targetVersionId"]),
 
-  // Shadow-mode release decisions. These are intentionally separate from a
-  // deployment so the decision evidence remains immutable and auditable.
-  releaseGateEvaluations: defineTable({
-    deploymentId: v.id("deployments"),
-    status: v.union(v.literal("PASS"), v.literal("WARN"), v.literal("FAIL")),
-    mode: v.literal("SHADOW"),
-    rationale: v.string(),
-    evidenceRefs: v.array(v.string()),
-    qcRunId: v.optional(v.id("qcRuns")),
-    contextEvalRunId: v.optional(v.id("contextEvalRuns")),
-    harnessPrCheckId: v.optional(v.id("harnessPrChecks")),
-    automationKey: v.optional(v.string()),
-    createdBy: v.optional(v.id("operators")),
-    createdAt: v.number(),
-  })
-    .index("by_deployment", ["deploymentId"])
-    .index("by_status", ["status"])
-    .index("by_automation_key", ["automationKey"]),
-
   // -------------------------------------------------------------------------
   // ARM: OP EVENTS (Operational Telemetry)
   // -------------------------------------------------------------------------
@@ -3085,8 +3066,6 @@ export default defineSchema({
   qcRuns: defineTable({
     tenantId: v.optional(v.id("tenants")),
     projectId: v.optional(v.id("projects")),
-    // Explicit release association. Never infer this from project or time.
-    releaseDeploymentId: v.optional(v.id("deployments")),
 
     // Display ID and ordering
     runId: v.string(),
@@ -4071,12 +4050,8 @@ export default defineSchema({
     .index("by_repo_package", ["repoSlug", "packageSlug"])
     .index("by_package", ["packageSlug"]),
 
-  // -------------------------------------------------------------------------
-  // CONTEXT REGISTRY: ACTIVATION RECEIPTS
-  // -------------------------------------------------------------------------
   // Immutable evidence that an executor received the exact packages pinned by
-  // a repository lock for a context workflow run. Package content is returned
-  // only by the activation mutation and is intentionally not retained here.
+  // a repository lock. Package content is returned by activation, not stored.
   contextActivationReceipts: defineTable({
     repoSlug: v.string(),
     workflowRunId: v.id("contextWorkflowRuns"),
@@ -4095,6 +4070,8 @@ export default defineSchema({
     .index("by_workflow_run", ["workflowRunId"])
     .index("by_idempotency", ["idempotencyKey"]),
 
+  // Equivalent immutable activation evidence for the Work Order execution
+  // runtime used by Pi.
   workflowContextActivationReceipts: defineTable({
     repoSlug: v.string(),
     workflowRunId: v.id("workflowRuns"),
@@ -4142,8 +4119,6 @@ export default defineSchema({
   contextEvalRuns: defineTable({
     packageId: v.id("contextPackages"),
     versionId: v.id("contextPackageVersions"),
-    // Optional, explicit target for derived shadow release evidence.
-    releaseDeploymentId: v.optional(v.id("deployments")),
     status: contextEvalRunStatus,
     scenarioCount: v.number(),
     completedScenarios: v.number(),
@@ -4450,8 +4425,6 @@ export default defineSchema({
   // -------------------------------------------------------------------------
   harnessPrChecks: defineTable({
     projectId: v.optional(v.id("projects")),
-    // Explicit release association for CI-backed shadow gate evidence.
-    releaseDeploymentId: v.optional(v.id("deployments")),
     prUrl: v.string(),
     prNumber: v.optional(v.number()),
     repoFullName: v.string(),
@@ -4500,7 +4473,6 @@ export default defineSchema({
     metadata: v.optional(v.any()),
   })
     .index("by_project", ["projectId"])
-    .index("by_release_deployment", ["releaseDeploymentId"])
     .index("by_pr_url", ["prUrl"])
     .index("by_repo", ["repoFullName"]),
 
@@ -4530,35 +4502,133 @@ export default defineSchema({
     createdAt: v.number(),
     resolvedAt: v.optional(v.number()),
   })
+    .index("by_project", ["projectId"])
     .index("by_project_status", ["projectId", "status"])
     .index("by_status", ["status"]),
 
   // -------------------------------------------------------------------------
-  // HARNESS ENGINEERING: AUTOMATION DEFINITIONS
+  // AUTOMATION CONTROL PLANE
   // -------------------------------------------------------------------------
-  // Created only when an operator accepts an evidence-backed delegation proposal.
-  // Definitions are intentionally disabled until a separate activation decision.
   automationDefinitions: defineTable({
-    projectId: v.optional(v.id("projects")),
-    sourceSuggestionId: v.id("metaLoopSuggestions"),
+    projectId: v.id("projects"),
+    sourceCandidateId: v.id("metaLoopSuggestions"),
+    definitionVersion: v.number(),
     name: v.string(),
-    sourcePattern: v.string(),
-    trigger: v.literal("SCHEDULE"),
-    schedule: v.string(),
-    requiresHumanApproval: v.boolean(),
-    requiresVerificationReceipt: v.boolean(),
-    enabled: v.boolean(),
-    activatedAt: v.optional(v.number()),
+    description: v.string(),
+    ownerId: v.string(),
+    workflowId: v.string(),
+    workflowVersion: v.string(),
+    triggerType: v.union(
+      v.literal("SCHEDULE"),
+      v.literal("EVENT"),
+      v.literal("MANUAL"),
+      v.literal("CONDITION"),
+      v.literal("DEPENDENCY"),
+      v.literal("RECEIPT")
+    ),
+    triggerConfig: v.any(),
+    scope: v.string(),
+    repositoryIds: v.array(v.string()),
+    environmentIds: v.array(v.string()),
+    autonomyLevel: v.union(
+      v.literal("LEVEL_0"),
+      v.literal("LEVEL_1"),
+      v.literal("LEVEL_2"),
+      v.literal("LEVEL_3"),
+      v.literal("LEVEL_4"),
+      v.literal("LEVEL_5")
+    ),
+    isMutating: v.boolean(),
+    riskLevel: v.union(
+      v.literal("LOW"),
+      v.literal("MEDIUM"),
+      v.literal("HIGH"),
+      v.literal("CRITICAL")
+    ),
+    requiredApprovalTypes: v.array(v.string()),
+    verificationContract: v.any(),
+    evidenceRequirements: v.array(v.string()),
+    maxDurationSeconds: v.number(),
+    maxRetries: v.number(),
+    maxCostUsd: v.number(),
+    concurrencyLimit: v.number(),
+    idempotencyStrategy: v.string(),
+    overlapPolicy: v.union(
+      v.literal("SKIP"),
+      v.literal("QUEUE"),
+      v.literal("CANCEL_PREVIOUS"),
+      v.literal("ALLOW")
+    ),
+    catchUpPolicy: v.union(
+      v.literal("SKIP_MISSED"),
+      v.literal("RUN_ONCE"),
+      v.literal("RUN_EACH_MISSED")
+    ),
+    status: v.union(
+      v.literal("DRAFT"),
+      v.literal("DISABLED"),
+      v.literal("ACTIVE"),
+      v.literal("PAUSED"),
+      v.literal("SUSPENDED"),
+      v.literal("RETIRED")
+    ),
+    reliabilityState: v.union(
+      v.literal("PROBATION"),
+      v.literal("SUPERVISED"),
+      v.literal("TRUSTED_READ_ONLY"),
+      v.literal("TRUSTED_LOW_RISK"),
+      v.literal("SUSPENDED")
+    ),
+    health: v.union(
+      v.literal("HEALTHY"),
+      v.literal("ATTENTION"),
+      v.literal("DEGRADED"),
+      v.literal("UNKNOWN")
+    ),
     activatedBy: v.optional(v.string()),
-    deactivatedAt: v.optional(v.number()),
-    deactivatedBy: v.optional(v.string()),
-    lastDraftAt: v.optional(v.number()),
+    activatedAt: v.optional(v.number()),
+    activationReason: v.optional(v.string()),
+    activationPolicyVersion: v.optional(v.string()),
+    pausedBy: v.optional(v.string()),
+    pausedAt: v.optional(v.number()),
+    pauseReason: v.optional(v.string()),
+    lastRunAt: v.optional(v.number()),
+    nextRunAt: v.optional(v.number()),
+    lastResult: v.optional(v.string()),
+    lastReviewGateWorkOrderId: v.optional(v.id("workOrders")),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_project", ["projectId"])
-    .index("by_source_suggestion", ["sourceSuggestionId"])
-    .index("by_project_enabled", ["projectId", "enabled"]),
+    .index("by_project_status", ["projectId", "status"])
+    .index("by_source_candidate", ["sourceCandidateId"])
+    .index("by_next_run", ["nextRunAt"]),
+
+  automationDecisions: defineTable({
+    projectId: v.id("projects"),
+    automationDefinitionId: v.optional(v.id("automationDefinitions")),
+    candidateId: v.optional(v.string()),
+    decisionType: v.union(
+      v.literal("CREATED"),
+      v.literal("ACCEPTED"),
+      v.literal("REJECTED"),
+      v.literal("ACTIVATED"),
+      v.literal("PAUSED"),
+      v.literal("RESUMED"),
+      v.literal("SUSPENDED"),
+      v.literal("RETIRED"),
+      v.literal("POLICY_BLOCKED")
+    ),
+    actorId: v.string(),
+    actorIdentitySource: v.optional(v.literal("CLIENT_ASSERTED_TRUSTED_OPERATOR")),
+    reason: v.string(),
+    policyVersion: v.string(),
+    definitionVersion: v.number(),
+    decidedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_definition", ["automationDefinitionId"])
+    .index("by_project_time", ["projectId", "decidedAt"]),
 
   // -------------------------------------------------------------------------
   // KNOWLEDGE GRAPH (Agentic-KB Graphify overlay + future Obsidian sync)

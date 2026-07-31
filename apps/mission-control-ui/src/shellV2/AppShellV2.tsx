@@ -91,6 +91,7 @@ export function AppShellV2({
     ...new Set([
       ...baseNavGroups.flatMap((g) => g.items.map((i) => i.view as string)),
       ...allNavViews(),
+      "automation-runs",
     ]),
   ];
   const group =
@@ -132,6 +133,11 @@ export function AppShellV2({
       syncingFromUrl.current = false;
       return;
     }
+    const isAutomationDetail = activeView === "automations"
+      && location.pathname.startsWith(`${ROUTE_PREFIX}/automations/`);
+    const isAutomationRunDetail = activeView === "automation-runs"
+      && location.pathname.startsWith(`${ROUTE_PREFIX}/automation-runs/`);
+    if (isAutomationDetail || isAutomationRunDetail) return;
     const expected = `${ROUTE_PREFIX}/${activeView}`;
     if (location.pathname !== expected) {
       navigate({ pathname: expected, search: location.search }, { replace: true });

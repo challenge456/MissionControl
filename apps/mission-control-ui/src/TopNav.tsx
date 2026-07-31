@@ -11,6 +11,8 @@ export type MainView =
   | "deployments"
   | "audit"
   | "telemetry"
+  | "automations"
+  | "automation-runs"
   | "dag"
   | "chat"
   | "council"

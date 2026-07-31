@@ -13,6 +13,7 @@ export interface WorkOrderQueueItem {
   approvalStatus: string;
   blockingIssue?: string;
   requiredHumanAction?: string;
+  metadata?: Record<string, any>;
   latestExecutionRun?: {
     status: string;
     workflowId: string;
