@@ -10,6 +10,7 @@ import type { Id, Doc } from "../../../convex/_generated/dataModel";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -32,9 +33,21 @@ import { TaskEditMode } from "./TaskEditMode";
 import { RiskBadge, StatusBadge, type StatusBadgeProps } from "./components/factory/badges";
 import { VerificationTracePanel } from "./components/tasks/VerificationTracePanel";
 import { buildVerificationTrace } from "@/lib/verificationTrace";
+import { useToast } from "./Toast";
 
 type Tab = "overview" | "timeline" | "artifacts" | "approvals" | "cost" | "reviews" | "why";
 type TaskStatus = Doc<"tasks">["status"];
+type ParentDelivery = {
+  governanceStatus: "UNGOVERNED" | "GOVERNED" | "LEGACY";
+  workOrderId: Id<"workOrders"> | null;
+  workOrderTitle: string | null;
+  workOrderState: string | null;
+  repository: string | null;
+  riskLevel: string | null;
+  missionId: Id<"missions"> | null;
+  missionTitle: string | null;
+  relationshipValid: boolean;
+};
 
 /** UI_STYLE_GUIDE task-state → badge tone mapping. */
 function taskStatusTone(status: string): StatusBadgeProps["tone"] {
@@ -76,9 +89,13 @@ function formatStatusLabel(status: string): string {
 export function TaskDrawerTabs({
   taskId,
   onClose,
+  onNavigateToWorkOrder,
+  onNavigateToMission,
 }: {
   taskId: Id<"tasks"> | null;
   onClose: () => void;
+  onNavigateToWorkOrder?: (workOrderId: Id<"workOrders">) => void;
+  onNavigateToMission?: (missionId: Id<"missions">) => void;
 }) {
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [isEditMode, setIsEditMode] = useState(false);
@@ -257,6 +274,7 @@ export function TaskDrawerTabs({
                       <OverviewTab
                         taskId={taskId}
                         task={task}
+                        parentDelivery={task.parentDelivery}
                         runs={runs}
                         approvals={approvals}
                         agents={agents as Doc<"agents">[]}
@@ -267,6 +285,8 @@ export function TaskDrawerTabs({
                         updateTask={updateTask}
                         requestApproval={requestApproval}
                         setLoading={setLoading}
+                        onNavigateToWorkOrder={onNavigateToWorkOrder}
+                        onNavigateToMission={onNavigateToMission}
                       />
                     )}
                     {activeTab === "timeline" && (
@@ -330,9 +350,143 @@ export function TaskDrawerTabs({
 // OVERVIEW TAB
 // ============================================================================
 
+function ParentDeliverySection({
+  taskId,
+  projectId,
+  parentDelivery,
+  onNavigateToWorkOrder,
+  onNavigateToMission,
+}: {
+  taskId: Id<"tasks">;
+  projectId?: Id<"projects">;
+  parentDelivery: ParentDelivery;
+  onNavigateToWorkOrder?: (workOrderId: Id<"workOrders">) => void;
+  onNavigateToMission?: (missionId: Id<"missions">) => void;
+}) {
+  const workOrders = useQuery(
+    api.workOrders.list,
+    projectId ? { projectId, limit: 200 } : "skip"
+  );
+  const linkToWorkOrder = useMutation(api.tasks.linkToWorkOrder);
+  const [selectedWorkOrderId, setSelectedWorkOrderId] = useState("");
+  const [linking, setLinking] = useState(false);
+  const { toast } = useToast();
+
+  const handleLink = async () => {
+    if (!projectId || !selectedWorkOrderId) return;
+    setLinking(true);
+    try {
+      await linkToWorkOrder({
+        taskId,
+        projectId,
+        workOrderId: selectedWorkOrderId as Id<"workOrders">,
+        actorType: "HUMAN",
+        actorId: "operator",
+        idempotencyKey: `ui-link:${taskId}:${selectedWorkOrderId}`,
+      });
+      toast("Task linked to Work Order");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Unable to link Task", true);
+    } finally {
+      setLinking(false);
+    }
+  };
+
+  return (
+    <Section title="Parent Delivery">
+      <div className="rounded-lg border border-line bg-surface-2 p-4">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <StatusBadge
+            tone={
+              parentDelivery.governanceStatus === "GOVERNED"
+                ? "success"
+                : parentDelivery.governanceStatus === "UNGOVERNED"
+                  ? "warning"
+                  : "neutral"
+            }
+          >
+            {parentDelivery.governanceStatus}
+          </StatusBadge>
+          {parentDelivery.governanceStatus === "UNGOVERNED" ? (
+            <span className="text-xs text-warn">Work Order required before execution</span>
+          ) : null}
+        </div>
+
+        <dl className="grid grid-cols-[110px_1fr] gap-x-3 gap-y-2 text-sm">
+          <dt className="text-ink-muted">Work Order</dt>
+          <dd>
+            {parentDelivery.workOrderId ? (
+              <button
+                type="button"
+                className="text-left font-medium text-registry-accent underline-offset-4 hover:underline"
+                onClick={() => onNavigateToWorkOrder?.(parentDelivery.workOrderId!)}
+              >
+                {parentDelivery.workOrderTitle}
+              </button>
+            ) : (
+              <span className="text-ink-secondary">Not linked</span>
+            )}
+          </dd>
+          <dt className="text-ink-muted">Mission</dt>
+          <dd>
+            {parentDelivery.missionId ? (
+              <button
+                type="button"
+                className="text-left font-medium text-registry-accent underline-offset-4 hover:underline"
+                onClick={() => onNavigateToMission?.(parentDelivery.missionId!)}
+              >
+                {parentDelivery.missionTitle}
+              </button>
+            ) : (
+              <span className="text-ink-secondary">Not linked</span>
+            )}
+          </dd>
+          <dt className="text-ink-muted">Repository</dt>
+          <dd className="break-all text-ink-secondary">{parentDelivery.repository ?? "Not declared"}</dd>
+          <dt className="text-ink-muted">Work Order state</dt>
+          <dd className="text-ink-secondary">{parentDelivery.workOrderState?.replace(/_/g, " ") ?? "—"}</dd>
+          <dt className="text-ink-muted">Risk</dt>
+          <dd className="text-ink-secondary">{parentDelivery.riskLevel ?? "—"}</dd>
+        </dl>
+
+        {parentDelivery.governanceStatus === "UNGOVERNED" ? (
+          <div className="mt-4 border-t border-line pt-4">
+            <Label htmlFor={`link-work-order-${taskId}`} className="text-xs">
+              Link to Work Order
+            </Label>
+            <div className="mt-2 flex gap-2">
+              <select
+                id={`link-work-order-${taskId}`}
+                value={selectedWorkOrderId}
+                onChange={(event) => setSelectedWorkOrderId(event.target.value)}
+                className="min-w-0 flex-1 rounded-md border border-line bg-surface-1 px-3 py-2 text-sm text-ink"
+              >
+                <option value="">Select a Work Order</option>
+                {workOrders?.map((workOrder) => (
+                  <option key={workOrder._id} value={workOrder._id}>
+                    {workOrder.title}
+                  </option>
+                ))}
+              </select>
+              <Button
+                size="sm"
+                onClick={handleLink}
+                disabled={!selectedWorkOrderId || linking}
+              >
+                {linking ? "Linking…" : "Link"}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </Section>
+  );
+}
+
 function OverviewTab({
   taskId,
   task,
+  parentDelivery,
   runs,
   approvals,
   agents,
@@ -343,9 +497,12 @@ function OverviewTab({
   updateTask,
   requestApproval,
   setLoading,
+  onNavigateToWorkOrder,
+  onNavigateToMission,
 }: {
   taskId: Id<"tasks">;
   task: Doc<"tasks">;
+  parentDelivery: ParentDelivery;
   runs: Doc<"runs">[];
   approvals: Doc<"approvals">[];
   agents: Doc<"agents">[];
@@ -373,6 +530,8 @@ function OverviewTab({
     idempotencyKey?: string;
   }) => Promise<unknown>;
   setLoading: (value: boolean) => void;
+  onNavigateToWorkOrder?: (workOrderId: Id<"workOrders">) => void;
+  onNavigateToMission?: (missionId: Id<"missions">) => void;
 }) {
   const verificationTrace = buildVerificationTrace(task, runs, approvals);
   const approved = approvals.some((approval) => approval.status === "APPROVED");
@@ -411,6 +570,14 @@ function OverviewTab({
   return (
     <div className="space-y-6">
       <VerificationTracePanel trace={verificationTrace} />
+
+      <ParentDeliverySection
+        taskId={taskId}
+        projectId={task.projectId}
+        parentDelivery={parentDelivery}
+        onNavigateToWorkOrder={onNavigateToWorkOrder}
+        onNavigateToMission={onNavigateToMission}
+      />
 
       {task.description && (
         <Section title="Description">

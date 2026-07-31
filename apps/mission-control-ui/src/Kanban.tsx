@@ -43,6 +43,7 @@ import {
   GripVertical,
   MoreHorizontal,
   ExternalLink,
+  Link2,
   Sparkles,
   type LucideIcon,
 } from "lucide-react";
@@ -89,6 +90,20 @@ type Task = {
   source?: string;
   sourceRef?: string;
   identifier?: string;
+  dueAt?: number;
+  parentDelivery: {
+    governanceStatus: "UNGOVERNED" | "GOVERNED" | "LEGACY";
+    workOrderTitle: string | null;
+    workOrderState: string | null;
+    missionTitle: string | null;
+  };
+  attempt: {
+    currentAttemptNumber: number;
+    currentAttemptStatus: string | null;
+    attemptCount: number;
+    retryCount: number;
+    legacyRetryAmbiguous: boolean;
+  };
   metadata?: {
     workflowRunId?: string;
     workflowAttempt?: {
@@ -401,9 +416,13 @@ function Card({
   onMoveTo: (toStatus: TaskStatus) => void;
   onPlanTask?: (taskId: Id<"tasks">) => void;
 }) {
+  const isUngoverned = task.parentDelivery.governanceStatus === "UNGOVERNED";
+  const effectiveAllowedStatuses = isUngoverned
+    ? allowedToStatuses.filter((status) => status === "CANCELED")
+    : allowedToStatuses;
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: task._id,
-    disabled: allowedToStatuses.length === 0,
+    disabled: effectiveAllowedStatuses.length === 0,
   });
   
   const assignees = task.assigneeIds
@@ -427,7 +446,7 @@ function Card({
         "cursor-pointer"
       )}
     >
-      {allowedToStatuses.length > 0 ? (
+      {effectiveAllowedStatuses.length > 0 ? (
         <button
           type="button"
           {...attributes}
@@ -454,6 +473,22 @@ function Card({
           {task.title}
         </div>
 
+        {isUngoverned ? (
+          <div className="mb-2 rounded-md border border-warn/30 bg-warn/10 px-2 py-1.5">
+            <div className="text-[11px] font-semibold tracking-wide text-warn">UNGOVERNED</div>
+            <div className="mt-0.5 text-[11.5px] text-ink-secondary">Work Order required before execution</div>
+          </div>
+        ) : (
+          <div className="mb-2 space-y-1 rounded-md border border-line bg-surface-2 px-2 py-1.5 text-[11.5px]">
+            <div className="truncate font-medium text-ink-secondary">
+              Work Order: {task.parentDelivery.workOrderTitle ?? "Legacy relationship"}
+            </div>
+            <div className="truncate text-ink-muted">
+              Mission: {task.parentDelivery.missionTitle ?? "Not linked"}
+            </div>
+          </div>
+        )}
+
         {/* Metadata chips */}
         <div className="flex flex-wrap gap-1 mb-2">
           <StatusBadge tone="neutral">{task.type}</StatusBadge>
@@ -470,7 +505,34 @@ function Card({
               {workflowAttempt.retryNumber ? ` · Retry ${workflowAttempt.retryNumber}` : ""}
             </StatusBadge>
           ) : null}
+          {task.attempt.attemptCount > 0 ? (
+            <StatusBadge tone="info">
+              Attempt {task.attempt.currentAttemptNumber} · {task.attempt.currentAttemptStatus}
+            </StatusBadge>
+          ) : null}
+          {task.attempt.retryCount > 0 ? (
+            <StatusBadge tone="warning">
+              {task.attempt.retryCount} {task.attempt.retryCount === 1 ? "retry" : "retries"}
+            </StatusBadge>
+          ) : null}
+          <StatusBadge
+            tone={
+              isUngoverned
+                ? "warning"
+                : task.parentDelivery.governanceStatus === "GOVERNED"
+                  ? "success"
+                  : "neutral"
+            }
+          >
+            {task.parentDelivery.governanceStatus}
+          </StatusBadge>
         </div>
+
+        {task.dueAt ? (
+          <div className="mb-2 text-[11.5px] text-ink-muted">
+            Due {new Date(task.dueAt).toLocaleDateString()}
+          </div>
+        ) : null}
 
         {/* Labels */}
         {task.labels && task.labels.length > 0 && (
@@ -528,7 +590,7 @@ function Card({
       </div>
 
       {/* Hover actions */}
-      {(allowedToStatuses.length > 0 || onPlanTask) && (
+      {(effectiveAllowedStatuses.length > 0 || onPlanTask || isUngoverned) && (
         <div className="mt-2 flex items-center gap-1 border-t border-line pt-2">
           {onPlanTask && (
             <Button
@@ -541,7 +603,7 @@ function Card({
               Plan with AI
             </Button>
           )}
-          {allowedToStatuses.length > 0 && (
+          {effectiveAllowedStatuses.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2">
@@ -550,7 +612,7 @@ function Card({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-44">
-                {allowedToStatuses.map((s: TaskStatus) => (
+                {effectiveAllowedStatuses.map((s: TaskStatus) => (
                   <DropdownMenuItem
                     key={s}
                     onClick={(e) => { e.stopPropagation(); onMoveTo(s); }}
@@ -562,6 +624,17 @@ function Card({
               </DropdownMenuContent>
             </DropdownMenu>
           )}
+          {isUngoverned ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-[11px]"
+              onClick={onSelect}
+            >
+              <Link2 className="mr-1 h-3 w-3" aria-hidden />
+              Link Work Order
+            </Button>
+          ) : null}
           <Button
             variant="ghost"
             size="sm"

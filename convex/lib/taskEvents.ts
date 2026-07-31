@@ -3,6 +3,7 @@ import type { Id } from "../_generated/dataModel";
 
 export type TaskEventType =
   | "TASK_CREATED"
+  | "TASK_LINKED_TO_WORK_ORDER"
   | "TASK_TRANSITION"
   | "POLICY_DECISION"
   | "APPROVAL_REQUESTED"

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../../../convex/_generated/api";
-import type { Id } from "../../../../convex/_generated/dataModel";
+import type { Doc, Id } from "../../../../convex/_generated/dataModel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -37,6 +37,7 @@ import {
 } from "./workOrdersModel";
 import { ExecutionRunInspector } from "./ExecutionRunInspector";
 import { splitCurrentAndHistoricalRevisions, summarizeRevisionEffects } from "./workOrderLifecycleModel";
+import { CreateTaskModal } from "../CreateTaskModal";
 
 const RISK_STYLES: Record<string, string> = {
   LOW: "border-emerald-500/30 text-emerald-300",
@@ -104,6 +105,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("workOrder"));
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [createTaskOpen, setCreateTaskOpen] = useState(false);
   const [approvalOpen, setApprovalOpen] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [revisionOpen, setRevisionOpen] = useState(false);
@@ -125,16 +127,23 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
   const [error, setError] = useState<string | null>(null);
 
   const workOrders = useQuery(api.workOrders.list, projectId ? { projectId } : {});
+  const agents = useQuery(api.agents.listAll, projectId ? { projectId } : {});
+  const accessibleSelectedId =
+    selectedId && workOrders?.some((workOrder) => workOrder._id === selectedId)
+      ? selectedId
+      : null;
   const selected = useQuery(
     api.workOrders.get,
-    selectedId ? { workOrderId: selectedId as Id<"workOrders"> } : "skip"
+    accessibleSelectedId
+      ? { workOrderId: accessibleSelectedId as Id<"workOrders"> }
+      : "skip"
   );
 
   useEffect(() => {
     const requested = searchParams.get("workOrder");
-    if (requested && requested !== selectedId) {
+    if (requested !== selectedId) {
       setSelectedId(requested);
-      setMobileDetailOpen(true);
+      setMobileDetailOpen(Boolean(requested));
     }
   }, [searchParams, selectedId]);
   const createWorkOrder = useMutation(api.workOrders.create);
@@ -153,17 +162,29 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
 
   useEffect(() => {
     if (filtered.length === 0) {
-      setSelectedId(null);
       setMobileDetailOpen(false);
       return;
     }
     if (!selectedId && filtered.length > 0) {
       setSelectedId(filtered[0]._id);
+      const next = new URLSearchParams(searchParams);
+      next.set("workOrder", filtered[0]._id);
+      setSearchParams(next, { replace: true });
     }
     if (selectedId && filtered.length > 0 && !filtered.some((item) => item._id === selectedId)) {
       setSelectedId(filtered[0]._id);
+      const next = new URLSearchParams(searchParams);
+      next.set("workOrder", filtered[0]._id);
+      setSearchParams(next, { replace: true });
     }
-  }, [filtered, selectedId]);
+  }, [filtered, searchParams, selectedId, setSearchParams]);
+
+  const selectWorkOrder = (workOrderId: string, history: "push" | "replace" = "push") => {
+    setSelectedId(workOrderId);
+    const next = new URLSearchParams(searchParams);
+    next.set("workOrder", workOrderId);
+    setSearchParams(next, { replace: history === "replace" });
+  };
 
   const repositories = useMemo(
     () => Array.from(new Set((workOrders ?? []).map((item) => item.repository).filter(Boolean))).sort(),
@@ -226,6 +247,32 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
     () => splitCurrentAndHistoricalRevisions((selected?.revisions ?? []) as any[], selected?.workOrder.currentRevisionId),
     [selected]
   );
+  const agentMap = useMemo(
+    () =>
+      new Map<Id<"agents">, Doc<"agents">>(
+        (agents ?? []).map((agent) => [agent._id, agent])
+      ),
+    [agents]
+  );
+  const childTaskSummary = useMemo(() => {
+    const tasks = selected?.childTasks ?? [];
+    return {
+      total: tasks.length,
+      active: tasks.filter((task) => ["ASSIGNED", "IN_PROGRESS"].includes(task.status)).length,
+      review: tasks.filter((task) => ["REVIEW", "NEEDS_APPROVAL"].includes(task.status)).length,
+      blocked: tasks.filter((task) => task.status === "BLOCKED").length,
+      completed: tasks.filter((task) => task.status === "DONE").length,
+    };
+  }, [selected]);
+  const verifiedCriteriaCount = selected
+    ? Math.max(
+        0,
+        selected.workOrder.acceptanceCriteria.length -
+          (selected.acceptanceSummary?.missingCriteriaIds?.length ?? 0) -
+          (selected.acceptanceSummary?.failedCriteriaIds?.length ?? 0) -
+          (selected.acceptanceSummary?.staleCriteriaIds?.length ?? 0)
+      )
+    : 0;
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
@@ -240,6 +287,12 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
               <Sparkles className="mr-1.5 h-3.5 w-3.5" />
               {seeding ? "Seeding…" : "Seed demo"}
             </Button>
+            {selected ? (
+              <Button variant="outline" size="sm" onClick={() => setCreateTaskOpen(true)}>
+                <Plus className="mr-1.5 h-3.5 w-3.5" />
+                New Task
+              </Button>
+            ) : null}
             <Button size="sm" onClick={() => {
               setCreateRequestKey(globalThis.crypto?.randomUUID?.() ?? `work-order-${Date.now()}`);
               setCreateOpen(true);
@@ -302,11 +355,8 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                     key={item._id}
                     type="button"
                     onClick={() => {
-                      setSelectedId(item._id);
+                      selectWorkOrder(item._id);
                       setMobileDetailOpen(true);
-                      const next = new URLSearchParams(searchParams);
-                      next.set("workOrder", item._id);
-                      setSearchParams(next);
                     }}
                     aria-label={`${item.title} — next action: ${deriveNextAction(item)}`}
                     className={`w-full rounded-xl border p-4 text-left transition-colors ${selectedRow ? "border-registry-accent/40 bg-registry-accent-soft" : "border-[var(--panel-line)] bg-card/40 hover:border-registry-accent/20"}`}
@@ -439,6 +489,68 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                     </p>
                   </Section>
                 ) : null}
+
+                <Section title="Child Tasks">
+                  <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
+                    <StatCard label="Total Tasks" value={childTaskSummary.total} />
+                    <StatCard label="Active Tasks" value={childTaskSummary.active} />
+                    <StatCard label="Review Tasks" value={childTaskSummary.review} />
+                    <StatCard label="Blocked Tasks" value={childTaskSummary.blocked} tone={childTaskSummary.blocked > 0 ? "warn" : "default"} />
+                    <StatCard label="Completed Tasks" value={childTaskSummary.completed} tone="good" />
+                  </div>
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    <Card className="p-3">
+                      <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Execution progress</div>
+                      <div className="mt-2 text-lg font-semibold text-foreground">
+                        {childTaskSummary.completed} of {childTaskSummary.total} Tasks complete
+                      </div>
+                    </Card>
+                    <Card className="p-3">
+                      <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Acceptance readiness</div>
+                      <div className="mt-2 text-lg font-semibold text-foreground">
+                        {verifiedCriteriaCount} of {selected.workOrder.acceptanceCriteria.length} criteria verified
+                      </div>
+                    </Card>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {selected.childTasks.length > 0 ? selected.childTasks.map((task) => {
+                      const assignedAgent = task.assigneeIds
+                        .map((agentId) => agentMap.get(agentId)?.name)
+                        .filter(Boolean)
+                        .join(", ");
+                      return (
+                        <div key={task._id} className="rounded-lg border border-[var(--panel-line)] bg-background/30 px-3 py-3">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <div className="text-sm font-medium text-foreground">{task.title}</div>
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                {assignedAgent || "Unassigned"} · Priority P{task.priority}
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <Badge variant="outline">{task.status}</Badge>
+                              <Badge variant="outline">{task.parentDelivery.governanceStatus}</Badge>
+                              {task.status === "BLOCKED" ? <Badge variant="outline" className="border-red-500/30 text-red-300">Blocked</Badge> : null}
+                            </div>
+                          </div>
+                          <div className="mt-2 text-xs text-muted-foreground">
+                            Current Attempt: {task.attempt.currentAttemptNumber || "None"}
+                            {task.attempt.currentAttemptStatus ? ` (${task.attempt.currentAttemptStatus})` : ""}
+                            {" · "}Retries: {task.attempt.retryCount}
+                          </div>
+                        </div>
+                      );
+                    }) : (
+                      <div className="rounded-lg border border-dashed border-[var(--panel-line)] p-4 text-sm text-muted-foreground">
+                        No Tasks are linked to this Work Order yet.
+                      </div>
+                    )}
+                  </div>
+                  <Button className="mt-3" size="sm" onClick={() => setCreateTaskOpen(true)}>
+                    <Plus className="mr-1.5 h-3.5 w-3.5" />
+                    New Task
+                  </Button>
+                </Section>
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <Section title="Execution setup">
@@ -884,7 +996,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                 : undefined,
               idempotencyKey: createRequestKey ?? undefined,
             });
-            setSelectedId(result.workOrder?._id ?? null);
+            if (result.workOrder?._id) selectWorkOrder(result.workOrder._id);
             setMobileDetailOpen(true);
             setCreateOpen(false);
           } catch (err) {
@@ -894,6 +1006,14 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
           }
         }}
       />
+
+      {createTaskOpen && selected && (
+        <CreateTaskModal
+          projectId={projectId}
+          defaultWorkOrderId={selected.workOrder._id}
+          onClose={() => setCreateTaskOpen(false)}
+        />
+      )}
 
       <RequestApprovalDialog
         open={approvalOpen}

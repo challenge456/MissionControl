@@ -24,6 +24,12 @@ import {
   isExecutorOwnedWorkflowAttempt,
   isMatchingExplicitWorkflowGateApproval,
 } from "./lib/workflowTaskGuards";
+import {
+  deriveTaskGovernanceStatus,
+  governanceTransitionError,
+  loadTaskProjections,
+  taskWorkOrderLinkError,
+} from "./lib/taskProjection";
 
 // ============================================================================
 // TYPES
@@ -164,7 +170,9 @@ async function resolveAssigneeInstanceIds(
 export const get = query({
   args: { taskId: v.id("tasks") },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.taskId);
+    const task = await ctx.db.get(args.taskId);
+    if (!task) return null;
+    return (await loadTaskProjections(ctx, [task], task.projectId))[0];
   },
 });
 
@@ -201,14 +209,17 @@ export const list = query({
   },
   handler: async (ctx, args) => {
     const limit = args.limit ?? 200;
+    let tasks;
     if (args.projectId) {
-      return await ctx.db
+      tasks = await ctx.db
         .query("tasks")
         .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
         .order("desc")
         .take(limit);
+    } else {
+      tasks = await ctx.db.query("tasks").order("desc").take(limit);
     }
-    return await ctx.db.query("tasks").order("desc").take(limit);
+    return await loadTaskProjections(ctx, tasks, args.projectId);
   },
 });
 
@@ -220,35 +231,36 @@ export const listByStatus = query({
   },
   handler: async (ctx, args) => {
     const limit = args.limit ?? 100;
+    let tasks;
 
     // If projectId is provided, use project-scoped index
     if (args.projectId) {
       if (args.status) {
-        return await ctx.db
+        tasks = await ctx.db
           .query("tasks")
           .withIndex("by_project_status", (q) => 
             q.eq("projectId", args.projectId).eq("status", args.status as TaskStatus)
           )
           .order("desc")
           .take(limit);
+      } else {
+        tasks = await ctx.db
+          .query("tasks")
+          .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+          .order("desc")
+          .take(limit);
       }
-      return await ctx.db
-        .query("tasks")
-        .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
-        .order("desc")
-        .take(limit);
+    } else if (args.status) {
+      tasks = await ctx.db
+          .query("tasks")
+          .withIndex("by_status", (q) => q.eq("status", args.status as TaskStatus))
+          .order("desc")
+          .take(limit);
+    } else {
+      tasks = await ctx.db.query("tasks").order("desc").take(limit);
     }
 
-    // Fallback: no project filter (for backward compatibility)
-    if (args.status) {
-      return await ctx.db
-        .query("tasks")
-        .withIndex("by_status", (q) => q.eq("status", args.status as TaskStatus))
-        .order("desc")
-        .take(limit);
-    }
-
-    return await ctx.db.query("tasks").order("desc").take(limit);
+    return await loadTaskProjections(ctx, tasks, args.projectId);
   },
 });
 
@@ -259,17 +271,41 @@ export const listAll = query({
     projectId: v.optional(v.id("projects")),
   },
   handler: async (ctx, args) => {
+    let tasks;
     if (args.projectId) {
-      return await ctx.db
+      tasks = await ctx.db
         .query("tasks")
         .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
         .order("desc")
         .take(LIST_ALL_CAP);
+    } else {
+      tasks = await ctx.db
+        .query("tasks")
+        .order("desc")
+        .take(LIST_ALL_CAP);
     }
-    return await ctx.db
+    return await loadTaskProjections(ctx, tasks, args.projectId);
+  },
+});
+
+export const listByWorkOrder = query({
+  args: {
+    projectId: v.id("projects"),
+    workOrderId: v.id("workOrders"),
+  },
+  handler: async (ctx, args) => {
+    const workOrder = await ctx.db.get(args.workOrderId);
+    if (!workOrder || workOrder.projectId !== args.projectId) {
+      throw new Error("Work Order is unavailable in the selected workspace.");
+    }
+    const tasks = await ctx.db
       .query("tasks")
+      .withIndex("by_project_work_order", (q) =>
+        q.eq("projectId", args.projectId).eq("workOrderId", args.workOrderId)
+      )
       .order("desc")
-      .take(LIST_ALL_CAP);
+      .collect();
+    return await loadTaskProjections(ctx, tasks, args.projectId);
   },
 });
 
@@ -643,8 +679,12 @@ export const getWithTimeline = query({
       toolCalls.push(...calls);
     }
     
-    return { 
-      task, 
+    const projectedTask = (
+      await loadTaskProjections(ctx, [task], task.projectId)
+    )[0];
+
+    return {
+      task: projectedTask,
       transitions, 
       messages, 
       runs,
@@ -715,6 +755,18 @@ export const simulateTransition = query({
     }
 
     const errors: Array<{ field: string; message: string }> = [];
+    const workOrder = task.workOrderId
+      ? await ctx.db.get(task.workOrderId)
+      : null;
+    if (
+      deriveTaskGovernanceStatus(task, workOrder) === "UNGOVERNED" &&
+      toStatus !== "CANCELED"
+    ) {
+      errors.push({
+        field: "workOrderId",
+        message: "Link this Task to a Work Order before execution.",
+      });
+    }
 
     if (!rule.allowedActors.includes(actorType)) {
       errors.push({
@@ -977,6 +1029,7 @@ export const create = mutation({
     labels: v.optional(v.array(v.string())),
     estimatedCost: v.optional(v.number()),
     goalId: v.optional(v.id("goals")),
+    workOrderId: v.optional(v.id("workOrders")),
     idempotencyKey: v.optional(v.string()),
     // Provenance — where the task came from
     source: v.optional(v.string()),       // "DASHBOARD" | "TELEGRAM" | "GITHUB" | "AGENT" | "API"
@@ -995,7 +1048,10 @@ export const create = mutation({
         .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.idempotencyKey))
         .first();
       if (existing) {
-        return { task: existing, created: false };
+        const projected = (
+          await loadTaskProjections(ctx, [existing], existing.projectId)
+        )[0];
+        return { task: projected, created: false };
       }
     }
 
@@ -1029,6 +1085,16 @@ export const create = mutation({
       ? sanitizeTaskDescription(args.description)
       : args.description;
     const project = args.projectId ? await ctx.db.get(args.projectId) : null;
+    if (args.projectId && !project) {
+      throw new Error("The selected workspace is unavailable.");
+    }
+    const workOrder = args.workOrderId
+      ? await ctx.db.get(args.workOrderId)
+      : null;
+    if (args.workOrderId) {
+      const linkError = taskWorkOrderLinkError(args.projectId, workOrder);
+      if (linkError) throw new Error(linkError);
+    }
     const assigneeIds = args.assigneeIds ?? [];
     const assigneeInstanceIds =
       assigneeIds.length > 0
@@ -1054,6 +1120,7 @@ export const create = mutation({
       projectId: args.projectId,
       identifier,
       goalId: args.goalId,
+      workOrderId: args.workOrderId,
       title,
       description,
       type: args.type as TaskType,
@@ -1071,7 +1138,15 @@ export const create = mutation({
       sourceRef: args.sourceRef,
       createdBy: (args.createdBy as any) ?? undefined,
       createdByRef: args.createdByRef,
-      metadata: args.metadata,
+      metadata: {
+        ...(typeof args.metadata === "object" && args.metadata !== null
+          ? args.metadata
+          : {}),
+        governanceOrigin: args.workOrderId
+          ? "GOVERNED_WORK_ORDER"
+          : "UNGOVERNED_INTAKE",
+        relationshipCreatedAt: Date.now(),
+      },
       dueAt: args.dueAt,
     });
     
@@ -1101,6 +1176,8 @@ export const create = mutation({
         title,
         type: args.type,
         priority: args.priority ?? 3,
+        workOrderId: args.workOrderId,
+        missionId: workOrder?.missionId,
       },
       metadata: {
         source: args.source,
@@ -1108,7 +1185,107 @@ export const create = mutation({
       },
     });
     
-    return { task, created: true };
+    const projected = task
+      ? (await loadTaskProjections(ctx, [task], task.projectId))[0]
+      : null;
+    return { task: projected, created: true };
+  },
+});
+
+export const linkToWorkOrder = mutation({
+  args: {
+    taskId: v.id("tasks"),
+    projectId: v.id("projects"),
+    workOrderId: v.id("workOrders"),
+    actorType: v.union(v.literal("HUMAN"), v.literal("AGENT"), v.literal("SYSTEM")),
+    actorId: v.optional(v.string()),
+    idempotencyKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const [task, workOrder] = await Promise.all([
+      ctx.db.get(args.taskId),
+      ctx.db.get(args.workOrderId),
+    ]);
+    if (!task || task.projectId !== args.projectId) {
+      throw new Error("Task is unavailable in the selected workspace.");
+    }
+    const linkError = taskWorkOrderLinkError(args.projectId, workOrder);
+    if (linkError) throw new Error(linkError);
+    if (!workOrder) throw new Error("The selected Work Order no longer exists.");
+    if (task.workOrderId && task.workOrderId !== args.workOrderId) {
+      throw new Error(
+        "This Task is already governed by another Work Order. Unlinking requires a separate reviewed change."
+      );
+    }
+    if (task.workOrderId === args.workOrderId) {
+      return {
+        task: (await loadTaskProjections(ctx, [task], args.projectId))[0],
+        linked: false,
+        idempotencyHit: true,
+      };
+    }
+
+    const linkedAt = Date.now();
+    const beforeState = {
+      workOrderId: null,
+      governanceStatus: deriveTaskGovernanceStatus(task, null),
+    };
+    await ctx.db.patch(task._id, {
+      workOrderId: workOrder._id,
+      metadata: {
+        ...(typeof task.metadata === "object" && task.metadata !== null
+          ? task.metadata
+          : {}),
+        governanceOrigin: "GOVERNED_WORK_ORDER",
+        relationshipCreatedAt: linkedAt,
+        relationshipActorType: args.actorType,
+        relationshipActorId: args.actorId,
+        relationshipIdempotencyKey: args.idempotencyKey,
+      },
+    });
+    await ctx.db.insert("activities", {
+      projectId: args.projectId,
+      actorType: args.actorType,
+      actorId: args.actorId,
+      action: "TASK_LINKED_TO_WORK_ORDER",
+      description: `Task "${task.title}" linked to Work Order "${workOrder.title}"`,
+      targetType: "TASK",
+      targetId: task._id,
+      taskId: task._id,
+      beforeState,
+      afterState: {
+        workOrderId: workOrder._id,
+        missionId: workOrder.missionId,
+        governanceStatus: "GOVERNED",
+        linkedAt,
+      },
+      metadata: { idempotencyKey: args.idempotencyKey },
+    });
+    await logTaskEvent(ctx, {
+      taskId: task._id,
+      projectId: args.projectId,
+      eventType: "TASK_LINKED_TO_WORK_ORDER",
+      actorType: args.actorType,
+      actorId: args.actorId,
+      relatedId: workOrder._id,
+      beforeState,
+      afterState: {
+        workOrderId: workOrder._id,
+        missionId: workOrder.missionId,
+        governanceStatus: "GOVERNED",
+        linkedAt,
+      },
+      metadata: { idempotencyKey: args.idempotencyKey },
+    });
+
+    const updated = await ctx.db.get(task._id);
+    return {
+      task: updated
+        ? (await loadTaskProjections(ctx, [updated], args.projectId))[0]
+        : null,
+      linked: true,
+      idempotencyHit: false,
+    };
   },
 });
 
@@ -1184,6 +1361,23 @@ export const transition = mutation({
         errors: [{
           field: "projectId",
           message: "Task does not belong to the selected workspace",
+        }],
+      };
+    }
+    const taskWorkOrder = task.workOrderId
+      ? await ctx.db.get(task.workOrderId)
+      : null;
+    const governanceStatus = deriveTaskGovernanceStatus(task, taskWorkOrder);
+    const governanceError = governanceTransitionError(
+      governanceStatus,
+      args.toStatus
+    );
+    if (governanceError) {
+      return {
+        success: false,
+        errors: [{
+          field: "workOrderId",
+          message: governanceError,
         }],
       };
     }

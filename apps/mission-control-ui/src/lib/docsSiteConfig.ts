@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   BookOpen,
+  ClipboardCheck,
   FlaskConical,
   Layers,
   Rocket,
@@ -164,6 +165,25 @@ export const DOCS_SITE_SECTIONS: DocsSiteSection[] = [
       { id: "discover", title: "Discover & install", path: "registry/discover-and-install" },
       { id: "cdl", title: "Context CDL", path: "registry/context-cdl" },
       { id: "evals", title: "Eval runs", path: "registry/eval-runs" },
+    ],
+  },
+  {
+    id: "software-factory-enhancement",
+    label: "Software Factory Enhancement",
+    icon: ClipboardCheck,
+    pages: [
+      {
+        id: "task-workorder-pr1-implementation",
+        title: "Task-to-Work-Order PR 1",
+        description: "Canonical Task parentage, governance, and Attempt projection",
+        path: "software-factory-enhancement/implementation/task-workorder-pr1",
+      },
+      {
+        id: "task-workorder-pr1-browser-results",
+        title: "Task-to-Work-Order Browser Results",
+        description: "Deterministic governed and Ungoverned Task evidence",
+        path: "software-factory-enhancement/testing/task-workorder-browser-results",
+      },
     ],
   },
   {
