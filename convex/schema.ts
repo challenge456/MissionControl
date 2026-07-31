@@ -3072,6 +3072,7 @@ export default defineSchema({
   qcRuns: defineTable({
     tenantId: v.optional(v.id("tenants")),
     projectId: v.optional(v.id("projects")),
+    releaseDeploymentId: v.optional(v.id("deployments")),
 
     // Display ID and ordering
     runId: v.string(),
@@ -4125,6 +4126,7 @@ export default defineSchema({
   contextEvalRuns: defineTable({
     packageId: v.id("contextPackages"),
     versionId: v.id("contextPackageVersions"),
+    releaseDeploymentId: v.optional(v.id("deployments")),
     status: contextEvalRunStatus,
     scenarioCount: v.number(),
     completedScenarios: v.number(),
@@ -4431,6 +4433,7 @@ export default defineSchema({
   // -------------------------------------------------------------------------
   harnessPrChecks: defineTable({
     projectId: v.optional(v.id("projects")),
+    releaseDeploymentId: v.optional(v.id("deployments")),
     prUrl: v.string(),
     prNumber: v.optional(v.number()),
     repoFullName: v.string(),
@@ -4522,6 +4525,16 @@ export default defineSchema({
     name: v.string(),
     description: v.string(),
     ownerId: v.string(),
+    sourceSuggestionId: v.optional(v.id("metaLoopSuggestions")),
+    sourcePattern: v.optional(v.string()),
+    trigger: v.optional(v.string()),
+    schedule: v.optional(v.string()),
+    requiresHumanApproval: v.optional(v.boolean()),
+    requiresVerificationReceipt: v.optional(v.boolean()),
+    enabled: v.optional(v.boolean()),
+    lastDraftAt: v.optional(v.number()),
+    deactivatedAt: v.optional(v.number()),
+    deactivatedBy: v.optional(v.string()),
     workflowId: v.string(),
     workflowVersion: v.string(),
     triggerType: v.union(
@@ -4608,6 +4621,7 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_project_status", ["projectId", "status"])
     .index("by_source_candidate", ["sourceCandidateId"])
+    .index("by_source_suggestion", ["sourceSuggestionId"])
     .index("by_next_run", ["nextRunAt"]),
 
   automationDecisions: defineTable({
@@ -4635,6 +4649,22 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_definition", ["automationDefinitionId"])
     .index("by_project_time", ["projectId", "decidedAt"]),
+
+  releaseGateEvaluations: defineTable({
+    deploymentId: v.id("deployments"),
+    status: v.union(v.literal("PASS"), v.literal("WARN"), v.literal("FAIL")),
+    mode: v.literal("SHADOW"),
+    rationale: v.string(),
+    evidenceRefs: v.array(v.string()),
+    qcRunId: v.optional(v.id("qcRuns")),
+    contextEvalRunId: v.optional(v.id("contextEvalRuns")),
+    harnessPrCheckId: v.optional(v.id("harnessPrChecks")),
+    automationKey: v.optional(v.string()),
+    createdBy: v.optional(v.id("operators")),
+    createdAt: v.number(),
+  })
+    .index("by_deployment", ["deploymentId"])
+    .index("by_automation_key", ["automationKey"]),
 
   // -------------------------------------------------------------------------
   // KNOWLEDGE GRAPH (Agentic-KB Graphify overlay + future Obsidian sync)

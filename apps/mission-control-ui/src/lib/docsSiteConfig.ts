@@ -184,6 +184,12 @@ export const DOCS_SITE_SECTIONS: DocsSiteSection[] = [
         description: "Deterministic governed and Ungoverned Task evidence",
         path: "software-factory-enhancement/testing/task-workorder-browser-results",
       },
+      {
+        id: "ci-schema-drift-repair",
+        title: "CI Schema Drift Repair",
+        description: "Release-gate and automation contract restoration",
+        path: "software-factory-enhancement/testing/ci-schema-drift-repair",
+      },
     ],
   },
   {

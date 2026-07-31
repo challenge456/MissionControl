@@ -142,15 +142,48 @@ export const resolve = mutation({
         .query("automationDefinitions")
         .withIndex("by_source_suggestion", (q) => q.eq("sourceSuggestionId", row._id))
         .first();
-      if (!existingDefinition) {
+      if (!existingDefinition && row.projectId) {
         const now = Date.now();
         await ctx.db.insert("automationDefinitions", {
           projectId: row.projectId,
+          sourceCandidateId: row._id,
           sourceSuggestionId: row._id,
+          definitionVersion: 1,
           name: row.title.replace(/^Automation proposal:\s*/, ""),
+          description: row.summary,
+          ownerId: "operator",
           sourcePattern: row.payload.pattern,
+          workflowId: "automation-execution",
+          workflowVersion: "v1",
+          triggerType: "SCHEDULE",
+          triggerConfig: {
+            cron: row.payload.recommendedSchedule ?? "0 8 * * 1",
+            timezone: "UTC",
+          },
           trigger: "SCHEDULE",
           schedule: row.payload.recommendedSchedule ?? "0 8 * * 1",
+          scope: String(row.projectId),
+          repositoryIds: [],
+          environmentIds: ["local"],
+          autonomyLevel: "LEVEL_1",
+          isMutating: false,
+          riskLevel: "LOW",
+          requiredApprovalTypes: ["OPERATOR"],
+          verificationContract: {
+            independent: true,
+            receiptRequired: true,
+          },
+          evidenceRequirements: ["Operator-reviewed verification receipt"],
+          maxDurationSeconds: 900,
+          maxRetries: 0,
+          maxCostUsd: 1,
+          concurrencyLimit: 1,
+          idempotencyStrategy: "definition-version:trigger-window",
+          overlapPolicy: "SKIP",
+          catchUpPolicy: "SKIP_MISSED",
+          status: "DISABLED",
+          reliabilityState: "PROBATION",
+          health: "UNKNOWN",
           requiresHumanApproval: true,
           requiresVerificationReceipt: true,
           enabled: false,
