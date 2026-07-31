@@ -5,6 +5,12 @@ import {
   evaluateMissionAcceptance,
   validateMissionHandoff,
 } from "./lib/missionGovernance";
+import {
+  assertMissionDraftWorkspace,
+  changedMissionDraftFields,
+  missionScopeStatus,
+  validateMissionDraftInput,
+} from "./lib/missionDraft";
 
 const missionState = v.union(
   v.literal("DRAFT"), v.literal("PLANNING"), v.literal("AWAITING_PLAN_APPROVAL"),
@@ -79,6 +85,44 @@ function assertTransition(mission: any, state: any) {
   }
 }
 
+async function resolveOperator(ctx: any) {
+  const identity = await ctx.auth.getUserIdentity();
+  if (identity) {
+    return { actorId: identity.subject, actorSource: "AUTHENTICATED" as const };
+  }
+  return {
+    actorId: "development:local-operator",
+    actorSource: "DEVELOPMENT_FALLBACK" as const,
+  };
+}
+
+async function getMissionDetail(ctx: any, mission: any) {
+  const [plans, assertions, handoffs, events, workOrders] = await Promise.all([
+    ctx.db.query("missionPlans").withIndex("by_mission", (q: any) => q.eq("missionId", mission._id)).order("desc").collect(),
+    ctx.db.query("validationAssertions").withIndex("by_mission", (q: any) => q.eq("missionId", mission._id)).collect(),
+    ctx.db.query("missionHandoffs").withIndex("by_mission", (q: any) => q.eq("missionId", mission._id)).order("desc").collect(),
+    ctx.db.query("missionEvents").withIndex("by_mission_timestamp", (q: any) => q.eq("missionId", mission._id)).order("desc").collect(),
+    ctx.db.query("workOrders").withIndex("by_mission", (q: any) => q.eq("missionId", mission._id)).collect(),
+  ]);
+  return {
+    mission,
+    plans,
+    assertions,
+    handoffs,
+    events,
+    workOrders,
+    acceptance: evaluateMissionAcceptance({
+      assertions: assertions.map((assertion: any) => ({
+        id: assertion.assertionId,
+        status: assertion.status,
+        requiresIndependentValidation: assertion.requiresIndependentValidation,
+        validatorRunId: assertion.validatorWorkflowRunId,
+        waiverApprovalId: assertion.waiverApprovalDecisionId,
+      })),
+    }),
+  };
+}
+
 export const list = query({
   args: { projectId: v.optional(v.id("projects")), state: v.optional(missionState), limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
@@ -101,20 +145,18 @@ export const get = query({
   handler: async (ctx, args) => {
     const mission = await ctx.db.get(args.missionId);
     if (!mission) return null;
-    const [plans, assertions, handoffs, events, workOrders] = await Promise.all([
-      ctx.db.query("missionPlans").withIndex("by_mission", (q) => q.eq("missionId", args.missionId)).order("desc").collect(),
-      ctx.db.query("validationAssertions").withIndex("by_mission", (q) => q.eq("missionId", args.missionId)).collect(),
-      ctx.db.query("missionHandoffs").withIndex("by_mission", (q) => q.eq("missionId", args.missionId)).order("desc").collect(),
-      ctx.db.query("missionEvents").withIndex("by_mission_timestamp", (q) => q.eq("missionId", args.missionId)).order("desc").collect(),
-      ctx.db.query("workOrders").withIndex("by_mission", (q) => q.eq("missionId", args.missionId)).collect(),
-    ]);
-    return { mission, plans, assertions, handoffs, events, workOrders, acceptance: evaluateMissionAcceptance({ assertions: assertions.map((assertion) => ({
-      id: assertion.assertionId,
-      status: assertion.status,
-      requiresIndependentValidation: assertion.requiresIndependentValidation,
-      validatorRunId: assertion.validatorWorkflowRunId,
-      waiverApprovalId: assertion.waiverApprovalDecisionId,
-    })) }) };
+    return await getMissionDetail(ctx, mission);
+  },
+});
+
+export const getScoped = query({
+  args: { missionId: v.id("missions"), projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    const mission = await ctx.db.get(args.missionId);
+    const scope = missionScopeStatus(mission, args.projectId);
+    if (scope === "NOT_FOUND") return { status: "NOT_FOUND" as const };
+    if (scope === "SCOPE_MISMATCH") return { status: "SCOPE_MISMATCH" as const };
+    return { status: "FOUND" as const, detail: await getMissionDetail(ctx, mission) };
   },
 });
 
@@ -126,11 +168,14 @@ export const createDraft = mutation({
     maxReadOnlyConcurrency: v.optional(v.number()), maxCorrectiveIterations: v.optional(v.number()), metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
+    validateMissionDraftInput(args);
     if (args.idempotencyKey) {
       const existing = await ctx.db.query("missions").withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.idempotencyKey)).first();
       if (existing) return { mission: existing, created: false };
     }
     const project = args.projectId ? await ctx.db.get(args.projectId) : null;
+    if (args.projectId && !project) throw new Error("Workspace not found");
+    const operator = await resolveOperator(ctx);
     const now = Date.now();
     const missionId = await ctx.db.insert("missions", {
       tenantId: project?.tenantId, projectId: args.projectId, idempotencyKey: args.idempotencyKey,
@@ -142,8 +187,73 @@ export const createDraft = mutation({
     });
     const mission = await ctx.db.get(missionId);
     if (!mission) throw new Error("Mission creation failed");
-    await logMissionEvent(ctx, { mission, eventType: "MISSION_CREATED", actorType: "HUMAN", actorId: args.owner, summary: `Created mission ${args.title}`, idempotencyKey: args.idempotencyKey ? `${args.idempotencyKey}:created` : undefined });
+    await logMissionEvent(ctx, {
+      mission,
+      eventType: "MISSION_CREATED",
+      actorType: "HUMAN",
+      actorId: operator.actorId,
+      summary: `Created mission ${args.title}`,
+      idempotencyKey: args.idempotencyKey ? `${args.idempotencyKey}:created` : undefined,
+      metadata: { actorSource: operator.actorSource },
+    });
     return { mission, created: true };
+  },
+});
+
+export const updateDraft = mutation({
+  args: {
+    missionId: v.id("missions"),
+    projectId: v.id("projects"),
+    idempotencyKey: v.string(),
+    title: v.string(),
+    objective: v.string(),
+    context: v.optional(v.string()),
+    constraints: v.optional(v.array(v.string())),
+    sourceOfTruthRefs: v.optional(v.array(sourceRef)),
+    owner: v.optional(v.string()),
+    budgetUsd: v.optional(v.number()),
+    stopCondition: v.string(),
+    maxReadOnlyConcurrency: v.optional(v.number()),
+    maxCorrectiveIterations: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    validateMissionDraftInput(args);
+    const mission = await ctx.db.get(args.missionId);
+    if (!mission) throw new Error("Mission not found");
+    assertMissionDraftWorkspace(mission, args.projectId);
+
+    const duplicate = await ctx.db
+      .query("missionEvents")
+      .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.idempotencyKey))
+      .first();
+    if (duplicate) return { mission, updated: false };
+    if (mission.state !== "DRAFT") {
+      throw new Error(`Mission draft cannot be edited while ${mission.state}`);
+    }
+
+    const {
+      missionId: _missionId,
+      projectId: _projectId,
+      idempotencyKey: _idempotencyKey,
+      ...draft
+    } = args;
+    const changedFields = changedMissionDraftFields(mission, draft);
+    if (changedFields.length === 0) return { mission, updated: false };
+
+    await ctx.db.patch(mission._id, { ...draft, updatedAt: Date.now() });
+    const updated = await ctx.db.get(mission._id);
+    if (!updated) throw new Error("Mission draft update failed");
+    const operator = await resolveOperator(ctx);
+    await logMissionEvent(ctx, {
+      mission: updated,
+      eventType: "MISSION_DRAFT_UPDATED",
+      actorType: "HUMAN",
+      actorId: operator.actorId,
+      summary: `Updated mission draft ${updated.title}`,
+      idempotencyKey: args.idempotencyKey,
+      metadata: { actorSource: operator.actorSource, changedFields },
+    });
+    return { mission: updated, updated: true };
   },
 });
 
