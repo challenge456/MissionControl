@@ -84,6 +84,12 @@ export const DOCS_SITE_SECTIONS: DocsSiteSection[] = [
         description: "Operator Docs and repository synchronization policy",
         path: "software-factory-enhancement/documentation-governance",
       },
+      {
+        id: "docs-001-workspace-routing",
+        title: "DOCS-001 Workspace Routing Results",
+        description: "Invalid workspace recovery, isolation, and browser evidence",
+        path: "software-factory-enhancement/docs-001-workspace-routing-results",
+      },
     ],
   },
   {
