@@ -103,6 +103,7 @@ import type * as lib_loopEngineering from "../lib/loopEngineering.js";
 import type * as lib_mergeGates from "../lib/mergeGates.js";
 import type * as lib_missionDraft from "../lib/missionDraft.js";
 import type * as lib_missionGovernance from "../lib/missionGovernance.js";
+import type * as lib_missionPromptScheduling from "../lib/missionPromptScheduling.js";
 import type * as lib_modelRouting from "../lib/modelRouting.js";
 import type * as lib_operatorControls from "../lib/operatorControls.js";
 import type * as lib_operatorEvals from "../lib/operatorEvals.js";
@@ -309,6 +310,7 @@ declare const fullApi: ApiFromModules<{
   "lib/mergeGates": typeof lib_mergeGates;
   "lib/missionDraft": typeof lib_missionDraft;
   "lib/missionGovernance": typeof lib_missionGovernance;
+  "lib/missionPromptScheduling": typeof lib_missionPromptScheduling;
   "lib/modelRouting": typeof lib_modelRouting;
   "lib/operatorControls": typeof lib_operatorControls;
   "lib/operatorEvals": typeof lib_operatorEvals;
