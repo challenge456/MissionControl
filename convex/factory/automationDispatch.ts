@@ -11,8 +11,20 @@ export const createDueDrafts = internalMutation({
   args: {},
   handler: async (ctx) => {
     const now = Date.now();
-    const definitions = (await ctx.db.query("automationDefinitions").collect()).filter(
-      (definition) => isAutomationDraftDue(definition, now)
+    const definitions = (
+      await ctx.db.query("automationDefinitions").collect()
+    ).filter(
+      (definition) =>
+        definition.enabled === true &&
+        !!definition.sourceSuggestionId &&
+        !!definition.sourcePattern &&
+        isAutomationDraftDue(
+          {
+            enabled: true,
+            lastDraftAt: definition.lastDraftAt,
+          },
+          now
+        )
     );
     let created = 0;
 
@@ -21,9 +33,9 @@ export const createDueDrafts = internalMutation({
         id: String(definition._id),
         projectId: definition.projectId ? String(definition.projectId) : undefined,
         name: definition.name,
-        sourcePattern: definition.sourcePattern,
+        sourcePattern: definition.sourcePattern!,
         sourceSuggestionId: String(definition.sourceSuggestionId),
-        enabled: definition.enabled,
+        enabled: true,
         lastDraftAt: definition.lastDraftAt,
       }, now);
       const result = await ctx.runMutation(api.workOrders.create, {

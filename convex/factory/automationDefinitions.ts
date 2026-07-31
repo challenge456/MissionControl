@@ -5,8 +5,9 @@ import { mutation, query } from "../_generated/server";
 export const list = query({
   args: { projectId: v.optional(v.id("projects")) },
   handler: async (ctx, args) => {
-    const rows = args.projectId
-      ? await ctx.db.query("automationDefinitions").withIndex("by_project", (q) => q.eq("projectId", args.projectId)).collect()
+    const projectId = args.projectId;
+    const rows = projectId
+      ? await ctx.db.query("automationDefinitions").withIndex("by_project", (q) => q.eq("projectId", projectId)).collect()
       : await ctx.db.query("automationDefinitions").collect();
     return rows.sort((a, b) => b.createdAt - a.createdAt);
   },
