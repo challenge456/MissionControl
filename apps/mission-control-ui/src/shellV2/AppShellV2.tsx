@@ -51,6 +51,15 @@ export function shouldDeferRouteWrite(
   return pathView !== null && pathView !== activeView;
 }
 
+export function initialViewFromLocation(
+  pathname: string,
+  validViews: string[],
+  persistedView: MainView | null,
+  search = ""
+): MainView {
+  return viewFromPath(pathname, validViews, search) ?? persistedView ?? "home";
+}
+
 interface AppShellV2Props {
   activeView: MainView;
   onNavigate: (view: MainView) => void;

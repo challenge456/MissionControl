@@ -7,7 +7,7 @@ const CRITICAL_ROUTES = [
   { route: "/v2/home", heading: "Command Center" },
   { route: "/v2/tasks", heading: "Tasks" },
   { route: "/v2/control-work-orders", heading: "Work Orders" },
-  { route: "/v2/control-approvals", heading: "Approval Center" },
+  { route: "/v2/control-approvals", heading: "Decision Center" },
 ] as const;
 
 function watchBrowserFailures(page: Page) {

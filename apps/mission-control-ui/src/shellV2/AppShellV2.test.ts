@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { shouldDeferRouteWrite, viewFromPath } from "./AppShellV2";
+import {
+  initialViewFromLocation,
+  shouldDeferRouteWrite,
+  viewFromPath,
+} from "./AppShellV2";
 
 const VIEWS = ["command-center", "agents", "model-routing", "automations", "automation-runs", "missions", "mission-detail"];
 
@@ -14,6 +18,12 @@ describe("v2 route synchronization", () => {
   it("does not overwrite a direct deep link with persisted view state", () => {
     expect(shouldDeferRouteWrite("/v2/agents", VIEWS, "command-center")).toBe(true);
     expect(shouldDeferRouteWrite("/v2/agents", VIEWS, "agents")).toBe(false);
+    expect(
+      initialViewFromLocation("/v2/model-routing", VIEWS, "home")
+    ).toBe("model-routing");
+    expect(
+      initialViewFromLocation("/v2/not-a-view", VIEWS, "command-center")
+    ).toBe("command-center");
   });
 
   it("maps canonical and legacy Mission details to the existing detail view", () => {

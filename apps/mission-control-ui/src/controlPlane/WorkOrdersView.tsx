@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../../../convex/_generated/api";
@@ -101,6 +101,7 @@ function latestByCriterion<T extends { acceptanceCriterionId: string; recordedAt
 export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const hadRequestedWorkOrder = useRef(Boolean(searchParams.get("workOrder")));
   const [filters, setFilters] = useState<WorkOrderQueueFilters>(DEFAULT_WORK_ORDER_FILTERS);
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("workOrder"));
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
@@ -142,9 +143,13 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
 
   useEffect(() => {
     const requested = searchParams.get("workOrder");
-    if (requested !== selectedId) {
-      setSelectedId(requested);
-      setMobileDetailOpen(Boolean(requested));
+    if (requested) {
+      if (requested !== selectedId) setSelectedId(requested);
+      setMobileDetailOpen(true);
+      hadRequestedWorkOrder.current = true;
+    } else if (!requested && hadRequestedWorkOrder.current) {
+      setMobileDetailOpen(false);
+      hadRequestedWorkOrder.current = false;
     }
   }, [searchParams, selectedId]);
   const createWorkOrder = useMutation(api.workOrders.create);
@@ -168,9 +173,6 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
     }
     if (!selectedId && filtered.length > 0) {
       setSelectedId(filtered[0]._id);
-      const next = new URLSearchParams(searchParams);
-      next.set("workOrder", filtered[0]._id);
-      setSearchParams(next, { replace: true });
     }
     if (selectedId && filtered.length > 0 && !filtered.some((item) => item._id === selectedId)) {
       setSelectedId(filtered[0]._id);
@@ -185,6 +187,13 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
     const next = new URLSearchParams(searchParams);
     next.set("workOrder", workOrderId);
     setSearchParams(next, { replace: history === "replace" });
+  };
+
+  const closeMobileDetail = () => {
+    setMobileDetailOpen(false);
+    const next = new URLSearchParams(searchParams);
+    next.delete("workOrder");
+    setSearchParams(next, { replace: true });
   };
 
   const repositories = useMemo(
@@ -415,7 +424,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                   size="sm"
                   variant="outline"
                   className="xl:hidden"
-                  onClick={() => setMobileDetailOpen(false)}
+                  onClick={closeMobileDetail}
                 >
                   <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
                   Back to work orders

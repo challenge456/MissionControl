@@ -2,6 +2,7 @@
 # Base URL (in-app): Knowledge → Docs → Documentation tab
 
 operator-control-plane/overview.md — Governed Decision Center, dispatch and proof separation, Fleet Operator persona evaluations, and North Star alignment.
+../validation/2026-07-31-integrated-control-plane-evidence.md — Post-merge automated and browser verification for the integrated V1 control plane.
 
 skill-automations/overview.md — Governed deterministic skill Automation lifecycle, architecture, status, and source map.
 skill-automations/implementation-design.md — Architecture decisions, extension points, and LEVEL_1 safety boundary.

@@ -10,6 +10,7 @@ Open **Knowledge → Docs → Documentation** in the EOS sidebar (`pnpm dev:demo
 
 ### Operator control plane
 - [Decision Center and Operator Evals](./operator-control-plane/overview.md)
+- [Integrated V1 validation](../validation/2026-07-31-integrated-control-plane-evidence.md)
 
 ### Deterministic Skill Automations
 - [Overview](./skill-automations/overview.md)

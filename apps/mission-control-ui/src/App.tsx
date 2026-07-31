@@ -14,7 +14,7 @@ import { useKeyboardShortcuts } from "./KeyboardShortcuts";
 import { useModalState } from "./hooks/useModalState";
 import { PrivacyProvider } from "./contexts/PrivacyContext";
 import { useFlag } from "./hooks/useFlag";
-import { AppShellV2 } from "./shellV2/AppShellV2";
+import { AppShellV2, initialViewFromLocation } from "./shellV2/AppShellV2";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   WorkspaceScopeProvider,
@@ -224,6 +224,16 @@ function readPersistedView(): MainView | null {
   } catch {
     return null;
   }
+}
+
+function readInitialView(): MainView {
+  if (typeof window === "undefined") return readPersistedView() ?? "home";
+  return initialViewFromLocation(
+    window.location.pathname,
+    VALID_MAIN_VIEWS,
+    readPersistedView(),
+    window.location.search
+  );
 }
 
 // ============================================================================
@@ -578,7 +588,7 @@ export default function App() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   // ── Navigation & selection (persist last view so UI reopens where operator left off) ─
-  const [currentView, setCurrentView] = useState<MainView>(() => readPersistedView() ?? "home");
+  const [currentView, setCurrentView] = useState<MainView>(readInitialView);
   const [projectId, setProjectId] = useState<Id<"projects"> | null>(null);
   const [workspaceWarning, setWorkspaceWarning] = useState<{
     requestedWorkspace: string;
