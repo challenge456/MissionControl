@@ -18,13 +18,13 @@ identity.
 - Axe found zero critical violations.
 - The page emitted zero console errors and zero page errors.
 - Feature-relevant failed network requests were zero.
-- The Mission Control UI production bundle passed.
+- The root TypeScript and production build gates passed after PR #49 repaired
+  the independent merged schema regression.
 - Full repository tests were intentionally skipped for this bounded cycle.
 
-The root TypeScript/build gate is currently blocked by pre-existing merged
-schema drift in release-gate and automation-definition modules. No scheduler
-file appears in the diagnostics. CI must remain the release authority for this
-draft PR.
+The first draft CI run identified that pre-existing schema regression; it was
+fixed in a separate, fully green repair PR and the scheduler was rebased onto
+the corrected `main`.
 
 Screenshots and the passing trace are stored in
 `docs/testing/evidence/task-attempt-scheduler/`.

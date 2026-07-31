@@ -47,19 +47,20 @@ Attempt records and their recovery relationship remain intact.
 
 - Scheduler, Work Order dispatch, and projection: 46 focused tests passed.
 - Browser acceptance: 1 passed.
-- Mission Control UI production bundle: PASS.
+- Root TypeScript gate: PASS after the independent schema repair in PR #49.
+- Root production build: PASS.
 - Diff whitespace validation: PASS.
 - Skill validation: 10 skills, 0 errors, 0 warnings, average score 100.
 - Full repository test suite: intentionally not run; this cycle uses bounded
   evidence to control cost.
 
-The root TypeScript/build gate is blocked on merged baseline schema drift
-outside this branch: release-gate tables/fields and automation-definition
-fields are used by existing code but absent from `convex/schema.ts`. The
-scheduler files introduced no diagnostics, and the UI bundle completed. The
-temporary local validator shim used to load persisted evidence was removed
-before the diff. CI is the release authority and must be monitored before
-promotion.
+The first scheduler CI run correctly exposed a pre-existing `main` regression:
+release-gate tables/fields and automation-definition fields were used by
+existing code but absent from `convex/schema.ts`. The independent repair was
+documented, verified across all CI jobs, and merged as PR #49. This branch was
+then rebased onto that repair; the combined root TypeScript and build gates
+pass. The temporary local validator shim used during early evidence capture
+was removed before the scheduler diff.
 
 ## Evidence files
 
