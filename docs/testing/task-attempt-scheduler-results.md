@@ -49,6 +49,10 @@ Attempt records and their recovery relationship remain intact.
 - Browser acceptance: 1 passed.
 - Root TypeScript gate: PASS after the independent schema repair in PR #49.
 - Root production build: PASS.
+- GitHub CI run
+  [30596328095](https://github.com/jaydubya818/MissionControl/actions/runs/30596328095):
+  PASS for TypeScript, lint, unit tests, E2E tests, production build, and smoke.
+- Both Vercel preview deployments: PASS.
 - Diff whitespace validation: PASS.
 - Skill validation: 10 skills, 0 errors, 0 warnings, average score 100.
 - Full repository test suite: intentionally not run; this cycle uses bounded
