@@ -18,7 +18,7 @@ export function MetadataPanel({
   className?: string;
 }): JSX.Element {
   return (
-    <aside className={cn("flex w-[280px] shrink-0 flex-col gap-4", className)}>
+    <aside className={cn("flex w-full shrink-0 flex-col gap-4 lg:w-[280px]", className)}>
       <dl className="flex flex-col divide-y divide-line">
         {entries.map((entry) => (
           <div key={entry.label} className="flex flex-col gap-1 py-3 first:pt-0">
@@ -50,7 +50,7 @@ export function DetailTabs({
   onChange: (id: string) => void;
 }): JSX.Element {
   return (
-    <div role="tablist" className="flex items-center gap-1 border-b border-line">
+    <div role="tablist" className="flex items-center gap-1 overflow-x-auto border-b border-line">
       {tabs.map((tab) => {
         const active = tab.id === activeId;
         return (
@@ -109,9 +109,9 @@ export function DetailLayout({
   children,
 }: DetailLayoutProps): JSX.Element {
   return (
-    <div className="mx-auto flex max-w-[1200px] flex-col gap-5 px-6 py-5">
+    <div className="mx-auto flex max-w-[1200px] flex-col gap-5 px-4 py-5 sm:px-6">
       {breadcrumbs && breadcrumbs.length > 0 && <Breadcrumbs items={breadcrumbs} />}
-      <div className="flex items-start justify-between gap-6">
+      <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:gap-6">
         <div className="min-w-0">
           <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-ink">
             {title}
@@ -122,13 +122,13 @@ export function DetailLayout({
             </p>
           )}
         </div>
-        {actions && <div className="shrink-0">{actions}</div>}
+        {actions && <div className="w-full shrink-0 sm:w-auto">{actions}</div>}
       </div>
       {metrics}
       {tabs && activeTabId && onTabChange && (
         <DetailTabs tabs={tabs} activeId={activeTabId} onChange={onTabChange} />
       )}
-      <div className="flex gap-8">
+      <div className="flex flex-col gap-6 lg:flex-row lg:gap-8">
         <div className="min-w-0 flex-1">{children}</div>
         {aside}
       </div>

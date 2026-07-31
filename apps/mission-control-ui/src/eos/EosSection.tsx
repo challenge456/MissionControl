@@ -55,8 +55,8 @@ function EosViewBody({
 }): JSX.Element {
   switch (view) {
     case "command-center": return <CommandCenterView projectId={projectId} onNavigate={onNavigate} />;
-    case "missions": return <MissionPortfolioView projectId={projectId} onNavigate={onNavigate} />;
-    case "mission-detail": return <MissionDetailView onNavigate={onNavigate} />;
+    case "missions": return <MissionPortfolioView projectId={projectId} />;
+    case "mission-detail": return <MissionDetailView projectId={projectId} onNavigate={onNavigate} />;
     case "trace-inspector": return <ExecutionInspectorView projectId={projectId} onNavigate={onNavigate} />;
     case "effectiveness": return <EffectivenessView onNavigate={onNavigate} />;
     case "factory-health":
