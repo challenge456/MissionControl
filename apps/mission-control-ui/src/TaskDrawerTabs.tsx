@@ -10,6 +10,15 @@ import type { Id, Doc } from "../../../convex/_generated/dataModel";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   DropdownMenu,
@@ -37,11 +46,26 @@ import { useToast } from "./Toast";
 
 type Tab = "overview" | "timeline" | "artifacts" | "approvals" | "cost" | "reviews" | "why";
 type TaskStatus = Doc<"tasks">["status"];
+type TransitionOptions = {
+  reason?: string;
+  reviewFindings?: string[];
+  blocker?: {
+    type: "TASK" | "EXTERNAL" | "POLICY" | "APPROVAL" | "CAPACITY" | "UNKNOWN";
+    reason: string;
+    ownerRef?: string;
+    requiredAction?: string;
+  };
+  blockerResolution?: {
+    resolution: "RESOLVED" | "WAIVED" | "REPLACED";
+    reason: string;
+  };
+};
 type ParentDelivery = {
   governanceStatus: "UNGOVERNED" | "GOVERNED" | "LEGACY";
   workOrderId: Id<"workOrders"> | null;
   workOrderTitle: string | null;
   workOrderState: string | null;
+  workflowId: string | null;
   repository: string | null;
   riskLevel: string | null;
   missionId: Id<"missions"> | null;
@@ -54,6 +78,7 @@ function taskStatusTone(status: string): StatusBadgeProps["tone"] {
   switch (status) {
     case "DONE":
       return "success";
+    case "READY":
     case "IN_PROGRESS":
     case "REVIEW":
       return "info";
@@ -114,8 +139,10 @@ export function TaskDrawerTabs({
   const postMessage = useMutation(api.messages.post);
   const transitionTask = useMutation(api.tasks.transition);
   const updateTask = useMutation(api.tasks.update);
+  const assignTask = useMutation(api.tasks.assign);
   const toggleWatch = useMutation(api.watchSubscriptions.toggle);
   const requestApproval = useMutation(api.approvals.request);
+  const { toast } = useToast();
 
   if (!taskId) return null;
 
@@ -135,7 +162,17 @@ export function TaskDrawerTabs({
         ) : !data ? (
           <div className="p-6 text-sm text-ink-muted">Task not found</div>
         ) : (() => {
-          const { task, transitions, messages, runs, toolCalls, approvals, activities, taskEvents } = data;
+          const {
+            task,
+            transitions,
+            messages,
+            runs,
+            toolCalls,
+            approvals,
+            activities,
+            taskEvents,
+            workflowAttempts,
+          } = data;
           const agentMap = new Map<Id<"agents">, Doc<"agents">>(
             (agents as Doc<"agents">[]).map((a: Doc<"agents">) => [a._id, a])
           );
@@ -160,7 +197,10 @@ export function TaskDrawerTabs({
             setLoading(false);
           };
 
-          const handleTransition = async (toStatus: TaskStatus) => {
+          const handleTransition = async (
+            toStatus: TaskStatus,
+            options: TransitionOptions = {}
+          ): Promise<boolean> => {
             setLoading(true);
             try {
               const result = await transitionTask({
@@ -169,15 +209,23 @@ export function TaskDrawerTabs({
                 actorType: "HUMAN",
                 actorUserId: "operator",
                 idempotencyKey: `transition:${taskId}:${toStatus}:${Date.now()}`,
-                reason: "Manual transition from UI",
+                reason: options.reason ?? "Manual transition from UI",
+                reviewFindings: options.reviewFindings,
+                blocker: options.blocker,
+                blockerResolution: options.blockerResolution,
               });
               if (!result.success && result.errors) {
-                alert(result.errors.map((e: any) => e.message).join("\n"));
+                toast(result.errors.map((e: any) => e.message).join("\n"), true);
+                return false;
               }
+              toast(`Task moved to ${formatStatusLabel(toStatus)}`);
+              return true;
             } catch (e) {
-              console.error(e);
+              toast(e instanceof Error ? e.message : "Transition failed", true);
+              return false;
+            } finally {
+              setLoading(false);
             }
-            setLoading(false);
           };
 
           return (
@@ -199,8 +247,11 @@ export function TaskDrawerTabs({
                     </div>
                     <div className="flex gap-2 mt-2 flex-wrap items-center">
                       <StatusBadge tone={taskStatusTone(task.status)}>
-                        {formatStatusLabel(task.status)}
+                        {task.status === "ASSIGNED" ? "READY" : formatStatusLabel(task.status)}
                       </StatusBadge>
+                      {task.status === "ASSIGNED" ? (
+                        <StatusBadge tone="neutral">Legacy state</StatusBadge>
+                      ) : null}
                       <StatusBadge tone="neutral">P{task.priority}</StatusBadge>
                       <StatusBadge tone="neutral">{task.type}</StatusBadge>
                       {task.source && (() => {
@@ -269,12 +320,17 @@ export function TaskDrawerTabs({
                   </div>
 
                   {/* Tab Content */}
-                  <div className="flex-1 overflow-auto p-5">
+                  <div
+                    aria-label="Task detail content"
+                    className="flex-1 overflow-auto p-5"
+                    tabIndex={0}
+                  >
                     {activeTab === "overview" && (
                       <OverviewTab
                         taskId={taskId}
                         task={task}
                         parentDelivery={task.parentDelivery}
+                        workflowAttempts={workflowAttempts}
                         runs={runs}
                         approvals={approvals}
                         agents={agents as Doc<"agents">[]}
@@ -282,7 +338,7 @@ export function TaskDrawerTabs({
                         onTransition={handleTransition}
                         loading={loading}
                         postMessage={postMessage}
-                        updateTask={updateTask}
+                        assignTask={assignTask}
                         requestApproval={requestApproval}
                         setLoading={setLoading}
                         onNavigateToWorkOrder={onNavigateToWorkOrder}
@@ -483,10 +539,196 @@ function ParentDeliverySection({
   );
 }
 
+function TaskAttemptSection({
+  taskId,
+  taskStatus,
+  parentDelivery,
+  workflowAttempts,
+}: {
+  taskId: Id<"tasks">;
+  taskStatus: Doc<"tasks">["status"];
+  parentDelivery: ParentDelivery;
+  workflowAttempts: Doc<"workflowRuns">[];
+}) {
+  const dispatchWorkOrder = useMutation(api.workOrders.dispatch);
+  const [retryReason, setRetryReason] = useState("");
+  const [scheduling, setScheduling] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
+  const attempts = [...workflowAttempts].sort(
+    (left, right) =>
+      left.startedAt - right.startedAt ||
+      String(left._id).localeCompare(String(right._id))
+  );
+  const current =
+    attempts.length > 0 ? attempts[attempts.length - 1] : null;
+  const workOrderCanDispatch = [
+    "READY",
+    "BLOCKED",
+    "DISPATCHED",
+    "IN_PROGRESS",
+    "AWAITING_APPROVAL",
+    "AWAITING_VERIFICATION",
+    "REOPENED",
+  ].includes(parentDelivery.workOrderState ?? "");
+  const canStart =
+    parentDelivery.governanceStatus === "GOVERNED" &&
+    !!parentDelivery.workOrderId &&
+    workOrderCanDispatch &&
+    ["READY", "ASSIGNED", "IN_PROGRESS"].includes(taskStatus) &&
+    attempts.length === 0;
+  const canRetry =
+    parentDelivery.governanceStatus === "GOVERNED" &&
+    !!parentDelivery.workOrderId &&
+    workOrderCanDispatch &&
+    ["READY", "ASSIGNED", "IN_PROGRESS"].includes(taskStatus) &&
+    current?.status === "FAILED";
+
+  const schedule = async (retry: boolean) => {
+    if (!parentDelivery.workOrderId || scheduling) return;
+    setError(null);
+    setScheduling(true);
+    try {
+      const result = await dispatchWorkOrder({
+        workOrderId: parentDelivery.workOrderId,
+        taskId,
+        workflowId: parentDelivery.workflowId ?? undefined,
+        actorType: "HUMAN",
+        actorId: "operator",
+        idempotencyKey: retry
+          ? `ui-task-attempt:${taskId}:retry:${current?._id ?? "missing"}`
+          : `ui-task-attempt:${taskId}:start`,
+        runtime: "Mission Control UI",
+        retryOfWorkflowRunId: retry ? current?._id : undefined,
+        retryReason: retry ? retryReason.trim() : undefined,
+      });
+      if (result.reason === "routing-exhausted") {
+        throw new Error("Dispatch blocked: no safe model route satisfies this Work Order.");
+      }
+      setRetryReason("");
+      toast(retry ? "Task retry scheduled" : "Task Attempt scheduled");
+    } catch (scheduleError) {
+      setError(
+        scheduleError instanceof Error
+          ? scheduleError.message
+          : "Unable to schedule Task Attempt."
+      );
+    } finally {
+      setScheduling(false);
+    }
+  };
+
+  return (
+    <Section title="Attempts">
+      <div className="rounded-lg border border-line bg-surface-2 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-medium text-ink">
+              {attempts.length === 0
+                ? "No Attempts"
+                : `Attempt ${attempts.length} · ${current?.status.replace(/_/g, " ")}`}
+            </div>
+            <p className="mt-1 text-xs text-ink-muted">
+              {attempts.length} total · {Math.max(0, attempts.length - 1)} retries
+            </p>
+          </div>
+          {canStart ? (
+            <Button
+              size="sm"
+              onClick={() => void schedule(false)}
+              disabled={scheduling}
+            >
+              {scheduling ? "Scheduling…" : "Start Attempt"}
+            </Button>
+          ) : null}
+        </div>
+
+        {!workOrderCanDispatch &&
+        parentDelivery.governanceStatus === "GOVERNED" ? (
+          <p className="mt-3 rounded-md border border-line bg-surface-1 px-3 py-2 text-xs text-ink-muted">
+            This Work Order is {parentDelivery.workOrderState?.replace(/_/g, " ").toLowerCase() ?? "not ready"} and cannot schedule an Attempt.
+          </p>
+        ) : null}
+
+        {workOrderCanDispatch &&
+        parentDelivery.governanceStatus === "GOVERNED" &&
+        !["READY", "ASSIGNED", "IN_PROGRESS"].includes(taskStatus) ? (
+          <p className="mt-3 rounded-md border border-line bg-surface-1 px-3 py-2 text-xs text-ink-muted">
+            Assign this Task before starting an Attempt.
+          </p>
+        ) : null}
+
+        {attempts.length > 0 ? (
+          <ol className="mt-4 space-y-2" aria-label="Task Attempt history">
+            {[...attempts].reverse().map((attempt, reverseIndex) => {
+              const attemptNumber = attempts.length - reverseIndex;
+              return (
+                <li
+                  key={attempt._id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-line bg-surface-1 px-3 py-2 text-xs"
+                >
+                  <div>
+                    <span className="font-medium text-ink">Attempt {attemptNumber}</span>
+                    <span className="ml-2 font-mono text-ink-muted">{attempt.runId}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <StatusBadge tone={attempt.status === "FAILED" ? "error" : attempt.status === "COMPLETED" ? "success" : "info"}>
+                      {attempt.status.replace(/_/g, " ")}
+                    </StatusBadge>
+                    <span className="text-ink-muted">
+                      {new Date(attempt.startedAt).toLocaleString()}
+                    </span>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        ) : null}
+
+        {canRetry ? (
+          <div className="mt-4 border-t border-line pt-4">
+            <Label htmlFor={`retry-reason-${taskId}`}>Recovery reason</Label>
+            <textarea
+              id={`retry-reason-${taskId}`}
+              value={retryReason}
+              onChange={(event) => setRetryReason(event.target.value)}
+              aria-describedby={`retry-help-${taskId}`}
+              rows={3}
+              className="mt-2 w-full resize-y rounded-md border border-line bg-surface-1 p-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="Explain what changed before retrying."
+            />
+            <p id={`retry-help-${taskId}`} className="mt-1 text-xs text-ink-muted">
+              At least 10 characters. The failed Attempt remains in history.
+            </p>
+            <Button
+              className="mt-3"
+              size="sm"
+              onClick={() => void schedule(true)}
+              disabled={scheduling || retryReason.trim().length < 10}
+            >
+              {scheduling ? "Scheduling…" : "Retry Attempt"}
+            </Button>
+          </div>
+        ) : null}
+
+        {error ? (
+          <div
+            role="alert"
+            className="mt-3 rounded-md border border-err/30 bg-err/10 px-3 py-2 text-sm text-err"
+          >
+            {error}
+          </div>
+        ) : null}
+      </div>
+    </Section>
+  );
+}
+
 function OverviewTab({
   taskId,
   task,
   parentDelivery,
+  workflowAttempts,
   runs,
   approvals,
   agents,
@@ -494,7 +736,7 @@ function OverviewTab({
   onTransition,
   loading,
   postMessage,
-  updateTask,
+  assignTask,
   requestApproval,
   setLoading,
   onNavigateToWorkOrder,
@@ -503,11 +745,12 @@ function OverviewTab({
   taskId: Id<"tasks">;
   task: Doc<"tasks">;
   parentDelivery: ParentDelivery;
+  workflowAttempts: Doc<"workflowRuns">[];
   runs: Doc<"runs">[];
   approvals: Doc<"approvals">[];
   agents: Doc<"agents">[];
   agentMap: Map<Id<"agents">, Doc<"agents">>;
-  onTransition: (status: TaskStatus) => void;
+  onTransition: (status: TaskStatus, options?: TransitionOptions) => Promise<boolean>;
   loading: boolean;
   postMessage: (args: {
     taskId: Id<"tasks">;
@@ -517,7 +760,13 @@ function OverviewTab({
     content: string;
     idempotencyKey: string;
   }) => Promise<unknown>;
-  updateTask: (args: { taskId: Id<"tasks">; assigneeIds: Id<"agents">[] }) => Promise<unknown>;
+  assignTask: (args: {
+    taskId: Id<"tasks">;
+    agentIds: Id<"agents">[];
+    actorType: "HUMAN";
+    actorUserId: string;
+    idempotencyKey: string;
+  }) => Promise<unknown>;
   requestApproval: (args: {
     projectId?: Id<"projects">;
     taskId: Id<"tasks">;
@@ -533,6 +782,9 @@ function OverviewTab({
   onNavigateToWorkOrder?: (workOrderId: Id<"workOrders">) => void;
   onNavigateToMission?: (missionId: Id<"missions">) => void;
 }) {
+  const [contextAction, setContextAction] = useState<
+    "BLOCK" | "REQUEST_CHANGES" | "UNBLOCK" | null
+  >(null);
   const verificationTrace = buildVerificationTrace(task, runs, approvals);
   const approved = approvals.some((approval) => approval.status === "APPROVED");
   const pendingApproval = approvals.some((approval) =>
@@ -580,6 +832,12 @@ function OverviewTab({
       />
 
       <TaskModelRoutingSection taskId={taskId} />
+      <TaskAttemptSection
+        taskId={taskId}
+        taskStatus={task.status}
+        parentDelivery={parentDelivery}
+        workflowAttempts={workflowAttempts}
+      />
 
       {task.description && (
         <Section title="Description">
@@ -603,7 +861,7 @@ function OverviewTab({
             taskId={taskId}
             currentAssigneeIds={task.assigneeIds}
             agents={agents}
-            updateTask={updateTask}
+            assignTask={assignTask}
             setLoading={setLoading}
           />
         </div>
@@ -687,9 +945,44 @@ function OverviewTab({
         </Section>
       )}
 
-      {task.blockedReason && (
-        <Section title="Blocked Reason">
-          <p className="text-sm text-err">{task.blockedReason}</p>
+      {task.review && (
+        <Section title="Review Context">
+          <dl className="grid gap-2 text-sm sm:grid-cols-2">
+            <DetailItem
+              label="Owner"
+              value={task.review.ownerId ? agentMap.get(task.review.ownerId)?.name ?? "Assigned reviewer" : "Not assigned"}
+            />
+            <DetailItem
+              label="Entered"
+              value={task.review.enteredAt ? new Date(task.review.enteredAt).toLocaleString() : "Not recorded"}
+            />
+            <DetailItem label="Result" value={task.review.result ? formatStatusLabel(task.review.result) : "Pending"} />
+            <DetailItem label="Resubmissions" value={String(task.review.resubmissionCount)} />
+          </dl>
+          {task.review.reason ? (
+            <p className="mt-2 rounded-md border border-line bg-surface-2 px-3 py-2 text-sm text-ink-secondary">
+              {task.review.reason}
+            </p>
+          ) : null}
+        </Section>
+      )}
+
+      {task.status === "BLOCKED" && (task.blocker || task.blockedReason) && (
+        <Section title="Blocker Context">
+          <p className="text-sm text-err">{task.blocker?.reason ?? task.blockedReason}</p>
+          {task.blocker ? (
+            <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+              <DetailItem label="Type" value={formatStatusLabel(task.blocker.type)} />
+              <DetailItem
+                label="Blocked since"
+                value={new Date(task.blocker.blockedSince).toLocaleString()}
+              />
+              <DetailItem label="Owner" value={task.blocker.ownerRef ?? "Not assigned"} />
+              <DetailItem label="Required action" value={task.blocker.requiredAction ?? "Not specified"} />
+            </dl>
+          ) : (
+            <p className="mt-2 text-xs text-warn">Legacy blocker: structured context will be added when resolved.</p>
+          )}
         </Section>
       )}
 
@@ -705,13 +998,18 @@ function OverviewTab({
       <Section title="Quick Actions">
         <div className="flex gap-2 flex-wrap">
           {task.status === "INBOX" && (
-            <Button size="sm" onClick={() => onTransition("ASSIGNED")} disabled={loading}>
-              Assign
+            <Button size="sm" onClick={() => void onTransition("READY")} disabled={loading}>
+              Mark ready
             </Button>
           )}
           {task.status === "REVIEW" && approved && (
-            <Button size="sm" onClick={() => onTransition("DONE")} disabled={loading}>
+            <Button size="sm" onClick={() => void onTransition("DONE")} disabled={loading}>
               Accept and mark done
+            </Button>
+          )}
+          {task.status === "REVIEW" && (
+            <Button size="sm" variant="outline" onClick={() => setContextAction("REQUEST_CHANGES")} disabled={loading}>
+              Request changes
             </Button>
           )}
           {task.status === "REVIEW" && !approved && !pendingApproval && (
@@ -725,12 +1023,29 @@ function OverviewTab({
             </Button>
           )}
           {task.status === "BLOCKED" && (
-            <Button size="sm" onClick={() => onTransition("IN_PROGRESS")} disabled={loading}>
+            <Button size="sm" onClick={() => setContextAction("UNBLOCK")} disabled={loading}>
               Unblock
+            </Button>
+          )}
+          {["READY", "ASSIGNED", "IN_PROGRESS", "REVIEW"].includes(task.status) && (
+            <Button size="sm" variant="outline" onClick={() => setContextAction("BLOCK")} disabled={loading}>
+              Block task
             </Button>
           )}
         </div>
       </Section>
+
+      <TransitionContextDialog
+        action={contextAction}
+        taskStarted={!!task.startedAt}
+        loading={loading}
+        onClose={() => setContextAction(null)}
+        onSubmit={async (status, options) => {
+          const success = await onTransition(status, options);
+          if (success) setContextAction(null);
+          return success;
+        }}
+      />
     </div>
   );
 }
@@ -839,21 +1154,232 @@ function TaskModelRoutingSection({ taskId }: { taskId: Id<"tasks"> }) {
   );
 }
 
+function DetailItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-xs text-ink-muted">{label}</dt>
+      <dd className="mt-0.5 text-ink-secondary">{value}</dd>
+    </div>
+  );
+}
+
+function TransitionContextDialog({
+  action,
+  taskStarted,
+  loading,
+  onClose,
+  onSubmit,
+}: {
+  action: "BLOCK" | "REQUEST_CHANGES" | "UNBLOCK" | null;
+  taskStarted: boolean;
+  loading: boolean;
+  onClose: () => void;
+  onSubmit: (status: TaskStatus, options: TransitionOptions) => Promise<boolean>;
+}) {
+  const [reason, setReason] = useState("");
+  const [findings, setFindings] = useState("");
+  const [blockerType, setBlockerType] = useState<NonNullable<TransitionOptions["blocker"]>["type"]>("UNKNOWN");
+  const [ownerRef, setOwnerRef] = useState("");
+  const [requiredAction, setRequiredAction] = useState("");
+  const [resolution, setResolution] = useState<NonNullable<TransitionOptions["blockerResolution"]>["resolution"]>("RESOLVED");
+  const [unblockTarget, setUnblockTarget] = useState<TaskStatus>(taskStarted ? "IN_PROGRESS" : "READY");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!action) return;
+    setReason("");
+    setFindings("");
+    setBlockerType("UNKNOWN");
+    setOwnerRef("");
+    setRequiredAction("");
+    setResolution("RESOLVED");
+    setUnblockTarget(taskStarted ? "IN_PROGRESS" : "READY");
+    setError("");
+  }, [action, taskStarted]);
+
+  if (!action) return null;
+
+  const title =
+    action === "BLOCK"
+      ? "Block task"
+      : action === "REQUEST_CHANGES"
+        ? "Request changes"
+        : "Resolve blocker";
+  const description =
+    action === "BLOCK"
+      ? "Record what prevents progress and who owns the next action."
+      : action === "REQUEST_CHANGES"
+        ? "Return the Task to an actionable state while retaining the review decision."
+        : "Record how the blocker was resolved before work resumes.";
+
+  const handleSubmit = async () => {
+    const normalizedReason = reason.trim();
+    if (normalizedReason.length < 10) {
+      setError("Provide a meaningful reason of at least 10 characters.");
+      return;
+    }
+    setError("");
+
+    if (action === "BLOCK") {
+      await onSubmit("BLOCKED", {
+        reason: normalizedReason,
+        blocker: {
+          type: blockerType,
+          reason: normalizedReason,
+          ownerRef: ownerRef.trim() || undefined,
+          requiredAction: requiredAction.trim() || undefined,
+        },
+      });
+      return;
+    }
+
+    if (action === "REQUEST_CHANGES") {
+      await onSubmit("IN_PROGRESS", {
+        reason: normalizedReason,
+        reviewFindings: findings
+          .split("\n")
+          .map((finding) => finding.trim())
+          .filter(Boolean),
+      });
+      return;
+    }
+
+    await onSubmit(unblockTarget, {
+      reason: normalizedReason,
+      blockerResolution: { resolution, reason: normalizedReason },
+    });
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open && !loading) onClose(); }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-1">
+          {action === "BLOCK" ? (
+            <>
+              <div className="space-y-1.5">
+                <Label htmlFor="blocker-type">Blocker type</Label>
+                <select
+                  id="blocker-type"
+                  value={blockerType}
+                  onChange={(event) => setBlockerType(event.target.value as typeof blockerType)}
+                  className="h-9 w-full rounded-md border border-line bg-surface-1 px-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  {(["TASK", "EXTERNAL", "POLICY", "APPROVAL", "CAPACITY", "UNKNOWN"] as const).map((type) => (
+                    <option key={type} value={type}>{formatStatusLabel(type)}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="blocker-owner">Responsible owner</Label>
+                <Input id="blocker-owner" value={ownerRef} onChange={(event) => setOwnerRef(event.target.value)} placeholder="Operator, agent, or team" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="required-action">Required action</Label>
+                <Input id="required-action" value={requiredAction} onChange={(event) => setRequiredAction(event.target.value)} placeholder="What must happen next?" />
+              </div>
+            </>
+          ) : null}
+
+          {action === "UNBLOCK" ? (
+            <>
+              <div className="space-y-1.5">
+                <Label htmlFor="blocker-resolution">Resolution</Label>
+                <select
+                  id="blocker-resolution"
+                  value={resolution}
+                  onChange={(event) => setResolution(event.target.value as typeof resolution)}
+                  className="h-9 w-full rounded-md border border-line bg-surface-1 px-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="RESOLVED">Resolved</option>
+                  <option value="WAIVED">Waived</option>
+                  <option value="REPLACED">Replaced</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="unblock-target">Return task to</Label>
+                <select
+                  id="unblock-target"
+                  value={unblockTarget}
+                  onChange={(event) => setUnblockTarget(event.target.value as TaskStatus)}
+                  className="h-9 w-full rounded-md border border-line bg-surface-1 px-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="READY">Ready</option>
+                  <option value="IN_PROGRESS">In Progress</option>
+                </select>
+              </div>
+            </>
+          ) : null}
+
+          <div className="space-y-1.5">
+            <Label htmlFor="workflow-reason">
+              {action === "REQUEST_CHANGES" ? "Reason for changes" : action === "UNBLOCK" ? "Resolution reason" : "Blocker reason"}
+            </Label>
+            <textarea
+              id="workflow-reason"
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              rows={3}
+              aria-describedby={error ? "workflow-reason-error" : undefined}
+              className="w-full resize-y rounded-md border border-line bg-surface-1 p-3 text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="Explain the evidence and next action…"
+            />
+          </div>
+
+          {action === "REQUEST_CHANGES" ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="review-findings">Findings (one per line)</Label>
+              <textarea
+                id="review-findings"
+                value={findings}
+                onChange={(event) => setFindings(event.target.value)}
+                rows={3}
+                className="w-full resize-y rounded-md border border-line bg-surface-1 p-3 text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-ring"
+                placeholder="Missing evidence\nAcceptance criterion not met"
+              />
+            </div>
+          ) : null}
+
+          {error ? <p id="workflow-reason-error" role="alert" className="text-sm text-err">{error}</p> : null}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={loading}>Cancel</Button>
+          <Button onClick={() => void handleSubmit()} disabled={loading || reason.trim().length < 10}>
+            {loading ? "Saving…" : action === "BLOCK" ? "Block task" : action === "REQUEST_CHANGES" ? "Request changes" : "Resolve blocker"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ReassignDropdown({
   taskId,
   currentAssigneeIds,
   agents,
-  updateTask,
+  assignTask,
   setLoading,
 }: {
   taskId: Id<"tasks">;
   currentAssigneeIds: Id<"agents">[];
   agents: Doc<"agents">[];
-  updateTask: (args: { taskId: Id<"tasks">; assigneeIds: Id<"agents">[] }) => Promise<unknown>;
+  assignTask: (args: {
+    taskId: Id<"tasks">;
+    agentIds: Id<"agents">[];
+    actorType: "HUMAN";
+    actorUserId: string;
+    idempotencyKey: string;
+  }) => Promise<unknown>;
   setLoading: (value: boolean) => void;
 }) {
   const [selectedIds, setSelectedIds] = useState<Id<"agents">[]>(currentAssigneeIds);
   const [open, setOpen] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     setSelectedIds(currentAssigneeIds);
@@ -863,10 +1389,20 @@ function ReassignDropdown({
     setSelectedIds(nextIds);
     setLoading(true);
     try {
-      await updateTask({ taskId, assigneeIds: nextIds });
+      const result = await assignTask({
+        taskId,
+        agentIds: nextIds,
+        actorType: "HUMAN",
+        actorUserId: "operator",
+        idempotencyKey: `assign:${taskId}:${nextIds.join(",")}:${Date.now()}`,
+      });
+      const assignment = result as { success?: boolean; error?: string };
+      if (assignment.success === false) {
+        throw new Error(assignment.error ?? "Assignment failed");
+      }
       setOpen(false);
     } catch (error) {
-      console.error(error);
+      toast(error instanceof Error ? error.message : "Assignment failed", true);
     } finally {
       setLoading(false);
     }
@@ -1438,6 +1974,10 @@ function WhyTab({
         }
       : "skip"
   );
+  const compatibilityReport = useQuery(
+    api.tasks.getWorkflowStateCompatibilityReport,
+    task.projectId ? { projectId: task.projectId } : "skip"
+  );
 
   const policyDecision = useQuery(api.policy.explainTaskPolicy, {
     taskId: task._id,
@@ -1493,6 +2033,41 @@ function WhyTab({
               ))}
             </div>
           ) : null}
+        </div>
+      </section>
+
+      <section>
+        <h3 className="text-sm font-semibold text-ink mb-3">Workflow compatibility</h3>
+        <div className="p-4 bg-surface-2 border border-line rounded-md">
+          {compatibilityReport ? (
+            <>
+              <ExplainRow
+                label="Mode"
+                value="READ ONLY"
+                detail="This report cannot mutate Tasks"
+              />
+              <ExplainRow
+                label="Ready presentation"
+                value={String(compatibilityReport.canonicalStatusCounts.READY ?? 0)}
+                detail={`${compatibilityReport.legacyAssignedCount} legacy Assigned`}
+              />
+              <ExplainRow
+                label="Migration eligible"
+                value={String(compatibilityReport.eligibleLegacyAssignedCount)}
+                detail="No migration is authorized in this cycle"
+              />
+              <ExplainRow
+                label="Missing structured context"
+                value={String(
+                  compatibilityReport.reviewMissingStructuredCount +
+                    compatibilityReport.blockedMissingStructuredCount
+                )}
+                detail={`${compatibilityReport.reviewMissingStructuredCount} review · ${compatibilityReport.blockedMissingStructuredCount} blocked`}
+              />
+            </>
+          ) : (
+            <div className="text-xs text-ink-muted">Loading compatibility evidence…</div>
+          )}
         </div>
       </section>
 

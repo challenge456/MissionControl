@@ -121,6 +121,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
   const [inspectorReceiptId, setInspectorReceiptId] = useState<Id<"verificationReceipts"> | null>(null);
   const [inspectorCriterionId, setInspectorCriterionId] = useState<string | null>(null);
   const [dispatchError, setDispatchError] = useState<string | null>(null);
+  const [dispatchTaskSelections, setDispatchTaskSelections] = useState<Record<string, string>>({});
   const [governanceError, setGovernanceError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [seeding, setSeeding] = useState(false);
@@ -258,12 +259,15 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
     const tasks = selected?.childTasks ?? [];
     return {
       total: tasks.length,
-      active: tasks.filter((task) => ["ASSIGNED", "IN_PROGRESS"].includes(task.status)).length,
+      active: tasks.filter((task) => ["READY", "ASSIGNED", "IN_PROGRESS"].includes(task.status)).length,
       review: tasks.filter((task) => ["REVIEW", "NEEDS_APPROVAL"].includes(task.status)).length,
       blocked: tasks.filter((task) => task.status === "BLOCKED").length,
       completed: tasks.filter((task) => task.status === "DONE").length,
     };
   }, [selected]);
+  const selectedDispatchTaskId = selected
+    ? dispatchTaskSelections[selected.workOrder._id] ?? ""
+    : "";
   const verifiedCriteriaCount = selected
     ? Math.max(
         0,
@@ -860,7 +864,49 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                 </Section>
 
                 <Section title="Linked execution runs">
-                  <div className="mb-3 flex justify-end">
+                  <div className="mb-3 grid gap-3 rounded-lg border border-[var(--panel-line)] bg-background/30 p-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+                    <div>
+                      <Label htmlFor={`dispatch-task-${selected.workOrder._id}`}>
+                        Task to execute
+                      </Label>
+                      {selected.childTasks.length > 0 ? (
+                        <>
+                          <Select
+                            value={selectedDispatchTaskId}
+                            onValueChange={(taskId) =>
+                              setDispatchTaskSelections((current) => ({
+                                ...current,
+                                [selected.workOrder._id]: taskId,
+                              }))
+                            }
+                          >
+                            <SelectTrigger
+                              id={`dispatch-task-${selected.workOrder._id}`}
+                              className="mt-2"
+                            >
+                              <SelectValue placeholder="Select a governed Child Task" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {selected.childTasks
+                                .filter((task) => ["READY", "ASSIGNED", "IN_PROGRESS"].includes(task.status))
+                                .map((task) => (
+                                  <SelectItem key={task._id} value={task._id}>
+                                    {task.identifier ? `${task.identifier} · ` : ""}
+                                    {task.title}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                          <p className="mt-1.5 text-xs text-muted-foreground">
+                            Assign a Child Task, then select it explicitly. Dispatch creates one Attempt under that Task.
+                          </p>
+                        </>
+                      ) : (
+                        <p className="mt-1.5 text-xs text-muted-foreground">
+                          No canonical Child Tasks exist. This Work Order will use its legacy execution relationship.
+                        </p>
+                      )}
+                    </div>
                     <Button
                       size="sm"
                       onClick={async () => {
@@ -869,6 +915,9 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                           setDispatchingId(selected.workOrder._id);
                           const result = await dispatchWorkOrder({
                             workOrderId: selected.workOrder._id,
+                            taskId: selectedDispatchTaskId
+                              ? selectedDispatchTaskId as Id<"tasks">
+                              : undefined,
                             workflowId: selected.workOrder.workflowId,
                             actorType: "HUMAN",
                             actorId: "operator",
@@ -884,7 +933,11 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                           setDispatchingId(null);
                         }
                       }}
-                      disabled={!canDispatchSelected || dispatchingId === selected.workOrder._id}
+                      disabled={
+                        !canDispatchSelected ||
+                        dispatchingId === selected.workOrder._id ||
+                        (selected.childTasks.length > 0 && !selectedDispatchTaskId)
+                      }
                     >
                       {dispatchingId === selected.workOrder._id ? "Dispatching…" : "Dispatch"}
                     </Button>
@@ -922,6 +975,13 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                             </div>
                           </div>
                           <div className="mt-2 grid gap-2 text-xs text-muted-foreground md:grid-cols-2">
+                            <div>
+                              Task:{" "}
+                              <span className="text-foreground/85">
+                                {selected.childTasks.find((task) => task._id === run.parentTaskId)?.title ??
+                                  (run.parentTaskId ? "Legacy Task" : "Work Order run")}
+                              </span>
+                            </div>
                             <div>Runtime: <span className="text-foreground/85">{run.runtime ?? "—"}</span></div>
                             <div>Model: <span className="text-foreground/85">{run.model ?? "—"}</span></div>
                             <div>Worktree: <span className="font-mono text-foreground/85">{run.worktree ?? "—"}</span></div>

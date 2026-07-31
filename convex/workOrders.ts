@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import { appendChangeRecord } from "./lib/armAudit";
 import { logTaskEvent } from "./lib/taskEvents";
 import { deriveVerificationStatus, currentWorkflowStepLabel, totalWorkflowRetries } from "./lib/workOrders";
@@ -40,6 +41,12 @@ import {
 import { isAutomationSelfApproval } from "./lib/automationGovernance";
 import { loadTaskProjections } from "./lib/taskProjection";
 import { snapshotWorkflowDefinition } from "./lib/workflowSnapshot";
+import {
+  nextTaskAttemptNumbers,
+  taskAttemptErrorMessage,
+  validateTaskAttemptSelection,
+  validateTaskAttemptStart,
+} from "./lib/taskAttemptScheduler";
 
 function generateRunId(): string {
   return Math.random().toString(36).substring(2, 10);
@@ -89,6 +96,7 @@ async function resolveDispatchRouting(
   args: {
     workOrder: any;
     workflow: any;
+    selectedTask?: any;
     authorizedRunOverride?: string;
   }
 ) {
@@ -105,7 +113,8 @@ async function resolveDispatchRouting(
       .order("desc")
       .first(),
     ctx.db.query("featureFlags").collect(),
-    workOrder.legacyTaskId ? ctx.db.get(workOrder.legacyTaskId) : null,
+    args.selectedTask ??
+      (workOrder.legacyTaskId ? ctx.db.get(workOrder.legacyTaskId) : null),
   ]);
   const agent = workOrder.assignedAgent
     ? await ctx.db
@@ -207,7 +216,7 @@ async function resolveDispatchRouting(
     policyId: activePolicy?._id,
     policyVersion: policy.version,
     workOrderId: workOrder._id,
-    taskId: workOrder.legacyTaskId,
+    taskId: task?._id,
     agentId: agent?._id,
     taskType: task?.type,
     operatingLane,
@@ -762,6 +771,9 @@ function summarizeRun(run: any) {
     _id: run._id,
     runId: run.runId,
     workflowId: run.workflowId,
+    parentTaskId: run.parentTaskId,
+    taskAttemptNumber: run.metadata?.taskAttemptNumber,
+    taskRetryNumber: run.metadata?.taskRetryNumber,
     workOrderRevisionNumber: run.workOrderRevisionNumber,
     status: run.status,
     runtime: run.runtime,
@@ -1463,6 +1475,7 @@ export const create = mutation({
 export const dispatch = mutation({
   args: {
     workOrderId: v.id("workOrders"),
+    taskId: v.optional(v.id("tasks")),
     workflowId: v.optional(v.string()),
     actorType: v.union(v.literal("HUMAN"), v.literal("SYSTEM"), v.literal("AGENT")),
     actorId: v.optional(v.string()),
@@ -1494,9 +1507,42 @@ export const dispatch = mutation({
       throw new Error("Superseded WorkOrders cannot be dispatched");
     }
 
+    const canonicalChildTasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_work_order", (query) =>
+        query.eq("workOrderId", args.workOrderId)
+      )
+      .collect();
     const retryOfRun = args.retryOfWorkflowRunId
       ? await ctx.db.get(args.retryOfWorkflowRunId)
       : null;
+    const retryTask = retryOfRun?.parentTaskId
+      ? canonicalChildTasks.find(
+          (task) => task._id === retryOfRun.parentTaskId
+        )
+      : null;
+    const effectiveTaskId =
+      args.taskId ??
+      retryTask?._id;
+    const selectedTask = effectiveTaskId
+      ? await ctx.db.get(effectiveTaskId)
+      : null;
+    if (effectiveTaskId && !selectedTask) {
+      throw new Error("The selected Task no longer exists.");
+    }
+    const taskSelection = validateTaskAttemptSelection({
+      workOrderId: workOrder._id,
+      projectId: workOrder.projectId,
+      // Historical runs used legacy project Tasks that were not canonical
+      // WorkOrder children. Keep their existing recovery route available.
+      hasCanonicalChildTasks:
+        canonicalChildTasks.length > 0 && !retryOfRun,
+      task: selectedTask,
+    });
+    if ("reason" in taskSelection) {
+      throw new Error(taskAttemptErrorMessage(taskSelection.reason));
+    }
+
     const retryRequest = args.retryOfWorkflowRunId
       ? validateRetryRequest({
           workOrderId: workOrder._id,
@@ -1535,6 +1581,20 @@ export const dispatch = mutation({
       .query("workflowRuns")
       .withIndex("by_work_order", (q) => q.eq("workOrderId", args.workOrderId))
       .collect();
+    const taskAttempts = selectedTask
+      ? existingRuns.filter((run) => run.parentTaskId === selectedTask._id)
+      : [];
+    if (selectedTask) {
+      const taskAttemptStart = validateTaskAttemptStart({
+        taskId: selectedTask._id,
+        attempts: taskAttempts,
+        retryOfRun,
+        retryReason: args.retryReason,
+      });
+      if ("reason" in taskAttemptStart) {
+        throw new Error(taskAttemptErrorMessage(taskAttemptStart.reason));
+      }
+    }
 
     if (refreshedWorkOrder.missionId) {
       const mission = await ctx.db.get(refreshedWorkOrder.missionId);
@@ -1596,6 +1656,7 @@ export const dispatch = mutation({
     const routing = await resolveDispatchRouting(ctx, {
       workOrder: refreshedWorkOrder,
       workflow,
+      selectedTask,
       authorizedRunOverride: args.authorizedModelOverride,
     });
     if (routing?.enabled && routing.mode === "EXHAUSTED") {
@@ -1606,7 +1667,7 @@ export const dispatch = mutation({
         type: "MODEL_ROUTING_EXHAUSTED",
         title: "No safe model route available",
         description: routing.result.explanation,
-        taskId: refreshedWorkOrder.legacyTaskId,
+        taskId: selectedTask?._id ?? refreshedWorkOrder.legacyTaskId,
         status: "OPEN",
         metadata: {
           workOrderId: refreshedWorkOrder._id,
@@ -1657,6 +1718,8 @@ export const dispatch = mutation({
       summary: `Dispatch requested for workflow ${resolvedWorkflowId}`,
       idempotencyKey: `${args.idempotencyKey}:request`,
       metadata: {
+        taskId: selectedTask?._id,
+        taskAttemptNumber: selectedTask ? taskAttempts.length + 1 : undefined,
         runtime: args.runtime,
         model: routedModel,
         routingDecisionId: routing?.decisionId,
@@ -1670,6 +1733,13 @@ export const dispatch = mutation({
     const now = Date.now();
     const runId = generateRunId();
     const workflowSnapshot = snapshotWorkflowDefinition(workflow);
+    const attemptNumbers = selectedTask
+      ? nextTaskAttemptNumbers(taskAttempts, !!retryOfRun)
+      : null;
+    const taskInput =
+      selectedTask?.description?.trim() ||
+      selectedTask?.title ||
+      refreshedWorkOrder.desiredOutcome;
     const runDocId = await ctx.db.insert("workflowRuns", {
       tenantId: refreshedWorkOrder.tenantId,
       runId,
@@ -1682,14 +1752,18 @@ export const dispatch = mutation({
       workOrderId: refreshedWorkOrder._id,
       workOrderRevisionNumber: refreshedWorkOrder.currentRevisionNumber ?? 1,
       workOrderRevisionId: refreshedWorkOrder.currentRevisionId,
-      parentTaskId: refreshedWorkOrder.legacyTaskId,
+      parentTaskId: selectedTask?._id ?? refreshedWorkOrder.legacyTaskId,
       status: "PENDING",
       currentStepIndex: 0,
       totalSteps: workflow.steps.length,
       steps,
       context: {
-        task: refreshedWorkOrder.desiredOutcome,
+        task: taskInput,
+        workOrderDesiredOutcome: refreshedWorkOrder.desiredOutcome,
         workOrderId: refreshedWorkOrder._id,
+        taskId: selectedTask?._id,
+        taskAttemptNumber: attemptNumbers?.attemptNumber,
+        taskRetryNumber: attemptNumbers?.retryNumber,
         source: "workOrders.dispatch",
         revisionNumber: refreshedWorkOrder.currentRevisionNumber ?? 1,
         ...(retryOfRun
@@ -1701,7 +1775,7 @@ export const dispatch = mutation({
       },
       topology,
       maxConcurrency: workflow.maxConcurrency ?? 1,
-      initialInput: refreshedWorkOrder.desiredOutcome,
+      initialInput: taskInput,
       runtime: args.runtime,
       model: routedModel,
       routingDecisionId: routing?.decisionId,
@@ -1709,6 +1783,9 @@ export const dispatch = mutation({
       startedAt: now,
       metadata: {
         dispatchIdempotencyKey: args.idempotencyKey,
+        taskId: selectedTask?._id,
+        taskAttemptNumber: attemptNumbers?.attemptNumber,
+        taskRetryNumber: attemptNumbers?.retryNumber,
         retryOfWorkflowRunId: args.retryOfWorkflowRunId,
         retryOfRunId: retryOfRun?.runId,
         retryReason: retryRequest?.reason,
@@ -1731,6 +1808,9 @@ export const dispatch = mutation({
       commandSummary: `Dispatched ${resolvedWorkflowId}`,
       idempotencyKey: `${args.idempotencyKey}:run-started`,
       metadata: {
+        taskId: selectedTask?._id,
+        taskAttemptNumber: attemptNumbers?.attemptNumber,
+        taskRetryNumber: attemptNumbers?.retryNumber,
         runtime: args.runtime,
         model: routedModel,
         routingDecisionId: routing?.decisionId,
@@ -1765,6 +1845,9 @@ export const dispatch = mutation({
       metadata: {
         workflowRunId: runDocId,
         runId,
+        taskId: selectedTask?._id,
+        taskAttemptNumber: attemptNumbers?.attemptNumber,
+        taskRetryNumber: attemptNumbers?.retryNumber,
         retryOfWorkflowRunId: args.retryOfWorkflowRunId,
         retryOfRunId: retryOfRun?.runId,
       },
@@ -1786,6 +1869,9 @@ export const dispatch = mutation({
       idempotencyKey: `${args.idempotencyKey}:dispatched`,
       metadata: {
         runId,
+        taskId: selectedTask?._id,
+        taskAttemptNumber: attemptNumbers?.attemptNumber,
+        taskRetryNumber: attemptNumbers?.retryNumber,
         runtime: args.runtime,
         model: args.model,
         worktree: args.worktree,
@@ -1809,10 +1895,42 @@ export const dispatch = mutation({
         summary: `Operator started recovery run ${runId} from failed run ${retryOfRun.runId}`,
         idempotencyKey: `${args.idempotencyKey}:retried`,
         metadata: {
+          taskId: selectedTask?._id,
+          taskAttemptNumber: attemptNumbers?.attemptNumber,
+          taskRetryNumber: attemptNumbers?.retryNumber,
           retryOfWorkflowRunId: retryOfRun._id,
           retryOfRunId: retryOfRun.runId,
           retryReason: retryRequest?.reason,
           recoveryRunId: runId,
+        },
+      });
+    }
+
+    if (selectedTask) {
+      await logTaskEvent(ctx, {
+        taskId: selectedTask._id,
+        projectId: selectedTask.projectId,
+        eventType: "RUN_STARTED",
+        actorType: args.actorType,
+        actorId: args.actorId,
+        relatedId: runDocId,
+        beforeState: retryOfRun
+          ? {
+              workflowRunId: retryOfRun._id,
+              status: retryOfRun.status,
+            }
+          : undefined,
+        afterState: {
+          workflowRunId: runDocId,
+          status: "PENDING",
+        },
+        metadata: {
+          workOrderId: refreshedWorkOrder._id,
+          runId,
+          attemptNumber: attemptNumbers?.attemptNumber,
+          retryNumber: attemptNumbers?.retryNumber,
+          retryReason: retryRequest?.reason,
+          idempotencyKey: args.idempotencyKey,
         },
       });
     }

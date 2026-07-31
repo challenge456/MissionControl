@@ -1,13 +1,13 @@
 import type { LucideIcon } from "lucide-react";
 import {
   BookOpen,
-  ClipboardCheck,
   FlaskConical,
   Layers,
   Rocket,
   Shield,
   Wrench,
   Bot,
+  ClipboardCheck,
 } from "lucide-react";
 
 export type DocsSitePage = {
@@ -153,6 +153,54 @@ export const DOCS_SITE_SECTIONS: DocsSiteSection[] = [
         title: "DOCS-001 Workspace Routing Results",
         description: "Invalid workspace recovery, isolation, and browser evidence",
         path: "software-factory-enhancement/docs-001-workspace-routing-results",
+      },
+      {
+        id: "task-workorder-pr1-implementation",
+        title: "Task-to-Work-Order PR 1",
+        description: "Canonical Task parentage, governance, and Attempt projection",
+        path: "software-factory-enhancement/implementation/task-workorder-pr1",
+      },
+      {
+        id: "task-workorder-pr1-browser-results",
+        title: "Task-to-Work-Order Browser Results",
+        description: "Deterministic governed and Ungoverned Task evidence",
+        path: "software-factory-enhancement/testing/task-workorder-browser-results",
+      },
+      {
+        id: "ci-schema-drift-repair",
+        title: "CI Schema Drift Repair",
+        description: "Release-gate and automation contract restoration",
+        path: "software-factory-enhancement/testing/ci-schema-drift-repair",
+      },
+      {
+        id: "task-attempt-scheduler-pr2-implementation",
+        title: "Task Attempt Scheduler PR 2",
+        description: "Explicit scheduling, immutable Attempts, and governed retry",
+        path: "software-factory-enhancement/implementation/task-attempt-scheduler-pr2",
+      },
+      {
+        id: "task-attempt-scheduler-pr2-browser-results",
+        title: "Task Attempt Scheduler Browser Results",
+        description: "Deterministic start, failure, retry, and persistence evidence",
+        path: "software-factory-enhancement/testing/task-attempt-scheduler-browser-results",
+      },
+      {
+        id: "workflow-state-cleanup-pr3-implementation",
+        title: "Workflow State Cleanup PR 3",
+        description: "Canonical Ready state and structured Review/Blocked context",
+        path: "software-factory-enhancement/implementation/workflow-state-cleanup-pr3",
+      },
+      {
+        id: "workflow-state-cleanup-pr3-browser-results",
+        title: "Workflow State Cleanup Browser Results",
+        description: "Reasoned transitions, persistence, compatibility, and audit evidence",
+        path: "software-factory-enhancement/testing/workflow-state-cleanup-browser-results",
+      },
+      {
+        id: "task-drawer-accessibility-pr4-results",
+        title: "Task Drawer Accessibility PR 4",
+        description: "Dark/light contrast, target size, and deterministic Axe evidence",
+        path: "software-factory-enhancement/testing/task-drawer-accessibility-results",
       },
     ],
   },
@@ -310,6 +358,7 @@ export function docsMarkdownForPath(relativePath: string): string | null {
 
 export const LEGACY_REPO_DOCS = [
   { title: "PRD V2", path: "docs/PRD_V2.md", description: "Product requirements" },
+  { title: "Design System", path: "docs/design.md", description: "UI tokens and accessibility standards" },
   { title: "Architecture", path: "docs/ARCHITECTURE.md", description: "System architecture" },
   { title: "Backend Structure", path: "docs/BACKEND_STRUCTURE.md", description: "Convex API surface" },
   { title: "Frontend Guidelines", path: "docs/FRONTEND_GUIDELINES.md", description: "UI/UX standards" },

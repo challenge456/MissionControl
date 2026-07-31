@@ -368,13 +368,18 @@ app.post("/workorders/:workOrderId/dispatch", async (c) => {
     const body = await c.req.json().catch(() => ({}));
     const result = await client.mutation(ConvexMutations.workOrders.dispatch as any, {
       workOrderId,
+      taskId: body.taskId,
       workflowId: body.workflowId,
       actorType: body.actorType ?? "SYSTEM",
       actorId: body.actorId ?? "orchestration-server",
-      idempotencyKey: body.idempotencyKey ?? `orch-dispatch:${workOrderId}`,
+      idempotencyKey:
+        body.idempotencyKey ??
+        `orch-dispatch:${workOrderId}:${body.taskId ?? "legacy"}:${body.retryOfWorkflowRunId ?? "start"}`,
       runtime: body.runtime ?? "Hono Orchestration Server",
       model: body.model,
       worktree: body.worktree,
+      retryOfWorkflowRunId: body.retryOfWorkflowRunId,
+      retryReason: body.retryReason,
     });
     if ((result as any)?.reason === "routing-exhausted") {
       return c.json(

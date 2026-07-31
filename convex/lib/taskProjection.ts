@@ -1,4 +1,5 @@
 import type { Doc, Id } from "../_generated/dataModel";
+import { canonicalTaskStatus } from "./taskWorkflowState";
 
 export type TaskGovernanceStatus = "UNGOVERNED" | "GOVERNED" | "LEGACY";
 export const UNGOVERNED_TRANSITION_ERROR =
@@ -88,11 +89,13 @@ export function projectTask(
     | undefined;
   return {
     ...task,
+    presentationStatus: canonicalTaskStatus(task.status),
     parentDelivery: {
       governanceStatus,
       workOrderId: workOrder?._id ?? null,
       workOrderTitle: workOrder?.title ?? null,
       workOrderState: workOrder?.state ?? null,
+      workflowId: workOrder?.workflowId ?? null,
       repository: workOrder?.repository ?? null,
       riskLevel: workOrder?.riskLevel ?? null,
       missionId: mission?._id ?? null,

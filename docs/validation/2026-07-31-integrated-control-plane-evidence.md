@@ -29,12 +29,16 @@ pnpm build
 
 Results:
 
-- 115 test files passed;
-- 1,018 automated tests passed;
+- 117 test files passed;
+- 1,045 automated tests passed;
 - 157 Mission Control UI tests passed;
-- 305 Convex tests passed;
+- 331 Convex tests passed;
 - all package and application type checks passed;
 - all package and application production builds passed.
+
+These results are from the final combined history after merging the current
+`main` branch, including Task Attempt scheduling, workflow-state cleanup, and
+Task Drawer accessibility changes alongside the new control-plane features.
 
 The UI build reports the existing Vite advisory for a vendor chunk larger than
 500 kB. It does not fail the build and is not introduced as a release blocker.
