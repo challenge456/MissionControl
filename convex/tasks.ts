@@ -668,6 +668,12 @@ export const getWithTimeline = query({
       .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
       .order("asc")
       .collect();
+
+    const workflowAttempts = await ctx.db
+      .query("workflowRuns")
+      .withIndex("by_parent_task", (q) => q.eq("parentTaskId", args.taskId))
+      .order("asc")
+      .collect();
     
     // Get tool calls for all runs
     const toolCalls = [];
@@ -692,6 +698,7 @@ export const getWithTimeline = query({
       approvals,
       activities,
       taskEvents,
+      workflowAttempts,
     };
   },
 });

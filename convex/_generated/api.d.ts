@@ -113,6 +113,7 @@ import type * as lib_riskClassifier from "../lib/riskClassifier.js";
 import type * as lib_runInspector from "../lib/runInspector.js";
 import type * as lib_sanitize from "../lib/sanitize.js";
 import type * as lib_stateMachine from "../lib/stateMachine.js";
+import type * as lib_taskAttemptScheduler from "../lib/taskAttemptScheduler.js";
 import type * as lib_taskEvents from "../lib/taskEvents.js";
 import type * as lib_taskProjection from "../lib/taskProjection.js";
 import type * as lib_workOrderCompat from "../lib/workOrderCompat.js";
@@ -311,6 +312,7 @@ declare const fullApi: ApiFromModules<{
   "lib/runInspector": typeof lib_runInspector;
   "lib/sanitize": typeof lib_sanitize;
   "lib/stateMachine": typeof lib_stateMachine;
+  "lib/taskAttemptScheduler": typeof lib_taskAttemptScheduler;
   "lib/taskEvents": typeof lib_taskEvents;
   "lib/taskProjection": typeof lib_taskProjection;
   "lib/workOrderCompat": typeof lib_workOrderCompat;

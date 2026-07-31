@@ -190,6 +190,18 @@ export const DOCS_SITE_SECTIONS: DocsSiteSection[] = [
         description: "Release-gate and automation contract restoration",
         path: "software-factory-enhancement/testing/ci-schema-drift-repair",
       },
+      {
+        id: "task-attempt-scheduler-pr2-implementation",
+        title: "Task Attempt Scheduler PR 2",
+        description: "Explicit scheduling, immutable Attempts, and governed retry",
+        path: "software-factory-enhancement/implementation/task-attempt-scheduler-pr2",
+      },
+      {
+        id: "task-attempt-scheduler-pr2-browser-results",
+        title: "Task Attempt Scheduler Browser Results",
+        description: "Deterministic start, failure, retry, and persistence evidence",
+        path: "software-factory-enhancement/testing/task-attempt-scheduler-browser-results",
+      },
     ],
   },
   {
