@@ -42,6 +42,7 @@ type ParentDelivery = {
   workOrderId: Id<"workOrders"> | null;
   workOrderTitle: string | null;
   workOrderState: string | null;
+  workflowId: string | null;
   repository: string | null;
   riskLevel: string | null;
   missionId: Id<"missions"> | null;
@@ -135,7 +136,17 @@ export function TaskDrawerTabs({
         ) : !data ? (
           <div className="p-6 text-sm text-ink-muted">Task not found</div>
         ) : (() => {
-          const { task, transitions, messages, runs, toolCalls, approvals, activities, taskEvents } = data;
+          const {
+            task,
+            transitions,
+            messages,
+            runs,
+            toolCalls,
+            approvals,
+            activities,
+            taskEvents,
+            workflowAttempts,
+          } = data;
           const agentMap = new Map<Id<"agents">, Doc<"agents">>(
             (agents as Doc<"agents">[]).map((a: Doc<"agents">) => [a._id, a])
           );
@@ -275,6 +286,7 @@ export function TaskDrawerTabs({
                         taskId={taskId}
                         task={task}
                         parentDelivery={task.parentDelivery}
+                        workflowAttempts={workflowAttempts}
                         runs={runs}
                         approvals={approvals}
                         agents={agents as Doc<"agents">[]}
@@ -483,10 +495,196 @@ function ParentDeliverySection({
   );
 }
 
+function TaskAttemptSection({
+  taskId,
+  taskStatus,
+  parentDelivery,
+  workflowAttempts,
+}: {
+  taskId: Id<"tasks">;
+  taskStatus: Doc<"tasks">["status"];
+  parentDelivery: ParentDelivery;
+  workflowAttempts: Doc<"workflowRuns">[];
+}) {
+  const dispatchWorkOrder = useMutation(api.workOrders.dispatch);
+  const [retryReason, setRetryReason] = useState("");
+  const [scheduling, setScheduling] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
+  const attempts = [...workflowAttempts].sort(
+    (left, right) =>
+      left.startedAt - right.startedAt ||
+      String(left._id).localeCompare(String(right._id))
+  );
+  const current =
+    attempts.length > 0 ? attempts[attempts.length - 1] : null;
+  const workOrderCanDispatch = [
+    "READY",
+    "BLOCKED",
+    "DISPATCHED",
+    "IN_PROGRESS",
+    "AWAITING_APPROVAL",
+    "AWAITING_VERIFICATION",
+    "REOPENED",
+  ].includes(parentDelivery.workOrderState ?? "");
+  const canStart =
+    parentDelivery.governanceStatus === "GOVERNED" &&
+    !!parentDelivery.workOrderId &&
+    workOrderCanDispatch &&
+    ["ASSIGNED", "IN_PROGRESS"].includes(taskStatus) &&
+    attempts.length === 0;
+  const canRetry =
+    parentDelivery.governanceStatus === "GOVERNED" &&
+    !!parentDelivery.workOrderId &&
+    workOrderCanDispatch &&
+    ["ASSIGNED", "IN_PROGRESS"].includes(taskStatus) &&
+    current?.status === "FAILED";
+
+  const schedule = async (retry: boolean) => {
+    if (!parentDelivery.workOrderId || scheduling) return;
+    setError(null);
+    setScheduling(true);
+    try {
+      const result = await dispatchWorkOrder({
+        workOrderId: parentDelivery.workOrderId,
+        taskId,
+        workflowId: parentDelivery.workflowId ?? undefined,
+        actorType: "HUMAN",
+        actorId: "operator",
+        idempotencyKey: retry
+          ? `ui-task-attempt:${taskId}:retry:${current?._id ?? "missing"}`
+          : `ui-task-attempt:${taskId}:start`,
+        runtime: "Mission Control UI",
+        retryOfWorkflowRunId: retry ? current?._id : undefined,
+        retryReason: retry ? retryReason.trim() : undefined,
+      });
+      if (result.reason === "routing-exhausted") {
+        throw new Error("Dispatch blocked: no safe model route satisfies this Work Order.");
+      }
+      setRetryReason("");
+      toast(retry ? "Task retry scheduled" : "Task Attempt scheduled");
+    } catch (scheduleError) {
+      setError(
+        scheduleError instanceof Error
+          ? scheduleError.message
+          : "Unable to schedule Task Attempt."
+      );
+    } finally {
+      setScheduling(false);
+    }
+  };
+
+  return (
+    <Section title="Attempts">
+      <div className="rounded-lg border border-line bg-surface-2 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-medium text-ink">
+              {attempts.length === 0
+                ? "No Attempts"
+                : `Attempt ${attempts.length} · ${current?.status.replace(/_/g, " ")}`}
+            </div>
+            <p className="mt-1 text-xs text-ink-muted">
+              {attempts.length} total · {Math.max(0, attempts.length - 1)} retries
+            </p>
+          </div>
+          {canStart ? (
+            <Button
+              size="sm"
+              onClick={() => void schedule(false)}
+              disabled={scheduling}
+            >
+              {scheduling ? "Scheduling…" : "Start Attempt"}
+            </Button>
+          ) : null}
+        </div>
+
+        {!workOrderCanDispatch &&
+        parentDelivery.governanceStatus === "GOVERNED" ? (
+          <p className="mt-3 rounded-md border border-line bg-surface-1 px-3 py-2 text-xs text-ink-muted">
+            This Work Order is {parentDelivery.workOrderState?.replace(/_/g, " ").toLowerCase() ?? "not ready"} and cannot schedule an Attempt.
+          </p>
+        ) : null}
+
+        {workOrderCanDispatch &&
+        parentDelivery.governanceStatus === "GOVERNED" &&
+        !["ASSIGNED", "IN_PROGRESS"].includes(taskStatus) ? (
+          <p className="mt-3 rounded-md border border-line bg-surface-1 px-3 py-2 text-xs text-ink-muted">
+            Assign this Task before starting an Attempt.
+          </p>
+        ) : null}
+
+        {attempts.length > 0 ? (
+          <ol className="mt-4 space-y-2" aria-label="Task Attempt history">
+            {[...attempts].reverse().map((attempt, reverseIndex) => {
+              const attemptNumber = attempts.length - reverseIndex;
+              return (
+                <li
+                  key={attempt._id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-line bg-surface-1 px-3 py-2 text-xs"
+                >
+                  <div>
+                    <span className="font-medium text-ink">Attempt {attemptNumber}</span>
+                    <span className="ml-2 font-mono text-ink-muted">{attempt.runId}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <StatusBadge tone={attempt.status === "FAILED" ? "error" : attempt.status === "COMPLETED" ? "success" : "info"}>
+                      {attempt.status.replace(/_/g, " ")}
+                    </StatusBadge>
+                    <span className="text-ink-muted">
+                      {new Date(attempt.startedAt).toLocaleString()}
+                    </span>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        ) : null}
+
+        {canRetry ? (
+          <div className="mt-4 border-t border-line pt-4">
+            <Label htmlFor={`retry-reason-${taskId}`}>Recovery reason</Label>
+            <textarea
+              id={`retry-reason-${taskId}`}
+              value={retryReason}
+              onChange={(event) => setRetryReason(event.target.value)}
+              aria-describedby={`retry-help-${taskId}`}
+              rows={3}
+              className="mt-2 w-full resize-y rounded-md border border-line bg-surface-1 p-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="Explain what changed before retrying."
+            />
+            <p id={`retry-help-${taskId}`} className="mt-1 text-xs text-ink-muted">
+              At least 10 characters. The failed Attempt remains in history.
+            </p>
+            <Button
+              className="mt-3"
+              size="sm"
+              onClick={() => void schedule(true)}
+              disabled={scheduling || retryReason.trim().length < 10}
+            >
+              {scheduling ? "Scheduling…" : "Retry Attempt"}
+            </Button>
+          </div>
+        ) : null}
+
+        {error ? (
+          <div
+            role="alert"
+            className="mt-3 rounded-md border border-err/30 bg-err/10 px-3 py-2 text-sm text-err"
+          >
+            {error}
+          </div>
+        ) : null}
+      </div>
+    </Section>
+  );
+}
+
 function OverviewTab({
   taskId,
   task,
   parentDelivery,
+  workflowAttempts,
   runs,
   approvals,
   agents,
@@ -503,6 +701,7 @@ function OverviewTab({
   taskId: Id<"tasks">;
   task: Doc<"tasks">;
   parentDelivery: ParentDelivery;
+  workflowAttempts: Doc<"workflowRuns">[];
   runs: Doc<"runs">[];
   approvals: Doc<"approvals">[];
   agents: Doc<"agents">[];
@@ -577,6 +776,13 @@ function OverviewTab({
         parentDelivery={parentDelivery}
         onNavigateToWorkOrder={onNavigateToWorkOrder}
         onNavigateToMission={onNavigateToMission}
+      />
+
+      <TaskAttemptSection
+        taskId={taskId}
+        taskStatus={task.status}
+        parentDelivery={parentDelivery}
+        workflowAttempts={workflowAttempts}
       />
 
       {task.description && (

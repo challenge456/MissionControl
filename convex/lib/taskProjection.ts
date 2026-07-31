@@ -93,6 +93,7 @@ export function projectTask(
       workOrderId: workOrder?._id ?? null,
       workOrderTitle: workOrder?.title ?? null,
       workOrderState: workOrder?.state ?? null,
+      workflowId: workOrder?.workflowId ?? null,
       repository: workOrder?.repository ?? null,
       riskLevel: workOrder?.riskLevel ?? null,
       missionId: mission?._id ?? null,
