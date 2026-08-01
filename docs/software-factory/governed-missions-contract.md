@@ -17,6 +17,29 @@ execution or governance responsibilities.
 - A Mission stops when it reaches acceptance, cancellation, budget exhaustion,
   maximum corrective iterations, or an explicit blocked/escalation state.
 
+## Plan approval and WorkOrder release
+
+- A Mission plan is editable only while its plan status is `DRAFT`.
+- Creating a plan draft moves the Mission to `PLANNING`. An operator may
+  abandon that unsubmitted draft with a reason; the plan becomes immutable and
+  the Mission returns to `DRAFT` without deleting history.
+- Submission freezes the proposed revision and moves the Mission to
+  `AWAITING_PLAN_APPROVAL`.
+- Rejection requires a durable rationale, freezes the rejected revision, and
+  returns the Mission to `DRAFT`. Further work forks a new revision.
+- Approval authorizes one exact repository/workflow/WorkOrder contract. It
+  atomically creates all linked validation assertions and WorkOrders, then
+  moves the Mission to `READY`.
+- Approval never dispatches an agent, starts a WorkflowRun, satisfies a
+  WorkOrder risk approval, merges code, or deploys software.
+- Approval and materialization are idempotent. A Mission cannot be `READY`
+  with only a partial plan release.
+- Historical approved plans without a release receipt are treated as legacy
+  and are never materialized automatically.
+- Production plan authority must be derived from authenticated server identity
+  and project roles. The local development operator fallback is evidence-only
+  and must remain behind a default-off release flag.
+
 ## Roles and permissions
 
 | Role | May do | May not do |

@@ -1,5 +1,5 @@
 ---
-status: ready
+status: complete
 priority: p1
 issue_id: "008"
 tags: [software-factory, missions, governance, validation]
@@ -50,12 +50,20 @@ direct WorkOrders and keep one mutating WorkOrder per Mission in V1.
 
 ## Acceptance Criteria
 
-- [ ] Mission contract specifies state, role, handoff, validation, and stop rules.
-- [ ] Mission schema and server-owned lifecycle commands are additive and tested.
-- [ ] Mission guards prevent out-of-order or concurrent mutating WorkOrder dispatch.
-- [ ] Independent validator evidence is required before Mission acceptance.
-- [ ] EOS Mission views use live records, not title-matched demo state.
-- [ ] Full lifecycle has Convex, browser, and evidence validation.
+- [x] Mission contract specifies state, role, handoff, validation, and stop rules.
+- [x] Mission schema and server-owned lifecycle commands are additive and tested.
+- [x] Mission guards prevent out-of-order or concurrent mutating WorkOrder dispatch.
+- [x] Independent validator evidence is required before Mission acceptance.
+- [x] EOS Mission views use live records, not title-matched demo state.
+- [x] Full lifecycle has Convex, browser, and evidence validation.
+
+### Mission plan and WorkOrder release slice
+
+- [x] Plan drafts, validation assertions, and WorkOrder blueprints persist as a typed, versioned contract.
+- [x] Operators can submit, reject with a reason, fork a revision, resubmit, and approve through Mission Detail.
+- [x] Approval atomically creates linked validation assertions and WorkOrders exactly once without dispatching execution.
+- [x] Plan decisions and release remain default-off behind `missions.plan-release-v1` outside verified local scope.
+- [x] Focused Convex/UI tests, typecheck, and desktop/narrow browser verification pass.
 
 ## Work Log
 
@@ -118,3 +126,33 @@ direct WorkOrders and keep one mutating WorkOrder per Mission in V1.
 **Learnings:**
 - A generic provenance component can make live data look simulated; Mission
   views now state their Convex source and validation semantics directly.
+
+### 2026-07-31 - Mission plan and WorkOrder release implementation started
+
+**By:** Codex
+
+**Actions:**
+- Approved bounded plan: `docs/plans/2026-07-31-feat-mission-planning-workorder-release-plan.md`.
+- Confirmed the current gap: `approvePlan` creates assertions and marks the Mission ready but does not materialize WorkOrders.
+- Started the typed plan, revision, decision, atomic release, and Mission Plan UI slice on the existing feature branch.
+
+**Learnings:**
+- The existing WorkOrder creation and governance path must be reused inside one Convex transaction; asynchronous per-blueprint release would permit partial state.
+- Production approval must remain gated until actor authority is resolved server-side.
+
+### 2026-07-31 - Mission plan and WorkOrder release completed
+
+**By:** Codex
+
+**Actions:**
+- Added a typed, versioned Mission plan contract with deterministic blueprint and assertion validation.
+- Added persistent draft saving, optimistic draft versions, submission, rejection reasons, revision forking, repository/workflow snapshots, and explicit approval evidence.
+- Reused a shared WorkOrder creation engine so plan approval materializes all linked WorkOrders and validation assertions in one Convex transaction without dispatching execution.
+- Added the Mission Detail Plan workspace, revision comparison, approval packet, release confirmation, WorkOrder eligibility explanations, and desktop/narrow responsive states.
+- Kept the release surface default-off behind `missions.plan-release-v1` outside verified local scope.
+- Verified the reject → revise → approve lifecycle in a real browser and recorded the evidence in `docs/testing/mission-plan-workorder-release-results.md`.
+- Passed 70 focused tests, the full 18-project workspace typecheck, the Convex typecheck, and the production UI build.
+
+**Learnings:**
+- Plan approval and WorkOrder approval are intentionally separate gates; release creates governed pre-execution records but never grants dispatch authority.
+- A neutral shared creation library preserves atomic Mission release without coupling public Convex function modules into other workspace packages.

@@ -26,3 +26,14 @@
 - Harness engineering UI lives in `apps/mission-control-ui/src/harness/` (12 views under Control + Intelligence nav groups).
 - Orchestration server (port 4100) ingests Pi receipt packets at `POST /workorders/:id/receipt-packets` when `executor.pi-bridge` flag is enabled.
 - `mc-context scan` (scripts/mc-context.mjs) discovers local SKILL.md files and syncs installations to Convex.
+
+## Mission Control Product North Star
+
+- Canonical doctrine: `docs/product/mission-control-north-star.md`.
+- Prioritized V1 direction: `docs/product/mission-control-v1-product-strategy.md`.
+- Mission Control is the operating system for human-directed, agent-executed software development. Humans own intent, judgment, governance, and approval; agents own bounded execution, iteration, validation, recovery, and evidence collection.
+- Optimize the authoritative hierarchy `Mission → WorkOrder → Task → Attempt → evidence → pull request → release`.
+- Default product surfaces must prioritize exceptions, required decisions, risk, and evidence. Agent activity, chat, and token counts are supporting detail, not the center of gravity.
+- Do not promote a new primary feature or navigation domain unless it improves intent clarity, safe autonomy, validation, traceability, approved-plan-to-PR time, overnight continuity, or developer trust.
+- A feature remains Preview or Labs until it uses real scoped data, enforces authorization, audits writes, survives refresh/restart, handles failure and recovery, and has deterministic browser evidence.
+- Complete one browser-operable Mission golden path before expanding the product breadth.

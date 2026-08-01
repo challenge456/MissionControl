@@ -8,6 +8,9 @@ Open **Knowledge → Docs → Documentation** in the EOS sidebar (`pnpm dev:demo
 
 ## Site map
 
+### Product direction
+- [North Star and V1 strategy](./overview/product-direction.md)
+
 ### Operator control plane
 - [Decision Center and Operator Evals](./operator-control-plane/overview.md)
 - [Integrated V1 validation](../validation/2026-07-31-integrated-control-plane-evidence.md)

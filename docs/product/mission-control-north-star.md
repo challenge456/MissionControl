@@ -21,6 +21,28 @@ A developer can define an outcome, approve a plan, let specialized agents work
 independently, receive alerts only when judgment is required, and return to a
 concise evidence package that supports a confident merge decision.
 
+## Operating doctrine
+
+- **Intent over activity.** The primary object is the requested outcome, not an
+  agent session, message, token count, or generated task list.
+- **Exceptions over feeds.** Default views show decisions, blockers, failed or
+  stale evidence, unsafe conditions, and aging work before routine activity.
+- **Evidence over assertions.** A worker report, chat response, or status label
+  never proves completion. Independent receipts and source-linked artifacts do.
+- **Durable state over conversation.** Work must survive model changes, context
+  limits, process restarts, agent handoffs, and the end of a chat session.
+- **Policy before autonomy.** Identity, authority, repository scope, tools,
+  budgets, risk, and recovery limits are resolved before execution begins.
+- **Independent validation.** The actor that produced a material change cannot
+  be the sole authority that certifies it.
+- **One authoritative lifecycle.** Mission, WorkOrder, Task, run, approval,
+  evidence, pull-request, deployment, and production states remain distinct and
+  are never compressed into one optimistic status.
+
+The canonical product hierarchy is:
+
+`Mission → WorkOrder → Task → Attempt → evidence → pull request → release`
+
 ## Governing workflow
 
 1. A human defines the objective, business outcome, constraints, and acceptance
@@ -38,6 +60,28 @@ concise evidence package that supports a confident merge decision.
 
 Significant implementation cannot start without an approved plan. Expedited
 paths are allowed only when policy classifies the work as low risk.
+
+## Required product capabilities
+
+Mission Control must provide:
+
+1. an intent workspace for outcomes, constraints, sources, risks, and
+   acceptance criteria;
+2. repository research and a versioned plan that humans can diff, revise,
+   approve, or reject;
+3. idempotent conversion of approved plans into governed WorkOrders and Tasks;
+4. execution preflight for repository, branch/worktree, environment, executor,
+   tools, secrets, capacity, policy, and budget;
+5. durable orchestration with bounded retries, classified failure recovery,
+   pause/resume, escalation, and handoff;
+6. criterion-level evidence and independently enforced quality gates;
+7. repository-to-PR traceability and a concise, evidence-backed review package;
+8. governed deployment, feature-flag, rollback, and production-verification
+   states; and
+9. outcome, trust, attention, cost, recovery, and overnight-completion metrics.
+
+These capabilities may share pages. A capability does not earn a standalone
+navigation destination merely because it exists in code.
 
 ## Governed WorkOrder contract
 
@@ -83,6 +127,23 @@ The final review package must summarize:
 
 Developers should evaluate decisions and risk, not reconstruct work from logs.
 
+## Operator attention contract
+
+Mission Control should interrupt a developer only when human judgment,
+authority, or credentials are required. Every attention item must state:
+
+- the decision or action needed;
+- why it cannot proceed autonomously;
+- the affected Mission, WorkOrder, repository, and environment;
+- risk, urgency, age, and deadline;
+- evidence available, missing, conflicting, or stale;
+- safe options and their consequences;
+- the default recommendation and its uncertainty; and
+- what resumes automatically after the decision.
+
+Routine progress remains available for inspection but does not compete with
+work requiring attention.
+
 ## Recovery and durability
 
 Agents classify failures, collect diagnostics, form a new hypothesis, and make
@@ -99,6 +160,25 @@ durable and resumable across agents, models, sessions, and handoffs.
 Where appropriate, changes use feature flags, kill switches, progressive
 delivery, limited cohorts, automated rollback, health monitoring, and
 production validation. Passing implementation tests does not authorize rollout.
+
+## V1 boundary and ship gate
+
+V1 is one trustworthy golden path, not a broad company operating suite. The
+product is ready to claim the North Star only when a real repository can
+complete this browser-operable journey without direct database intervention:
+
+`draft → researched plan → human approval → released WorkOrders → governed
+Tasks and Attempts → failed validation → bounded corrective work → independent
+pass → review-ready pull request → human acceptance`
+
+The journey must survive refresh and process restart, enforce authorization and
+workspace isolation, preserve immutable history, show actionable failure and
+empty states, and produce a complete review package.
+
+Content operations, CRM, meetings, voice, virtual offices, hiring, general team
+management, and demo-only intelligence are not V1 product pillars. They remain
+outside primary navigation unless they become necessary to the governed
+delivery lifecycle and meet the same production maturity bar.
 
 ## Measures of success
 
@@ -121,6 +201,17 @@ Prioritize a feature only when it materially improves at least one of these:
 clearer human intent, safer autonomous execution, stronger validation,
 evidence and traceability, faster approved-plan-to-PR flow, reliable overnight
 work, or developer trust.
+
+Before promoting a feature, also ask:
+
+- Does it have one authoritative data owner and lifecycle?
+- Is its required human action obvious without reading logs or chat?
+- Does it fail closed when authority or evidence is missing?
+- Can the work resume safely after interruption?
+- Is it proven with real scoped data, authorized writes, audit, refresh,
+  recovery, and browser evidence?
+
+If the answer is no, the feature stays internal, preview, or Labs.
 
 ## North Star statement
 

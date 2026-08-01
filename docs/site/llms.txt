@@ -1,6 +1,7 @@
 # Mission Control Software Factory — documentation index for AI agents
 # Base URL (in-app): Knowledge → Docs → Documentation tab
 
+overview/product-direction.md — North Star, canonical delivery hierarchy, V1 promise, immediate priorities, and explicit product boundary.
 operator-control-plane/overview.md — Governed Decision Center, dispatch and proof separation, Fleet Operator persona evaluations, and North Star alignment.
 ../validation/2026-07-31-integrated-control-plane-evidence.md — Post-merge automated and browser verification for the integrated V1 control plane.
 

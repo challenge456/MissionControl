@@ -11,6 +11,15 @@ import {
   missionScopeStatus,
   validateMissionDraftInput,
 } from "./lib/missionDraft";
+import {
+  MISSION_PLAN_RELEASE_FLAG,
+  missionBlueprintReleaseKey,
+  missionPlanReleaseKey,
+  validateMissionPlan,
+  type MissionPlanInput,
+} from "./lib/missionPlan";
+import { resolveFlag, type FlagRow } from "./lib/flags";
+import { createWorkOrderRecord } from "./lib/workOrderCreate";
 
 const missionState = v.union(
   v.literal("DRAFT"), v.literal("PLANNING"), v.literal("AWAITING_PLAN_APPROVAL"),
@@ -41,12 +50,68 @@ const blueprintInput = v.object({
   title: v.string(),
   desiredOutcome: v.string(),
   workflowId: v.optional(v.string()),
+  workflowVersion: v.optional(v.number()),
   sequence: v.number(),
   role: v.union(v.literal("WORKER"), v.literal("VALIDATOR")),
   isMutating: v.boolean(),
+  priority: v.union(v.literal(1), v.literal(2), v.literal(3), v.literal(4)),
+  riskLevel: v.union(v.literal("LOW"), v.literal("MEDIUM"), v.literal("HIGH"), v.literal("CRITICAL")),
+  modelComplexity: v.optional(v.union(v.literal("SMALL"), v.literal("STANDARD"), v.literal("LARGE"))),
+  branchStrategy: v.optional(v.string()),
+  constraints: v.array(v.string()),
+  requiredApprovals: v.array(v.string()),
+  estimatedCostUsd: v.optional(v.number()),
   dependsOnBlueprintIds: v.array(v.string()),
   assertionIds: v.array(v.string()),
 });
+
+async function assertPlanReleaseEnabled(ctx: any, projectId: any) {
+  const rows = await ctx.db
+    .query("featureFlags")
+    .withIndex("by_key", (q: any) => q.eq("key", MISSION_PLAN_RELEASE_FLAG))
+    .collect() as FlagRow[];
+  if (!resolveFlag(rows, MISSION_PLAN_RELEASE_FLAG, projectId).enabled) {
+    throw new Error(`Mission planning is disabled (${MISSION_PLAN_RELEASE_FLAG})`);
+  }
+}
+
+function normalizedPlanAssertions(plan: any) {
+  return plan.assertions ?? plan.metadata?.assertions ?? [];
+}
+
+function planInput(plan: any): MissionPlanInput {
+  return {
+    summary: plan.summary,
+    rollbackApproach: plan.rollbackApproach ?? "",
+    estimatedCostUsd: plan.estimatedCostUsd,
+    repository: plan.repository,
+    repositoryBranch: plan.repositoryBranch,
+    workOrderBlueprints: plan.workOrderBlueprints.map((blueprint: any) => ({
+      ...blueprint,
+      priority: blueprint.priority ?? 3,
+      riskLevel: blueprint.riskLevel ?? "MEDIUM",
+      constraints: blueprint.constraints ?? [],
+      requiredApprovals: blueprint.requiredApprovals ?? [],
+    })),
+    assertions: normalizedPlanAssertions(plan),
+  };
+}
+
+function assertValidPlan(plan: any) {
+  const errors = validateMissionPlan(planInput(plan));
+  if (errors.length > 0) {
+    const error = new Error(`Mission plan is invalid: ${errors.map((item) => item.message).join(" ")}`) as Error & { data?: any };
+    error.data = { code: "MISSION_PLAN_INVALID", errors };
+    throw error;
+  }
+}
+
+async function assertMissionProject(ctx: any, missionId: any, projectId: any) {
+  const [mission, project] = await Promise.all([ctx.db.get(missionId), ctx.db.get(projectId)]);
+  if (!mission) throw new Error("Mission not found");
+  if (!project || mission.projectId !== projectId) throw new Error("Mission does not belong to the selected workspace");
+  return { mission, project };
+}
 
 async function logMissionEvent(ctx: any, args: {
   mission: any;
@@ -97,20 +162,50 @@ async function resolveOperator(ctx: any) {
 }
 
 async function getMissionDetail(ctx: any, mission: any) {
-  const [plans, assertions, handoffs, events, workOrders] = await Promise.all([
+  const [plans, assertions, handoffs, events, workOrders, project] = await Promise.all([
     ctx.db.query("missionPlans").withIndex("by_mission", (q: any) => q.eq("missionId", mission._id)).order("desc").collect(),
     ctx.db.query("validationAssertions").withIndex("by_mission", (q: any) => q.eq("missionId", mission._id)).collect(),
     ctx.db.query("missionHandoffs").withIndex("by_mission", (q: any) => q.eq("missionId", mission._id)).order("desc").collect(),
     ctx.db.query("missionEvents").withIndex("by_mission_timestamp", (q: any) => q.eq("missionId", mission._id)).order("desc").collect(),
     ctx.db.query("workOrders").withIndex("by_mission", (q: any) => q.eq("missionId", mission._id)).collect(),
+    mission.projectId ? ctx.db.get(mission.projectId) : null,
   ]);
+  const normalizedPlans = plans.map((plan: any) => ({
+    ...plan,
+    assertions: normalizedPlanAssertions(plan),
+    legacyRelease: plan.status === "APPROVED" && !plan.releaseIdempotencyKey,
+  }));
+  const currentPlan = normalizedPlans.find((plan: any) => plan._id === mission.currentPlanId)
+    ?? normalizedPlans.find((plan: any) => plan.status === "PROPOSED")
+    ?? normalizedPlans[0];
+  const blueprintById = new Map((currentPlan?.workOrderBlueprints ?? []).map((blueprint: any) => [blueprint.id, blueprint]));
+  const workOrderByBlueprintId = new Map(workOrders.map((workOrder: any) => [workOrder.metadata?.missionBlueprintId, workOrder]));
+  const handoffByWorkOrderId = new Map(handoffs.map((handoff: any) => [String(handoff.workOrderId), handoff]));
+  const eligibleWorkOrders = workOrders
+    .map((workOrder: any) => {
+      const blueprint = blueprintById.get(workOrder.metadata?.missionBlueprintId) as any;
+      const missingDependencies = (blueprint?.dependsOnBlueprintIds ?? []).filter((dependencyId: string) => {
+        const dependencyWorkOrder = workOrderByBlueprintId.get(dependencyId) as any;
+        if (!dependencyWorkOrder) return true;
+        const handoff = handoffByWorkOrderId.get(String(dependencyWorkOrder._id)) as any;
+        return !handoff || handoff.outcome !== "COMPLETE" || handoff.incompleteAssertionIds.length > 0 || handoff.unknownAssertionIds.length > 0;
+      });
+      return {
+        ...workOrder,
+        missionEligibility: missingDependencies.length === 0
+          ? { eligible: true as const, reason: "All predecessor handoffs are complete." }
+          : { eligible: false as const, reason: `Waiting for predecessor handoff: ${missingDependencies.join(", ")}`, missingBlueprintIds: missingDependencies },
+      };
+    })
+    .sort((left: any, right: any) => (left.missionSequence ?? 0) - (right.missionSequence ?? 0));
   return {
     mission,
-    plans,
+    project,
+    plans: normalizedPlans,
     assertions,
     handoffs,
     events,
-    workOrders,
+    workOrders: eligibleWorkOrders,
     acceptance: evaluateMissionAcceptance({
       assertions: assertions.map((assertion: any) => ({
         id: assertion.assertionId,
@@ -257,60 +352,332 @@ export const updateDraft = mutation({
   },
 });
 
-export const submitPlan = mutation({
-  args: { missionId: v.id("missions"), idempotencyKey: v.string(), createdBy: v.string(), summary: v.string(), workOrderBlueprints: v.array(blueprintInput), assertions: v.array(assertionInput), metadata: v.optional(v.any()) },
+export const savePlanDraft = mutation({
+  args: {
+    projectId: v.id("projects"),
+    missionId: v.id("missions"),
+    planId: v.optional(v.id("missionPlans")),
+    basePlanId: v.optional(v.id("missionPlans")),
+    expectedDraftVersion: v.optional(v.number()),
+    idempotencyKey: v.string(),
+    summary: v.string(),
+    rollbackApproach: v.string(),
+    estimatedCostUsd: v.optional(v.number()),
+    workOrderBlueprints: v.array(blueprintInput),
+    assertions: v.array(assertionInput),
+    metadata: v.optional(v.any()),
+  },
   handler: async (ctx, args) => {
-    const mission = await ctx.db.get(args.missionId);
-    if (!mission) throw new Error("Mission not found");
-    if (!["DRAFT", "PLANNING"].includes(mission.state)) throw new Error(`Mission cannot accept a plan while ${mission.state}`);
+    await assertPlanReleaseEnabled(ctx, args.projectId);
+    const { mission } = await assertMissionProject(ctx, args.missionId, args.projectId);
+    if (!["DRAFT", "PLANNING"].includes(mission.state)) throw new Error(`Mission plan cannot be edited while ${mission.state}`);
+    const operator = await resolveOperator(ctx);
+    const now = Date.now();
+
+    if (args.planId) {
+      const plan = await ctx.db.get(args.planId);
+      if (!plan || plan.missionId !== mission._id || plan.projectId !== args.projectId) throw new Error("Mission plan not found");
+      if (plan.status !== "DRAFT") throw new Error("Only a draft plan can be edited");
+      const version = plan.draftVersion ?? 1;
+      if (args.expectedDraftVersion !== version) throw new Error("Mission plan changed in another session. Reload before saving.");
+      await ctx.db.patch(plan._id, {
+        summary: args.summary,
+        rollbackApproach: args.rollbackApproach,
+        estimatedCostUsd: args.estimatedCostUsd,
+        workOrderBlueprints: args.workOrderBlueprints,
+        assertions: args.assertions,
+        draftVersion: version + 1,
+        metadata: args.metadata,
+      });
+      const updated = await ctx.db.get(plan._id);
+      await logMissionEvent(ctx, {
+        mission,
+        eventType: "PLAN_DRAFT_SAVED",
+        actorType: "HUMAN",
+        actorId: operator.actorId,
+        summary: `Saved mission plan revision ${plan.revisionNumber}`,
+        idempotencyKey: args.idempotencyKey,
+        metadata: { planId: plan._id, draftVersion: version + 1, actorSource: operator.actorSource },
+      });
+      return { plan: updated, created: false };
+    }
+
     const duplicate = await ctx.db.query("missionPlans").withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.idempotencyKey)).first();
     if (duplicate) return { plan: duplicate, created: false };
-    if (args.assertions.length === 0) throw new Error("Mission plan requires at least one validation assertion");
-    const assertionIds = new Set(args.assertions.map((assertion) => assertion.assertionId));
-    if (assertionIds.size !== args.assertions.length) throw new Error("Mission assertion IDs must be unique");
-    if (args.workOrderBlueprints.some((blueprint) => blueprint.assertionIds.some((id) => !assertionIds.has(id)))) {
-      throw new Error("WorkOrder blueprint references an unknown assertion");
+    if (args.basePlanId) {
+      const base = await ctx.db.get(args.basePlanId);
+      if (!base || base.missionId !== mission._id || !["REJECTED", "SUPERSEDED"].includes(base.status)) {
+        throw new Error("Plan revision baseline is not available");
+      }
     }
     const existingPlans = await ctx.db.query("missionPlans").withIndex("by_mission", (q) => q.eq("missionId", mission._id)).collect();
+    const revisionNumber = existingPlans.reduce((latest, plan) => Math.max(latest, plan.revisionNumber), 0) + 1;
+    const planId = await ctx.db.insert("missionPlans", {
+      tenantId: mission.tenantId,
+      projectId: mission.projectId,
+      missionId: mission._id,
+      basePlanId: args.basePlanId,
+      idempotencyKey: args.idempotencyKey,
+      revisionNumber,
+      draftVersion: 1,
+      status: "DRAFT",
+      summary: args.summary,
+      rollbackApproach: args.rollbackApproach,
+      estimatedCostUsd: args.estimatedCostUsd,
+      createdBy: operator.actorId,
+      assertions: args.assertions,
+      workOrderBlueprints: args.workOrderBlueprints,
+      createdAt: now,
+      metadata: args.metadata,
+    });
+    if (mission.state === "DRAFT") {
+      assertTransition(mission, "PLANNING");
+      await ctx.db.patch(mission._id, { state: "PLANNING", updatedAt: now });
+    }
+    const updatedMission = await ctx.db.get(mission._id) ?? mission;
+    await logMissionEvent(ctx, {
+      mission: updatedMission,
+      eventType: "PLAN_DRAFT_CREATED",
+      actorType: "HUMAN",
+      actorId: operator.actorId,
+      summary: `Created mission plan revision ${revisionNumber}`,
+      idempotencyKey: `${args.idempotencyKey}:created`,
+      metadata: { planId, basePlanId: args.basePlanId, actorSource: operator.actorSource },
+    });
+    return { plan: await ctx.db.get(planId), created: true };
+  },
+});
+
+export const abandonPlanDraft = mutation({
+  args: { projectId: v.id("projects"), missionId: v.id("missions"), planId: v.id("missionPlans"), reason: v.string(), idempotencyKey: v.string() },
+  handler: async (ctx, args) => {
+    await assertPlanReleaseEnabled(ctx, args.projectId);
+    if (!args.reason.trim()) throw new Error("A reason is required to abandon a plan draft");
+    const { mission } = await assertMissionProject(ctx, args.missionId, args.projectId);
+    const plan = await ctx.db.get(args.planId);
+    if (!plan || plan.missionId !== mission._id || plan.status !== "DRAFT") throw new Error("Draft plan not found");
+    if (mission.state !== "PLANNING") throw new Error(`Mission plan cannot be abandoned while ${mission.state}`);
+    const duplicate = await ctx.db.query("missionEvents").withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.idempotencyKey)).first();
+    if (duplicate) return { mission, plan, created: false };
+    const operator = await resolveOperator(ctx);
+    const now = Date.now();
+    assertTransition(mission, "DRAFT");
+    await ctx.db.patch(plan._id, { status: "SUPERSEDED", decisionReason: args.reason.trim(), decidedBy: operator.actorId, decidedAt: now, decidedActorSource: operator.actorSource });
+    await ctx.db.patch(mission._id, { state: "DRAFT", updatedAt: now, requiredHumanAction: "Review the Mission definition before creating another plan." });
+    const updated = await ctx.db.get(mission._id);
+    if (updated) await logMissionEvent(ctx, { mission: updated, eventType: "PLAN_DRAFT_ABANDONED", actorType: "HUMAN", actorId: operator.actorId, summary: `Abandoned mission plan revision ${plan.revisionNumber}`, idempotencyKey: args.idempotencyKey, metadata: { planId: plan._id, reason: args.reason.trim(), actorSource: operator.actorSource } });
+    return { mission: updated, plan: await ctx.db.get(plan._id), created: true };
+  },
+});
+
+export const submitPlan = mutation({
+  args: { projectId: v.id("projects"), missionId: v.id("missions"), planId: v.id("missionPlans"), idempotencyKey: v.string() },
+  handler: async (ctx, args) => {
+    await assertPlanReleaseEnabled(ctx, args.projectId);
+    const { mission, project } = await assertMissionProject(ctx, args.missionId, args.projectId);
+    const plan = await ctx.db.get(args.planId);
+    if (!plan || plan.missionId !== mission._id || plan.projectId !== args.projectId) throw new Error("Mission plan not found");
+    if (plan.status === "PROPOSED") return { plan, created: false };
+    if (plan.status !== "DRAFT" || mission.state !== "PLANNING") throw new Error("Mission plan is not ready for submission");
+    const workflows = await Promise.all(plan.workOrderBlueprints.map((blueprint: any) => blueprint.workflowId
+      ? ctx.db.query("workflows").withIndex("by_workflow_id", (q: any) => q.eq("workflowId", blueprint.workflowId)).first()
+      : null));
+    const workOrderBlueprints = plan.workOrderBlueprints.map((blueprint: any, index: number) => {
+      const workflow = workflows[index];
+      if (!workflow || !workflow.active) throw new Error(`Active workflow not found for ${blueprint.id}`);
+      return { ...blueprint, workflowVersion: workflow.version };
+    });
+    const proposed = { ...plan, repository: project.githubRepo, repositoryBranch: project.githubBranch, workOrderBlueprints };
+    assertValidPlan(proposed);
+    if (mission.budgetUsd !== undefined && proposed.estimatedCostUsd !== undefined && proposed.estimatedCostUsd > mission.budgetUsd) {
+      throw new Error("Plan estimate exceeds the Mission budget");
+    }
+    const operator = await resolveOperator(ctx);
+    const now = Date.now();
+    assertTransition(mission, "AWAITING_PLAN_APPROVAL");
+    await ctx.db.patch(plan._id, {
+      status: "PROPOSED",
+      repository: project.githubRepo,
+      repositoryBranch: project.githubBranch,
+      workOrderBlueprints,
+      submittedBy: operator.actorId,
+      submittedAt: now,
+      submittedActorSource: operator.actorSource,
+    });
+    await ctx.db.patch(mission._id, { state: "AWAITING_PLAN_APPROVAL", updatedAt: now, requiredHumanAction: "Review, reject, or approve the proposed Mission plan." });
+    const updated = await ctx.db.get(mission._id);
+    if (updated) await logMissionEvent(ctx, { mission: updated, eventType: "PLAN_SUBMITTED", actorType: "HUMAN", actorId: operator.actorId, summary: `Submitted mission plan revision ${plan.revisionNumber}`, idempotencyKey: args.idempotencyKey, metadata: { planId: plan._id, actorSource: operator.actorSource } });
+    return { plan: await ctx.db.get(plan._id), created: true };
+  },
+});
+
+export const rejectPlan = mutation({
+  args: { projectId: v.id("projects"), missionId: v.id("missions"), planId: v.id("missionPlans"), reason: v.string(), idempotencyKey: v.string() },
+  handler: async (ctx, args) => {
+    await assertPlanReleaseEnabled(ctx, args.projectId);
+    if (!args.reason.trim()) throw new Error("Plan rejection requires a reason");
+    const { mission } = await assertMissionProject(ctx, args.missionId, args.projectId);
+    const plan = await ctx.db.get(args.planId);
+    if (!plan || plan.missionId !== mission._id) throw new Error("Mission plan not found");
+    if (plan.status === "REJECTED") return { mission, plan, created: false };
+    if (plan.status !== "PROPOSED" || mission.state !== "AWAITING_PLAN_APPROVAL") throw new Error("Mission plan is not awaiting a decision");
+    const operator = await resolveOperator(ctx);
+    const now = Date.now();
+    assertTransition(mission, "DRAFT");
+    await ctx.db.patch(plan._id, { status: "REJECTED", decisionReason: args.reason.trim(), decidedBy: operator.actorId, decidedAt: now, decidedActorSource: operator.actorSource });
+    await ctx.db.patch(mission._id, { state: "DRAFT", updatedAt: now, requiredHumanAction: "Revise the rejected plan before requesting another decision." });
+    const updated = await ctx.db.get(mission._id);
+    if (updated) await logMissionEvent(ctx, { mission: updated, eventType: "PLAN_REJECTED", actorType: "HUMAN", actorId: operator.actorId, summary: `Rejected mission plan revision ${plan.revisionNumber}`, idempotencyKey: args.idempotencyKey, metadata: { planId: plan._id, reason: args.reason.trim(), actorSource: operator.actorSource } });
+    return { mission: updated, plan: await ctx.db.get(plan._id), created: true };
+  },
+});
+
+export const forkPlanRevision = mutation({
+  args: { projectId: v.id("projects"), missionId: v.id("missions"), sourcePlanId: v.id("missionPlans"), idempotencyKey: v.string() },
+  handler: async (ctx, args) => {
+    await assertPlanReleaseEnabled(ctx, args.projectId);
+    const { mission } = await assertMissionProject(ctx, args.missionId, args.projectId);
+    if (mission.state !== "DRAFT") throw new Error(`Mission cannot create a plan revision while ${mission.state}`);
+    const source = await ctx.db.get(args.sourcePlanId);
+    if (!source || source.missionId !== mission._id || !["REJECTED", "SUPERSEDED"].includes(source.status)) throw new Error("Plan revision source not found");
+    const duplicate = await ctx.db.query("missionPlans").withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.idempotencyKey)).first();
+    if (duplicate) return { plan: duplicate, created: false };
+    const plans = await ctx.db.query("missionPlans").withIndex("by_mission", (q) => q.eq("missionId", mission._id)).collect();
+    const revisionNumber = plans.reduce((latest, plan) => Math.max(latest, plan.revisionNumber), 0) + 1;
+    const operator = await resolveOperator(ctx);
     const now = Date.now();
     const planId = await ctx.db.insert("missionPlans", {
-      tenantId: mission.tenantId, projectId: mission.projectId, missionId: mission._id, idempotencyKey: args.idempotencyKey,
-      revisionNumber: existingPlans.length + 1, status: "PROPOSED", summary: args.summary, createdBy: args.createdBy,
-      workOrderBlueprints: args.workOrderBlueprints, createdAt: now, metadata: { assertions: args.assertions, ...args.metadata },
+      tenantId: mission.tenantId,
+      projectId: mission.projectId,
+      missionId: mission._id,
+      basePlanId: source._id,
+      idempotencyKey: args.idempotencyKey,
+      revisionNumber,
+      draftVersion: 1,
+      status: "DRAFT",
+      summary: source.summary,
+      rollbackApproach: source.rollbackApproach,
+      estimatedCostUsd: source.estimatedCostUsd,
+      createdBy: operator.actorId,
+      assertions: normalizedPlanAssertions(source),
+      workOrderBlueprints: source.workOrderBlueprints,
+      createdAt: now,
+      metadata: source.metadata,
     });
-    const nextState = "AWAITING_PLAN_APPROVAL" as const;
-    if (mission.state === "DRAFT") assertTransition(mission, "PLANNING");
-    await ctx.db.patch(mission._id, { state: nextState, updatedAt: now });
+    assertTransition(mission, "PLANNING");
+    await ctx.db.patch(mission._id, { state: "PLANNING", updatedAt: now, requiredHumanAction: undefined });
     const updated = await ctx.db.get(mission._id);
-    if (updated) await logMissionEvent(ctx, { mission: updated, eventType: "PLAN_SUBMITTED", actorType: "AGENT", actorId: args.createdBy, summary: `Submitted mission plan revision ${existingPlans.length + 1}`, idempotencyKey: `${args.idempotencyKey}:submitted`, metadata: { planId } });
+    if (updated) await logMissionEvent(ctx, { mission: updated, eventType: "PLAN_REVISION_FORKED", actorType: "HUMAN", actorId: operator.actorId, summary: `Created mission plan revision ${revisionNumber} from revision ${source.revisionNumber}`, idempotencyKey: `${args.idempotencyKey}:forked`, metadata: { planId, basePlanId: source._id, actorSource: operator.actorSource } });
     return { plan: await ctx.db.get(planId), created: true };
   },
 });
 
 export const approvePlan = mutation({
-  args: { missionId: v.id("missions"), planId: v.id("missionPlans"), approvedBy: v.string(), idempotencyKey: v.string() },
+  args: { projectId: v.id("projects"), missionId: v.id("missions"), planId: v.id("missionPlans"), decisionReason: v.string(), idempotencyKey: v.string() },
   handler: async (ctx, args) => {
-    const [mission, plan] = await Promise.all([ctx.db.get(args.missionId), ctx.db.get(args.planId)]);
-    if (!mission || !plan || plan.missionId !== mission._id) throw new Error("Mission plan not found");
-    if (mission.state !== "AWAITING_PLAN_APPROVAL" || plan.status !== "PROPOSED") throw new Error("Mission plan is not awaiting approval");
-    const duplicate = await ctx.db.query("missionEvents").withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.idempotencyKey)).first();
-    if (duplicate) return { mission, created: false };
-    const now = Date.now();
-    const assertions = (plan.metadata?.assertions ?? []) as Array<any>;
-    for (const assertion of assertions) {
-      await ctx.db.insert("validationAssertions", {
-        tenantId: mission.tenantId, projectId: mission.projectId, missionId: mission._id, missionPlanId: plan._id,
-        assertionId: assertion.assertionId, title: assertion.title, outcome: assertion.outcome,
-        verificationMethod: assertion.verificationMethod, passCondition: assertion.passCondition, requiredEvidence: assertion.requiredEvidence,
-        requiresIndependentValidation: assertion.requiresIndependentValidation, waiverAllowed: assertion.waiverAllowed,
-        linkedWorkOrderIds: [], status: "PENDING", createdAt: now, updatedAt: now,
-      });
+    await assertPlanReleaseEnabled(ctx, args.projectId);
+    if (!args.decisionReason.trim()) throw new Error("Plan approval requires a reason");
+    const { mission, project } = await assertMissionProject(ctx, args.missionId, args.projectId);
+    const plan = await ctx.db.get(args.planId);
+    if (!plan || plan.missionId !== mission._id || plan.projectId !== args.projectId) throw new Error("Mission plan not found");
+    if (plan.status === "APPROVED" && plan.releasedWorkOrderIds?.length) {
+      const existingWorkOrders = (await Promise.all(plan.releasedWorkOrderIds.map((id: any) => ctx.db.get(id)))).filter(Boolean);
+      return { mission, plan, workOrders: existingWorkOrders, created: false };
     }
-    await ctx.db.patch(plan._id, { status: "APPROVED", approvedBy: args.approvedBy, approvedAt: now });
-    await ctx.db.patch(mission._id, { state: "READY", currentPlanId: plan._id, updatedAt: now });
+    if (mission.state !== "AWAITING_PLAN_APPROVAL" || plan.status !== "PROPOSED") throw new Error("Mission plan is not awaiting approval");
+    if (plan.repository !== project.githubRepo || plan.repositoryBranch !== project.githubBranch) throw new Error("Repository configuration changed after plan submission. Create a new revision.");
+    assertValidPlan(plan);
+    const workflows = await Promise.all(plan.workOrderBlueprints.map((blueprint: any) => ctx.db.query("workflows").withIndex("by_workflow_id", (q: any) => q.eq("workflowId", blueprint.workflowId)).first()));
+    for (let index = 0; index < workflows.length; index += 1) {
+      if (!workflows[index]?.active || workflows[index]?.version !== plan.workOrderBlueprints[index].workflowVersion) {
+        throw new Error(`Workflow changed after plan submission: ${plan.workOrderBlueprints[index].workflowId}`);
+      }
+    }
+    const operator = await resolveOperator(ctx);
+    if (operator.actorSource === "AUTHENTICATED" && plan.submittedBy === operator.actorId) {
+      throw new Error("A plan author cannot approve the same plan revision");
+    }
+    const now = Date.now();
+    const releaseKey = missionPlanReleaseKey(String(plan._id));
+    const assertionRows = new Map<string, any>();
+    for (const assertion of normalizedPlanAssertions(plan)) {
+      const assertionId = await ctx.db.insert("validationAssertions", {
+        tenantId: mission.tenantId,
+        projectId: mission.projectId,
+        missionId: mission._id,
+        missionPlanId: plan._id,
+        assertionId: assertion.assertionId,
+        title: assertion.title,
+        outcome: assertion.outcome,
+        verificationMethod: assertion.verificationMethod,
+        passCondition: assertion.passCondition,
+        requiredEvidence: assertion.requiredEvidence,
+        requiresIndependentValidation: assertion.requiresIndependentValidation,
+        waiverAllowed: assertion.waiverAllowed,
+        linkedWorkOrderIds: [],
+        status: "PENDING",
+        createdAt: now,
+        updatedAt: now,
+      });
+      assertionRows.set(assertion.assertionId, await ctx.db.get(assertionId));
+    }
+    await ctx.db.patch(plan._id, {
+      status: "APPROVED",
+      approvedBy: operator.actorId,
+      approvedAt: now,
+      decisionReason: args.decisionReason.trim(),
+      decidedBy: operator.actorId,
+      decidedAt: now,
+      decidedActorSource: operator.actorSource,
+      releaseIdempotencyKey: releaseKey,
+      materializationVersion: 1,
+    });
+    await ctx.db.patch(mission._id, { state: "READY", currentPlanId: plan._id, updatedAt: now, requiredHumanAction: "Review released WorkOrders. Execution remains a separate governed action." });
+
+    const releasedByBlueprint = new Map<string, any>();
+    const workOrders: any[] = [];
+    for (const blueprint of [...plan.workOrderBlueprints].sort((left: any, right: any) => left.sequence - right.sequence)) {
+      const linkedAssertions = blueprint.assertionIds.map((assertionId: string) => assertionRows.get(assertionId));
+      const dependencies = blueprint.dependsOnBlueprintIds.map((dependencyId: string) => String(releasedByBlueprint.get(dependencyId)?._id ?? dependencyId));
+      const result = await createWorkOrderRecord(ctx, {
+        projectId: args.projectId,
+        missionId: mission._id,
+        missionPlanId: plan._id,
+        missionBlueprintId: blueprint.id,
+        missionRole: blueprint.role,
+        isMutating: blueprint.isMutating,
+        idempotencyKey: missionBlueprintReleaseKey(String(plan._id), blueprint.id),
+        title: blueprint.title,
+        desiredOutcome: blueprint.desiredOutcome,
+        context: mission.context,
+        workflowId: blueprint.workflowId,
+        repository: plan.repository,
+        branchStrategy: blueprint.branchStrategy,
+        priority: blueprint.priority ?? 3,
+        riskLevel: blueprint.riskLevel ?? "MEDIUM",
+        modelComplexity: blueprint.modelComplexity,
+        requestedBy: operator.actorId,
+        acceptanceCriteria: linkedAssertions.map((assertion: any) => ({
+          id: assertion.assertionId,
+          title: assertion.title,
+          description: `${assertion.passCondition} Evidence: ${assertion.requiredEvidence}`,
+          verificationMethod: assertion.verificationMethod,
+          status: "PENDING",
+        })),
+        constraints: [...(mission.constraints ?? []), ...(blueprint.constraints ?? [])],
+        dependencies,
+        sourceOfTruthRefs: mission.sourceOfTruthRefs,
+        requiredApprovals: blueprint.requiredApprovals ?? [],
+        state: "READY",
+        metadata: { approvedWorkflowVersion: blueprint.workflowVersion, estimatedCostUsd: blueprint.estimatedCostUsd },
+      });
+      releasedByBlueprint.set(blueprint.id, result.workOrder);
+      workOrders.push(result.workOrder);
+    }
+    await ctx.db.patch(plan._id, { releasedAt: now, releasedWorkOrderIds: workOrders.map((workOrder) => workOrder._id) });
     const updated = await ctx.db.get(mission._id);
-    if (updated) await logMissionEvent(ctx, { mission: updated, eventType: "PLAN_APPROVED", actorType: "HUMAN", actorId: args.approvedBy, summary: `Approved mission plan revision ${plan.revisionNumber}`, idempotencyKey: args.idempotencyKey, metadata: { planId: plan._id } });
-    return { mission: updated, created: true };
+    if (updated) await logMissionEvent(ctx, { mission: updated, eventType: "PLAN_APPROVED_AND_WORKORDERS_RELEASED", actorType: "HUMAN", actorId: operator.actorId, summary: `Approved mission plan revision ${plan.revisionNumber} and released ${workOrders.length} WorkOrders`, idempotencyKey: args.idempotencyKey, metadata: { planId: plan._id, releaseKey, workOrderIds: workOrders.map((workOrder) => workOrder._id), reason: args.decisionReason.trim(), actorSource: operator.actorSource, dispatchStarted: false } });
+    return { mission: updated, plan: await ctx.db.get(plan._id), workOrders, created: true };
   },
 });
 

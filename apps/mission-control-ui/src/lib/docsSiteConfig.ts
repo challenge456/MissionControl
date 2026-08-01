@@ -7,7 +7,6 @@ import {
   Shield,
   Wrench,
   Bot,
-  ClipboardCheck,
 } from "lucide-react";
 
 export type DocsSitePage = {
@@ -210,6 +209,12 @@ export const DOCS_SITE_SECTIONS: DocsSiteSection[] = [
     icon: BookOpen,
     pages: [
       {
+        id: "product-direction",
+        title: "Product direction",
+        description: "North Star, V1 promise, priorities, and product boundary",
+        path: "overview/product-direction",
+      },
+      {
         id: "overview-readme",
         title: "What is Mission Control?",
         description: "Platform overview and six core components",
@@ -276,25 +281,6 @@ export const DOCS_SITE_SECTIONS: DocsSiteSection[] = [
       { id: "discover", title: "Discover & install", path: "registry/discover-and-install" },
       { id: "cdl", title: "Context CDL", path: "registry/context-cdl" },
       { id: "evals", title: "Eval runs", path: "registry/eval-runs" },
-    ],
-  },
-  {
-    id: "software-factory-task-work-orders",
-    label: "Task and Work Order Delivery",
-    icon: ClipboardCheck,
-    pages: [
-      {
-        id: "task-workorder-pr1-implementation",
-        title: "Task-to-Work-Order PR 1",
-        description: "Canonical Task parentage, governance, and Attempt projection",
-        path: "software-factory-enhancement/implementation/task-workorder-pr1",
-      },
-      {
-        id: "task-workorder-pr1-browser-results",
-        title: "Task-to-Work-Order Browser Results",
-        description: "Deterministic governed and Ungoverned Task evidence",
-        path: "software-factory-enhancement/testing/task-workorder-browser-results",
-      },
     ],
   },
   {

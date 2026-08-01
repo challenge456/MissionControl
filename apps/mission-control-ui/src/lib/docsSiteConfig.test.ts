@@ -1,9 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_DOCS_PAGE_ID,
+  DOCS_SITE_PAGES,
   resolveDocsPageByHref,
   resolveDocsPageId,
 } from "./docsSiteConfig";
+
+describe("DOCS_SITE_PAGES", () => {
+  it("registers each documentation page ID exactly once", () => {
+    const pageIds = DOCS_SITE_PAGES.map((page) => page.id);
+    expect(new Set(pageIds).size).toBe(pageIds.length);
+  });
+});
 
 describe("resolveDocsPageByHref", () => {
   it("resolves sibling relative links", () => {
@@ -24,6 +32,10 @@ describe("resolveDocsPageByHref", () => {
 });
 
 describe("resolveDocsPageId", () => {
+  it("keeps the registered product direction document ID", () => {
+    expect(resolveDocsPageId("product-direction")).toBe("product-direction");
+  });
+
   it("keeps a registered operator document ID", () => {
     expect(resolveDocsPageId("sfe-overview")).toBe("sfe-overview");
   });

@@ -41,6 +41,7 @@ import {
 import { isAutomationSelfApproval } from "./lib/automationGovernance";
 import { loadTaskProjections } from "./lib/taskProjection";
 import { snapshotWorkflowDefinition } from "./lib/workflowSnapshot";
+import { createWorkOrderRecord } from "./lib/workOrderCreate";
 import {
   nextTaskAttemptNumbers,
   taskAttemptErrorMessage,
@@ -387,7 +388,8 @@ const acceptanceCriterion = v.object({
     v.literal("MANUAL"),
     v.literal("COMMAND"),
     v.literal("TEST"),
-    v.literal("CHECKLIST")
+    v.literal("CHECKLIST"),
+    v.literal("BROWSER")
   )),
   status: verificationStatus,
 });
@@ -1306,170 +1308,7 @@ export const create = mutation({
     requiredHumanAction: v.optional(v.string()),
     metadata: v.optional(v.any()),
   },
-  handler: async (ctx, args) => {
-    if (args.idempotencyKey) {
-      const existing = await ctx.db
-        .query("workOrders")
-        .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.idempotencyKey))
-        .first();
-      if (existing) return { workOrder: existing, created: false };
-    }
-
-    const project = args.projectId ? await ctx.db.get(args.projectId) : null;
-    let mission: any = null;
-    let missionPlan: any = null;
-    let missionBlueprint: any = null;
-    if (args.missionId) {
-      mission = await ctx.db.get(args.missionId);
-      if (!mission) throw new Error("Mission not found");
-      if (mission.projectId !== args.projectId) throw new Error("Mission and WorkOrder project scopes must match");
-      if (!args.missionPlanId || !args.missionBlueprintId) throw new Error("Mission WorkOrders require an approved plan and blueprint");
-      missionPlan = await ctx.db.get(args.missionPlanId);
-      if (!missionPlan || missionPlan.missionId !== mission._id || mission.currentPlanId !== missionPlan._id || missionPlan.status !== "APPROVED") {
-        throw new Error("Mission WorkOrder must use the current approved plan");
-      }
-      missionBlueprint = missionPlan.workOrderBlueprints.find((blueprint: any) => blueprint.id === args.missionBlueprintId);
-      if (!missionBlueprint) throw new Error("Mission WorkOrder blueprint not found");
-      if (missionBlueprint.title !== args.title || missionBlueprint.desiredOutcome !== args.desiredOutcome) {
-        throw new Error("Mission WorkOrder must match its approved blueprint");
-      }
-      if ((args.missionRole ?? "WORKER") !== missionBlueprint.role) {
-        throw new Error("Mission WorkOrder role must match its approved blueprint");
-      }
-    }
-    const now = Date.now();
-    const finalCriteria = args.acceptanceCriteria.map((criterion) => ({
-      ...criterion,
-      status: criterion.status ?? "PENDING",
-    }));
-
-    const workOrderId = await ctx.db.insert("workOrders", {
-      tenantId: project?.tenantId,
-      projectId: args.projectId,
-      missionId: args.missionId,
-      missionPlanId: args.missionPlanId,
-      missionSequence: missionBlueprint?.sequence,
-      missionRole: args.missionId ? (args.missionRole ?? "WORKER") : undefined,
-      isMutating: args.missionId ? missionBlueprint?.isMutating : args.isMutating,
-      releasedAt: args.missionId ? now : undefined,
-      legacyTaskId: args.legacyTaskId,
-      idempotencyKey: args.idempotencyKey,
-      title: args.title,
-      desiredOutcome: args.desiredOutcome,
-      context: args.context,
-      workflowId: args.workflowId,
-      repository: args.repository,
-      branchStrategy: args.branchStrategy,
-      priority: args.priority ?? 3,
-      riskLevel: args.riskLevel ?? "MEDIUM",
-      modelComplexity: args.modelComplexity,
-      requestedBy: args.requestedBy,
-      assignedAgent: args.assignedAgent,
-      assignedSquad: args.assignedSquad,
-      acceptanceCriteria: finalCriteria,
-      constraints: args.constraints,
-      dependencies: args.dependencies,
-      sourceOfTruthRefs: args.sourceOfTruthRefs,
-      requiredApprovals: args.requiredApprovals,
-      state: args.state ?? "READY",
-      verificationStatus: deriveVerificationStatus(finalCriteria),
-      approvalStatus: args.approvalStatus ?? ((args.requiredApprovals?.length ?? 0) > 0 ? "PENDING" : "NOT_REQUIRED"),
-      blockingIssue: args.blockingIssue,
-      requiredHumanAction: args.requiredHumanAction,
-      currentRevisionNumber: 1,
-      acceptedRevisionNumber: undefined,
-      createdAt: now,
-      updatedAt: now,
-      metadata: args.missionId ? { ...(args.metadata ?? {}), missionBlueprintId: args.missionBlueprintId } : args.metadata,
-    });
-
-    if (mission && missionBlueprint) {
-      await Promise.all(missionBlueprint.assertionIds.map(async (assertionId: string) => {
-        const assertion = await ctx.db
-          .query("validationAssertions")
-          .withIndex("by_mission_assertion", (q: any) => q.eq("missionId", mission._id).eq("assertionId", assertionId))
-          .first();
-        if (!assertion) throw new Error(`Mission WorkOrder references an assertion that is not in the approved contract: ${assertionId}`);
-        await ctx.db.patch(assertion._id, {
-          linkedWorkOrderIds: [...assertion.linkedWorkOrderIds, workOrderId],
-          updatedAt: now,
-        });
-      }));
-    }
-
-    const initialSnapshot = snapshotRevisionFields({
-      ...args,
-      priority: args.priority ?? 3,
-      riskLevel: args.riskLevel ?? "MEDIUM",
-      acceptanceCriteria: finalCriteria,
-      metadata: args.metadata,
-    });
-    const initialRevisionId = await ctx.db.insert("workOrderRevisions", {
-      tenantId: project?.tenantId,
-      projectId: args.projectId,
-      workOrderId,
-      idempotencyKey: args.idempotencyKey ? `${args.idempotencyKey}:revision:1` : undefined,
-      revisionNumber: 1,
-      previousRevisionId: undefined,
-      status: "APPLIED",
-      changedFields: [
-        "title",
-        "desiredOutcome",
-        "workflowId",
-        "repository",
-        "riskLevel",
-        "acceptanceCriteria",
-      ],
-      changeSummary: "Initial work order created",
-      reason: "Initial creation",
-      requestedBy: args.requestedBy,
-      approvedBy: args.requestedBy,
-      createdAt: now,
-      effectiveAt: now,
-      riskReassessment: "UNCHANGED",
-      materiality: "NO_ACTION",
-      requiresReapproval: false,
-      requiresReverification: false,
-      requiresFullReopen: false,
-      impactedAcceptanceCriteria: [],
-      impactedApprovals: [],
-      impactedVerificationReceiptIds: [],
-      requestedChanges: initialSnapshot,
-      previousSnapshot: initialSnapshot,
-      nextSnapshot: initialSnapshot,
-      metadata: { initial: true },
-    });
-    await ctx.db.patch(workOrderId, { currentRevisionId: initialRevisionId });
-
-    await refreshWorkOrderGovernance(ctx, workOrderId);
-    const workOrder = await ctx.db.get(workOrderId);
-
-    await ctx.db.insert("activities", {
-      tenantId: project?.tenantId,
-      projectId: args.projectId,
-      actorType: "HUMAN",
-      actorId: args.requestedBy,
-      action: "WORK_ORDER_CREATED",
-      description: `WorkOrder \"${args.title}\" created`,
-      targetType: "WORK_ORDER",
-      targetId: workOrderId,
-      metadata: { repository: args.repository },
-    });
-
-    await logWorkOrderEvent(ctx, {
-      tenantId: project?.tenantId,
-      projectId: args.projectId,
-      workOrderId,
-      eventType: "WORK_ORDER_CREATED",
-      actorType: "HUMAN",
-      actorId: args.requestedBy,
-      summary: `Created work order ${args.title}`,
-      idempotencyKey: args.idempotencyKey ? `${args.idempotencyKey}:created` : undefined,
-      metadata: { repository: args.repository, workflowId: args.workflowId },
-    });
-
-    return { workOrder, created: true };
-  },
+  handler: async (ctx, args) => await createWorkOrderRecord(ctx, args),
 });
 
 export const dispatch = mutation({
@@ -2393,7 +2232,7 @@ export const recordVerificationReceipt = mutation({
     workflowRunId: v.id("workflowRuns"),
     acceptanceCriterionId: v.string(),
     idempotencyKey: v.optional(v.string()),
-    verificationMethod: v.optional(v.union(v.literal("MANUAL"), v.literal("COMMAND"), v.literal("TEST"), v.literal("CHECKLIST"))),
+    verificationMethod: v.optional(v.union(v.literal("MANUAL"), v.literal("COMMAND"), v.literal("TEST"), v.literal("CHECKLIST"), v.literal("BROWSER"))),
     commandOrCheck: v.optional(v.string()),
     result: v.optional(v.string()),
     evidenceLocation: v.optional(v.string()),
