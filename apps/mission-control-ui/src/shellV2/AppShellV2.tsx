@@ -64,6 +64,7 @@ interface AppShellV2Props {
   activeView: MainView;
   onNavigate: (view: MainView) => void;
   workspaceSwitcher: ReactNode;
+  companySwitcher?: ReactNode;
   onOpenSearch: () => void;
   pendingApprovals: number;
   onOpenApprovals: () => void;
@@ -80,6 +81,7 @@ export function AppShellV2({
   activeView,
   onNavigate,
   workspaceSwitcher,
+  companySwitcher,
   onOpenSearch,
   pendingApprovals,
   onOpenApprovals,
@@ -250,6 +252,7 @@ export function AppShellV2({
                   onOpenSearch();
                 }}
                 workspaceSwitcher={workspaceSwitcher}
+                companySwitcher={companySwitcher}
                 footer={footer}
                 onHide={() => setMobileNavOpen(false)}
               />
@@ -265,6 +268,7 @@ export function AppShellV2({
             onNavigate={navigateFromSidebar}
             onOpenSearch={onOpenSearch}
             workspaceSwitcher={workspaceSwitcher}
+            companySwitcher={companySwitcher}
             footer={footer}
             onHide={() => columns.setNavHidden(true)}
           />

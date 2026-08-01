@@ -34,6 +34,7 @@ Runtime toggles gating incomplete or risky Software Factory subsystems. Introduc
 | `eos.command-center-preview` | Engineering OS Command Center, missions, intelligence views | EOS demo |
 | `executor.pi-bridge` | Pi runtime receipt packet ingestion and orchestration dispatch envelope | Factory runtime |
 | `ui.control.stubs` | Preview-only Control nav items (Portfolio, Fleet) | Factory UI S5 |
+| `company.context` | Auth-resolved company selection and company-scoped workspace administration | Company boundary P0 |
 
 ## Usage
 
@@ -67,6 +68,18 @@ mc flags set ui.shell.v2 off
 ```bash
 VITE_FLAG_UI_SHELL_V2=true pnpm run dev:ui
 ```
+
+For local company-context testing, enable both the UI rollout flag and the
+explicit backend demo adapter:
+
+```bash
+VITE_FLAG_COMPANY_CONTEXT=true
+MC_ALLOW_ANONYMOUS_COMPANY_CONTEXT=1
+```
+
+`MC_ALLOW_ANONYMOUS_COMPANY_CONTEXT` must never be enabled in production. With
+the adapter disabled, company access resolves only from authenticated operator
+records linked by `authId`.
 
 ## Lifecycle convention
 

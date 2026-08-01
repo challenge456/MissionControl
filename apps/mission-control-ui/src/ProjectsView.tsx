@@ -22,6 +22,7 @@ import { MetricBlock } from "./components/factory/MetricBlock";
 import { WorkspaceRepositoriesPanel } from "./workspace/WorkspaceRepositoriesPanel";
 import {
   Clock3,
+  Building2,
   FolderKanban,
   GitCommit,
   Github,
@@ -29,20 +30,37 @@ import {
   Link2,
   Orbit,
   Plus,
+  Pencil,
   Server,
   Sparkles,
+  Users,
 } from "lucide-react";
 
 interface ProjectsViewProps {
   projectId: Id<"projects"> | null;
   onProjectSelect: (projectId: Id<"projects">) => void;
+  tenantId: Id<"tenants"> | null;
+  companyContextEnabled: boolean;
 }
 
-export function ProjectsView({ projectId, onProjectSelect }: ProjectsViewProps) {
-  const projects = useQuery(api.projects.list);
-  const repositorySummary = useQuery(api.projects.getRepositoryPortfolioSummary);
+export function ProjectsView({ projectId, onProjectSelect, tenantId, companyContextEnabled }: ProjectsViewProps) {
+  const scopedProjects = useQuery(
+    api.companyContext.listWorkspaces,
+    companyContextEnabled && tenantId ? { tenantId } : "skip"
+  );
+  const legacyProjects = useQuery(api.projects.list, companyContextEnabled ? "skip" : {});
+  const projects = companyContextEnabled ? scopedProjects : legacyProjects;
+  const companySummary = useQuery(
+    api.companyContext.getCompanySummary,
+    companyContextEnabled && tenantId ? { tenantId } : "skip"
+  );
+  const legacyRepositorySummary = useQuery(
+    api.projects.getRepositoryPortfolioSummary,
+    companyContextEnabled ? "skip" : {}
+  );
   const [selectedProject, setSelectedProject] = useState<Id<"projects"> | null>(projectId);
   const [createOpen, setCreateOpen] = useState(false);
+  const [companyEditOpen, setCompanyEditOpen] = useState(false);
 
   useEffect(() => {
     if (projectId) setSelectedProject(projectId);
@@ -55,14 +73,18 @@ export function ProjectsView({ projectId, onProjectSelect }: ProjectsViewProps) 
   }, [projects, selectedProject]);
 
   const totals = useMemo(() => {
-    if (!projects || !repositorySummary) return null;
+    if (!projects || (companyContextEnabled ? !companySummary : !legacyRepositorySummary)) return null;
     return {
       total: projects.length,
-      connected: repositorySummary.repositories,
-      connectedWorkspaces: repositorySummary.workspacesWithRepositories,
+      connected: companyContextEnabled
+        ? companySummary!.counts.repositories
+        : legacyRepositorySummary!.repositories,
+      connectedWorkspaces: companyContextEnabled
+        ? projects.filter((project) => Boolean(project.githubRepo)).length
+        : legacyRepositorySummary!.workspacesWithRepositories,
       swarms: projects.filter((project) => Boolean(project.swarmConfig)).length,
     };
-  }, [projects, repositorySummary]);
+  }, [companyContextEnabled, companySummary, legacyRepositorySummary, projects]);
 
   if (!projects || !totals) {
     return (
@@ -94,14 +116,22 @@ export function ProjectsView({ projectId, onProjectSelect }: ProjectsViewProps) 
           <StatusBadge tone="neutral">{totals.total} workspaces</StatusBadge>
         }
         actions={
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
-            <Plus className="h-3.5 w-3.5" />
-            New workspace
-          </Button>
+          !companyContextEnabled || companySummary?.canManageCompany ? (
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
+              <Plus className="h-3.5 w-3.5" />
+              New workspace
+            </Button>
+          ) : null
         }
       />
 
       <div className="mx-auto flex max-w-[1200px] flex-col gap-6 px-6 py-6">
+        {companyContextEnabled && companySummary ? (
+          <CompanyAccountCard
+            summary={companySummary}
+            onEdit={() => setCompanyEditOpen(true)}
+          />
+        ) : null}
         <div className="grid gap-4 md:grid-cols-3">
           <Card className="p-5">
             <MetricBlock
@@ -164,8 +194,16 @@ export function ProjectsView({ projectId, onProjectSelect }: ProjectsViewProps) 
 
       {createOpen ? (
         <CreateWorkspaceDialog
+          tenantId={tenantId}
+          companyContextEnabled={companyContextEnabled}
           onClose={() => setCreateOpen(false)}
           onCreated={selectProject}
+        />
+      ) : null}
+      {companyEditOpen && companySummary ? (
+        <EditCompanyDialog
+          company={companySummary.company}
+          onClose={() => setCompanyEditOpen(false)}
         />
       ) : null}
     </section>
@@ -176,6 +214,69 @@ interface ProjectCardProps {
   project: Doc<"projects">;
   isSelected: boolean;
   onSelect: () => void;
+}
+
+interface CompanySummary {
+  company: Doc<"tenants">;
+  roleNames: string[];
+  canManageCompany: boolean;
+  mode: "AUTHENTICATED" | "DEMO";
+  counts: {
+    activeWorkspaces: number;
+    activeOperators: number;
+    repositories: number;
+  };
+}
+
+function CompanyAccountCard({
+  summary,
+  onEdit,
+}: {
+  summary: CompanySummary;
+  onEdit: () => void;
+}) {
+  return (
+    <Card className="p-5">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-line bg-surface-2 text-ink-secondary">
+            <Building2 size={17} aria-hidden />
+          </div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="text-[12px] font-medium text-ink-secondary">Company account</div>
+              <StatusBadge tone={summary.mode === "DEMO" ? "warning" : "success"}>
+                {summary.mode === "DEMO" ? "Local demo access" : "Authenticated"}
+              </StatusBadge>
+            </div>
+            <div className="mt-1 text-[17px] font-semibold text-ink">{summary.company.name}</div>
+            <div className="mt-1 max-w-3xl text-[12.5px] leading-relaxed text-ink-secondary">
+              {summary.company.description || "Add a company description so operators understand the shared business and policy boundary."}
+            </div>
+            {summary.company.missionStatement ? (
+              <div className="mt-2 text-[12px] text-ink-muted">
+                Mission: {summary.company.missionStatement}
+              </div>
+            ) : null}
+          </div>
+        </div>
+        {summary.canManageCompany ? (
+          <Button variant="outline" size="sm" onClick={onEdit}>
+            <Pencil className="h-3.5 w-3.5" /> Edit company
+          </Button>
+        ) : null}
+      </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        <ContractField label="Active workspaces" value={String(summary.counts.activeWorkspaces)} />
+        <ContractField label="Active operators" value={String(summary.counts.activeOperators)} />
+        <ContractField label="Connected repositories" value={String(summary.counts.repositories)} />
+      </div>
+      <div className="mt-3 flex items-center gap-2 text-[11.5px] text-ink-muted">
+        <Users size={13} aria-hidden />
+        {summary.roleNames.length > 0 ? summary.roleNames.join(", ") : "Company member"}
+      </div>
+    </Card>
+  );
 }
 
 function ProjectCard({ project, isSelected, onSelect }: ProjectCardProps) {
@@ -613,13 +714,18 @@ function slugifyWorkspaceName(value: string) {
 }
 
 function CreateWorkspaceDialog({
+  tenantId,
+  companyContextEnabled,
   onClose,
   onCreated,
 }: {
+  tenantId: Id<"tenants"> | null;
+  companyContextEnabled: boolean;
   onClose: () => void;
   onCreated: (projectId: Id<"projects">) => void;
 }) {
-  const createWorkspace = useMutation(api.projects.create);
+  const createLegacyWorkspace = useMutation(api.projects.create);
+  const createScopedWorkspace = useMutation(api.companyContext.createWorkspace);
   const [form, setForm] = useState<WorkspaceForm>(EMPTY_WORKSPACE);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -660,7 +766,11 @@ function CreateWorkspaceDialog({
     setSubmitting(true);
     setErrors({});
     try {
-      const result = await createWorkspace({
+      if (companyContextEnabled && !tenantId) {
+        setErrors({ form: "Select an accessible company account first." });
+        return;
+      }
+      const input = {
         name: form.name.trim(),
         slug: form.slug.trim(),
         description: form.description.trim() || undefined,
@@ -668,7 +778,10 @@ function CreateWorkspaceDialog({
         owner: form.owner.trim(),
         defaultPolicy: form.defaultPolicy.trim(),
         status: form.status,
-      });
+      };
+      const result = companyContextEnabled
+        ? await createScopedWorkspace({ ...input, tenantId: tenantId! })
+        : await createLegacyWorkspace(input);
       if (!result.success || !("project" in result) || !result.project) {
         setErrors({ form: "error" in result ? result.error : "Workspace could not be created." });
         return;
@@ -700,6 +813,7 @@ function CreateWorkspaceDialog({
               <Input
                 id="workspace-name"
                 value={form.name}
+                maxLength={120}
                 onChange={(event) => updateField("name", event.target.value)}
                 aria-invalid={Boolean(errors.name)}
                 aria-describedby={errors.name ? "workspace-name-error" : undefined}
@@ -710,6 +824,7 @@ function CreateWorkspaceDialog({
               <Input
                 id="workspace-slug"
                 value={form.slug}
+                maxLength={80}
                 onChange={(event) => updateField("slug", event.target.value.toLowerCase())}
                 aria-invalid={Boolean(errors.slug)}
                 aria-describedby={errors.slug ? "workspace-slug-error" : undefined}
@@ -720,6 +835,7 @@ function CreateWorkspaceDialog({
               <Textarea
                 id="workspace-description"
                 value={form.description}
+                maxLength={1000}
                 onChange={(event) => updateField("description", event.target.value)}
                 rows={2}
               />
@@ -728,6 +844,7 @@ function CreateWorkspaceDialog({
               <Textarea
                 id="workspace-purpose"
                 value={form.purpose}
+                maxLength={500}
                 onChange={(event) => updateField("purpose", event.target.value)}
                 aria-invalid={Boolean(errors.purpose)}
                 aria-describedby={errors.purpose ? "workspace-purpose-error" : undefined}
@@ -738,6 +855,7 @@ function CreateWorkspaceDialog({
               <Input
                 id="workspace-owner"
                 value={form.owner}
+                maxLength={120}
                 onChange={(event) => updateField("owner", event.target.value)}
                 aria-invalid={Boolean(errors.owner)}
                 aria-describedby={errors.owner ? "workspace-owner-error" : undefined}
@@ -747,6 +865,7 @@ function CreateWorkspaceDialog({
               <Input
                 id="workspace-policy"
                 value={form.defaultPolicy}
+                maxLength={120}
                 onChange={(event) => updateField("defaultPolicy", event.target.value)}
                 aria-invalid={Boolean(errors.defaultPolicy)}
                 aria-describedby={errors.defaultPolicy ? "workspace-policy-error" : undefined}
@@ -808,6 +927,84 @@ function WorkspaceField({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function EditCompanyDialog({
+  company,
+  onClose,
+}: {
+  company: Doc<"tenants">;
+  onClose: () => void;
+}) {
+  const updateCompany = useMutation(api.companyContext.updateCompany);
+  const [name, setName] = useState(company.name);
+  const [description, setDescription] = useState(company.description || "");
+  const [missionStatement, setMissionStatement] = useState(company.missionStatement || "");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!name.trim()) {
+      setError("Company name is required.");
+      return;
+    }
+    setSubmitting(true);
+    setError("");
+    try {
+      const result = await updateCompany({
+        tenantId: company._id,
+        name: name.trim(),
+        description: description.trim() || undefined,
+        missionStatement: missionStatement.trim() || undefined,
+        expectedUpdatedAt: company.updatedAt ?? 0,
+      });
+      if (!result.success) {
+        setError(result.error || "Company profile could not be updated.");
+        return;
+      }
+      onClose();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Company profile could not be updated.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <form onSubmit={handleSubmit} noValidate>
+          <DialogHeader>
+            <DialogTitle>Edit company account</DialogTitle>
+            <DialogDescription>
+              Update the identity and mission shared by this company’s workspaces. Access and billing changes are managed separately.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-5">
+            <WorkspaceField id="company-name" label="Company name">
+              <Input id="company-name" value={name} maxLength={120} onChange={(event) => setName(event.target.value)} autoFocus />
+            </WorkspaceField>
+            <WorkspaceField id="company-description" label="Description">
+              <Textarea id="company-description" value={description} maxLength={1000} onChange={(event) => setDescription(event.target.value)} rows={3} />
+            </WorkspaceField>
+            <WorkspaceField id="company-mission" label="Mission statement">
+              <Textarea id="company-mission" value={missionStatement} maxLength={1000} onChange={(event) => setMissionStatement(event.target.value)} rows={3} />
+            </WorkspaceField>
+          </div>
+          {error ? (
+            <div role="alert" className="mb-4 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-[13px] text-danger">
+              {error}
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>Cancel</Button>
+            <Button type="submit" disabled={submitting}>{submitting ? "Saving…" : "Save company"}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

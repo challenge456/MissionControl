@@ -54,6 +54,7 @@ export const KNOWN_FLAGS: FlagDefinition[] = [
   { key: "ui.navigation.previews", description: "Show preview routes in the v2 operator navigation", defaultEnabled: false },
   { key: "ui.navigation.demo-routes", description: "Show explicitly demo-only routes and EOS demo tour controls", defaultEnabled: false },
   { key: "model-routing.enabled", description: "Enforce workspace model routing decisions at Work Order dispatch", defaultEnabled: false },
+  { key: "company.context", description: "Company account selection and company-scoped workspace administration", defaultEnabled: false },
 ];
 
 const KNOWN_FLAG_MAP: Map<string, FlagDefinition> = new Map(

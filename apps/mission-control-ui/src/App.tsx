@@ -1,8 +1,8 @@
-import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, lazy, Suspense } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
 import { api } from "../../../convex/_generated/api";
-import type { Id } from "../../../convex/_generated/dataModel";
+import type { Doc, Id } from "../../../convex/_generated/dataModel";
 import { type MainView, type CommandSection } from "./TopNav";
 import { CommandNav } from "./components/CommandNav";
 import { TabBar, type TabItem } from "./components/TabBar";
@@ -13,7 +13,7 @@ import { useToast } from "./Toast";
 import { useKeyboardShortcuts } from "./KeyboardShortcuts";
 import { useModalState } from "./hooks/useModalState";
 import { PrivacyProvider } from "./contexts/PrivacyContext";
-import { useFlag } from "./hooks/useFlag";
+import { useFlag, useFlagResolution } from "./hooks/useFlag";
 import { AppShellV2, initialViewFromLocation } from "./shellV2/AppShellV2";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -21,6 +21,7 @@ import {
   useWorkspaceScope,
 } from "./workspace/WorkspaceScopeProvider";
 import { selectAccessibleWorkspace } from "./workspace/workspaceSelection";
+import { selectAccessibleCompany } from "./workspace/companySelection";
 
 const DashboardOverview = lazy(() =>
   import("./DashboardOverview").then((module) => ({ default: module.DashboardOverview }))
@@ -81,13 +82,14 @@ interface ShellAiStatus {
 // ============================================================================
 
 function ProjectSwitcher({
+  projects,
   onManage,
   showDetails = false,
 }: {
+  projects: Doc<"projects">[] | undefined;
   onManage?: () => void;
   showDetails?: boolean;
 }) {
-  const projects = useQuery(api.projects.list);
   const { projectId, setProjectId, project } = useWorkspaceScope();
 
   if (!projects) {
@@ -149,12 +151,57 @@ function ProjectSwitcher({
   );
 }
 
+interface CompanyOption {
+  tenantId: Id<"tenants">;
+  name: string;
+  slug: string;
+}
+
+function CompanySwitcher({
+  companies,
+  tenantId,
+  onChange,
+}: {
+  companies: CompanyOption[];
+  tenantId: Id<"tenants"> | null;
+  onChange: (tenantId: Id<"tenants">) => void;
+}) {
+  const selected = companies.find((company) => company.tenantId === tenantId);
+  if (companies.length <= 1) {
+    return (
+      <div className="rounded-lg border border-line bg-surface-2 px-2.5 py-2">
+        <div className="truncate text-[13px] font-medium text-ink">
+          {selected?.name ?? "Company unavailable"}
+        </div>
+        <div className="mt-0.5 truncate font-mono text-[10px] text-ink-muted">
+          {selected?.slug ?? "No membership"}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <select
+      aria-label="Company account"
+      value={tenantId ?? ""}
+      onChange={(event) => onChange(event.target.value as Id<"tenants">)}
+      className="h-9 w-full rounded-lg border border-line bg-surface-1 px-2.5 text-[13px] font-medium text-ink outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {companies.map((company) => (
+        <option key={company.tenantId} value={company.tenantId}>
+          {company.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 // ============================================================================
 // VIEW PERSISTENCE (reopen where operator left off)
 // ============================================================================
 
 const STORAGE_KEY_VIEW = "mc.last_view";
 const STORAGE_KEY_PROJECT = "mc.last_project";
+const STORAGE_KEY_COMPANY = "mc.last_company";
 const WORKSPACE_RECOVERY_WARNING =
   "The requested workspace was unavailable. Mission Control opened an accessible workspace instead.";
 
@@ -167,14 +214,23 @@ function readPersistedProjectId(): string | null {
   }
 }
 
-function WorkspaceRecoveryNotice({
-  visible,
+function readPersistedCompanyId(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(STORAGE_KEY_COMPANY);
+  } catch {
+    return null;
+  }
+}
+
+function ScopeRecoveryNotice({
+  message,
   onDismiss,
 }: {
-  visible: boolean;
+  message: string | null;
   onDismiss: () => void;
 }) {
-  if (!visible) return null;
+  if (!message) return null;
 
   return (
     <div
@@ -182,7 +238,7 @@ function WorkspaceRecoveryNotice({
       aria-live="polite"
       className="fixed left-1/2 top-4 z-[100] flex w-[min(44rem,calc(100vw-2rem))] -translate-x-1/2 items-start justify-between gap-4 rounded-lg border border-amber-500/30 bg-card px-4 py-3 text-sm text-card-foreground shadow-lg"
     >
-      <span>{WORKSPACE_RECOVERY_WARNING}</span>
+      <span>{message}</span>
       <button
         type="button"
         aria-label="Close toast"
@@ -580,6 +636,23 @@ function SectionLoadingState() {
   );
 }
 
+function CompanyAccessState({ status }: { status: "AUTH_REQUIRED" | "NO_MEMBERSHIP" }) {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-app p-6 text-ink">
+      <div className="max-w-lg rounded-xl border border-line bg-surface-1 p-6 text-center">
+        <h1 className="text-lg font-semibold">
+          {status === "AUTH_REQUIRED" ? "Sign in to Mission Control" : "No company access"}
+        </h1>
+        <p className="mt-2 text-sm leading-relaxed text-ink-secondary">
+          {status === "AUTH_REQUIRED"
+            ? "Company accounts and workspaces are protected by operator membership. Configure the application authentication provider or explicitly enable the local demo adapter."
+            : "Your authenticated operator identity is not assigned to an active company account. Ask a company administrator to add or reactivate your membership."}
+        </p>
+      </div>
+    </main>
+  );
+}
+
 // ============================================================================
 // APP
 // ============================================================================
@@ -587,9 +660,14 @@ function SectionLoadingState() {
 export default function App() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const companyContext = useFlagResolution("company.context");
+  const companyContextEnabled = companyContext.enabled;
   // ── Navigation & selection (persist last view so UI reopens where operator left off) ─
   const [currentView, setCurrentView] = useState<MainView>(readInitialView);
   const [projectId, setProjectId] = useState<Id<"projects"> | null>(null);
+  const [tenantId, setTenantId] = useState<Id<"tenants"> | null>(null);
+  const [companyWarning, setCompanyWarning] = useState(false);
+  const intentionallyClearedWorkspace = useRef<string | null>(null);
   const [workspaceWarning, setWorkspaceWarning] = useState<{
     requestedWorkspace: string;
     visible: boolean;
@@ -618,8 +696,41 @@ export default function App() {
   const sectionTabs = SECTION_TABS[activeSection];
 
   // ── Data ─────────────────────────────────────────────────────────────────
-  const project = useQuery(api.projects.get, projectId ? { projectId } : "skip");
-  const projects = useQuery(api.projects.list);
+  const companySession = useQuery(
+    api.companyContext.getSession,
+    companyContextEnabled ? {} : "skip"
+  );
+  const companies = companySession?.companies ?? [];
+  const requestedTenantId = searchParams.get("company");
+  const companySelection = useMemo(
+    () =>
+      selectAccessibleCompany({
+        requestedCompany: requestedTenantId,
+        persistedCompany: readPersistedCompanyId(),
+        companies,
+      }),
+    [companies, requestedTenantId]
+  );
+  const scopedProjects = useQuery(
+    api.companyContext.listWorkspaces,
+    companyContextEnabled && tenantId ? { tenantId } : "skip"
+  );
+  const legacyProjects = useQuery(
+    api.projects.list,
+    companyContextEnabled || companyContext.loading ? "skip" : {}
+  );
+  const projects = companyContextEnabled ? scopedProjects : legacyProjects;
+  const scopedProject = useQuery(
+    api.companyContext.getWorkspace,
+    companyContextEnabled && tenantId && projectId ? { tenantId, projectId } : "skip"
+  );
+  const legacyProject = useQuery(
+    api.projects.get,
+    !companyContextEnabled && !companyContext.loading && projectId
+      ? { projectId }
+      : "skip"
+  );
+  const project = companyContextEnabled ? scopedProject : legacyProject;
   const availableProjects = useMemo(
     () => projects?.filter((item) => item.status !== "ARCHIVED"),
     [projects]
@@ -644,6 +755,36 @@ export default function App() {
   );
 
   // ── Effects ──────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!companyContextEnabled || companySession?.status !== "READY") return;
+    if (
+      !tenantId ||
+      !companies.some((company) => company.tenantId === tenantId)
+    ) {
+      setTenantId(companySelection.tenantId);
+    }
+    if (companySelection.requestedUnavailable) setCompanyWarning(true);
+  }, [
+    companies,
+    companyContextEnabled,
+    companySelection.requestedUnavailable,
+    companySelection.tenantId,
+    companySession?.status,
+    tenantId,
+  ]);
+
+  useEffect(() => {
+    if (!companyContextEnabled || !tenantId || typeof window === "undefined") return;
+    window.localStorage.setItem(STORAGE_KEY_COMPANY, tenantId);
+    if (searchParams.get("company") !== tenantId) {
+      setSearchParams((current) => {
+        const next = new URLSearchParams(current);
+        next.set("company", tenantId);
+        return next;
+      }, { replace: true });
+    }
+  }, [companyContextEnabled, searchParams, setSearchParams, tenantId]);
+
   useEffect(() => {
     if (
       projects &&
@@ -716,13 +857,32 @@ export default function App() {
   const { toast } = useToast();
 
   useEffect(() => {
+    if (
+      companyContextEnabled &&
+      requestedTenantId !== null &&
+      requestedTenantId !== tenantId
+    ) {
+      return;
+    }
+    if (
+      requestedProjectId &&
+      intentionallyClearedWorkspace.current === requestedProjectId
+    ) {
+      return;
+    }
     if (!workspaceSelection.requestedUnavailable || !requestedProjectId) return;
     setWorkspaceWarning((current) =>
       current?.requestedWorkspace === requestedProjectId
         ? current
         : { requestedWorkspace: requestedProjectId, visible: true }
     );
-  }, [requestedProjectId, workspaceSelection.requestedUnavailable]);
+  }, [
+    companyContextEnabled,
+    requestedProjectId,
+    requestedTenantId,
+    tenantId,
+    workspaceSelection.requestedUnavailable,
+  ]);
 
   // ── Keyboard shortcuts ───────────────────────────────────────────────────
   useKeyboardShortcuts({
@@ -783,6 +943,25 @@ export default function App() {
     setSidebarSelectedAgentId(null);
     setCurrentView(tabId as MainView);
   }, [close]);
+
+  const handleCompanyChange = useCallback((nextTenantId: Id<"tenants">) => {
+    if (nextTenantId === tenantId) return;
+    intentionallyClearedWorkspace.current = requestedProjectId;
+    setTenantId(nextTenantId);
+    setProjectId(null);
+    setWorkspaceWarning(null);
+    setCompanyWarning(false);
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(STORAGE_KEY_PROJECT);
+      window.localStorage.setItem(STORAGE_KEY_COMPANY, nextTenantId);
+    }
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.set("company", nextTenantId);
+      next.delete("workspace");
+      return next;
+    }, { replace: true });
+  }, [requestedProjectId, setSearchParams, tenantId]);
 
   // ── Header data ──────────────────────────────────────────────────────────
   const now = new Date();
@@ -942,6 +1121,8 @@ export default function App() {
             currentView={currentView}
             projectId={projectId}
             onProjectSelect={setProjectId}
+            tenantId={companyContextEnabled ? tenantId : null}
+            companyContextEnabled={companyContextEnabled}
           />
         );
       case "comms":
@@ -1010,16 +1191,35 @@ export default function App() {
   // flag (or VITE_FLAG_UI_SHELL_V1=true) to fall back to the legacy shell.
   const legacyShell = useFlag("ui.shell.v1");
 
+  if (companyContext.loading || (companyContextEnabled && companySession === undefined)) {
+    return <SectionLoadingState />;
+  }
+  if (
+    companyContextEnabled &&
+    companySession &&
+    companySession.status !== "READY"
+  ) {
+    return <CompanyAccessState status={companySession.status} />;
+  }
+
   if (!legacyShell) {
     return (
       <WorkspaceScopeProvider value={{ projectId, setProjectId, project }}>
         <PrivacyProvider>
-          <WorkspaceRecoveryNotice
-            visible={workspaceWarning?.visible === true}
+          <ScopeRecoveryNotice
+            message={
+              companyWarning
+                ? "The requested company account was unavailable. Mission Control opened an accessible account instead."
+                : workspaceWarning?.visible === true
+                  ? WORKSPACE_RECOVERY_WARNING
+                  : null
+            }
             onDismiss={() =>
-              setWorkspaceWarning((current) =>
-                current ? { ...current, visible: false } : current
-              )
+              companyWarning
+                ? setCompanyWarning(false)
+                : setWorkspaceWarning((current) =>
+                    current ? { ...current, visible: false } : current
+                  )
             }
           />
           <AppShellV2
@@ -1027,9 +1227,19 @@ export default function App() {
             onNavigate={setCurrentView}
             workspaceSwitcher={
               <ProjectSwitcher
+                projects={projects}
                 showDetails
                 onManage={() => setCurrentView("projects")}
               />
+            }
+            companySwitcher={
+              companyContextEnabled ? (
+                <CompanySwitcher
+                  companies={companies}
+                  tenantId={tenantId}
+                  onChange={handleCompanyChange}
+                />
+              ) : undefined
             }
             onOpenSearch={() => open("commandPalette")}
             pendingApprovals={pendingApprovals?.length ?? 0}
@@ -1093,17 +1303,25 @@ export default function App() {
   return (
     <WorkspaceScopeProvider value={{ projectId, setProjectId, project }}>
       <PrivacyProvider>
-      <WorkspaceRecoveryNotice
-        visible={workspaceWarning?.visible === true}
+      <ScopeRecoveryNotice
+        message={
+          companyWarning
+            ? "The requested company account was unavailable. Mission Control opened an accessible account instead."
+            : workspaceWarning?.visible === true
+              ? WORKSPACE_RECOVERY_WARNING
+              : null
+        }
         onDismiss={() =>
-          setWorkspaceWarning((current) =>
-            current ? { ...current, visible: false } : current
-          )
+          companyWarning
+            ? setCompanyWarning(false)
+            : setWorkspaceWarning((current) =>
+                current ? { ...current, visible: false } : current
+              )
         }
       />
       <div className="flex h-screen flex-col bg-background text-foreground">
         <AppTopBar
-          projectSwitcher={<ProjectSwitcher />}
+          projectSwitcher={<ProjectSwitcher projects={projects} />}
           searchBar={
             <SearchBar
               projectId={projectId ?? undefined}

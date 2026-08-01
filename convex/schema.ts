@@ -298,6 +298,9 @@ export default defineSchema({
     
     // Metadata
     metadata: v.optional(v.any()),
+    createdAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
+    updatedBy: v.optional(v.id("operators")),
   })
     .index("by_slug", ["slug"])
     .index("by_active", ["active"]),

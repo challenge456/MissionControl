@@ -117,6 +117,7 @@ interface SidebarProps {
   onNavigate: (view: MainView) => void;
   onOpenSearch: () => void;
   workspaceSwitcher: ReactNode;
+  companySwitcher?: ReactNode;
   footer?: ReactNode;
   onHide?: () => void;
 }
@@ -128,6 +129,7 @@ export function Sidebar({
   onNavigate,
   onOpenSearch,
   workspaceSwitcher,
+  companySwitcher,
   footer,
   onHide,
 }: SidebarProps): JSX.Element {
@@ -182,6 +184,15 @@ export function Sidebar({
           </kbd>
         </button>
       </div>
+
+      {companySwitcher ? (
+        <div className="px-3 pb-2">
+          <div className="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">
+            Company account
+          </div>
+          {companySwitcher}
+        </div>
+      ) : null}
 
       <WorkspaceSwitcher>{workspaceSwitcher}</WorkspaceSwitcher>
 
