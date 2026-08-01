@@ -154,18 +154,6 @@ export const DOCS_SITE_SECTIONS: DocsSiteSection[] = [
         path: "software-factory-enhancement/docs-001-workspace-routing-results",
       },
       {
-        id: "task-workorder-pr1-implementation",
-        title: "Task-to-Work-Order PR 1",
-        description: "Canonical Task parentage, governance, and Attempt projection",
-        path: "software-factory-enhancement/implementation/task-workorder-pr1",
-      },
-      {
-        id: "task-workorder-pr1-browser-results",
-        title: "Task-to-Work-Order Browser Results",
-        description: "Deterministic governed and Ungoverned Task evidence",
-        path: "software-factory-enhancement/testing/task-workorder-browser-results",
-      },
-      {
         id: "ci-schema-drift-repair",
         title: "CI Schema Drift Repair",
         description: "Release-gate and automation contract restoration",
@@ -200,6 +188,24 @@ export const DOCS_SITE_SECTIONS: DocsSiteSection[] = [
         title: "Task Drawer Accessibility PR 4",
         description: "Dark/light contrast, target size, and deterministic Axe evidence",
         path: "software-factory-enhancement/testing/task-drawer-accessibility-results",
+      },
+      {
+        id: "scheduled-mission-runtime-pr5-results",
+        title: "Scheduled Mission Runtime PR 5",
+        description: "Mission preflight, skip audit evidence, and stale-client findings",
+        path: "software-factory-enhancement/testing/scheduled-mission-runtime-results",
+      },
+      {
+        id: "runtime-contract-recovery-pr6-results",
+        title: "Runtime Contract Recovery PR 6",
+        description: "Client/backend handshake, guarded startup, and reload recovery",
+        path: "software-factory-enhancement/testing/runtime-contract-recovery-results",
+      },
+      {
+        id: "runtime-contract-ci-guard-pr7-results",
+        title: "Runtime Contract CI Guard PR 7",
+        description: "Git-base public Convex validator comparison and version enforcement",
+        path: "software-factory-enhancement/testing/runtime-contract-ci-guard-results",
       },
     ],
   },

@@ -7,9 +7,16 @@ import {
 } from "./docsSiteConfig";
 
 describe("DOCS_SITE_PAGES", () => {
-  it("registers each documentation page ID exactly once", () => {
-    const pageIds = DOCS_SITE_PAGES.map((page) => page.id);
-    expect(new Set(pageIds).size).toBe(pageIds.length);
+  it("uses a unique ID for every page", () => {
+    const ids = DOCS_SITE_PAGES.map((page) => page.id);
+
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("registers every documentation path once", () => {
+    const paths = DOCS_SITE_PAGES.map((page) => page.path);
+
+    expect(new Set(paths).size).toBe(paths.length);
   });
 });
 
