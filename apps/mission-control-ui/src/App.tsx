@@ -22,6 +22,8 @@ import {
 } from "./workspace/WorkspaceScopeProvider";
 import { selectAccessibleWorkspace } from "./workspace/workspaceSelection";
 import { selectAccessibleCompany } from "./workspace/companySelection";
+import { useAuthRuntime } from "./auth/AuthRuntimeContext";
+import { BootstrapOwner } from "./auth/BootstrapOwner";
 
 const DashboardOverview = lazy(() =>
   import("./DashboardOverview").then((module) => ({ default: module.DashboardOverview }))
@@ -636,7 +638,13 @@ function SectionLoadingState() {
   );
 }
 
-function CompanyAccessState({ status }: { status: "AUTH_REQUIRED" | "NO_MEMBERSHIP" }) {
+function CompanyAccessState({
+  status,
+  externalUserId,
+}: {
+  status: "AUTH_REQUIRED" | "NO_MEMBERSHIP";
+  externalUserId?: string;
+}) {
   return (
     <main className="flex min-h-screen items-center justify-center bg-app p-6 text-ink">
       <div className="max-w-lg rounded-xl border border-line bg-surface-1 p-6 text-center">
@@ -648,6 +656,13 @@ function CompanyAccessState({ status }: { status: "AUTH_REQUIRED" | "NO_MEMBERSH
             ? "Company accounts and workspaces are protected by operator membership. Configure the application authentication provider or explicitly enable the local demo adapter."
             : "Your authenticated operator identity is not assigned to an active company account. Ask a company administrator to add or reactivate your membership."}
         </p>
+        {status === "NO_MEMBERSHIP" && externalUserId ? (
+          <div className="mt-4 rounded-lg border border-line bg-surface-2 px-3 py-2 text-left">
+            <div className="text-[11px] font-medium text-ink-secondary">Clerk user ID</div>
+            <code className="mt-1 block break-all text-[11px] text-ink">{externalUserId}</code>
+          </div>
+        ) : null}
+        {status === "NO_MEMBERSHIP" ? <BootstrapOwner /> : null}
       </div>
     </main>
   );
@@ -658,6 +673,7 @@ function CompanyAccessState({ status }: { status: "AUTH_REQUIRED" | "NO_MEMBERSH
 // ============================================================================
 
 export default function App() {
+  const authRuntime = useAuthRuntime();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const companyContext = useFlagResolution("company.context");
@@ -1199,7 +1215,12 @@ export default function App() {
     companySession &&
     companySession.status !== "READY"
   ) {
-    return <CompanyAccessState status={companySession.status} />;
+    return (
+      <CompanyAccessState
+        status={companySession.status}
+        externalUserId={authRuntime.externalUserId}
+      />
+    );
   }
 
   if (!legacyShell) {
@@ -1241,6 +1262,7 @@ export default function App() {
                 />
               ) : undefined
             }
+            footer={authRuntime.userControl}
             onOpenSearch={() => open("commandPalette")}
             pendingApprovals={pendingApprovals?.length ?? 0}
             onOpenApprovals={() => open("approvals")}

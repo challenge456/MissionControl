@@ -82,6 +82,22 @@ MC_ALLOW_ANONYMOUS_COMPANY_CONTEXT=1
 the adapter disabled, company access resolves only from authenticated operator
 records linked by `authId`.
 
+## Human authentication rollout
+
+Authentication is selected separately from feature flags so a failed identity
+provider cannot silently turn into demo access:
+
+| `VITE_AUTH_MODE` | Behavior |
+| --- | --- |
+| omitted or `legacy` | Existing provider behavior during the staged rollout |
+| `demo` | Explicit local company administrator adapter; never production |
+| `clerk` | Clerk session plus Convex token validation |
+
+Clerk mode requires `VITE_CLERK_PUBLISHABLE_KEY` in the UI build and the public
+Clerk issuer in `convex/auth.config.ts`. An explicitly selected Clerk mode with
+missing UI configuration fails closed. See
+`docs/security/clerk-company-authorization.md` for setup and rollout checks.
+
 ## Lifecycle convention
 
 1. Flag ships **default-off** in the PR that introduces its subsystem.
