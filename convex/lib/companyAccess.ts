@@ -5,10 +5,21 @@ type CompanyCtx = QueryCtx | MutationCtx;
 
 export type CompanyAccessMode = "AUTHENTICATED" | "DEMO";
 
+export const COMPANY_PERMISSIONS = {
+  MANAGE_COMPANY: "company.manage",
+  MANAGE_MEMBERS: "members.manage",
+  CREATE_WORKSPACES: "workspaces.create",
+  MANAGE_WORKSPACES: "workspaces.manage",
+} as const;
+
+export type CompanyPermission =
+  (typeof COMPANY_PERMISSIONS)[keyof typeof COMPANY_PERMISSIONS];
+
 export interface CompanyMembership {
   tenant: Doc<"tenants">;
   operatorId?: Id<"operators">;
   roleNames: string[];
+  permissions: string[];
   canManageCompany: boolean;
   mode: CompanyAccessMode;
 }
@@ -27,6 +38,24 @@ function isCompanyAdminRole(role: Doc<"roles">): boolean {
     role.permissions.includes("settings.manage") ||
     role.permissions.includes("projects.create")
   );
+}
+
+function roleGrantsPermission(
+  role: Doc<"roles">,
+  permission: CompanyPermission
+): boolean {
+  if (role.permissions.includes(permission)) return true;
+  if (
+    permission === COMPANY_PERMISSIONS.MANAGE_COMPANY ||
+    permission === COMPANY_PERMISSIONS.MANAGE_MEMBERS ||
+    permission === COMPANY_PERMISSIONS.MANAGE_WORKSPACES
+  ) {
+    return isCompanyAdminRole(role);
+  }
+  if (permission === COMPANY_PERMISSIONS.CREATE_WORKSPACES) {
+    return isCompanyAdminRole(role) || role.permissions.includes("projects.create");
+  }
+  return false;
 }
 
 async function getOperatorRoles(
@@ -53,20 +82,11 @@ async function getAuthenticatedOperators(ctx: CompanyCtx) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) return { identity: null, operators: [] as Doc<"operators">[] };
 
-  const authIds = [...new Set([identity.subject, identity.tokenIdentifier].filter(Boolean))];
-  const operatorGroups = await Promise.all(
-    authIds.map((authId) =>
-      ctx.db
-        .query("operators")
-        .withIndex("by_auth_id", (q) => q.eq("authId", authId))
-        .collect()
-    )
-  );
-  const byId = new Map<Id<"operators">, Doc<"operators">>();
-  for (const operator of operatorGroups.flat()) {
-    if (operator.active) byId.set(operator._id, operator);
-  }
-  return { identity, operators: [...byId.values()] };
+  const operators = await ctx.db
+    .query("operators")
+    .withIndex("by_auth_id", (q) => q.eq("authId", identity.subject))
+    .collect();
+  return { identity, operators: operators.filter((operator) => operator.active) };
 }
 
 export async function listCompanyMemberships(ctx: CompanyCtx): Promise<CompanyMembership[]> {
@@ -82,6 +102,7 @@ export async function listCompanyMemberships(ctx: CompanyCtx): Promise<CompanyMe
           tenant,
           operatorId: operator._id,
           roleNames: roles.map((role) => role.name),
+          permissions: [...new Set(roles.flatMap((role) => role.permissions))],
           canManageCompany: roles.some(isCompanyAdminRole),
           mode: "AUTHENTICATED" as const,
         };
@@ -101,6 +122,9 @@ export async function listCompanyMemberships(ctx: CompanyCtx): Promise<CompanyMe
             ? existing.operatorId
             : membership.operatorId,
         roleNames: [...new Set([...existing.roleNames, ...membership.roleNames])],
+        permissions: [
+          ...new Set([...existing.permissions, ...membership.permissions]),
+        ],
         canManageCompany:
           existing.canManageCompany || membership.canManageCompany,
       });
@@ -117,9 +141,29 @@ export async function listCompanyMemberships(ctx: CompanyCtx): Promise<CompanyMe
   return tenants.map((tenant) => ({
     tenant,
     roleNames: ["Demo administrator"],
+    permissions: Object.values(COMPANY_PERMISSIONS),
     canManageCompany: true,
     mode: "DEMO" as const,
   }));
+}
+
+export async function requireCompanyPermission(
+  ctx: CompanyCtx,
+  tenantId: Id<"tenants">,
+  permission: CompanyPermission
+): Promise<CompanyMembership> {
+  const membership = await requireCompanyAccess(ctx, tenantId);
+  if (membership.mode === "DEMO") return membership;
+
+  const operator = membership.operatorId
+    ? await ctx.db.get(membership.operatorId)
+    : null;
+  if (!operator) throw new Error("Authenticated operator membership is required.");
+  const roles = await getOperatorRoles(ctx, operator, tenantId);
+  if (!roles.some((role) => roleGrantsPermission(role, permission))) {
+    throw new Error("Your company role does not permit this action.");
+  }
+  return membership;
 }
 
 export async function requireCompanyAccess(

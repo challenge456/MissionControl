@@ -20,6 +20,7 @@ import { PageHeader } from "./components/PageHeader";
 import { StatusBadge } from "./components/factory/badges";
 import { MetricBlock } from "./components/factory/MetricBlock";
 import { WorkspaceRepositoriesPanel } from "./workspace/WorkspaceRepositoriesPanel";
+import { CompanyAccessPanel } from "./workspace/CompanyAccessPanel";
 import {
   Clock3,
   Building2,
@@ -131,6 +132,9 @@ export function ProjectsView({ projectId, onProjectSelect, tenantId, companyCont
             summary={companySummary}
             onEdit={() => setCompanyEditOpen(true)}
           />
+        ) : null}
+        {companyContextEnabled && tenantId ? (
+          <CompanyAccessPanel tenantId={tenantId} />
         ) : null}
         <div className="grid gap-4 md:grid-cols-3">
           <Card className="p-5">

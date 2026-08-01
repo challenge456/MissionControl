@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { Id } from "../_generated/dataModel";
-import { listCompanyMemberships, requireCompanyAccess } from "../lib/companyAccess";
+import {
+  COMPANY_PERMISSIONS,
+  listCompanyMemberships,
+  requireCompanyAccess,
+  requireCompanyPermission,
+} from "../lib/companyAccess";
 
 const originalDemoFlag = process.env.MC_ALLOW_ANONYMOUS_COMPANY_CONTEXT;
 
@@ -12,7 +17,15 @@ afterEach(() => {
   }
 });
 
-function fakeContext({ identity = null }: { identity?: { subject: string; tokenIdentifier: string } | null } = {}) {
+function fakeContext({
+  identity = null,
+  roleName = "Owner",
+  permissions = ["settings.manage"],
+}: {
+  identity?: { subject: string; tokenIdentifier: string } | null;
+  roleName?: string;
+  permissions?: string[];
+} = {}) {
   const tenantA = {
     _id: "tenant-a" as Id<"tenants">,
     _creationTime: 1,
@@ -31,8 +44,8 @@ function fakeContext({ identity = null }: { identity?: { subject: string; tokenI
     _id: "role-owner" as Id<"roles">,
     _creationTime: 3,
     tenantId: tenantA._id,
-    name: "Owner",
-    permissions: ["settings.manage"],
+    name: roleName,
+    permissions,
   };
   const operator = {
     _id: "operator-a" as Id<"operators">,
@@ -107,6 +120,24 @@ describe("company access", () => {
     expect(memberships[0].tenant._id).toBe(tenantA._id);
     expect(memberships[0].canManageCompany).toBe(true);
     expect(memberships[0].mode).toBe("AUTHENTICATED");
+  });
+
+  it("does not accept the token identifier in place of the exact subject", async () => {
+    const { ctx } = fakeContext({
+      identity: { subject: "different-user", tokenIdentifier: "auth-user" },
+    });
+    await expect(listCompanyMemberships(ctx)).resolves.toEqual([]);
+  });
+
+  it("denies named administration permissions to an ordinary member", async () => {
+    const { ctx, tenantA } = fakeContext({
+      identity: { subject: "auth-user", tokenIdentifier: "issuer|auth-user" },
+      roleName: "Developer",
+      permissions: ["tasks.write"],
+    });
+    await expect(
+      requireCompanyPermission(ctx, tenantA._id, COMPANY_PERMISSIONS.MANAGE_MEMBERS)
+    ).rejects.toThrow("does not permit");
   });
 
   it("rejects an inaccessible company", async () => {
