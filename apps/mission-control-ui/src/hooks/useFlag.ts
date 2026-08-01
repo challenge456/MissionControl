@@ -10,7 +10,10 @@ import { api } from "../../../../convex/_generated/api";
  * Key transform for the env override: dots/dashes → underscores, uppercased.
  * e.g. `ui.shell.v2` → `VITE_FLAG_UI_SHELL_V2`.
  */
-export function useFlag(key: string): boolean {
+export function useFlagResolution(key: string): {
+  enabled: boolean;
+  loading: boolean;
+} {
   const envKey = `VITE_FLAG_${key.replace(/[.-]/g, "_").toUpperCase()}`;
   const envValue = (
     import.meta.env as unknown as Record<string, string | undefined>
@@ -23,7 +26,14 @@ export function useFlag(key: string): boolean {
   );
 
   if (hasEnvOverride) {
-    return envValue === "true" || envValue === "1";
+    return {
+      enabled: envValue === "true" || envValue === "1",
+      loading: false,
+    };
   }
-  return remote ?? false;
+  return { enabled: remote ?? false, loading: remote === undefined };
+}
+
+export function useFlag(key: string): boolean {
+  return useFlagResolution(key).enabled;
 }

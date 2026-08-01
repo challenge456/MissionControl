@@ -8,6 +8,22 @@ Mission Control organizes software-factory work with three durable boundaries:
 
 A workspace can have no repository while it is being planned, one repository for a focused product, or several repositories for a broader operating group. Every workspace with repositories has one default repository for compatibility with existing work orders and integrations.
 
+## Select a company account
+
+Mission Control enters a single accessible company automatically. When an
+operator belongs to multiple companies, a **Company account** selector appears
+above **Workspace** in the sidebar. Changing company clears the previous
+workspace before restoring an accessible workspace from the new account.
+
+The selection is stored in the URL and locally for navigation convenience, but
+the server authorizes the company again from the authenticated operator
+identity. A tenant ID supplied by the browser is never sufficient proof of
+membership.
+
+Company administrators can edit the company name, description, and mission on
+**Settings → Workspaces & Repositories**. New workspaces created there are
+always attached to the selected company.
+
 ## Choose the right workspace boundary
 
 Create a separate workspace when the work needs a distinct portfolio view, team structure, governance policy, budget, or operating rhythm. Do not create a workspace merely because code lives in another folder.
@@ -18,7 +34,7 @@ Examples:
 - `SellerFi` workspace → SellerFi monorepo plus an infrastructure repository.
 - `Software Factory Research` workspace → experimental harness and evaluation repositories.
 
-The company selector and role-aware portfolio views are part of the broader control-plane rollout. This release preserves the current workspace selector while establishing the repository structure those views require.
+The current workspace selector remains the primary operating control inside the selected company.
 
 ## Connect repositories
 
@@ -87,9 +103,9 @@ The migration is additive:
 
 ## Current release boundary
 
-This release delivers the repository and monorepo foundation. The following remain planned follow-on work:
+This release delivers the company, repository, and monorepo administration foundation. The following remain planned follow-on work:
 
-- company-account switcher above the workspace selector
+- production authentication-provider integration and full delivery-function authorization enforcement
 - first-class scrum teams and membership
 - My Work, Team, Workspace, and Company command-center lenses
 - repository-aware work-order targeting and policy enforcement
