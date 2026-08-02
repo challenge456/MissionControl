@@ -9,6 +9,7 @@ import {
   type LoopPhase,
 } from "./lib/loopEngineering";
 import { GRAPH_ENGINEERING_PERSONAS } from "./lib/graphEngineering";
+import { projectLoopWorkflowContext } from "./lib/loopWorkflowProjection";
 
 function cycleRef(cycleId: Id<"loopEngineeringCycles">) {
   return `loop-engineering:${cycleId}`;
@@ -59,6 +60,269 @@ export const getByIdempotency = query({
       .query("loopEngineeringCycles")
       .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.idempotencyKey))
       .first(),
+});
+
+export const getByRootWorkOrder = query({
+  args: { workOrderId: v.id("workOrders") },
+  handler: async (ctx, args) => {
+    const indexed = await ctx.db
+      .query("loopEngineeringCycles")
+      .withIndex("by_root_work_order", (q) => q.eq("rootWorkOrderId", args.workOrderId))
+      .first();
+    if (indexed) return indexed;
+
+    // Compatibility path for cycles created before rootWorkOrderId was added.
+    const cycles = await ctx.db.query("loopEngineeringCycles").collect();
+    return cycles.find((cycle) => cycle.workOrderIds.includes(args.workOrderId)) ?? null;
+  },
+});
+
+export const recordProjectionFailure = mutation({
+  args: {
+    workflowRunId: v.id("workflowRuns"),
+    error: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.workflowRunId);
+    if (!run || run.workflowId !== "loop-engineering" || !run.workOrderId) {
+      throw new Error("Only linked Loop Engineering runs can record projection failures");
+    }
+    const indexed = await ctx.db
+      .query("loopEngineeringCycles")
+      .withIndex("by_root_work_order", (q) => q.eq("rootWorkOrderId", run.workOrderId))
+      .first();
+    const cycle = indexed ?? (await ctx.db.query("loopEngineeringCycles").collect())
+      .find((candidate) => candidate.workOrderIds.includes(run.workOrderId!));
+    if (!cycle || cycle.projectId !== run.projectId) {
+      throw new Error("Linked Loop Engineering cycle not found");
+    }
+    if (cycle.latestWorkflowRunId === args.workflowRunId && cycle.projectionStatus === "PROJECTED") {
+      return { cycleId: cycle._id, recorded: false, reason: "already-projected" };
+    }
+    const message = args.error.trim().slice(0, 1_000) || "Workflow projection failed";
+    await ctx.db.patch(cycle._id, {
+      latestWorkflowRunId: args.workflowRunId,
+      projectionStatus: "FAILED",
+      projectionError: message,
+      updatedAt: Date.now(),
+    });
+    const existingActivity = await ctx.db
+      .query("activities")
+      .withIndex("by_action", (q) => q.eq("action", "LOOP_WORKFLOW_PROJECTION_FAILED"))
+      .collect();
+    if (!existingActivity.some((activity) =>
+      activity.action === "LOOP_WORKFLOW_PROJECTION_FAILED"
+      && activity.metadata?.workflowRunId === args.workflowRunId
+      && activity.metadata?.error === message
+    )) {
+      await ctx.db.insert("activities", {
+        projectId: cycle.projectId,
+        actorType: "SYSTEM",
+        action: "LOOP_WORKFLOW_PROJECTION_FAILED",
+        description: `Workflow evidence could not be projected: ${message}`,
+        targetType: "LOOP_ENGINEERING_CYCLE",
+        targetId: cycle._id,
+        metadata: { workflowRunId: args.workflowRunId, error: message },
+      });
+    }
+    return { cycleId: cycle._id, recorded: true };
+  },
+});
+
+export const applyWorkflowProjection = internalMutation({
+  args: {
+    cycleId: v.id("loopEngineeringCycles"),
+    workflowRunId: v.id("workflowRuns"),
+    workflowRunCompletedAt: v.number(),
+    projection: v.any(),
+    approvalId: v.optional(v.id("approvals")),
+    approvalActorId: v.optional(v.string()),
+    approvedAt: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const cycle = await ctx.db.get(args.cycleId);
+    if (!cycle) throw new Error("Loop Engineering cycle not found.");
+    if (
+      cycle.latestWorkflowRunId === args.workflowRunId
+      && cycle.projectionStatus === "PROJECTED"
+    ) {
+      return { cycle, projected: false, reason: "already-projected" };
+    }
+    if (
+      cycle.projectedRunCompletedAt
+      && cycle.projectedRunCompletedAt > args.workflowRunCompletedAt
+    ) {
+      return { cycle, projected: false, reason: "newer-run-already-projected" };
+    }
+
+    const projection = args.projection as ReturnType<typeof projectLoopWorkflowContext>;
+    const mergeById = <T extends { id: string }>(existing: T[], incoming: T[]) => {
+      const rows = new Map(existing.map((item) => [item.id, item]));
+      for (const item of incoming) rows.set(item.id, item);
+      return [...rows.values()];
+    };
+    const sources = mergeById(cycle.sources, projection.sources);
+    const claims = mergeById(cycle.claims ?? [], projection.claims);
+    const projectedRecommendations = projection.recommendations.map((item) => ({
+      ...item,
+      status: projection.approved ? "APPROVED" as const : item.status,
+    }));
+    const recommendations = mergeById(cycle.recommendations, projectedRecommendations);
+    const nextPhase = projection.approved && recommendations.length === 0
+      ? "READY_FOR_NEXT_CYCLE" as const
+      : "AWAITING_APPROVAL" as const;
+    const phaseRank = [
+      "RESEARCH",
+      "VERIFY",
+      "RECOMMEND",
+      "AWAITING_APPROVAL",
+      "IMPLEMENT",
+      "VALIDATE",
+      "MEASURE",
+      "READY_FOR_NEXT_CYCLE",
+      "COMPLETE",
+    ];
+    const currentRank = phaseRank.indexOf(cycle.phase);
+    const nextRank = phaseRank.indexOf(nextPhase);
+    const phase = cycle.phase === "BLOCKED" || currentRank > nextRank ? cycle.phase : nextPhase;
+    const now = Date.now();
+    const phaseChanged = phase !== cycle.phase;
+    const phaseHistory = phaseChanged
+      ? [
+          ...cycle.phaseHistory,
+          {
+            phase,
+            enteredAt: now,
+            actorId: args.approvalActorId ?? "workflow-projector",
+            note: projection.cleanStop
+              ? "Completed workflow projected with no implementation recommendation"
+              : "Completed workflow evidence projected",
+          },
+        ]
+      : cycle.phaseHistory;
+
+    await ctx.db.patch(args.cycleId, {
+      rootWorkOrderId: cycle.rootWorkOrderId ?? cycle.workOrderIds[0],
+      latestWorkflowRunId: args.workflowRunId,
+      projectedRunCompletedAt: args.workflowRunCompletedAt,
+      projectionVersion: 1,
+      projectionStatus: "PROJECTED",
+      projectionError: undefined,
+      projectedAt: now,
+      projectionSummary: {
+        sourceCount: projection.sources.length,
+        claimCount: projection.claims.length,
+        recommendationCount: projection.recommendations.length,
+        measurementCount: projection.measurementSnapshots.length,
+        cleanStop: projection.cleanStop,
+        stopCondition: projection.stopCondition,
+      },
+      conflicts: [...new Set([...(cycle.conflicts ?? []), ...projection.conflicts])],
+      limitations: [...new Set([...(cycle.limitations ?? []), ...projection.limitations])],
+      measurementSnapshots: projection.measurementSnapshots,
+      sources,
+      claims,
+      recommendations,
+      workflowApprovalId: args.approvalId,
+      approvalEvidenceDigest: projection.approvalEvidenceDigest,
+      approvalActorId: args.approvalActorId,
+      approvedAt: args.approvedAt,
+      phase,
+      phaseHistory,
+      updatedAt: now,
+    });
+
+    await logCycleActivity(ctx, {
+      projectId: cycle.projectId,
+      cycleId: args.cycleId,
+      action: "LOOP_WORKFLOW_PROJECTED",
+      description: projection.cleanStop
+        ? "Projected completed graph as a clean stop"
+        : "Projected completed graph evidence into the Loop Engineering cycle",
+      actorId: args.approvalActorId ?? "workflow-projector",
+      metadata: {
+        workflowRunId: args.workflowRunId,
+        sourceCount: projection.sources.length,
+        claimCount: projection.claims.length,
+        recommendationCount: projection.recommendations.length,
+        measurementCount: projection.measurementSnapshots.length,
+        cleanStop: projection.cleanStop,
+      },
+    });
+
+    return { cycle: await ctx.db.get(args.cycleId), projected: true };
+  },
+});
+
+export const projectWorkflowRun = action({
+  args: {
+    workflowRunId: v.id("workflowRuns"),
+    dryRun: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args): Promise<any> => {
+    const run = await ctx.runQuery(api.workflowRuns.getById, { id: args.workflowRunId });
+    if (!run) throw new Error("Workflow run not found.");
+    if (run.workflowId !== "loop-engineering") {
+      throw new Error("Only Loop Engineering runs can be projected.");
+    }
+    if (run.status !== "COMPLETED") {
+      throw new Error("Only completed Loop Engineering runs can be projected.");
+    }
+    if (!run.workOrderId) throw new Error("Loop Engineering run has no linked WorkOrder.");
+
+    const cycle = await ctx.runQuery(api.loopEngineering.getByRootWorkOrder, {
+      workOrderId: run.workOrderId,
+    });
+    if (!cycle) throw new Error("No Loop Engineering cycle is linked to this WorkOrder.");
+    if (cycle.projectId !== run.projectId) throw new Error("Cycle and run workspace do not match.");
+
+    const projection = projectLoopWorkflowContext(run.context, {
+      workflowRunId: String(run._id),
+      now: run.completedAt ?? Date.now(),
+    });
+    let approval = null;
+    if (projection.approvalId) {
+      approval = await ctx.runQuery(api.approvals.get, {
+        approvalId: projection.approvalId as Id<"approvals">,
+      });
+    }
+    if (projection.approved) {
+      const payload = approval?.actionPayload as Record<string, unknown> | undefined;
+      if (
+        !approval
+        || approval.status !== "APPROVED"
+        || approval.projectId !== cycle.projectId
+        || payload?.runId !== run.runId
+        || payload?.evidenceDigest !== projection.approvalEvidenceDigest
+      ) {
+        throw new Error("Workflow projection approval does not match the completed run evidence.");
+      }
+    }
+
+    const preview = {
+      cycleId: cycle._id,
+      workflowRunId: run._id,
+      sourceCount: projection.sources.length,
+      claimCount: projection.claims.length,
+      recommendationCount: projection.recommendations.length,
+      measurementCount: projection.measurementSnapshots.length,
+      cleanStop: projection.cleanStop,
+      targetPhase: projection.cleanStop ? "READY_FOR_NEXT_CYCLE" : "AWAITING_APPROVAL",
+    };
+    if (args.dryRun) return { ...preview, projected: false, dryRun: true };
+
+    const result = await ctx.runMutation(internal.loopEngineering.applyWorkflowProjection, {
+      cycleId: cycle._id,
+      workflowRunId: run._id,
+      workflowRunCompletedAt: run.completedAt ?? Date.now(),
+      projection,
+      approvalId: approval?._id,
+      approvalActorId: approval?.decidedByUserId ??
+        (approval?.decidedByAgentId ? String(approval.decidedByAgentId) : undefined),
+      approvedAt: approval?.decidedAt,
+    });
+    return { ...preview, ...result, dryRun: false };
+  },
 });
 
 export const createRecord = internalMutation({
@@ -116,6 +380,9 @@ export const createRecord = internalMutation({
       measurements: [],
       taskIds: args.taskIds,
       workOrderIds: args.workOrderIds,
+      rootWorkOrderId: args.workOrderIds[0],
+      projectionVersion: 1,
+      projectionStatus: "PENDING",
       createdBy: args.createdBy,
       createdAt: now,
       updatedAt: now,
@@ -650,8 +917,12 @@ export const approveRecommendations = action({
     if (cycle.phase !== "AWAITING_APPROVAL") {
       throw new Error("Cycle is not awaiting approval.");
     }
+    if (cycle.latestWorkflowRunId && (!cycle.workflowApprovalId || !cycle.approvalEvidenceDigest || !cycle.approvalActorId)) {
+      throw new Error("The workflow gate approval is missing or not bound to the projected evidence");
+    }
     const project = await ctx.runQuery(api.projects.get, { projectId: cycle.projectId });
     if (!project) throw new Error("Project not found.");
+    const authorityActor = cycle.approvalActorId ?? args.actorId;
 
     const links = [];
     for (const recommendation of cycle.recommendations) {
@@ -683,11 +954,12 @@ export const approveRecommendations = action({
         title: `Implement: ${recommendation.title}`,
         desiredOutcome: recommendation.rationale,
         workflowId: "feature-dev",
+        isMutating: true,
         repository: project.githubRepo,
         branchStrategy: "isolated-worktree",
         priority: recommendation.confidence === "HIGH" ? 2 : 3,
         riskLevel: "MEDIUM",
-        requestedBy: args.actorId,
+        requestedBy: authorityActor,
         assignedSquad: "Software Factory",
         acceptanceCriteria: [{
           id: "implemented-and-tested",
@@ -705,26 +977,43 @@ export const approveRecommendations = action({
           label: `Loop Engineering cycle ${cycle.iteration}`,
           location: cycleRef(args.cycleId),
         }],
-        requiredApprovals: [],
+        requiredApprovals: ["WORKFLOW_GATE", "MERGE"],
         state: "READY",
-        approvalStatus: "NOT_REQUIRED",
+        approvalStatus: "APPROVED",
         metadata: {
           loopEngineeringCycleId: args.cycleId,
           recommendationId: recommendation.id,
           approvedByCycleGate: {
-            actorId: args.actorId,
-            approvedAt: Date.now(),
+            approvalId: cycle.workflowApprovalId,
+            evidenceDigest: cycle.approvalEvidenceDigest,
+            actorId: authorityActor,
+            approvedAt: cycle.approvedAt ?? Date.now(),
+          },
+          implementationPolicy: {
+            allowedCommands: ["pnpm exec vitest run", "pnpm --filter mission-control-ui typecheck"],
+            maxCostUsd: 2,
+            maxAttempts: 3,
+            timeoutMinutes: 30,
+            stopCondition: "Affected tests and typecheck pass with a reviewable diff",
           },
         },
       });
       const workOrderId = workOrderResult.workOrder?._id as Id<"workOrders"> | undefined;
       if (!workOrderId) throw new Error("Failed to create implementation WorkOrder.");
+      await ctx.runMutation(api.tasks.linkToWorkOrder, {
+        taskId,
+        projectId: cycle.projectId,
+        workOrderId,
+        actorType: "SYSTEM",
+        actorId: authorityActor,
+        idempotencyKey: `${args.idempotencyKey}:link:${recommendation.id}`,
+      });
       links.push({ recommendationId: recommendation.id, taskId, workOrderId });
     }
 
     const updated = await ctx.runMutation(internal.loopEngineering.applyApproval, {
       cycleId: args.cycleId,
-      actorId: args.actorId,
+      actorId: authorityActor,
       links,
     });
     return { cycle: updated, links };

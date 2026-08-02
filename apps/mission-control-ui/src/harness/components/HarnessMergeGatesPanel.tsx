@@ -60,12 +60,23 @@ export function HarnessMergeGatesPanel({
                 </a>
               </>
             ) : (
-              "All must pass before auto-merge — fail routes to implement."
+              "All must pass before merge eligibility; failed evidence routes back to correction."
             )}
           </p>
+          {live?.headSha && (
+            <p className="mt-1 font-mono text-[11px] text-ink-muted">
+              Head {live.headSha.slice(0, 12)} · CI {live.ciStatus ?? "UNKNOWN"}
+              {live.workOrderId ? ` · WorkOrder ${String(live.workOrderId).slice(0, 10)}` : " · lineage unavailable"}
+            </p>
+          )}
+          {live?.mergedAt && (
+            <p className="mt-1 text-[11px] text-ok">
+              Merge recorded by {live.mergeActor} · {live.mergeCommitSha?.slice(0, 12)} · {new Date(live.mergedAt).toLocaleString()}
+            </p>
+          )}
         </div>
         {allPass ? (
-          <span className="registry-delta">Auto-merge eligible</span>
+          <span className="registry-delta">Gate evidence complete</span>
         ) : (
           <span className="rounded-full border border-warn/40 bg-warn/10 px-2 py-0.5 text-[11px] text-warn">
             Blocked

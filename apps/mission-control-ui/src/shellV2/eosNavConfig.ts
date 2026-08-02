@@ -39,7 +39,7 @@ export const EOS_NAV_GROUPS: NavGroup[] = [
   ]},
   { id: "intelligence", label: "Intelligence", icon: Brain, items: [
     { view: "operator-evals" as MainView, label: "Operator Evals", icon: FlaskConical },
-    { view: "harness-loops" as MainView, label: "Graph Engineering", icon: GitBranch },
+    { view: "harness-loops" as MainView, label: "Loop Engineering", icon: GitBranch },
     { view: "effectiveness" as MainView, label: "AI Effectiveness", icon: Gauge },
     { view: "factory-health" as MainView, label: "Factory Health", icon: CheckCircle2 },
     { view: "readiness" as MainView, label: "Environment Readiness", icon: Landmark },
@@ -51,7 +51,7 @@ export const EOS_NAV_GROUPS: NavGroup[] = [
     { view: "harness-code-review-wizard" as MainView, label: "Code Review Setup", icon: CheckCircle2 },
     { view: "harness-change-review" as MainView, label: "Change Review", icon: FileSearch },
     { view: "registry-runs" as MainView, label: "Agent Code Quality", icon: FlaskConical },
-    { view: "harness-meta-loop" as MainView, label: "Improvement Loop", icon: GitBranch },
+    { view: "harness-meta-loop" as MainView, label: "Improvement History", icon: GitBranch },
   ]},
   { id: "knowledge", label: "Knowledge", icon: BookOpen, items: [
     { view: "skills" as MainView, label: "Context Catalog", icon: Sparkles },

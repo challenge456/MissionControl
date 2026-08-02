@@ -3,7 +3,7 @@
  */
 
 import { v } from "convex/values";
-import { action, mutation, query } from "../_generated/server";
+import { action, internalQuery, mutation, query } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import {
@@ -16,6 +16,7 @@ import {
 import { computeMergeGates } from "../lib/mergeGates";
 import { fetchPullRequestCi } from "../lib/githubCiIngest";
 import { buildFileChanges } from "../lib/runInspector";
+import { mergeAuthoritySatisfied } from "../lib/prEvaluation";
 
 const lensValidator = v.array(
   v.object({
@@ -59,11 +60,14 @@ export const getLatest = query({
 
 export const getByPrUrl = query({
   args: { prUrl: v.string() },
-  handler: async (ctx, args) =>
-    ctx.db
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
       .query("harnessPrChecks")
       .withIndex("by_pr_url", (q) => q.eq("prUrl", args.prUrl))
-      .unique(),
+      .collect();
+    rows.sort((a, b) => b.syncedAt - a.syncedAt);
+    return rows[0] ?? null;
+  },
 });
 
 export const getMergeGateStatus = query({
@@ -71,10 +75,12 @@ export const getMergeGateStatus = query({
   handler: async (ctx, args) => {
     let check = null;
     if (args.prUrl) {
-      check = await ctx.db
+      const rows = await ctx.db
         .query("harnessPrChecks")
         .withIndex("by_pr_url", (q) => q.eq("prUrl", args.prUrl!))
-        .unique();
+        .collect();
+      rows.sort((a, b) => b.syncedAt - a.syncedAt);
+      check = rows[0] ?? null;
     } else {
       let rows = args.projectId
         ? await ctx.db
@@ -108,8 +114,18 @@ export const getMergeGateStatus = query({
     return {
       gates,
       allPass: gates.every((g) => g.passed),
+      evaluationId: check?._id,
       prUrl: check?.prUrl,
       ciStatus: check?.ciStatus,
+      headSha: check?.headSha,
+      workOrderId: check?.workOrderId,
+      workflowRunId: check?.workflowRunId,
+      taskId: check?.taskId,
+      loopEngineeringCycleId: check?.loopEngineeringCycleId,
+      syncedAt: check?.syncedAt,
+      mergeActor: check?.mergeActor,
+      mergedAt: check?.mergedAt,
+      mergeCommitSha: check?.mergeCommitSha,
     };
   },
 });
@@ -208,10 +224,12 @@ async function upsertPrCheck(
   const mutationTesting = buildMutationTestingReport(signals);
   const now = Date.now();
 
-  const existing = await ctx.db
+  const existingRows = await ctx.db
     .query("harnessPrChecks")
     .withIndex("by_pr_url", (q: any) => q.eq("prUrl", input.prUrl))
-    .unique();
+    .collect();
+  existingRows.sort((a: any, b: any) => b.syncedAt - a.syncedAt);
+  const existing = existingRows[0];
 
   const doc = {
     projectId: input.projectId,
@@ -358,11 +376,76 @@ export const recordManual = mutation({
   },
 });
 
+export const recordMerge = mutation({
+  args: {
+    evaluationId: v.id("harnessPrChecks"),
+    actorId: v.string(),
+    mergeCommitSha: v.string(),
+    humanConfirmed: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const evaluation = await ctx.db.get(args.evaluationId);
+    if (!evaluation) throw new Error("PR evaluation not found");
+    if (evaluation.mergedAt && evaluation.mergeCommitSha === args.mergeCommitSha) {
+      return { recorded: false, evaluation };
+    }
+    const verifiers = await ctx.db.query("contextVerifiers").collect();
+    const activeVerifierCount = verifiers.filter((row) => row.active && (!evaluation.projectId || row.projectId === evaluation.projectId)).length;
+    const metadata = evaluation.metadata as { securityFindingCount?: number } | undefined;
+    const gates = computeMergeGates({
+      lenses: evaluation.changeReviewLenses,
+      ciStatus: evaluation.ciStatus,
+      mutationCoveragePct: evaluation.mutationTesting?.diffCoveragePct,
+      activeVerifierCount,
+      securityFindingCount: metadata?.securityFindingCount,
+    });
+    const workOrder = evaluation.workOrderId ? await ctx.db.get(evaluation.workOrderId) : null;
+    if (evaluation.workOrderId && !workOrder) throw new Error("Linked WorkOrder not found");
+    if (!mergeAuthoritySatisfied({
+      ciStatus: evaluation.ciStatus ?? "UNKNOWN",
+      gatesPass: gates.every((gate) => gate.passed),
+      approvalStatus: workOrder?.approvalStatus,
+      humanConfirmed: args.humanConfirmed,
+    })) {
+      throw new Error("Passing gates, WorkOrder approval, and explicit merge confirmation are required before merge");
+    }
+    const actorId = args.actorId.trim();
+    const mergeCommitSha = args.mergeCommitSha.trim();
+    if (!actorId || !mergeCommitSha) throw new Error("Merge actor and commit SHA are required");
+    const mergedAt = Date.now();
+    await ctx.db.patch(evaluation._id, { mergeActor: actorId, mergeCommitSha, mergedAt });
+    if (workOrder) {
+      await ctx.db.patch(workOrder._id, {
+        state: "AWAITING_VERIFICATION",
+        blockingIssue: undefined,
+        requiredHumanAction: "Record independent post-merge verification evidence.",
+        metadata: {
+          ...(workOrder.metadata ?? {}),
+          merge: { actorId, mergeCommitSha, mergedAt, prUrl: evaluation.prUrl, headSha: evaluation.headSha },
+        },
+        updatedAt: mergedAt,
+      });
+    }
+    await ctx.db.insert("activities", {
+      projectId: evaluation.projectId,
+      actorType: "HUMAN",
+      actorId,
+      action: "PR_MERGE_RECORDED",
+      description: `Merged ${evaluation.prUrl} at ${mergeCommitSha}`,
+      targetType: "PULL_REQUEST",
+      targetId: evaluation.prUrl,
+      metadata: { evaluationId: evaluation._id, workOrderId: evaluation.workOrderId, headSha: evaluation.headSha, mergeCommitSha },
+    });
+    return { recorded: true, mergedAt, mergeCommitSha };
+  },
+});
+
 export const ingestPullRequest = action({
   args: {
     prUrl: v.string(),
     projectId: v.optional(v.id("projects")),
     releaseDeploymentId: v.optional(v.id("deployments")),
+    sourceEventId: v.optional(v.string()),
   },
   handler: async (
     ctx,
@@ -385,11 +468,20 @@ export const ingestPullRequest = action({
       parsed.prNumber,
       process.env.GITHUB_TOKEN
     );
+    const lineage = await ctx.runQuery(internal.factory.prChecks.resolveLineage, {
+      projectId: args.projectId,
+      repoFullName: payload.repoFullName,
+      branch: payload.branch,
+    });
 
     const id: Id<"harnessPrChecks"> = await ctx.runMutation(
       internal.factory.githubCi.applyCiIngest,
       {
-      projectId: args.projectId,
+      projectId: lineage.projectId,
+      workOrderId: lineage.workOrderId,
+      workflowRunId: lineage.workflowRunId,
+      taskId: lineage.taskId,
+      loopEngineeringCycleId: lineage.loopEngineeringCycleId,
       releaseDeploymentId: args.releaseDeploymentId,
       prUrl: payload.prUrl,
       prNumber: payload.prNumber,
@@ -402,6 +494,7 @@ export const ingestPullRequest = action({
       checkRuns: payload.checkRuns,
       signals: payload.signals,
       sourceRef: payload.headSha,
+      sourceEventId: args.sourceEventId,
       }
     );
 
@@ -411,6 +504,51 @@ export const ingestPullRequest = action({
       ciStatus: payload.ciStatus,
       checkCount: payload.checkRuns.length,
       diffLineCount: payload.diffLineCount,
+    };
+  },
+});
+
+export const resolveLineage = internalQuery({
+  args: {
+    projectId: v.optional(v.id("projects")),
+    repoFullName: v.string(),
+    branch: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const normalize = (value?: string) => value?.replace(/^https?:\/\/github\.com\//, "").replace(/\.git$/, "").toLowerCase();
+    let projectId = args.projectId;
+    if (!projectId) {
+      const projects = await ctx.db.query("projects").collect();
+      projectId = projects.find((project) => normalize(project.githubRepo) === normalize(args.repoFullName))?._id;
+    }
+    if (!projectId) return {};
+    const workOrders = await ctx.db.query("workOrders")
+      .withIndex("by_project", (q) => q.eq("projectId", projectId))
+      .collect();
+    const candidates = workOrders.filter((workOrder) =>
+      normalize(workOrder.repository) === normalize(args.repoFullName)
+      && !["CANCELED", "SUPERSEDED"].includes(workOrder.state)
+    );
+    candidates.sort((a, b) => b.updatedAt - a.updatedAt);
+    const workOrder = candidates.find((candidate) =>
+      !args.branch || candidate.branchStrategy?.includes(args.branch)
+    ) ?? candidates[0];
+    if (!workOrder) return { projectId };
+    const runs = await ctx.db.query("workflowRuns").collect();
+    const workflowRun = runs
+      .filter((run) => run.workOrderId === workOrder._id)
+      .sort((a, b) => b.startedAt - a.startedAt)[0];
+    const tasks = await ctx.db.query("tasks")
+      .withIndex("by_work_order", (q) => q.eq("workOrderId", workOrder._id))
+      .collect();
+    const cycles = await ctx.db.query("loopEngineeringCycles").collect();
+    const cycle = cycles.find((candidate) => candidate.workOrderIds.includes(workOrder._id));
+    return {
+      projectId,
+      workOrderId: workOrder._id,
+      workflowRunId: workflowRun?._id,
+      taskId: workflowRun?.parentTaskId ?? tasks[0]?._id,
+      loopEngineeringCycleId: cycle?._id,
     };
   },
 });

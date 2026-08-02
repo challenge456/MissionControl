@@ -51,7 +51,6 @@ export function ChatDock({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
 
-  const seedMetaLoop = useMutation(api.factory.metaLoop.seedDemoSuggestions);
   const submitChatRequest = useMutation(api.missionChat.submitRequest);
   const chatThreads = useQuery(
     api.missionChat.listThreads,
@@ -142,10 +141,9 @@ export function ChatDock({
     async (text: string, startedAt: number) => {
       const lower = text.toLowerCase();
       if (lower.includes("meta loop") || lower.includes("suggestion")) {
-        await seedMetaLoop({ projectId: projectId ?? undefined });
         onNavigate?.("harness-meta-loop");
         return {
-          reply: "Seeded meta loop inbox with observed failure patterns. Opening meta loop.",
+          reply: "Opening the evidence-backed improvement inbox. Empty means no qualifying real signals have been observed yet.",
           gate: { decision: "allow" as const, reason: "factory agent — meta loop" },
         };
       }
@@ -190,7 +188,7 @@ export function ChatDock({
         gate: { decision: "skip" as const, reason: "factory agent — general routing" },
       };
     },
-    [factoryHealth?.maturityStage, onNavigate, projectId, seedMetaLoop]
+    [factoryHealth?.maturityStage, onNavigate, projectId]
   );
 
   const send = useCallback(() => {

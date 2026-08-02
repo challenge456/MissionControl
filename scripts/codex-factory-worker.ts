@@ -246,6 +246,9 @@ async function submitTask(agent: any, task: any): Promise<boolean> {
 }
 
 async function isCurrentWorkflowTask(task: any): Promise<boolean> {
+  if (task.metadata?.graph?.isolation && task.metadata.graph.isolation !== "READ_ONLY") {
+    return false;
+  }
   const workflowRunId = task.metadata?.workflowRunId;
   if (!workflowRunId) return true;
   const run = await client.query(api.workflowRuns.getById, { id: workflowRunId });

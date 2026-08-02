@@ -95,6 +95,7 @@ steps:
     expects: "STATUS: done"
     retryLimit: 2
     timeoutMinutes: 10
+    isolation: READ_ONLY
 
   - id: setup
     agent: setup
@@ -112,6 +113,7 @@ steps:
     expects: "STATUS: done"
     retryLimit: 2
     timeoutMinutes: 5
+    isolation: WORKTREE
 
   - id: implement
     agent: developer
@@ -137,6 +139,7 @@ steps:
     expects: "STATUS: done"
     retryLimit: 3
     timeoutMinutes: 45
+    isolation: WORKTREE
 
   - id: verify
     agent: verifier
@@ -160,6 +163,7 @@ steps:
     expects: "STATUS: done"
     retryLimit: 2
     timeoutMinutes: 15
+    isolation: READ_ONLY
 
   - id: test
     agent: tester
@@ -184,6 +188,7 @@ steps:
     expects: "STATUS: done"
     retryLimit: 2
     timeoutMinutes: 20
+    isolation: WORKTREE
 
   - id: pr
     agent: pr-creator
@@ -207,6 +212,7 @@ steps:
     expects: "STATUS: done"
     retryLimit: 2
     timeoutMinutes: 5
+    isolation: WORKTREE
 
   - id: review
     agent: reviewer
@@ -231,3 +237,5 @@ steps:
     expects: "STATUS: done"
     retryLimit: 1
     timeoutMinutes: 10
+    isolation: READ_ONLY
+    failurePolicy: BLOCK

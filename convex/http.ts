@@ -6,7 +6,7 @@
 
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import {
   extractPrFromWebhookEvent,
   verifyGithubWebhookSignature,
@@ -127,12 +127,12 @@ http.route({
     const body = await request.text();
     const secret = process.env.GITHUB_WEBHOOK_SECRET;
     const signature = request.headers.get("x-hub-signature-256");
-
-    if (secret) {
-      const valid = await verifyGithubWebhookSignature(body, signature, secret);
-      if (!valid) {
-        return new Response("GitHub webhook signature verification failed", { status: 401 });
-      }
+    if (!secret) {
+      return new Response("GitHub webhook is not configured", { status: 503 });
+    }
+    const valid = await verifyGithubWebhookSignature(body, signature, secret);
+    if (!valid) {
+      return new Response("GitHub webhook signature verification failed", { status: 401 });
     }
 
     const event = request.headers.get("x-github-event") ?? "";
@@ -159,9 +159,35 @@ http.route({
       return new Response("OK (ignored action)", { status: 200 });
     }
 
+    if (event === "pull_request_review" && payload.action !== "submitted") {
+      return new Response("OK (ignored action)", { status: 200 });
+    }
+
     await ctx.runAction(api.factory.prChecks.ingestPullRequest, {
       prUrl: prRef.prUrl,
+      sourceEventId: request.headers.get("x-github-delivery") ?? undefined,
     });
+
+    const review = payload.review as { state?: string; body?: string; html_url?: string } | undefined;
+    if (event === "pull_request_review" && review?.state === "changes_requested") {
+      const projects = await ctx.runQuery(api.projects.list, {});
+      const project = projects.find((candidate) => candidate.githubRepo?.toLowerCase() === `${prRef.owner}/${prRef.repo}`.toLowerCase());
+      if (project) {
+        await ctx.runMutation(internal.factory.metaLoop.ingestSignal, {
+          projectId: project._id,
+          kind: "SKILL_UPDATE",
+          signalClass: "REVIEW_CORRECTION",
+          target: `${prRef.owner}/${prRef.repo}`,
+          title: `Reduce recurring review correction in ${prRef.repo}`,
+          summary: review.body?.slice(0, 1_000) || "Pull request review requested changes.",
+          sourceRef: request.headers.get("x-github-delivery") ?? review.html_url ?? prRef.prUrl,
+          sourceLinks: [review.html_url ?? prRef.prUrl],
+          confidence: 0.75,
+          impact: "MEDIUM",
+          payload: { prUrl: prRef.prUrl },
+        });
+      }
+    }
 
     return new Response("OK", { status: 200 });
   }),

@@ -4643,6 +4643,30 @@ export default defineSchema({
     })),
     taskIds: v.array(v.id("tasks")),
     workOrderIds: v.array(v.id("workOrders")),
+    rootWorkOrderId: v.optional(v.id("workOrders")),
+    latestWorkflowRunId: v.optional(v.id("workflowRuns")),
+    projectedRunCompletedAt: v.optional(v.number()),
+    projectionVersion: v.optional(v.number()),
+    projectionStatus: v.optional(v.union(
+      v.literal("PENDING"),
+      v.literal("PROJECTED"),
+      v.literal("FAILED")
+    )),
+    projectionError: v.optional(v.string()),
+    projectedAt: v.optional(v.number()),
+    projectionSummary: v.optional(v.object({
+      sourceCount: v.number(),
+      claimCount: v.number(),
+      recommendationCount: v.number(),
+      measurementCount: v.number(),
+      cleanStop: v.boolean(),
+      stopCondition: v.optional(v.string()),
+    })),
+    conflicts: v.optional(v.array(v.string())),
+    limitations: v.optional(v.array(v.string())),
+    measurementSnapshots: v.optional(v.array(v.any())),
+    workflowApprovalId: v.optional(v.id("approvals")),
+    approvalEvidenceDigest: v.optional(v.string()),
     approvalActorId: v.optional(v.string()),
     approvedAt: v.optional(v.number()),
     blockedReason: v.optional(v.string()),
@@ -4654,7 +4678,9 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_project_phase", ["projectId", "phase"])
     .index("by_idempotency", ["idempotencyKey"])
-    .index("by_parent", ["parentCycleId"]),
+    .index("by_parent", ["parentCycleId"])
+    .index("by_root_work_order", ["rootWorkOrderId"])
+    .index("by_latest_workflow_run", ["latestWorkflowRunId"]),
 
   // -------------------------------------------------------------------------
   // HARNESS ENGINEERING: VERIFIERS (outer loop — skill adherence)
@@ -4735,6 +4761,11 @@ export default defineSchema({
   // -------------------------------------------------------------------------
   harnessPrChecks: defineTable({
     projectId: v.optional(v.id("projects")),
+    workOrderId: v.optional(v.id("workOrders")),
+    workflowRunId: v.optional(v.id("workflowRuns")),
+    taskId: v.optional(v.id("tasks")),
+    loopEngineeringCycleId: v.optional(v.id("loopEngineeringCycles")),
+    previousEvaluationId: v.optional(v.id("harnessPrChecks")),
     releaseDeploymentId: v.optional(v.id("deployments")),
     prUrl: v.string(),
     prNumber: v.optional(v.number()),
@@ -4758,6 +4789,8 @@ export default defineSchema({
       v.literal("MANUAL")
     ),
     sourceRef: v.optional(v.string()),
+    sourceEventId: v.optional(v.string()),
+    headSha: v.optional(v.string()),
     changeReviewLenses: v.array(
       v.object({
         id: v.string(),
@@ -4782,9 +4815,15 @@ export default defineSchema({
     syncedAt: v.number(),
     createdAt: v.number(),
     metadata: v.optional(v.any()),
+    mergeActor: v.optional(v.string()),
+    mergedAt: v.optional(v.number()),
+    mergeCommitSha: v.optional(v.string()),
   })
     .index("by_project", ["projectId"])
     .index("by_pr_url", ["prUrl"])
+    .index("by_pr_head", ["prUrl", "headSha"])
+    .index("by_source_event", ["sourceEventId"])
+    .index("by_work_order", ["workOrderId"])
     .index("by_repo", ["repoFullName"]),
 
   // -------------------------------------------------------------------------
@@ -4805,16 +4844,41 @@ export default defineSchema({
     status: v.union(
       v.literal("OPEN"),
       v.literal("ACCEPTED"),
-      v.literal("DISMISSED")
+      v.literal("WORK_ORDERED"),
+      v.literal("IMPLEMENTED"),
+      v.literal("VERIFIED"),
+      v.literal("EFFECTIVE"),
+      v.literal("DISMISSED"),
+      v.literal("ROLLED_BACK"),
+      v.literal("RETIRED")
     ),
     sourceRef: v.optional(v.string()),
+    sourceLinks: v.optional(v.array(v.string())),
+    dedupeKey: v.optional(v.string()),
+    evidenceCount: v.optional(v.number()),
+    confidence: v.optional(v.number()),
+    impact: v.optional(v.string()),
+    affectedSurface: v.optional(v.string()),
     packageId: v.optional(v.id("contextPackages")),
+    workOrderId: v.optional(v.id("workOrders")),
+    taskId: v.optional(v.id("tasks")),
+    dismissalReason: v.optional(v.string()),
+    measurement: v.optional(v.object({
+      baseline: v.number(),
+      result: v.number(),
+      target: v.number(),
+      unit: v.string(),
+      verdict: v.union(v.literal("MET"), v.literal("MISSED")),
+      evidenceRefs: v.array(v.string()),
+      measuredAt: v.number(),
+    })),
     payload: v.optional(v.any()),
     createdAt: v.number(),
     resolvedAt: v.optional(v.number()),
   })
     .index("by_project", ["projectId"])
     .index("by_project_status", ["projectId", "status"])
+    .index("by_dedupe", ["dedupeKey"])
     .index("by_status", ["status"]),
 
   // -------------------------------------------------------------------------

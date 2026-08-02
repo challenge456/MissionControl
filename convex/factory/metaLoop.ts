@@ -3,7 +3,9 @@
  */
 
 import { v } from "convex/values";
-import { mutation, query } from "../_generated/server";
+import { action, internalMutation, mutation, query } from "../_generated/server";
+import { api, internal } from "../_generated/api";
+import { sanitizeMetaSignalText } from "../lib/metaLoopSignals";
 
 const kindArg = v.union(
   v.literal("VERIFIER"),
@@ -14,10 +16,22 @@ const kindArg = v.union(
   v.literal("DELEGATION")
 );
 
+const statusArg = v.union(
+  v.literal("OPEN"),
+  v.literal("ACCEPTED"),
+  v.literal("WORK_ORDERED"),
+  v.literal("IMPLEMENTED"),
+  v.literal("VERIFIED"),
+  v.literal("EFFECTIVE"),
+  v.literal("DISMISSED"),
+  v.literal("ROLLED_BACK"),
+  v.literal("RETIRED")
+);
+
 export const listInbox = query({
   args: {
     projectId: v.optional(v.id("projects")),
-    status: v.optional(v.union(v.literal("OPEN"), v.literal("ACCEPTED"), v.literal("DISMISSED"))),
+    status: v.optional(statusArg),
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
@@ -32,9 +46,31 @@ export const listInbox = query({
   },
 });
 
-export const seedDemoSuggestions = mutation({
-  args: { projectId: v.optional(v.id("projects")) },
+export const get = query({
+  args: { suggestionId: v.id("metaLoopSuggestions") },
+  handler: async (ctx, args) => ctx.db.get(args.suggestionId),
+});
+
+export const listHistory = query({
+  args: { projectId: v.optional(v.id("projects")), limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
+    let rows = args.projectId
+      ? await ctx.db.query("metaLoopSuggestions").withIndex("by_project", (q) => q.eq("projectId", args.projectId)).collect()
+      : await ctx.db.query("metaLoopSuggestions").collect();
+    rows = rows.filter((row) => row.status !== "OPEN").sort((a, b) => (b.resolvedAt ?? b.createdAt) - (a.resolvedAt ?? a.createdAt));
+    return rows.slice(0, args.limit ?? 20);
+  },
+});
+
+export const seedDemoSuggestions = mutation({
+  args: {
+    projectId: v.optional(v.id("projects")),
+    confirmation: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (process.env.ALLOW_DEMO_SEEDING !== "true" || args.confirmation !== "SEED_DEMO_META_LOOP") {
+      throw new Error("Demo meta-loop seeding is disabled outside an explicit development fixture run");
+    }
     const now = Date.now();
     const demos = [
       {
@@ -79,120 +115,300 @@ export const seedDemoSuggestions = mutation({
   },
 });
 
-export const resolve = mutation({
+export const applyResolution = internalMutation({
   args: {
     suggestionId: v.id("metaLoopSuggestions"),
-    action: v.union(v.literal("ACCEPT"), v.literal("DISMISS")),
-    actorId: v.optional(v.string()),
+    status: statusArg,
+    actorId: v.string(),
+    workOrderId: v.optional(v.id("workOrders")),
+    taskId: v.optional(v.id("tasks")),
+    reason: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const row = await ctx.db.get(args.suggestionId);
     if (!row) throw new Error("Suggestion not found");
-    const status = args.action === "ACCEPT" ? "ACCEPTED" : "DISMISSED";
     await ctx.db.patch(args.suggestionId, {
-      status,
+      status: args.status,
+      workOrderId: args.workOrderId,
+      taskId: args.taskId,
+      dismissalReason: args.reason,
       resolvedAt: Date.now(),
     });
-    if (args.action === "ACCEPT" && row.kind === "VERIFIER") {
-      const now = Date.now();
-      await ctx.db.insert("contextVerifiers", {
-        projectId: row.projectId,
-        packageId: row.packageId,
-        label: row.title,
-        invariant: row.summary,
-        globPatterns: ["**/*"],
-        active: true,
-        createdAt: now,
-        updatedAt: now,
+    await ctx.db.insert("activities", {
+      projectId: row.projectId,
+      actorType: "HUMAN",
+      actorId: args.actorId,
+      action: `META_LOOP_${args.status}`,
+      description: args.status === "DISMISSED"
+        ? `Dismissed improvement proposal: ${args.reason}`
+        : `Created governed work for improvement proposal: ${row.title}`,
+      targetType: "META_LOOP_SUGGESTION",
+      targetId: row._id,
+      metadata: { workOrderId: args.workOrderId, taskId: args.taskId, reason: args.reason },
+    });
+    return args.suggestionId;
+  },
+});
+
+export const resolve = action({
+  args: {
+    suggestionId: v.id("metaLoopSuggestions"),
+    action: v.union(v.literal("ACCEPT"), v.literal("DISMISS")),
+    actorId: v.optional(v.string()),
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<{ suggestionId: string; workOrderId?: string; taskId?: string }> => {
+    const suggestion = await ctx.runQuery(api.factory.metaLoop.get, { suggestionId: args.suggestionId });
+    if (!suggestion) throw new Error("Suggestion not found");
+    if (suggestion.status !== "OPEN") throw new Error("Only open suggestions can be resolved");
+    const actorId = args.actorId?.trim() || "operator";
+    if (args.action === "DISMISS") {
+      const reason = args.reason?.trim();
+      if (!reason) throw new Error("A dismissal reason is required");
+      await ctx.runMutation(internal.factory.metaLoop.applyResolution, {
+        suggestionId: args.suggestionId,
+        status: "DISMISSED",
+        actorId,
+        reason,
       });
+      return { suggestionId: String(args.suggestionId) };
     }
-    if (args.action === "ACCEPT" && row.kind === "EVAL_SCENARIO" && row.packageId) {
-      const now = Date.now();
-      const lineage = row.sourceRef ? `Auto-created from ${row.sourceRef}` : "Auto-created from meta loop";
-      await ctx.db.insert("contextEvalScenarios", {
-        packageId: row.packageId,
-        name: row.title.slice(0, 80),
-        description: `${lineage}. ${row.summary}`,
-        taskPrompt: row.summary,
-        criteria: [
-          { id: "correctness", label: "Correct behavior", weight: 0.5 },
-          { id: "regression", label: "No regression vs baseline", weight: 0.5 },
-        ],
-        active: true,
-        projectId: row.projectId,
-        createdAt: now,
-        updatedAt: now,
+    if (!suggestion.projectId) throw new Error("A workspace-scoped suggestion is required before creating governed work");
+    const project = await ctx.runQuery(api.projects.get, { projectId: suggestion.projectId });
+    if (!project) throw new Error("Suggestion workspace not found");
+    if (!project.githubRepo) throw new Error("Connect an approved repository before accepting repository-changing improvement work");
+    const evidenceLinks = suggestion.sourceLinks
+      ?? (suggestion.sourceRef ? [suggestion.sourceRef] : []);
+    const workOrderResult = await ctx.runMutation(api.workOrders.create, {
+      projectId: suggestion.projectId,
+      idempotencyKey: `meta-loop:${args.suggestionId}:work-order`,
+      title: `Improve: ${suggestion.title}`,
+      desiredOutcome: suggestion.summary,
+      context: `Evidence count: ${suggestion.evidenceCount ?? 1}. Confidence: ${suggestion.confidence ?? 0.5}. Sources: ${evidenceLinks.join(", ")}.`,
+      workflowId: "feature-dev",
+      repository: project.githubRepo,
+      branchStrategy: "isolated-worktree",
+      priority: suggestion.impact === "CRITICAL" ? 1 : 2,
+      riskLevel: suggestion.kind === "RULE_RETIRE" ? "HIGH" : "MEDIUM",
+      requestedBy: actorId,
+      isMutating: true,
+      requiredApprovals: ["IMPLEMENTATION"],
+      acceptanceCriteria: [
+        { id: "implemented", title: "Improvement implemented", verificationMethod: "TEST", status: "PENDING" },
+        { id: "measured", title: "Outcome measured against baseline", verificationMethod: "CHECKLIST", status: "PENDING" },
+      ],
+      constraints: ["Use an isolated worktree", "Preserve failed evidence", "Do not bypass approval or verification"],
+      sourceOfTruthRefs: evidenceLinks.map((location, index) => ({
+        kind: location.startsWith("http") ? "URL" as const : "DOC" as const,
+        label: `Meta-loop evidence ${index + 1}`,
+        location,
+      })),
+      state: "AWAITING_APPROVAL",
+      approvalStatus: "PENDING",
+      metadata: { metaLoopSuggestionId: args.suggestionId, dedupeKey: suggestion.dedupeKey },
+    });
+    const workOrderId = workOrderResult.workOrder._id;
+    const taskResult = await ctx.runMutation(api.tasks.create, {
+      projectId: suggestion.projectId,
+      workOrderId,
+      title: suggestion.title,
+      description: suggestion.summary,
+      type: "ENGINEERING",
+      priority: suggestion.impact === "CRITICAL" ? 1 : 2,
+      idempotencyKey: `meta-loop:${args.suggestionId}:task`,
+      source: "MISSION_PROMPT",
+      sourceRef: String(args.suggestionId),
+      createdBy: "HUMAN",
+      createdByRef: actorId,
+      metadata: { metaLoopSuggestionId: args.suggestionId },
+    });
+    if (!taskResult.task) throw new Error("Governed implementation Task could not be created");
+    await ctx.runMutation(internal.factory.metaLoop.applyResolution, {
+      suggestionId: args.suggestionId,
+      status: "WORK_ORDERED",
+      actorId,
+      workOrderId,
+      taskId: taskResult.task._id,
+    });
+    return { suggestionId: String(args.suggestionId), workOrderId: String(workOrderId), taskId: String(taskResult.task._id) };
+  },
+});
+
+export const ingestWorkflowFailure = internalMutation({
+  args: { workflowRunId: v.id("workflowRuns") },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.workflowRunId);
+    if (!run || run.status !== "FAILED" || !run.projectId) return { created: false };
+    const failedStep = run.steps.find((step) => step.status === "FAILED");
+    const surface = `${run.workflowId}:${failedStep?.stepId ?? "run"}`;
+    const dedupeKey = `workflow-failure:${run.projectId}:${surface}`;
+    const existing = await ctx.db.query("metaLoopSuggestions")
+      .withIndex("by_dedupe", (q) => q.eq("dedupeKey", dedupeKey))
+      .first();
+    if (existing) {
+      const sourceLink = `workflow-run:${run.runId}`;
+      const sourceLinks = existing.sourceLinks ?? [];
+      if (sourceLinks.includes(sourceLink)) {
+        return { created: false, suggestionId: existing._id, reason: "duplicate-signal" };
+      }
+      await ctx.db.patch(existing._id, {
+        evidenceCount: (existing.evidenceCount ?? 1) + 1,
+        sourceLinks: [...sourceLinks, sourceLink],
       });
-      await ctx.db.insert("activities", {
-        projectId: row.projectId,
-        actorType: "HUMAN",
-        actorId: args.actorId ?? "meta-loop",
-        action: "META_LOOP_EVAL_SCENARIO_ACCEPTED",
-        description: `${lineage}: ${row.title}`,
-        targetType: "metaLoopSuggestion",
-        targetId: args.suggestionId,
-      });
+      return { created: false, suggestionId: existing._id };
     }
-    if (
-      args.action === "ACCEPT" &&
-      row.kind === "DELEGATION" &&
-      row.payload?.type === "REPETITIVE_TASK_AUTOMATION"
-    ) {
-      const existingDefinition = await ctx.db
-        .query("automationDefinitions")
-        .withIndex("by_source_suggestion", (q) => q.eq("sourceSuggestionId", row._id))
-        .first();
-      if (!existingDefinition && row.projectId) {
-        const now = Date.now();
-        await ctx.db.insert("automationDefinitions", {
+    const id = await ctx.db.insert("metaLoopSuggestions", {
+      projectId: run.projectId,
+      kind: "EVAL_SCENARIO",
+      title: `Prevent repeat failure in ${surface}`,
+      summary: sanitizeMetaSignalText(failedStep?.error ?? run.failureReason ?? `Workflow ${run.runId} failed`),
+      status: "OPEN",
+      sourceRef: `workflow-run:${run.runId}`,
+      sourceLinks: [`workflow-run:${run.runId}`],
+      dedupeKey,
+      evidenceCount: 1,
+      confidence: 0.75,
+      impact: "HIGH",
+      affectedSurface: surface,
+      payload: { type: "WORKFLOW_FAILURE", workflowRunId: run._id, workOrderId: run.workOrderId, failedStepId: failedStep?.stepId },
+      createdAt: Date.now(),
+    });
+    return { created: true, suggestionId: id };
+  },
+});
+
+export const ingestSignal = internalMutation({
+  args: {
+    projectId: v.id("projects"),
+    kind: kindArg,
+    signalClass: v.string(),
+    target: v.string(),
+    title: v.string(),
+    summary: v.string(),
+    sourceRef: v.string(),
+    sourceLinks: v.array(v.string()),
+    evidenceCount: v.optional(v.number()),
+    confidence: v.number(),
+    impact: v.string(),
+    payload: v.optional(v.any()),
+  },
+  handler: async (ctx, args) => {
+    const dedupeKey = `signal:${args.projectId}:${args.signalClass}:${args.target}`;
+    const existing = await ctx.db.query("metaLoopSuggestions")
+      .withIndex("by_dedupe", (q) => q.eq("dedupeKey", dedupeKey))
+      .first();
+    if (existing) {
+      const newLinks = args.sourceLinks.filter((link) => !(existing.sourceLinks ?? []).includes(link));
+      if (newLinks.length === 0) return { created: false, suggestionId: existing._id, reason: "duplicate-signal" };
+      await ctx.db.patch(existing._id, {
+        sourceLinks: [...(existing.sourceLinks ?? []), ...newLinks],
+        evidenceCount: (existing.evidenceCount ?? 1) + (args.evidenceCount ?? newLinks.length),
+        confidence: Math.max(existing.confidence ?? 0, args.confidence),
+      });
+      return { created: false, suggestionId: existing._id, reason: "evidence-aggregated" };
+    }
+    const id = await ctx.db.insert("metaLoopSuggestions", {
+      projectId: args.projectId,
+      kind: args.kind,
+      title: args.title,
+      summary: sanitizeMetaSignalText(args.summary),
+      status: "OPEN",
+      sourceRef: args.sourceRef,
+      sourceLinks: args.sourceLinks,
+      dedupeKey,
+      evidenceCount: args.evidenceCount ?? args.sourceLinks.length,
+      confidence: args.confidence,
+      impact: args.impact,
+      affectedSurface: args.target,
+      payload: { ...(args.payload ?? {}), signalClass: args.signalClass },
+      createdAt: Date.now(),
+    });
+    return { created: true, suggestionId: id };
+  },
+});
+
+export const recordMeasurement = mutation({
+  args: {
+    suggestionId: v.id("metaLoopSuggestions"),
+    baseline: v.number(),
+    result: v.number(),
+    target: v.number(),
+    unit: v.string(),
+    evidenceRefs: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get(args.suggestionId);
+    if (!row) throw new Error("Suggestion not found");
+    if (!row.workOrderId) throw new Error("Measurement requires linked governed work");
+    if (args.evidenceRefs.length === 0) throw new Error("Measurement evidence is required");
+    const verdict = args.result >= args.target ? "MET" as const : "MISSED" as const;
+    await ctx.db.patch(row._id, {
+      status: verdict === "MET" ? "EFFECTIVE" : "VERIFIED",
+      measurement: { ...args, verdict, measuredAt: Date.now() },
+    });
+    if (verdict === "MISSED") {
+      const dedupeKey = `${row.dedupeKey ?? row._id}:measurement-missed`;
+      const existing = await ctx.db.query("metaLoopSuggestions").withIndex("by_dedupe", (q) => q.eq("dedupeKey", dedupeKey)).first();
+      if (!existing) {
+        await ctx.db.insert("metaLoopSuggestions", {
           projectId: row.projectId,
-          sourceCandidateId: row._id,
-          sourceSuggestionId: row._id,
-          definitionVersion: 1,
-          name: row.title.replace(/^Automation proposal:\s*/, ""),
-          description: row.summary,
-          ownerId: "operator",
-          sourcePattern: row.payload.pattern,
-          workflowId: "automation-execution",
-          workflowVersion: "v1",
-          triggerType: "SCHEDULE",
-          triggerConfig: {
-            cron: row.payload.recommendedSchedule ?? "0 8 * * 1",
-            timezone: "UTC",
-          },
-          trigger: "SCHEDULE",
-          schedule: row.payload.recommendedSchedule ?? "0 8 * * 1",
-          scope: String(row.projectId),
-          repositoryIds: [],
-          environmentIds: ["local"],
-          autonomyLevel: "LEVEL_1",
-          isMutating: false,
-          riskLevel: "LOW",
-          requiredApprovalTypes: ["OPERATOR"],
-          verificationContract: {
-            independent: true,
-            receiptRequired: true,
-          },
-          evidenceRequirements: ["Operator-reviewed verification receipt"],
-          maxDurationSeconds: 900,
-          maxRetries: 0,
-          maxCostUsd: 1,
-          concurrencyLimit: 1,
-          idempotencyStrategy: "definition-version:trigger-window",
-          overlapPolicy: "SKIP",
-          catchUpPolicy: "SKIP_MISSED",
-          status: "DISABLED",
-          reliabilityState: "PROBATION",
-          health: "UNKNOWN",
-          requiresHumanApproval: true,
-          requiresVerificationReceipt: true,
-          enabled: false,
-          createdAt: now,
-          updatedAt: now,
+          kind: "MAINTENANCE",
+          title: `Continue improvement: ${row.title}`,
+          summary: `Measured ${args.result}${args.unit} against target ${args.target}${args.unit}. One bounded follow-up is required.`,
+          status: "OPEN",
+          sourceRef: `meta-loop:${row._id}:measurement`,
+          sourceLinks: args.evidenceRefs,
+          dedupeKey,
+          evidenceCount: args.evidenceRefs.length,
+          confidence: 0.9,
+          impact: row.impact,
+          affectedSurface: row.affectedSurface,
+          createdAt: Date.now(),
         });
       }
     }
-    return args.suggestionId;
+    return { verdict };
+  },
+});
+
+export const transitionLifecycle = mutation({
+  args: {
+    suggestionId: v.id("metaLoopSuggestions"),
+    toStatus: v.union(v.literal("IMPLEMENTED"), v.literal("VERIFIED"), v.literal("ROLLED_BACK"), v.literal("RETIRED")),
+    actorId: v.string(),
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get(args.suggestionId);
+    if (!row) throw new Error("Suggestion not found");
+    const allowed: Record<string, string[]> = {
+      WORK_ORDERED: ["IMPLEMENTED", "ROLLED_BACK", "RETIRED"],
+      IMPLEMENTED: ["VERIFIED", "ROLLED_BACK", "RETIRED"],
+      VERIFIED: ["ROLLED_BACK", "RETIRED"],
+      EFFECTIVE: ["ROLLED_BACK", "RETIRED"],
+    };
+    if (!(allowed[row.status] ?? []).includes(args.toStatus)) {
+      throw new Error(`Meta-loop lifecycle cannot transition from ${row.status} to ${args.toStatus}`);
+    }
+    const reason = args.reason?.trim();
+    if (["ROLLED_BACK", "RETIRED"].includes(args.toStatus) && !reason) {
+      throw new Error(`${args.toStatus} requires a retained reason`);
+    }
+    if (args.toStatus === "IMPLEMENTED") {
+      const workOrder = row.workOrderId ? await ctx.db.get(row.workOrderId) : null;
+      if (!workOrder || workOrder.state !== "DONE") throw new Error("Implemented status requires an accepted WorkOrder");
+    }
+    await ctx.db.patch(row._id, { status: args.toStatus, resolvedAt: Date.now(), dismissalReason: reason });
+    await ctx.db.insert("activities", {
+      projectId: row.projectId,
+      actorType: "HUMAN",
+      actorId: args.actorId,
+      action: `META_LOOP_${args.toStatus}`,
+      description: `${row.title} transitioned to ${args.toStatus}${reason ? `: ${reason}` : ""}`,
+      targetType: "META_LOOP_SUGGESTION",
+      targetId: row._id,
+    });
+    return await ctx.db.get(row._id);
   },
 });
 
@@ -204,16 +420,28 @@ export const create = mutation({
     summary: v.string(),
     sourceRef: v.optional(v.string()),
     packageId: v.optional(v.id("contextPackages")),
+    sourceLinks: v.optional(v.array(v.string())),
+    evidenceCount: v.optional(v.number()),
+    confidence: v.optional(v.number()),
+    impact: v.optional(v.string()),
+    affectedSurface: v.optional(v.string()),
+    dedupeKey: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     return ctx.db.insert("metaLoopSuggestions", {
       projectId: args.projectId,
       kind: args.kind,
       title: args.title,
-      summary: args.summary,
+      summary: sanitizeMetaSignalText(args.summary),
       status: "OPEN",
       sourceRef: args.sourceRef,
       packageId: args.packageId,
+      sourceLinks: args.sourceLinks,
+      evidenceCount: args.evidenceCount ?? 1,
+      confidence: args.confidence,
+      impact: args.impact,
+      affectedSurface: args.affectedSurface,
+      dedupeKey: args.dedupeKey,
       createdAt: Date.now(),
     });
   },
