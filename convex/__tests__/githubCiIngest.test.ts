@@ -14,6 +14,16 @@ describe("githubCiIngest", () => {
     expect(mapped.testFailCount).toBe(1);
   });
 
+  it("does not report pass while any GitHub check is still pending", () => {
+    const mapped = mapCheckRunsToSignals([
+      { name: "Vercel Preview", status: "completed", conclusion: "success" },
+      { name: "unit-tests", status: "in_progress", conclusion: null },
+      { name: "build", status: "queued", conclusion: null },
+    ]);
+
+    expect(mapped.ciStatus).toBe("PENDING");
+  });
+
   it("fails closed when a webhook signature or secret is missing", async () => {
     expect(await verifyGithubWebhookSignature("{}", null, "secret")).toBe(false);
     expect(await verifyGithubWebhookSignature("{}", "sha256=abc", "")).toBe(false);

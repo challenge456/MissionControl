@@ -93,6 +93,12 @@ the retry exercised idempotency. The source was corrected to the existing
 governed `MISSION_PROMPT` provenance; replay created one Task and reused the one
 WorkOrder. This failure and correction are retained here rather than hidden.
 
+The first real GitHub PR ingest also classified the head as passing when one
+completed check had succeeded but required jobs were still queued or running.
+The reducer now prioritizes blocking conclusions, then any pending job, and only
+reports `PASS` after every observed job has a successful, skipped, or neutral
+terminal conclusion. A regression test retains this release-gate finding.
+
 ## Runtime Configuration Boundary
 
 The signed webhook implementation is complete and locally verified. A durable
