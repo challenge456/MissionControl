@@ -10,3 +10,22 @@ export function sanitizeMetaSignalText(value: string, maxLength = 1_000): string
     .trim()
     .slice(0, maxLength);
 }
+
+export function buildMetaMeasurement(input: {
+  baseline: number;
+  result: number;
+  target: number;
+  unit: string;
+  evidenceRefs: string[];
+}, measuredAt = Date.now()) {
+  const verdict = input.result >= input.target ? "MET" as const : "MISSED" as const;
+  return {
+    baseline: input.baseline,
+    result: input.result,
+    target: input.target,
+    unit: input.unit,
+    evidenceRefs: input.evidenceRefs,
+    verdict,
+    measuredAt,
+  };
+}

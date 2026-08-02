@@ -118,6 +118,13 @@ the block rather than assuming the immediately previous evaluation failed. This
 keeps delayed or repeated passing events safe while allowing a later corrected
 head to recover the WorkOrder.
 
+Post-merge measurement then exposed a schema-safe failure: the mutation spread
+the top-level `suggestionId` argument into the nested measurement record. Convex
+rejected the write and preserved the suggestion in `VERIFIED`. Measurement
+serialization now explicitly selects only baseline, result, target, unit,
+evidence references, verdict, and timestamp; a regression test prohibits the
+foreign identifier from reappearing.
+
 ## Runtime Configuration Boundary
 
 The signed webhook implementation is complete and locally verified. A durable

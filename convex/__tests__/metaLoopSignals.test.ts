@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sanitizeMetaSignalText } from "../lib/metaLoopSignals";
+import { buildMetaMeasurement, sanitizeMetaSignalText } from "../lib/metaLoopSignals";
 
 describe("meta-loop signal safety", () => {
   it("keeps evidence while removing instruction-like external content", () => {
@@ -9,5 +9,26 @@ describe("meta-loop signal safety", () => {
 
   it("removes control characters and bounds retained text", () => {
     expect(sanitizeMetaSignalText(`bad\u0000${"x".repeat(2_000)}`).length).toBe(1_000);
+  });
+
+  it("serializes only schema-valid measurement fields", () => {
+    const measurement = buildMetaMeasurement({
+      baseline: 0,
+      result: 1,
+      target: 1,
+      unit: "successful recovery",
+      evidenceRefs: ["pr:57"],
+    }, 123);
+
+    expect(measurement).toEqual({
+      baseline: 0,
+      result: 1,
+      target: 1,
+      unit: "successful recovery",
+      evidenceRefs: ["pr:57"],
+      verdict: "MET",
+      measuredAt: 123,
+    });
+    expect(measurement).not.toHaveProperty("suggestionId");
   });
 });
