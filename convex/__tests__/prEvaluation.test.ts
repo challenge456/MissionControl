@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { correctionRequired, mergeAuthoritySatisfied, prEvaluationKey } from "../lib/prEvaluation";
+import { ciBlockCanRecover, correctionRequired, mergeAuthoritySatisfied, prEvaluationKey } from "../lib/prEvaluation";
 
 describe("PR outer-loop evaluation", () => {
   it("identifies one evaluation per normalized PR head", () => {
@@ -17,5 +17,26 @@ describe("PR outer-loop evaluation", () => {
     expect(mergeAuthoritySatisfied({ ciStatus: "PASS", gatesPass: true, approvalStatus: "PENDING", humanConfirmed: true })).toBe(false);
     expect(mergeAuthoritySatisfied({ ciStatus: "PASS", gatesPass: true, approvalStatus: "APPROVED", humanConfirmed: false })).toBe(false);
     expect(mergeAuthoritySatisfied({ ciStatus: "PASS", gatesPass: true, approvalStatus: "APPROVED", humanConfirmed: true })).toBe(true);
+  });
+
+  it("clears only the exact prior-head CI block after a newer head passes", () => {
+    expect(ciBlockCanRecover({
+      ciStatus: "PASS",
+      blockingIssue: "Required CI failed for old-head",
+      priorHeadSha: "old-head",
+      headSha: "new-head",
+    })).toBe(true);
+    expect(ciBlockCanRecover({
+      ciStatus: "PASS",
+      blockingIssue: "Operator blocked this WorkOrder",
+      priorHeadSha: "old-head",
+      headSha: "new-head",
+    })).toBe(false);
+    expect(ciBlockCanRecover({
+      ciStatus: "PASS",
+      blockingIssue: "Required CI failed for old-head",
+      priorHeadSha: "old-head",
+      headSha: "old-head",
+    })).toBe(false);
   });
 });

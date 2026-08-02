@@ -6,6 +6,7 @@ import {
   buildMutationTestingReport,
   type PrCheckSignals,
 } from "../lib/harnessPrChecks";
+import { ciBlockCanRecover } from "../lib/prEvaluation";
 
 export const applyCiIngest = internalMutation({
   args: {
@@ -107,6 +108,11 @@ export const applyCiIngest = internalMutation({
           .withIndex("by_pr_head", (q) => q.eq("prUrl", args.prUrl).eq("headSha", args.headSha))
           .first()
       : previousRows.find((row) => !row.headSha);
+    const priorEvaluation = existing?.previousEvaluationId
+      ? await ctx.db.get(existing.previousEvaluationId)
+      : previous && previous._id !== existing?._id
+        ? previous
+        : undefined;
     const releaseDeploymentId = args.releaseDeploymentId ?? existing?.releaseDeploymentId ?? previous?.releaseDeploymentId;
 
     const doc = {
@@ -155,6 +161,37 @@ export const applyCiIngest = internalMutation({
           blockingIssue: `Required CI failed for ${args.headSha ?? args.prUrl}`,
           requiredHumanAction: "Start one bounded correction Attempt on this WorkOrder after reviewing the failed checks.",
           updatedAt: now,
+        });
+      }
+    }
+    if (linkedWorkOrderId && doc.ciStatus === "PASS") {
+      const workOrder = await ctx.db.get(linkedWorkOrderId);
+      if (workOrder && ciBlockCanRecover({
+        ciStatus: doc.ciStatus,
+        blockingIssue: workOrder.blockingIssue,
+        priorHeadSha: priorEvaluation?.headSha,
+        headSha: doc.headSha,
+      })) {
+        await ctx.db.patch(linkedWorkOrderId, {
+          state: "AWAITING_APPROVAL",
+          blockingIssue: undefined,
+          requiredHumanAction: "Review the passing replacement head and decide merge approval.",
+          updatedAt: now,
+        });
+        await ctx.db.insert("workOrderEvents", {
+          tenantId: workOrder.tenantId,
+          projectId: workOrder.projectId,
+          workOrderId: workOrder._id,
+          eventType: "STATE_SYNCED",
+          actorType: "SYSTEM",
+          summary: `Passing CI on ${doc.headSha} cleared the prior-head CI block`,
+          timestamp: now,
+          metadata: {
+            priorEvaluationId: priorEvaluation?._id,
+            evaluationId: id,
+            priorHeadSha: priorEvaluation?.headSha,
+            headSha: doc.headSha,
+          },
         });
       }
     }

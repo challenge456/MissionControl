@@ -11,6 +11,17 @@ export function correctionRequired(input: {
   return Boolean(input.headSha && input.headSha !== input.priorHeadSha);
 }
 
+export function ciBlockCanRecover(input: {
+  ciStatus: "PASS" | "FAIL" | "PENDING" | "UNKNOWN";
+  blockingIssue?: string;
+  priorHeadSha?: string;
+  headSha?: string;
+}): boolean {
+  return input.ciStatus === "PASS"
+    && Boolean(input.headSha && input.priorHeadSha && input.headSha !== input.priorHeadSha)
+    && input.blockingIssue === `Required CI failed for ${input.priorHeadSha}`;
+}
+
 export function mergeAuthoritySatisfied(input: {
   ciStatus: "PASS" | "FAIL" | "PENDING" | "UNKNOWN";
   gatesPass: boolean;

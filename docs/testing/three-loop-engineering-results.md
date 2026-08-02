@@ -106,6 +106,12 @@ incremented from 2 to 3 so client and backend changes deploy atomically. The
 failed head remains outer-loop evidence and the correction is evaluated as a
 new head.
 
+Terminal ingestion retained both evaluations but initially left the WorkOrder
+blocked by the failed head. Recovery now requires a newer passing head and an
+exact match to the prior-head CI blocking reason; it cannot clear an operator or
+unrelated product block. The transition is retained as a `STATE_SYNCED` event
+and returns the WorkOrder to explicit merge approval.
+
 ## Runtime Configuration Boundary
 
 The signed webhook implementation is complete and locally verified. A durable
