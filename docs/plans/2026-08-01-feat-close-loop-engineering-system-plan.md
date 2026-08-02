@@ -1,7 +1,7 @@
 ---
 title: "feat: Close the inner, outer, and meta engineering loops"
 type: feat
-status: active
+status: complete
 date: 2026-08-01
 ---
 
@@ -225,42 +225,42 @@ page without visiting the database or interpreting contradictory states.
 
 ### Inner loop
 
-- [ ] Valid approved work creates an isolated implementation Attempt.
-- [ ] Unapproved, stale, cross-workspace, or repository-escaping work is denied.
-- [ ] A failed check is retained and produces at most one bounded correction
+- [x] Valid approved work creates an isolated implementation Attempt.
+- [x] Unapproved, stale, cross-workspace, or repository-escaping work is denied.
+- [x] A failed check is retained and produces at most one bounded correction
   Attempt.
-- [ ] File changes and targeted checks are visible as evidence.
-- [ ] Cancellation, timeout, cost limit, and max-attempt stop conditions work.
-- [ ] Refresh and worker restart do not duplicate execution.
+- [x] File changes and targeted checks are visible as evidence.
+- [x] Cancellation, timeout, cost limit, and max-attempt stop conditions work.
+- [x] Refresh and worker restart do not duplicate execution.
 
 ### Outer loop
 
-- [ ] A real PR is linked to its WorkOrder and current Attempt.
-- [ ] Signed PR and check-run webhooks update the correct head SHA.
-- [ ] Failed CI or verified review findings prevent merge and request correction.
-- [ ] Passing checks do not bypass required human approval.
-- [ ] Merge actor, commit, PR, timestamp, and verification receipts persist.
-- [ ] Duplicate webhooks display one evaluation/event.
+- [x] A real PR is linked to its WorkOrder and current Attempt.
+- [x] Signed PR and check-run webhooks update the correct head SHA.
+- [x] Failed CI or verified review findings prevent merge and request correction.
+- [x] Passing checks do not bypass required human approval.
+- [x] Merge actor, commit, PR, timestamp, and verification receipts persist.
+- [x] Duplicate webhooks display one evaluation/event.
 
 ### Meta loop
 
-- [ ] Empty production workspaces remain truthfully empty.
-- [ ] One real failure produces at most one evidence-linked suggestion.
-- [ ] Rejection requires and retains a reason.
-- [ ] Acceptance creates governed work rather than direct policy activation.
-- [ ] Applied improvements have baseline, result, target, evidence, and verdict.
-- [ ] A failed measurement can create one bounded next cycle.
-- [ ] Rules and automations can be rolled back or retired without erasing history.
+- [x] Empty production workspaces remain truthfully empty.
+- [x] One real failure produces at most one evidence-linked suggestion.
+- [x] Rejection requires and retains a reason.
+- [x] Acceptance creates governed work rather than direct policy activation.
+- [x] Applied improvements have baseline, result, target, evidence, and verdict.
+- [x] A failed measurement can create one bounded next cycle.
+- [x] Rules and automations can be rolled back or retired without erasing history.
 
 ### End-to-end
 
-- [ ] A completed research graph projects into its Loop cycle exactly once.
-- [ ] One approved recommendation traverses inner, outer, and meta loops.
-- [ ] Invalid state transitions are blocked.
-- [ ] Counts, progress, cost, and evidence lineage update reactively.
-- [ ] State persists after browser refresh and process restart.
-- [ ] No direct database step is required.
-- [ ] No major finding exists only in chat.
+- [x] A completed research graph projects into its Loop cycle exactly once.
+- [x] One approved recommendation traverses inner, outer, and meta loops.
+- [x] Invalid state transitions are blocked.
+- [x] Counts, progress, cost, and evidence lineage update reactively.
+- [x] State persists after browser refresh and process restart.
+- [x] No direct database step is required.
+- [x] No major finding exists only in chat.
 
 ## Focused Verification Strategy
 

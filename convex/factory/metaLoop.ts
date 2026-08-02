@@ -5,7 +5,7 @@
 import { v } from "convex/values";
 import { action, internalMutation, mutation, query } from "../_generated/server";
 import { api, internal } from "../_generated/api";
-import { sanitizeMetaSignalText } from "../lib/metaLoopSignals";
+import { buildMetaMeasurement, sanitizeMetaSignalText } from "../lib/metaLoopSignals";
 
 const kindArg = v.union(
   v.literal("VERIFIER"),
@@ -341,10 +341,11 @@ export const recordMeasurement = mutation({
     if (!row) throw new Error("Suggestion not found");
     if (!row.workOrderId) throw new Error("Measurement requires linked governed work");
     if (args.evidenceRefs.length === 0) throw new Error("Measurement evidence is required");
-    const verdict = args.result >= args.target ? "MET" as const : "MISSED" as const;
+    const measurement = buildMetaMeasurement(args);
+    const { verdict } = measurement;
     await ctx.db.patch(row._id, {
       status: verdict === "MET" ? "EFFECTIVE" : "VERIFIED",
-      measurement: { ...args, verdict, measuredAt: Date.now() },
+      measurement,
     });
     if (verdict === "MISSED") {
       const dedupeKey = `${row.dedupeKey ?? row._id}:measurement-missed`;

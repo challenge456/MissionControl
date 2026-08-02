@@ -4,7 +4,9 @@
 **Research workspace:** Software Factory Research Lab (`sn71gskbdemgf4z1trt9zdmm5h8bde69`)  
 **Verification workspace:** Software Factory Demo (`sn7dtgyn9pt0gq43x2wpw5mwxn8b7adt`)  
 **Branch:** `codex/recover-software-factory-research-lab`  
-**Result:** Local release gate passed; GitHub PR/CI/merge pending at time of this record.
+**Result:** Complete. Implementation and recovery PRs merged to `main`; post-merge
+verification, acceptance, and meta measurement passed. The schema-safe
+measurement correction is delivered by PR #58.
 
 ## Product Result
 
@@ -84,6 +86,11 @@ view, not a competing primary product.
 | Meta acceptance | Accepted proposal creates governed work | Pass | Task `wh7fazap3ct6hzfc12ttgmp1kd8bqe7f`; WorkOrder `yh7aygkkxryzj7ft65yq6czec58bq3ys` |
 | Signed webhook | Invalid request denied; valid signature accepted | Pass | HTTP 401 / 200; local test secret removed after test |
 | Unified UI | One Inner/Outer/Meta surface | Pass | Chromium screenshot `phase-4/unified-loop-engineering.png`; no page errors |
+| Failed-head correction | Failed CI blocks; newer passing head recovers | Pass | Failed evaluation `zh712qbeqyaxw85x0n1k27664s8bqg8z`; passing evaluation `zh74jwc8stmr0gf9ytcxwc21hh8bp8h8`; event `y57721s4xw9tk96d1g94n86bf98bpks7` |
+| Governed merge | Approval and passing gates required | Pass | PR #57; evaluation `zh7fpyq1zb67pxawr8eb9e3sr18bpg46`; merge `0a4ebdbd92e69179efd46811b45ca20042ff3692` |
+| Post-merge verification | Receipts and acceptance persist | Pass | Run `x3mkmu47`; receipts `xh7382m8p998kg4kywrt7g7ep98bp5j6`, `xh79rgfbg4qk0jxgfvkas9cse58bq9xb`; WorkOrder `DONE` |
+| Meta measurement | Verified improvement becomes effective | Pass | Suggestion `zd792pzksd3mfwxncpf7xs0hq58bprxt`; baseline 0, result 1, target 1, verdict `MET` |
+| Final Mission Control Docs | Completed result renders in restored Research Lab | Pass | Chromium screenshot `phase-5/final-docs-and-measurement.png`; final status and lineage visible |
 
 ## Failure Found During Verification
 
@@ -117,6 +124,13 @@ was deployed. Recovery therefore resolves the exact failed evaluation named by
 the block rather than assuming the immediately previous evaluation failed. This
 keeps delayed or repeated passing events safe while allowing a later corrected
 head to recover the WorkOrder.
+
+Post-merge measurement then exposed a schema-safe failure: the mutation spread
+the top-level `suggestionId` argument into the nested measurement record. Convex
+rejected the write and preserved the suggestion in `VERIFIED`. Measurement
+serialization now explicitly selects only baseline, result, target, unit,
+evidence references, verdict, and timestamp; a regression test prohibits the
+foreign identifier from reappearing.
 
 ## Runtime Configuration Boundary
 
@@ -153,13 +167,16 @@ does not claim that external configuration exists.
 - Chromium persistence and unified-loop journeys: passed with screenshots and no
   current page errors after a clean reload.
 
-## Release Gate
+## Release Result
 
-The remaining external release sequence is deliberately performed after this
-record is committed so its identifiers are real:
-
-- run repository typecheck/build and the focused release suite;
-- create the GitHub PR and ingest its real head SHA;
-- wait for required GitHub checks;
-- address only real regressions;
-- merge explicitly, record the merge evidence, and verify `main` remotely.
+- PR #56 merged the three-loop implementation after 9/9 GitHub checks passed.
+- PR #57 merged failed-head recovery after 9/9 GitHub checks passed.
+- PR #58 carries the schema-safe measurement serializer and this final record.
+- Merge approval `ks7898k3pqr6s17rg1ncqjfzmd8bpb9w` retains operator,
+  reason, PR, head SHA, and timestamp.
+- Merge commit `0a4ebdbd92e69179efd46811b45ca20042ff3692` was recorded
+  in Mission Control and verified reachable from `origin/main`.
+- Post-merge quality-audit run `x3mkmu47` passed both criterion receipts;
+  WorkOrder `yh7aygkkxryzj7ft65yq6czec58bq3ys` is `DONE`.
+- Meta suggestion `zd792pzksd3mfwxncpf7xs0hq58bprxt` is `EFFECTIVE`
+  with a retained `MET` measurement.
