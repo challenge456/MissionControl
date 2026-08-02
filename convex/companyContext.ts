@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import {
   COMPANY_PERMISSIONS,
+  listAccessibleWorkspaces,
   listCompanyMemberships,
   requireCompanyAccess,
   requireCompanyPermission,
@@ -42,12 +43,7 @@ export const getSession = query({
 export const listWorkspaces = query({
   args: { tenantId: v.id("tenants") },
   handler: async (ctx, args) => {
-    await requireCompanyAccess(ctx, args.tenantId);
-    return await ctx.db
-      .query("projects")
-      .withIndex("by_tenant", (q) => q.eq("tenantId", args.tenantId))
-      .order("asc")
-      .collect();
+    return await listAccessibleWorkspaces(ctx, args.tenantId);
   },
 });
 
@@ -67,11 +63,9 @@ export const getCompanySummary = query({
   args: { tenantId: v.id("tenants") },
   handler: async (ctx, args) => {
     const membership = await requireCompanyAccess(ctx, args.tenantId);
-    const [workspaces, operators, repositories] = await Promise.all([
-      ctx.db
-        .query("projects")
-        .withIndex("by_tenant", (q) => q.eq("tenantId", args.tenantId))
-        .collect(),
+    const workspaces = await listAccessibleWorkspaces(ctx, args.tenantId);
+    const workspaceIds = new Set(workspaces.map((workspace) => workspace._id));
+    const [operators, repositories] = await Promise.all([
       ctx.db
         .query("operators")
         .withIndex("by_tenant", (q) => q.eq("tenantId", args.tenantId))
@@ -81,6 +75,7 @@ export const getCompanySummary = query({
         .withIndex("by_tenant", (q) => q.eq("tenantId", args.tenantId))
         .collect(),
     ]);
+    const visibleRepositories = repositories.filter((repository) => workspaceIds.has(repository.projectId));
     return {
       company: membership.tenant,
       roleNames: membership.roleNames,
@@ -89,7 +84,7 @@ export const getCompanySummary = query({
       counts: {
         activeWorkspaces: workspaces.filter((workspace) => workspace.status !== "ARCHIVED").length,
         activeOperators: operators.filter((operator) => operator.active).length,
-        repositories: repositories.length,
+        repositories: visibleRepositories.length,
       },
     };
   },

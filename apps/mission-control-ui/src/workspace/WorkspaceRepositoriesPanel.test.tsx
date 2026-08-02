@@ -5,6 +5,7 @@ import { WorkspaceRepositoriesPanel } from "./WorkspaceRepositoriesPanel";
 const mocks = vi.hoisted(() => ({
   repositories: [] as any[],
   scopes: [] as any[],
+  structure: { teams: [{ _id: "team-1", name: "Checkout", status: "ACTIVE" }], memberships: [], members: [], repositories: [], assignmentCount: 0, canManageTeams: true },
   setDefault: vi.fn(),
   backfill: vi.fn(),
 }));
@@ -20,6 +21,9 @@ vi.mock("../../../../convex/_generated/api", () => ({
       createRepositoryCodeScope: "projects.createRepositoryCodeScope",
       archiveRepositoryCodeScope: "projects.archiveRepositoryCodeScope",
     },
+    softwareFactoryControlPlane: {
+      listWorkspaceStructure: "control-plane.listWorkspaceStructure",
+    },
   },
 }));
 
@@ -27,6 +31,7 @@ vi.mock("convex/react", () => ({
   useQuery: (query: string) => {
     if (query === "projects.listRepositories") return mocks.repositories;
     if (query === "projects.listCodeScopes") return mocks.scopes;
+    if (query === "control-plane.listWorkspaceStructure") return mocks.structure;
     return undefined;
   },
   useMutation: (mutation: string) => {
@@ -93,6 +98,7 @@ describe("WorkspaceRepositoriesPanel", () => {
         name: "Buyer portal",
         includePaths: ["apps/buyer-portal"],
         owningTeam: "Checkout",
+        owningTeamId: "team-1",
         allowedEnvironments: ["LOCAL", "CLOUD"],
         verificationPolicy: "Unit + browser",
       },

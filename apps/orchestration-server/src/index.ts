@@ -69,6 +69,10 @@ if (!CONVEX_URL) {
 // ============================================================================
 
 const client = new ConvexHttpClient(CONVEX_URL);
+const CONVEX_SERVICE_AUTH_TOKEN = process.env.CONVEX_SERVICE_AUTH_TOKEN?.trim();
+if (CONVEX_SERVICE_AUTH_TOKEN) {
+  client.setAuth(CONVEX_SERVICE_AUTH_TOKEN);
+}
 const coordinator = new CoordinatorLoop({ pollIntervalMs: TICK_INTERVAL_MS });
 const activeAgents = new Map<string, AgentLifecycle>();
 const memoryManagers = new Map<string, MemoryManager>();
@@ -376,6 +380,12 @@ app.post("/workorders/:workOrderId/dispatch", async (c) => {
         body.idempotencyKey ??
         `orch-dispatch:${workOrderId}:${body.taskId ?? "legacy"}:${body.retryOfWorkflowRunId ?? "start"}`,
       runtime: body.runtime ?? "Hono Orchestration Server",
+      repositoryId: body.repositoryId,
+      codeScopeIds: body.codeScopeIds,
+      owningTeamId: body.owningTeamId,
+      ownerMemberId: body.ownerMemberId,
+      executionEnvironment: body.executionEnvironment,
+      executorHostId: body.executorHostId,
       model: body.model,
       worktree: body.worktree,
       retryOfWorkflowRunId: body.retryOfWorkflowRunId,
@@ -391,7 +401,32 @@ app.post("/workorders/:workOrderId/dispatch", async (c) => {
         409
       );
     }
+    if ((result as any)?.reason === "scope-denied") {
+      return c.json(
+        {
+          success: false,
+          error: "Repository, code-scope, team, owner, environment, or host policy denied this dispatch",
+          result,
+        },
+        403
+      );
+    }
     const run = (result as any)?.run;
+    let executorBinding = null;
+    if (body.executorHostId && body.executionEnvironment && run?._id) {
+      executorBinding = await client.mutation(ConvexMutations.softwareFactoryControlPlane.bindExecutor as any, {
+        workflowRunId: run._id,
+        hostId: body.executorHostId,
+        executionEnvironment: body.executionEnvironment,
+        checkpointSummary: body.checkpointSummary ?? "Orchestration server accepted the executor binding.",
+        budgetUsd: body.budgetUsd,
+        stopCondition: body.stopCondition ?? "Stop on policy, budget, environment, or verification failure.",
+        escalationOwner: body.escalationOwner ?? body.actorId ?? "orchestration-server",
+      });
+      if (!(executorBinding as any)?.success) {
+        return c.json({ success: false, error: "Executor binding was denied", result, executorBinding }, 403);
+      }
+    }
     if (body.contextRepoSlug && run?._id) {
       const activation = await client.mutation(ConvexMutations.context.activateForWorkflowRun as any, {
         repoSlug: body.contextRepoSlug,
@@ -399,9 +434,9 @@ app.post("/workorders/:workOrderId/dispatch", async (c) => {
         idempotencyKey: `${body.idempotencyKey ?? `orch-dispatch:${workOrderId}`}:context-activation`,
         actorId: body.actorId ?? "orchestration-server",
       });
-      return c.json({ success: true, result, contextActivation: activation });
+      return c.json({ success: true, result, executorBinding, contextActivation: activation });
     }
-    return c.json({ success: true, result });
+    return c.json({ success: true, result, executorBinding });
   } catch (err: any) {
     return c.json({ error: err.message }, 400);
   }

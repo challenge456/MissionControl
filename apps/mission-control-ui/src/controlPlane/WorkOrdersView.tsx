@@ -286,6 +286,17 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
           (selected.acceptanceSummary?.staleCriteriaIds?.length ?? 0)
       )
     : 0;
+  const scopePolicyRequirements = selected
+    ? (selected.workOrder.metadata as {
+        scopePolicyRequirements?: {
+          owningTeamIds: string[];
+          requiredReviewers: string[];
+          verificationPolicies: string[];
+          approvalPolicies: string[];
+          requiresCrossTeamReview: boolean;
+        };
+      } | undefined)?.scopePolicyRequirements
+    : undefined;
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
@@ -461,6 +472,22 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                     <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{selected.workOrder.context}</p>
                   ) : null}
                 </Section>
+
+                {scopePolicyRequirements ? (
+                  <Section title="Governed execution scope">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline">{selected.workOrder.codeScopeIds?.length ?? 0} code scopes</Badge>
+                      <Badge variant="outline">{scopePolicyRequirements.owningTeamIds.length} owning teams</Badge>
+                      {scopePolicyRequirements.requiresCrossTeamReview ? <Badge variant="outline" className="border-amber-500/30 text-amber-200">Cross-team review required</Badge> : null}
+                    </div>
+                    <dl className="mt-3 grid gap-3 text-sm md:grid-cols-2">
+                      <MetaRow label="Required reviewers" value={scopePolicyRequirements.requiredReviewers.join(", ") || "No additional reviewer policy"} />
+                      <MetaRow label="Approval policies" value={scopePolicyRequirements.approvalPolicies.join("; ") || "No additional approval policy"} />
+                      <MetaRow label="Verification policies" value={scopePolicyRequirements.verificationPolicies.join("; ") || "No additional verification policy"} />
+                      <MetaRow label="Policy source" value="Union of every selected repository code scope" />
+                    </dl>
+                  </Section>
+                ) : null}
 
                 {selected.workOrder.metadata?.automationDefinitionId ? (
                   <Section title="Automation lineage">

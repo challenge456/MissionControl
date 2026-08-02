@@ -3,9 +3,12 @@ import type { Id } from "../_generated/dataModel";
 import {
   COMPANY_PERMISSIONS,
   listCompanyMemberships,
+  roleGrantsPermission,
+  teamMembershipGrantsPermission,
   requireCompanyAccess,
   requireCompanyPermission,
 } from "../lib/companyAccess";
+import { canAccessDeliveryRecord } from "../lib/deliveryAuthorization";
 
 const originalDemoFlag = process.env.MC_ALLOW_ANONYMOUS_COMPANY_CONTEXT;
 
@@ -105,6 +108,42 @@ function fakeContext({
 }
 
 describe("company access", () => {
+  it("keeps the initial role permission matrix explicit and least-privileged", () => {
+    const role = (name: string, permissions: string[] = []) => ({ name, permissions } as any);
+    const everyPermission = Object.values(COMPANY_PERMISSIONS);
+
+    expect(everyPermission.every((permission) => roleGrantsPermission(role("Company Owner"), permission))).toBe(true);
+    expect(everyPermission.every((permission) => roleGrantsPermission(role("Company Admin"), permission))).toBe(true);
+
+    const workspaceLead = role("Workspace Lead");
+    expect(roleGrantsPermission(workspaceLead, COMPANY_PERMISSIONS.MANAGE_COMPANY)).toBe(false);
+    expect(roleGrantsPermission(workspaceLead, COMPANY_PERMISSIONS.MANAGE_WORKSPACES)).toBe(true);
+    expect(roleGrantsPermission(workspaceLead, COMPANY_PERMISSIONS.MANAGE_REPOSITORIES)).toBe(true);
+    expect(roleGrantsPermission(workspaceLead, COMPANY_PERMISSIONS.MANAGE_TEAMS)).toBe(true);
+    expect(roleGrantsPermission(workspaceLead, COMPANY_PERMISSIONS.ASSIGN_DELIVERY)).toBe(true);
+    expect(roleGrantsPermission(workspaceLead, COMPANY_PERMISSIONS.DISPATCH_WORK)).toBe(true);
+
+    const teamLead = role("Team Lead");
+    expect(roleGrantsPermission(teamLead, COMPANY_PERMISSIONS.MANAGE_WORKSPACES)).toBe(false);
+    expect(roleGrantsPermission(teamLead, COMPANY_PERMISSIONS.MANAGE_REPOSITORIES)).toBe(false);
+    expect(roleGrantsPermission(teamLead, COMPANY_PERMISSIONS.MANAGE_TEAMS)).toBe(true);
+    expect(roleGrantsPermission(teamLead, COMPANY_PERMISSIONS.ASSIGN_DELIVERY)).toBe(true);
+    expect(roleGrantsPermission(teamLead, COMPANY_PERMISSIONS.DISPATCH_WORK)).toBe(true);
+
+    expect(roleGrantsPermission(role("Developer"), COMPANY_PERMISSIONS.UPDATE_DELIVERY)).toBe(true);
+    expect(roleGrantsPermission(role("Developer"), COMPANY_PERMISSIONS.VERIFY_DELIVERY)).toBe(true);
+    expect(roleGrantsPermission(role("Developer"), COMPANY_PERMISSIONS.APPROVE_DELIVERY)).toBe(false);
+    expect(roleGrantsPermission(role("QA"), COMPANY_PERMISSIONS.VERIFY_DELIVERY)).toBe(true);
+    expect(roleGrantsPermission(role("QA"), COMPANY_PERMISSIONS.UPDATE_DELIVERY)).toBe(false);
+    expect(everyPermission.some((permission) => roleGrantsPermission(role("Viewer"), permission))).toBe(false);
+    expect(teamMembershipGrantsPermission("LEAD", COMPANY_PERMISSIONS.MANAGE_TEAMS)).toBe(true);
+    expect(teamMembershipGrantsPermission("PM", COMPANY_PERMISSIONS.ASSIGN_DELIVERY)).toBe(true);
+    expect(teamMembershipGrantsPermission("DEVELOPER", COMPANY_PERMISSIONS.DISPATCH_WORK)).toBe(true);
+    expect(teamMembershipGrantsPermission("DEVELOPER", COMPANY_PERMISSIONS.ASSIGN_DELIVERY)).toBe(false);
+    expect(teamMembershipGrantsPermission("QA", COMPANY_PERMISSIONS.DISPATCH_WORK)).toBe(false);
+    expect(teamMembershipGrantsPermission("VIEWER", COMPANY_PERMISSIONS.DISPATCH_WORK)).toBe(false);
+  });
+
   it("fails closed without authentication or the demo flag", async () => {
     delete process.env.MC_ALLOW_ANONYMOUS_COMPANY_CONTEXT;
     const { ctx } = fakeContext();
@@ -158,5 +197,19 @@ describe("company access", () => {
       "sellerfi",
     ]);
     expect(memberships.every((item) => item.mode === "DEMO")).toBe(true);
+  });
+
+  it("keeps team-scoped operators inside their assigned delivery records", () => {
+    const access = {
+      membership: { mode: "AUTHENTICATED", canManageCompany: false },
+      roleNames: ["Team Lead"],
+      teamMemberships: [{ teamId: "team-a" }],
+      memberProfiles: [{ _id: "member-a" }],
+    } as any;
+
+    expect(canAccessDeliveryRecord(access, { owningTeamId: "team-a" as Id<"scrumTeams"> })).toBe(true);
+    expect(canAccessDeliveryRecord(access, { ownerMemberId: "member-a" as Id<"orgMembers"> })).toBe(true);
+    expect(canAccessDeliveryRecord(access, { owningTeamId: "team-b" as Id<"scrumTeams"> })).toBe(false);
+    expect(canAccessDeliveryRecord(access, {})).toBe(false);
   });
 });

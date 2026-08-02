@@ -10,6 +10,13 @@ export const COMPANY_PERMISSIONS = {
   MANAGE_MEMBERS: "members.manage",
   CREATE_WORKSPACES: "workspaces.create",
   MANAGE_WORKSPACES: "workspaces.manage",
+  MANAGE_REPOSITORIES: "repositories.manage",
+  MANAGE_TEAMS: "teams.manage",
+  ASSIGN_DELIVERY: "delivery.assign",
+  DISPATCH_WORK: "delivery.dispatch",
+  UPDATE_DELIVERY: "delivery.write",
+  VERIFY_DELIVERY: "delivery.verify",
+  APPROVE_DELIVERY: "delivery.approve",
 } as const;
 
 export type CompanyPermission =
@@ -28,7 +35,7 @@ function anonymousDemoEnabled(): boolean {
   return process.env.MC_ALLOW_ANONYMOUS_COMPANY_CONTEXT === "1";
 }
 
-function isCompanyAdminRole(role: Doc<"roles">): boolean {
+export function isCompanyAdminRole(role: Doc<"roles">): boolean {
   const name = role.name.trim().toLowerCase();
   return (
     name === "owner" ||
@@ -40,7 +47,7 @@ function isCompanyAdminRole(role: Doc<"roles">): boolean {
   );
 }
 
-function roleGrantsPermission(
+export function roleGrantsPermission(
   role: Doc<"roles">,
   permission: CompanyPermission
 ): boolean {
@@ -48,9 +55,34 @@ function roleGrantsPermission(
   if (
     permission === COMPANY_PERMISSIONS.MANAGE_COMPANY ||
     permission === COMPANY_PERMISSIONS.MANAGE_MEMBERS ||
-    permission === COMPANY_PERMISSIONS.MANAGE_WORKSPACES
+    permission === COMPANY_PERMISSIONS.MANAGE_WORKSPACES ||
+    permission === COMPANY_PERMISSIONS.MANAGE_REPOSITORIES ||
+    permission === COMPANY_PERMISSIONS.MANAGE_TEAMS ||
+    permission === COMPANY_PERMISSIONS.ASSIGN_DELIVERY ||
+    permission === COMPANY_PERMISSIONS.DISPATCH_WORK
+    || permission === COMPANY_PERMISSIONS.UPDATE_DELIVERY
+    || permission === COMPANY_PERMISSIONS.VERIFY_DELIVERY
+    || permission === COMPANY_PERMISSIONS.APPROVE_DELIVERY
   ) {
-    return isCompanyAdminRole(role);
+    if (isCompanyAdminRole(role)) return true;
+    const normalized = role.name.trim().toLowerCase();
+    if (
+      (permission === COMPANY_PERMISSIONS.MANAGE_WORKSPACES || permission === COMPANY_PERMISSIONS.MANAGE_REPOSITORIES) &&
+      (normalized === "workspace lead" || normalized === "product manager")
+    ) {
+      return true;
+    }
+    if (
+      permission === COMPANY_PERMISSIONS.MANAGE_TEAMS ||
+      permission === COMPANY_PERMISSIONS.ASSIGN_DELIVERY ||
+      permission === COMPANY_PERMISSIONS.DISPATCH_WORK ||
+      permission === COMPANY_PERMISSIONS.APPROVE_DELIVERY
+    ) {
+      return normalized === "workspace lead" || normalized === "product manager" || normalized === "team lead";
+    }
+    if (permission === COMPANY_PERMISSIONS.UPDATE_DELIVERY) return normalized === "developer" || normalized === "software engineer";
+    if (permission === COMPANY_PERMISSIONS.VERIFY_DELIVERY) return normalized === "developer" || normalized === "software engineer" || normalized === "qa" || normalized === "qa engineer";
+    return false;
   }
   if (permission === COMPANY_PERMISSIONS.CREATE_WORKSPACES) {
     return isCompanyAdminRole(role) || role.permissions.includes("projects.create");
@@ -58,20 +90,46 @@ function roleGrantsPermission(
   return false;
 }
 
-async function getOperatorRoles(
+export function teamMembershipGrantsPermission(
+  role: Doc<"teamMemberships">["role"],
+  permission: CompanyPermission
+): boolean {
+  if (permission === COMPANY_PERMISSIONS.DISPATCH_WORK) {
+    return role === "LEAD" || role === "PM" || role === "DEVELOPER";
+  }
+  if (permission === COMPANY_PERMISSIONS.UPDATE_DELIVERY) {
+    return role === "LEAD" || role === "PM" || role === "DEVELOPER";
+  }
+  if (permission === COMPANY_PERMISSIONS.VERIFY_DELIVERY) {
+    return role !== "VIEWER";
+  }
+  if (permission === COMPANY_PERMISSIONS.APPROVE_DELIVERY) {
+    return role === "LEAD" || role === "PM";
+  }
+  if (permission === COMPANY_PERMISSIONS.MANAGE_TEAMS || permission === COMPANY_PERMISSIONS.ASSIGN_DELIVERY) {
+    return role === "LEAD" || role === "PM";
+  }
+  return false;
+}
+
+export async function getOperatorRoles(
   ctx: CompanyCtx,
   operator: Doc<"operators">,
-  tenantId: Id<"tenants">
+  tenantId: Id<"tenants">,
+  scope?: { projectId?: Id<"projects">; teamId?: Id<"scrumTeams">; repositoryId?: Id<"workspaceRepositories"> }
 ) {
   const assignments = await ctx.db
     .query("roleAssignments")
     .withIndex("by_operator", (q) => q.eq("operatorId", operator._id))
     .collect();
-  const applicable = assignments.filter(
-    (assignment) =>
-      !assignment.scope ||
-      (assignment.scope.type === "tenant" && assignment.scope.id === tenantId)
-  );
+  const applicable = assignments.filter((assignment) => {
+    if (!assignment.scope) return true;
+    if (assignment.scope.type === "tenant") return assignment.scope.id === tenantId;
+    if (assignment.scope.type === "project") return assignment.scope.id === scope?.projectId;
+    if (assignment.scope.type === "team") return assignment.scope.id === scope?.teamId;
+    if (assignment.scope.type === "repository") return assignment.scope.id === scope?.repositoryId;
+    return false;
+  });
   const roles = (
     await Promise.all(applicable.map((assignment) => ctx.db.get(assignment.roleId)))
   ).filter((role): role is Doc<"roles"> => Boolean(role && role.tenantId === tenantId));
@@ -185,12 +243,73 @@ export async function requireWorkspaceAccess(
   ctx: CompanyCtx,
   tenantId: Id<"tenants">,
   projectId: Id<"projects">,
-  options: { manage?: boolean } = {}
+  options: { manage?: boolean; permission?: CompanyPermission } = {}
 ) {
-  const membership = await requireCompanyAccess(ctx, tenantId, options);
+  const membership = await requireCompanyAccess(ctx, tenantId);
   const project = await ctx.db.get(projectId);
   if (!project || project.tenantId !== tenantId) {
     throw new Error("Workspace does not belong to the selected company account.");
   }
-  return { membership, project };
+  if (membership.mode === "DEMO") return { membership, project, roleNames: membership.roleNames, permissions: membership.permissions };
+
+  const operator = membership.operatorId ? await ctx.db.get(membership.operatorId) : null;
+  if (!operator) throw new Error("Authenticated operator membership is required.");
+  const roles = await getOperatorRoles(ctx, operator, tenantId, { projectId });
+  const memberships = await ctx.db
+    .query("teamMemberships")
+    .withIndex("by_operator", (q) => q.eq("operatorId", operator._id))
+    .collect();
+  const activeTeamMemberships = memberships.filter(
+    (item) => item.projectId === projectId && item.active && (!item.activeUntil || item.activeUntil > Date.now())
+  );
+  const memberProfiles = await ctx.db
+    .query("orgMembers")
+    .withIndex("by_operator", (q) => q.eq("operatorId", operator._id))
+    .collect();
+  const profileAccess = memberProfiles.some((profile) =>
+    profile.active && profile.tenantId === tenantId && profile.projectAccess?.some((entry) => entry.projectId === projectId)
+  );
+  if (roles.length === 0 && activeTeamMemberships.length === 0 && !profileAccess) {
+    throw new Error("Workspace is unavailable or unauthorized.");
+  }
+
+  const requestedPermission = options.permission ?? (options.manage ? COMPANY_PERMISSIONS.MANAGE_WORKSPACES : undefined);
+  if (requestedPermission && !roles.some((role) => roleGrantsPermission(role, requestedPermission))) {
+    const teamCanManage = activeTeamMemberships.some((item) =>
+      teamMembershipGrantsPermission(item.role, requestedPermission)
+    );
+    if (!teamCanManage) throw new Error("Your workspace role does not permit this action.");
+  }
+
+  return {
+    membership,
+    project,
+    roleNames: roles.map((role) => role.name),
+    permissions: [...new Set(roles.flatMap((role) => role.permissions))],
+    teamMemberships: activeTeamMemberships,
+    memberProfiles,
+  };
+}
+
+export async function listAccessibleWorkspaces(
+  ctx: CompanyCtx,
+  tenantId: Id<"tenants">
+) {
+  const membership = await requireCompanyAccess(ctx, tenantId);
+  const projects = await ctx.db
+    .query("projects")
+    .withIndex("by_tenant", (q) => q.eq("tenantId", tenantId))
+    .collect();
+  if (membership.mode === "DEMO" || membership.canManageCompany) return projects;
+
+  const accessible = [];
+  for (const project of projects) {
+    try {
+      await requireWorkspaceAccess(ctx, tenantId, project._id);
+      accessible.push(project);
+    } catch {
+      // Deliberately omit inaccessible workspaces without leaking their count.
+    }
+  }
+  return accessible;
 }

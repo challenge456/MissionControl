@@ -396,6 +396,8 @@ export default defineSchema({
       type: v.union(
         v.literal("tenant"),
         v.literal("project"),
+        v.literal("team"),
+        v.literal("repository"),
         v.literal("environment")
       ),
       id: v.string(),
@@ -673,6 +675,7 @@ export default defineSchema({
     description: v.optional(v.string()),
     purpose: v.optional(v.string()),
     owner: v.optional(v.string()),
+    ownerMemberId: v.optional(v.id("orgMembers")),
     defaultPolicy: v.optional(v.string()),
     status: v.optional(
       v.union(v.literal("ACTIVE"), v.literal("PAUSED"), v.literal("ARCHIVED"))
@@ -713,6 +716,10 @@ export default defineSchema({
     
     // Metadata
     metadata: v.optional(v.any()),
+    createdAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
+    createdBy: v.optional(v.id("operators")),
+    updatedBy: v.optional(v.id("operators")),
   })
     .index("by_tenant", ["tenantId"])
     .index("by_slug", ["slug"])
@@ -746,6 +753,10 @@ export default defineSchema({
       v.literal("ERROR")
     ),
     policyOverrides: v.optional(v.any()),
+    migrationVersion: v.optional(v.number()),
+    fixtureKey: v.optional(v.string()),
+    createdBy: v.optional(v.id("operators")),
+    updatedBy: v.optional(v.id("operators")),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -766,11 +777,18 @@ export default defineSchema({
     includePaths: v.array(v.string()),
     excludePaths: v.array(v.string()),
     owningTeam: v.optional(v.string()),
+    owningTeamId: v.optional(v.id("scrumTeams")),
+    overlapPriority: v.optional(v.number()),
     requiredReviewers: v.array(v.string()),
     allowedEnvironments: v.array(
       v.union(v.literal("LOCAL"), v.literal("CLOUD"))
     ),
     verificationPolicy: v.optional(v.string()),
+    approvalPolicy: v.optional(v.string()),
+    migrationVersion: v.optional(v.number()),
+    fixtureKey: v.optional(v.string()),
+    createdBy: v.optional(v.id("operators")),
+    updatedBy: v.optional(v.id("operators")),
     active: v.boolean(),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -789,6 +807,15 @@ export default defineSchema({
     observedBranch: v.optional(v.string()),
     observedCommit: v.optional(v.string()),
     dirty: v.boolean(),
+    runtime: v.optional(v.string()),
+    approvedModelIds: v.optional(v.array(v.string())),
+    networkPolicyStatus: v.optional(v.union(v.literal("READY"), v.literal("BLOCKED"), v.literal("UNKNOWN"))),
+    secretPolicyStatus: v.optional(v.union(v.literal("READY"), v.literal("BLOCKED"), v.literal("UNKNOWN"))),
+    capacity: v.optional(v.object({
+      maxConcurrentRuns: v.number(),
+      currentRuns: v.number(),
+    })),
+    attestedAt: v.optional(v.number()),
     status: v.union(
       v.literal("READY"),
       v.literal("MISSING"),
@@ -982,6 +1009,17 @@ export default defineSchema({
       location: v.string(),
     }))),
     owner: v.optional(v.string()),
+    ownerMemberId: v.optional(v.id("orgMembers")),
+    owningTeamId: v.optional(v.id("scrumTeams")),
+    repositoryId: v.optional(v.id("workspaceRepositories")),
+    codeScopeIds: v.optional(v.array(v.id("repositoryCodeScopes"))),
+    requestedByOperatorId: v.optional(v.id("operators")),
+    executionEnvironment: v.optional(v.union(
+      v.literal("LOCAL"),
+      v.literal("CLOUD"),
+      v.literal("POLICY_SELECTED")
+    )),
+    modelRoutingDecisionId: v.optional(v.id("modelRoutingDecisions")),
     state: v.union(
       v.literal("DRAFT"), v.literal("PLANNING"), v.literal("AWAITING_PLAN_APPROVAL"),
       v.literal("READY"), v.literal("IN_PROGRESS"), v.literal("BLOCKED"),
@@ -1007,6 +1045,9 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_project_state", ["projectId", "state"])
     .index("by_owner_state", ["owner", "state"])
+    .index("by_owner_member", ["ownerMemberId"])
+    .index("by_team_state", ["owningTeamId", "state"])
+    .index("by_repository", ["repositoryId"])
     .index("by_idempotency", ["idempotencyKey"]),
 
   missionPlans: defineTable({
@@ -1171,8 +1212,20 @@ export default defineSchema({
     authorizedModelOverrideReason: v.optional(v.string()),
     authorizedModelOverrideUpdatedAt: v.optional(v.number()),
     requestedBy: v.optional(v.string()),
+    requestingOperatorId: v.optional(v.id("operators")),
     assignedAgent: v.optional(v.string()),
     assignedSquad: v.optional(v.string()),
+    ownerMemberId: v.optional(v.id("orgMembers")),
+    owningTeamId: v.optional(v.id("scrumTeams")),
+    repositoryId: v.optional(v.id("workspaceRepositories")),
+    codeScopeIds: v.optional(v.array(v.id("repositoryCodeScopes"))),
+    executionEnvironment: v.optional(v.union(
+      v.literal("LOCAL"),
+      v.literal("CLOUD"),
+      v.literal("POLICY_SELECTED")
+    )),
+    modelRoutingDecisionId: v.optional(v.id("modelRoutingDecisions")),
+    scopeEnforcementVersion: v.optional(v.number()),
 
     acceptanceCriteria: v.array(v.object({
       id: v.string(),
@@ -1224,6 +1277,9 @@ export default defineSchema({
     .index("by_mission", ["missionId"])
     .index("by_project_state", ["projectId", "state"])
     .index("by_project_risk", ["projectId", "riskLevel"])
+    .index("by_owner_member", ["ownerMemberId"])
+    .index("by_team_state", ["owningTeamId", "state"])
+    .index("by_repository", ["repositoryId"])
     .index("by_idempotency", ["idempotencyKey"]),
 
   workOrderEvents: defineTable({
@@ -2700,6 +2756,7 @@ export default defineSchema({
   orgMembers: defineTable({
     tenantId: v.optional(v.id("tenants")),
     projectId: v.optional(v.id("projects")),
+    operatorId: v.optional(v.id("operators")),
     
     // Identity
     name: v.string(),
@@ -2764,10 +2821,145 @@ export default defineSchema({
     .index("by_parent", ["parentMemberId"])
     .index("by_level", ["level"])
     .index("by_email", ["email"])
+    .index("by_operator", ["operatorId"])
+    .index("by_tenant_operator", ["tenantId", "operatorId"])
     // NOTE: systemRole is optional — queries using this index should filter
     // for defined values (e.g., .filter(q => q.neq(q.field("systemRole"), undefined)))
     // to exclude records where systemRole is not set.
     .index("by_system_role", ["systemRole"]),
+
+  // -------------------------------------------------------------------------
+  // SOFTWARE FACTORY OPERATING STRUCTURE
+  // -------------------------------------------------------------------------
+  scrumTeams: defineTable({
+    tenantId: v.id("tenants"),
+    projectId: v.id("projects"),
+    name: v.string(),
+    slug: v.string(),
+    purpose: v.optional(v.string()),
+    leadMemberId: v.optional(v.id("orgMembers")),
+    capacityPolicy: v.optional(v.object({
+      maxActiveMissionsPerMember: v.number(),
+      maxConcurrentRuns: v.number(),
+      reviewReservePct: v.number(),
+    })),
+    status: v.union(v.literal("ACTIVE"), v.literal("PAUSED"), v.literal("ARCHIVED")),
+    fixtureKey: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    createdBy: v.optional(v.id("operators")),
+    updatedBy: v.optional(v.id("operators")),
+  })
+    .index("by_tenant", ["tenantId"])
+    .index("by_project", ["projectId"])
+    .index("by_project_slug", ["projectId", "slug"])
+    .index("by_project_status", ["projectId", "status"])
+    .index("by_fixture", ["fixtureKey"]),
+
+  teamMemberships: defineTable({
+    tenantId: v.id("tenants"),
+    projectId: v.id("projects"),
+    teamId: v.id("scrumTeams"),
+    memberId: v.id("orgMembers"),
+    operatorId: v.optional(v.id("operators")),
+    role: v.union(
+      v.literal("LEAD"),
+      v.literal("DEVELOPER"),
+      v.literal("QA"),
+      v.literal("PM"),
+      v.literal("VIEWER")
+    ),
+    activeFrom: v.number(),
+    activeUntil: v.optional(v.number()),
+    capacityAllocationPct: v.optional(v.number()),
+    active: v.boolean(),
+    fixtureKey: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    createdBy: v.optional(v.id("operators")),
+    updatedBy: v.optional(v.id("operators")),
+  })
+    .index("by_team", ["teamId"])
+    .index("by_member", ["memberId"])
+    .index("by_operator", ["operatorId"])
+    .index("by_project", ["projectId"])
+    .index("by_team_member", ["teamId", "memberId"])
+    .index("by_fixture", ["fixtureKey"]),
+
+  missionAssignments: defineTable({
+    tenantId: v.id("tenants"),
+    projectId: v.id("projects"),
+    missionId: v.id("missions"),
+    memberId: v.id("orgMembers"),
+    teamId: v.id("scrumTeams"),
+    role: v.union(
+      v.literal("OWNER"),
+      v.literal("CONTRIBUTOR"),
+      v.literal("REVIEWER"),
+      v.literal("STAKEHOLDER")
+    ),
+    capacityAllocationPct: v.optional(v.number()),
+    activeFrom: v.number(),
+    activeUntil: v.optional(v.number()),
+    active: v.boolean(),
+    fixtureKey: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    createdBy: v.optional(v.id("operators")),
+    updatedBy: v.optional(v.id("operators")),
+  })
+    .index("by_mission", ["missionId"])
+    .index("by_member", ["memberId"])
+    .index("by_team", ["teamId"])
+    .index("by_project", ["projectId"])
+    .index("by_mission_role", ["missionId", "role"])
+    .index("by_member_active", ["memberId", "active"])
+    .index("by_fixture", ["fixtureKey"]),
+
+  attentionStates: defineTable({
+    tenantId: v.id("tenants"),
+    projectId: v.id("projects"),
+    correlationKey: v.string(),
+    state: v.union(v.literal("OPEN"), v.literal("SNOOZED"), v.literal("RESOLVED")),
+    snoozedUntil: v.optional(v.number()),
+    resolutionNote: v.optional(v.string()),
+    updatedAt: v.number(),
+    updatedBy: v.optional(v.id("operators")),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_key", ["projectId", "correlationKey"])
+    .index("by_project_state", ["projectId", "state"]),
+
+  scopeEnforcementReceipts: defineTable({
+    tenantId: v.id("tenants"),
+    projectId: v.id("projects"),
+    workOrderId: v.optional(v.id("workOrders")),
+    workflowRunId: v.optional(v.id("workflowRuns")),
+    stage: v.union(v.literal("DISPATCH"), v.literal("EXECUTOR_BINDING")),
+    mode: v.union(v.literal("SHADOW"), v.literal("ENFORCED"), v.literal("LEGACY")),
+    outcome: v.union(v.literal("ALLOWED"), v.literal("DENIED"), v.literal("MISMATCH")),
+    repositoryId: v.optional(v.id("workspaceRepositories")),
+    codeScopeIds: v.array(v.id("repositoryCodeScopes")),
+    teamId: v.optional(v.id("scrumTeams")),
+    ownerMemberId: v.optional(v.id("orgMembers")),
+    executionEnvironment: v.optional(v.union(v.literal("LOCAL"), v.literal("CLOUD"), v.literal("POLICY_SELECTED"))),
+    policyRequirements: v.optional(v.object({
+      owningTeamIds: v.array(v.id("scrumTeams")),
+      requiredReviewers: v.array(v.string()),
+      verificationPolicies: v.array(v.string()),
+      approvalPolicies: v.array(v.string()),
+      requiresCrossTeamReview: v.boolean(),
+    })),
+    reasonCodes: v.array(v.string()),
+    summary: v.string(),
+    policyVersion: v.number(),
+    createdAt: v.number(),
+    actorId: v.optional(v.id("operators")),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_work_order", ["workOrderId"])
+    .index("by_run", ["workflowRunId"])
+    .index("by_project_outcome", ["projectId", "outcome"]),
 
   // -------------------------------------------------------------------------
   // CAPTURES (Visual Artifacts Gallery)
@@ -3248,6 +3440,28 @@ export default defineSchema({
     runtime: v.optional(v.string()),
     model: v.optional(v.string()),
     routingDecisionId: v.optional(v.id("modelRoutingDecisions")),
+    executionEnvironment: v.optional(v.union(v.literal("LOCAL"), v.literal("CLOUD"), v.literal("POLICY_SELECTED"))),
+    executorHostId: v.optional(v.string()),
+    checkpointSummary: v.optional(v.string()),
+    checkpointAt: v.optional(v.number()),
+    budgetUsd: v.optional(v.number()),
+    spentUsd: v.optional(v.number()),
+    stopCondition: v.optional(v.string()),
+    escalationOwner: v.optional(v.string()),
+    scheduledWindow: v.optional(v.object({
+      startsAt: v.number(),
+      endsAt: v.number(),
+      timezone: v.string(),
+    })),
+    returnHandoff: v.optional(v.object({
+      summary: v.string(),
+      changedArtifacts: v.array(v.string()),
+      failedChecks: v.array(v.string()),
+      unresolvedRisks: v.array(v.string()),
+      nextDecision: v.string(),
+      createdAt: v.number(),
+    })),
+    evidenceState: v.optional(v.union(v.literal("PASSING"), v.literal("FAILING"), v.literal("STALE"), v.literal("MISSING"), v.literal("UNKNOWN"))),
     worktree: v.optional(v.string()),
     failureReason: v.optional(v.string()),
     humanInterventions: v.optional(v.number()),

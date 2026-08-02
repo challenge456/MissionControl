@@ -52,6 +52,9 @@ import {
   validateTaskAttemptSelection,
   validateTaskAttemptStart,
 } from "./lib/taskAttemptScheduler";
+import { COMPANY_PERMISSIONS, requireWorkspaceAccess } from "./lib/companyAccess";
+import { assertAuthorizedDeliveryRecord, canAccessDeliveryRecord, requireAuthorizedDeliveryScope } from "./lib/deliveryAuthorization";
+import { combineCodeScopePolicies, validateDispatchScope } from "./lib/softwareFactoryControlPlane";
 
 function generateRunId(): string {
   return Math.random().toString(36).substring(2, 10);
@@ -1031,6 +1034,11 @@ export const list = query({
     state: v.optional(workOrderState),
     riskLevel: v.optional(workOrderRisk),
     repository: v.optional(v.string()),
+    repositoryId: v.optional(v.id("workspaceRepositories")),
+    codeScopeIds: v.optional(v.array(v.id("repositoryCodeScopes"))),
+    owningTeamId: v.optional(v.id("scrumTeams")),
+    ownerMemberId: v.optional(v.id("orgMembers")),
+    executionEnvironment: v.optional(v.union(v.literal("LOCAL"), v.literal("CLOUD"), v.literal("POLICY_SELECTED"))),
     assignedAgent: v.optional(v.string()),
     requestedBy: v.optional(v.string()),
     verificationStatus: v.optional(verificationStatus),
@@ -1039,6 +1047,7 @@ export const list = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const deliveryAccess = await requireAuthorizedDeliveryScope(ctx, args.projectId);
     const candidateLimit = Math.max(args.limit ?? 100, 500);
     let rows = args.projectId
       ? await ctx.db
@@ -1053,6 +1062,11 @@ export const list = query({
     if (args.state) rows = rows.filter((row) => row.state === args.state);
     if (args.riskLevel) rows = rows.filter((row) => row.riskLevel === args.riskLevel);
     if (args.repository) rows = rows.filter((row) => row.repository === args.repository);
+    if (args.repositoryId) rows = rows.filter((row) => row.repositoryId === args.repositoryId);
+    if (args.codeScopeIds?.length) rows = rows.filter((row) => args.codeScopeIds!.every((scopeId) => row.codeScopeIds?.includes(scopeId)));
+    if (args.owningTeamId) rows = rows.filter((row) => row.owningTeamId === args.owningTeamId);
+    if (args.ownerMemberId) rows = rows.filter((row) => row.ownerMemberId === args.ownerMemberId);
+    if (args.executionEnvironment) rows = rows.filter((row) => row.executionEnvironment === args.executionEnvironment);
     if (args.assignedAgent) rows = rows.filter((row) => row.assignedAgent === args.assignedAgent);
     if (args.requestedBy) rows = rows.filter((row) => row.requestedBy === args.requestedBy);
     if (args.verificationStatus) rows = rows.filter((row) => row.verificationStatus === args.verificationStatus);
@@ -1060,6 +1074,7 @@ export const list = query({
     if (args.workflowId) {
       rows = rows.filter((row) => (runMap.get(row._id) ?? []).some((run) => run.workflowId === args.workflowId));
     }
+    if (deliveryAccess) rows = rows.filter((row) => canAccessDeliveryRecord(deliveryAccess, row));
 
     return rows.map((row) => {
       const runs = runMap.get(row._id) ?? [];
@@ -1078,6 +1093,8 @@ export const get = query({
   handler: async (ctx, args) => {
     const workOrder = await ctx.db.get(args.workOrderId);
     if (!workOrder) return null;
+    const deliveryAccess = await requireAuthorizedDeliveryScope(ctx, workOrder.projectId);
+    assertAuthorizedDeliveryRecord(deliveryAccess, workOrder);
 
     const [executionRuns, events, approvalDecisions, verificationReceipts, revisions, reopenDecisions, supersession, policy, childTaskRows] = await Promise.all([
       ctx.db
@@ -1145,13 +1162,16 @@ export const factoryOverview = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const deliveryAccess = await requireAuthorizedDeliveryScope(ctx, args.projectId);
     const limit = args.limit ?? 5;
-    const workOrders = (args.projectId
+    let workOrders = (args.projectId
       ? await ctx.db
           .query("workOrders")
           .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
           .collect()
       : await ctx.db.query("workOrders").collect()).sort((a: any, b: any) => b.updatedAt - a.updatedAt);
+    if (deliveryAccess) workOrders = workOrders.filter((workOrder) => canAccessDeliveryRecord(deliveryAccess, workOrder));
+    const accessibleWorkOrderIds = new Set(workOrders.map((workOrder) => String(workOrder._id)));
 
     const runMap = await loadLatestExecutionSummaries(ctx, workOrders.map((workOrder) => workOrder._id));
     const latestRuns = workOrders
@@ -1162,11 +1182,16 @@ export const factoryOverview = query({
       .filter(Boolean) as Array<{ workOrder: any; latestRun: any }>;
 
     const approvalDecisions = await ctx.db.query("approvalDecisions").collect();
-    const pendingApprovals = approvalDecisions.filter((approval: any) => approval.status === "PENDING" && (!args.projectId || approval.projectId === args.projectId));
+    const pendingApprovals = approvalDecisions.filter((approval: any) => (
+      approval.status === "PENDING"
+      && (!args.projectId || approval.projectId === args.projectId)
+      && accessibleWorkOrderIds.has(String(approval.workOrderId))
+    ));
 
     const receiptCandidates = await ctx.db.query("verificationReceipts").collect();
     const staleReceipts = receiptCandidates.filter((receipt: any) => (
       (!args.projectId || receipt.projectId === args.projectId)
+      && accessibleWorkOrderIds.has(String(receipt.workOrderId))
       && (receipt.status === "STALE" || (receipt.validUntil && receipt.validUntil <= Date.now() && ["PASSED", "WAIVED"].includes(receipt.status)))
     ));
 
@@ -1220,6 +1245,10 @@ export const factoryOverview = query({
 export const revisionHistory = query({
   args: { workOrderId: v.id("workOrders") },
   handler: async (ctx, args) => {
+    const workOrder = await ctx.db.get(args.workOrderId);
+    if (!workOrder) return [];
+    const deliveryAccess = await requireAuthorizedDeliveryScope(ctx, workOrder.projectId);
+    assertAuthorizedDeliveryRecord(deliveryAccess, workOrder);
     return await listRevisionsForWorkOrder(ctx, args.workOrderId);
   },
 });
@@ -1229,6 +1258,8 @@ export const governanceValidity = query({
   handler: async (ctx, args) => {
     const workOrder = await ctx.db.get(args.workOrderId);
     if (!workOrder) return null;
+    const deliveryAccess = await requireAuthorizedDeliveryScope(ctx, workOrder.projectId);
+    assertAuthorizedDeliveryRecord(deliveryAccess, workOrder);
     const [approvalDecisions, verificationReceipts, revisions, policy] = await Promise.all([
       listApprovalDecisionsForWorkOrder(ctx, args.workOrderId),
       listVerificationReceiptsForWorkOrder(ctx, args.workOrderId),
@@ -1253,11 +1284,17 @@ export const listExpiredApprovals = query({
     workOrderId: v.optional(v.id("workOrders")),
   },
   handler: async (ctx, args) => {
+    const scopedWorkOrder = args.workOrderId ? await ctx.db.get(args.workOrderId) : null;
+    const deliveryAccess = await requireAuthorizedDeliveryScope(ctx, scopedWorkOrder?.projectId ?? args.projectId);
+    if (scopedWorkOrder) assertAuthorizedDeliveryRecord(deliveryAccess, scopedWorkOrder);
     const approvals = args.workOrderId
       ? await listApprovalDecisionsForWorkOrder(ctx, args.workOrderId)
       : await ctx.db.query("approvalDecisions").order("desc").take(500);
-    return approvals.filter((approval: any) => (
+    const workOrders = await Promise.all(approvals.map((approval: any) => ctx.db.get(approval.workOrderId)));
+    return approvals.filter((approval: any, index: number) => (
       (!args.projectId || approval.projectId === args.projectId)
+      && Boolean(workOrders[index])
+      && canAccessDeliveryRecord(deliveryAccess, workOrders[index]!)
       && (approval.status === "EXPIRED" || (approval.expiresAt && approval.expiresAt <= Date.now() && ["APPROVED", "CONDITIONAL"].includes(approval.status)))
     ));
   },
@@ -1269,11 +1306,17 @@ export const listStaleEvidence = query({
     workOrderId: v.optional(v.id("workOrders")),
   },
   handler: async (ctx, args) => {
+    const scopedWorkOrder = args.workOrderId ? await ctx.db.get(args.workOrderId) : null;
+    const deliveryAccess = await requireAuthorizedDeliveryScope(ctx, scopedWorkOrder?.projectId ?? args.projectId);
+    if (scopedWorkOrder) assertAuthorizedDeliveryRecord(deliveryAccess, scopedWorkOrder);
     const receipts = args.workOrderId
       ? await listVerificationReceiptsForWorkOrder(ctx, args.workOrderId)
       : await ctx.db.query("verificationReceipts").order("desc").take(500);
-    return receipts.filter((receipt: any) => (
+    const workOrders = await Promise.all(receipts.map((receipt: any) => ctx.db.get(receipt.workOrderId)));
+    return receipts.filter((receipt: any, index: number) => (
       (!args.projectId || receipt.projectId === args.projectId)
+      && Boolean(workOrders[index])
+      && canAccessDeliveryRecord(deliveryAccess, workOrders[index]!)
       && (receipt.status === "STALE" || (receipt.validUntil && receipt.validUntil <= Date.now() && ["PASSED", "WAIVED"].includes(receipt.status)))
     ));
   },
@@ -1294,6 +1337,11 @@ export const create = mutation({
     context: v.optional(v.string()),
     workflowId: v.optional(v.string()),
     repository: v.optional(v.string()),
+    repositoryId: v.optional(v.id("workspaceRepositories")),
+    codeScopeIds: v.optional(v.array(v.id("repositoryCodeScopes"))),
+    owningTeamId: v.optional(v.id("scrumTeams")),
+    ownerMemberId: v.optional(v.id("orgMembers")),
+    executionEnvironment: v.optional(v.union(v.literal("LOCAL"), v.literal("CLOUD"), v.literal("POLICY_SELECTED"))),
     branchStrategy: v.optional(v.string()),
     priority: v.optional(v.union(v.literal(1), v.literal(2), v.literal(3), v.literal(4))),
     riskLevel: v.optional(workOrderRisk),
@@ -1312,7 +1360,22 @@ export const create = mutation({
     requiredHumanAction: v.optional(v.string()),
     metadata: v.optional(v.any()),
   },
-  handler: async (ctx, args) => await createWorkOrderRecord(ctx, args),
+  handler: async (ctx, args) => {
+    const project = args.projectId ? await ctx.db.get(args.projectId) : null;
+    const hasStableScope = Boolean(args.repositoryId || args.owningTeamId || args.ownerMemberId || args.codeScopeIds?.length);
+    const rows = (await ctx.db.query("featureFlags").collect()) as FlagRow[];
+    const teamAuthorization = resolveFlag(rows, "control-plane.team-authorization", args.projectId ?? null).enabled;
+    let requestingOperatorId: Id<"operators"> | undefined;
+    if ((teamAuthorization || hasStableScope) && project?.tenantId && args.projectId) {
+      const access = await requireWorkspaceAccess(ctx, project.tenantId, args.projectId, { permission: COMPANY_PERMISSIONS.ASSIGN_DELIVERY });
+      assertAuthorizedDeliveryRecord(access, {
+        ownerMemberId: args.ownerMemberId,
+        owningTeamId: args.owningTeamId,
+      });
+      requestingOperatorId = access.membership.operatorId;
+    }
+    return await createWorkOrderRecord(ctx, { ...args, requestingOperatorId });
+  },
 });
 
 export const dispatch = mutation({
@@ -1324,6 +1387,12 @@ export const dispatch = mutation({
     actorId: v.optional(v.string()),
     idempotencyKey: v.string(),
     runtime: v.optional(v.string()),
+    repositoryId: v.optional(v.id("workspaceRepositories")),
+    codeScopeIds: v.optional(v.array(v.id("repositoryCodeScopes"))),
+    owningTeamId: v.optional(v.id("scrumTeams")),
+    ownerMemberId: v.optional(v.id("orgMembers")),
+    executionEnvironment: v.optional(v.union(v.literal("LOCAL"), v.literal("CLOUD"), v.literal("POLICY_SELECTED"))),
+    executorHostId: v.optional(v.string()),
     /** Explicit operator-approved exception; normal runtime model metadata must not bypass policy. */
     authorizedModelOverride: v.optional(v.string()),
     model: v.optional(v.string()),
@@ -1332,20 +1401,30 @@ export const dispatch = mutation({
     retryReason: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const workOrder = await ctx.db.get(args.workOrderId);
+    if (!workOrder) {
+      throw new Error("WorkOrder not found");
+    }
+    const deliveryAccess = await requireAuthorizedDeliveryScope(
+      ctx,
+      workOrder.projectId,
+      COMPANY_PERMISSIONS.DISPATCH_WORK
+    );
+    assertAuthorizedDeliveryRecord(deliveryAccess, workOrder);
+
     const existingEvent = await ctx.db
       .query("workOrderEvents")
       .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", `${args.idempotencyKey}:dispatched`))
       .first();
 
     if (existingEvent?.workflowRunId) {
+      if (existingEvent.workOrderId !== workOrder._id) {
+        throw new Error("Idempotency key is already bound to another WorkOrder");
+      }
       const existingRun = await ctx.db.get(existingEvent.workflowRunId);
       return { created: false, run: existingRun, reason: "idempotent-replay" };
     }
 
-    const workOrder = await ctx.db.get(args.workOrderId);
-    if (!workOrder) {
-      throw new Error("WorkOrder not found");
-    }
     if (workOrder.state === "SUPERSEDED") {
       throw new Error("Superseded WorkOrders cannot be dispatched");
     }
@@ -1405,6 +1484,171 @@ export const dispatch = mutation({
     await expireGovernanceRecordsForWorkOrder(ctx, workOrder);
     const refreshedWorkOrder = await ctx.db.get(args.workOrderId);
     if (!refreshedWorkOrder) throw new Error("WorkOrder not found");
+
+    const scopeFlagRows = (await ctx.db
+      .query("featureFlags")
+      .collect()) as FlagRow[];
+    const scopeEnforced = resolveFlag(
+      scopeFlagRows,
+      "control-plane.dispatch-scope",
+      refreshedWorkOrder.projectId ?? null
+    ).enabled;
+    const effectiveScope = {
+      repositoryId: args.repositoryId ?? refreshedWorkOrder.repositoryId,
+      codeScopeIds: args.codeScopeIds ?? refreshedWorkOrder.codeScopeIds ?? [],
+      owningTeamId: args.owningTeamId ?? refreshedWorkOrder.owningTeamId,
+      ownerMemberId: args.ownerMemberId ?? refreshedWorkOrder.ownerMemberId,
+      executionEnvironment: args.executionEnvironment ?? refreshedWorkOrder.executionEnvironment ?? "POLICY_SELECTED" as const,
+    };
+    const hasStableScope = Boolean(
+      refreshedWorkOrder.scopeEnforcementVersion ||
+      effectiveScope.repositoryId ||
+      effectiveScope.owningTeamId ||
+      effectiveScope.ownerMemberId ||
+      effectiveScope.codeScopeIds.length > 0
+    );
+    let effectiveRequiredApprovals = refreshedWorkOrder.requiredApprovals ?? [];
+    let scopePolicyRequirements: ReturnType<typeof combineCodeScopePolicies> | undefined;
+    let scopeReceiptId: Id<"scopeEnforcementReceipts"> | undefined;
+    let authenticatedOperatorId: Id<"operators"> | undefined;
+    if (scopeEnforced || hasStableScope) {
+      if (!refreshedWorkOrder.projectId || !refreshedWorkOrder.tenantId) {
+        if (hasStableScope) throw new Error("Scoped dispatch requires company and workspace identifiers.");
+      } else if (!hasStableScope) {
+        scopeReceiptId = await ctx.db.insert("scopeEnforcementReceipts", {
+          tenantId: refreshedWorkOrder.tenantId,
+          projectId: refreshedWorkOrder.projectId,
+          workOrderId: refreshedWorkOrder._id,
+          stage: "DISPATCH",
+          mode: "LEGACY",
+          outcome: "ALLOWED",
+          codeScopeIds: [],
+          reasonCodes: ["LEGACY_COMPATIBILITY_PATH"],
+          summary: "Legacy WorkOrder allowed through the compatibility path; stable scope backfill remains required.",
+          policyVersion: 1,
+          createdAt: Date.now(),
+        });
+      } else {
+        const scopeAccess = await requireWorkspaceAccess(
+          ctx,
+          refreshedWorkOrder.tenantId,
+          refreshedWorkOrder.projectId,
+          { permission: COMPANY_PERMISSIONS.DISPATCH_WORK }
+        );
+        assertAuthorizedDeliveryRecord(scopeAccess, refreshedWorkOrder);
+        authenticatedOperatorId = scopeAccess.membership.operatorId;
+        const broadDispatchAccess = scopeAccess.membership.canManageCompany || scopeAccess.roleNames.some((name) => /workspace lead|product manager|company|owner|admin/i.test(name));
+        const scopedMembership = effectiveScope.owningTeamId
+          ? scopeAccess.teamMemberships?.find((item) => item.teamId === effectiveScope.owningTeamId)
+          : undefined;
+        if (!broadDispatchAccess && !scopedMembership) {
+          throw new Error("Dispatch is limited to the operator's assigned team.");
+        }
+        if (
+          !broadDispatchAccess &&
+          scopedMembership?.role === "DEVELOPER" &&
+          (!effectiveScope.ownerMemberId || !scopeAccess.memberProfiles?.some((profile) => profile._id === effectiveScope.ownerMemberId))
+        ) {
+          throw new Error("Developers may dispatch only WorkOrders they own.");
+        }
+        const [repository, team, owner, codeScopes, hostBinding] = await Promise.all([
+          effectiveScope.repositoryId ? ctx.db.get(effectiveScope.repositoryId) : null,
+          effectiveScope.owningTeamId ? ctx.db.get(effectiveScope.owningTeamId) : null,
+          effectiveScope.ownerMemberId ? ctx.db.get(effectiveScope.ownerMemberId) : null,
+          Promise.all(effectiveScope.codeScopeIds.map((scopeId) => ctx.db.get(scopeId))),
+          args.executorHostId
+            ? ctx.db.query("workspaceHostBindings").withIndex("by_project_host", (q) => q.eq("projectId", refreshedWorkOrder.projectId!).eq("hostId", args.executorHostId!)).first()
+            : null,
+        ]);
+        const validCodeScopes = codeScopes.filter((scope): scope is NonNullable<typeof scope> => Boolean(scope));
+        scopePolicyRequirements = combineCodeScopePolicies(validCodeScopes.map((scope) => ({
+          owningTeamId: scope.owningTeamId,
+          requiredReviewers: scope.requiredReviewers,
+          verificationPolicy: scope.verificationPolicy,
+          approvalPolicy: scope.approvalPolicy,
+        })));
+        effectiveRequiredApprovals = [...new Set([...effectiveRequiredApprovals, ...scopePolicyRequirements.approvalPolicies])].sort();
+        const validatedScope = validateDispatchScope({
+          projectId: refreshedWorkOrder.projectId,
+          repository: repository ? { id: repository._id, projectId: repository.projectId, status: repository.status } : null,
+          codeScopes: validCodeScopes.map((scope) => ({ id: scope._id, projectId: scope.projectId, repositoryId: scope.repositoryId, active: scope.active, allowedEnvironments: scope.allowedEnvironments })),
+          team: team ? { id: team._id, projectId: team.projectId, status: team.status } : null,
+          owner: owner ? { id: owner._id, projectId: owner.projectId, active: owner.active } : null,
+          executionEnvironment: effectiveScope.executionEnvironment,
+          host: hostBinding ? { status: hostBinding.status, repository: hostBinding.repository } : null,
+        });
+        const canonicalMismatchReasons = [
+          args.repositoryId && refreshedWorkOrder.repositoryId && args.repositoryId !== refreshedWorkOrder.repositoryId
+            ? "WORK_ORDER_REPOSITORY_MISMATCH"
+            : null,
+          args.owningTeamId && refreshedWorkOrder.owningTeamId && args.owningTeamId !== refreshedWorkOrder.owningTeamId
+            ? "WORK_ORDER_TEAM_MISMATCH"
+            : null,
+          args.ownerMemberId && refreshedWorkOrder.ownerMemberId && args.ownerMemberId !== refreshedWorkOrder.ownerMemberId
+            ? "WORK_ORDER_OWNER_MISMATCH"
+            : null,
+          args.codeScopeIds && refreshedWorkOrder.codeScopeIds
+            && [...args.codeScopeIds].sort().join(":") !== [...refreshedWorkOrder.codeScopeIds].sort().join(":")
+            ? "WORK_ORDER_CODE_SCOPE_MISMATCH"
+            : null,
+          validCodeScopes.length !== effectiveScope.codeScopeIds.length ? "CODE_SCOPE_NOT_FOUND" : null,
+        ].filter((reason): reason is string => Boolean(reason));
+        const scopeValidation = {
+          allowed: validatedScope.allowed && canonicalMismatchReasons.length === 0,
+          reasonCodes: [...new Set([...validatedScope.reasonCodes, ...canonicalMismatchReasons])],
+        };
+        scopeReceiptId = await ctx.db.insert("scopeEnforcementReceipts", {
+          tenantId: refreshedWorkOrder.tenantId,
+          projectId: refreshedWorkOrder.projectId,
+          workOrderId: refreshedWorkOrder._id,
+          stage: "DISPATCH",
+          mode: scopeEnforced ? "ENFORCED" : "SHADOW",
+          outcome: scopeValidation.allowed ? "ALLOWED" : scopeEnforced ? "DENIED" : "MISMATCH",
+          repositoryId: effectiveScope.repositoryId,
+          codeScopeIds: effectiveScope.codeScopeIds,
+          teamId: effectiveScope.owningTeamId,
+          ownerMemberId: effectiveScope.ownerMemberId,
+          executionEnvironment: effectiveScope.executionEnvironment,
+          policyRequirements: scopePolicyRequirements as {
+            owningTeamIds: Id<"scrumTeams">[];
+            requiredReviewers: string[];
+            verificationPolicies: string[];
+            approvalPolicies: string[];
+            requiresCrossTeamReview: boolean;
+          },
+          reasonCodes: scopeValidation.reasonCodes,
+          summary: scopeValidation.allowed
+            ? "Dispatch scope matched workspace, repository, code-scope, team, owner, environment, and host policy."
+            : `Dispatch scope denied: ${scopeValidation.reasonCodes.join(", ")}`,
+          policyVersion: 1,
+          createdAt: Date.now(),
+          actorId: authenticatedOperatorId,
+        });
+        if (!scopeValidation.allowed && scopeEnforced) {
+          return {
+            created: false,
+            run: null,
+            reason: "scope-denied",
+            scopeReceiptId,
+            reasonCodes: scopeValidation.reasonCodes,
+          };
+        }
+        await ctx.db.patch(refreshedWorkOrder._id, {
+          repositoryId: effectiveScope.repositoryId,
+          codeScopeIds: effectiveScope.codeScopeIds,
+          owningTeamId: effectiveScope.owningTeamId,
+          ownerMemberId: effectiveScope.ownerMemberId,
+          executionEnvironment: effectiveScope.executionEnvironment,
+          requestingOperatorId: refreshedWorkOrder.requestingOperatorId ?? authenticatedOperatorId,
+          scopeEnforcementVersion: 1,
+          requiredApprovals: effectiveRequiredApprovals,
+          metadata: {
+            ...(refreshedWorkOrder.metadata && typeof refreshedWorkOrder.metadata === "object" ? refreshedWorkOrder.metadata : {}),
+            scopePolicyRequirements,
+          },
+        });
+      }
+    }
 
     const resolvedWorkflowId = args.workflowId ?? refreshedWorkOrder.workflowId;
     if (!resolvedWorkflowId) {
@@ -1494,7 +1738,7 @@ export const dispatch = mutation({
       state: refreshedWorkOrder.state,
       riskLevel: refreshedWorkOrder.riskLevel,
       approvalStatus: refreshedWorkOrder.approvalStatus,
-      requiredApprovals: refreshedWorkOrder.requiredApprovals,
+      requiredApprovals: effectiveRequiredApprovals,
       hasWorkflowId: !!resolvedWorkflowId,
       activeRunStatuses: existingRuns.map((run) => run.status as any),
     });
@@ -1628,6 +1872,13 @@ export const dispatch = mutation({
       runtime: args.runtime,
       model: routedModel,
       routingDecisionId: routing?.decisionId,
+      executionEnvironment: effectiveScope.executionEnvironment,
+      executorHostId: args.executorHostId,
+      checkpointSummary: "Dispatch accepted; awaiting executor binding.",
+      checkpointAt: now,
+      stopCondition: refreshedWorkOrder.constraints?.join("; ") || "Stop on policy, budget, environment, or verification failure.",
+      escalationOwner: refreshedWorkOrder.ownerMemberId ? String(refreshedWorkOrder.ownerMemberId) : refreshedWorkOrder.requestedBy,
+      evidenceState: "UNKNOWN",
       worktree: args.worktree,
       startedAt: now,
       metadata: {
@@ -1641,6 +1892,13 @@ export const dispatch = mutation({
         routingMode: routing?.mode,
         routingSource: routing?.result.source,
         routingPolicyVersion: routing?.policyVersion,
+        repositoryId: effectiveScope.repositoryId,
+        codeScopeIds: effectiveScope.codeScopeIds,
+        owningTeamId: effectiveScope.owningTeamId,
+        ownerMemberId: effectiveScope.ownerMemberId,
+        executionEnvironment: effectiveScope.executionEnvironment,
+        executorHostId: args.executorHostId,
+        scopeReceiptId,
       },
     });
     if (routing) {
@@ -1680,6 +1938,14 @@ export const dispatch = mutation({
       updatedAt: now,
       blockingIssue: undefined,
       requiredHumanAction: undefined,
+      repositoryId: effectiveScope.repositoryId,
+      codeScopeIds: effectiveScope.codeScopeIds,
+      owningTeamId: effectiveScope.owningTeamId,
+      ownerMemberId: effectiveScope.ownerMemberId,
+      executionEnvironment: effectiveScope.executionEnvironment,
+      modelRoutingDecisionId: routing?.decisionId,
+      requestingOperatorId: refreshedWorkOrder.requestingOperatorId ?? authenticatedOperatorId,
+      scopeEnforcementVersion: hasStableScope ? 1 : refreshedWorkOrder.scopeEnforcementVersion,
     });
 
     if (missionForDispatch) {
@@ -1817,6 +2083,8 @@ export const setAuthorizedModelOverride = mutation({
   handler: async (ctx, args) => {
     const workOrder = await ctx.db.get(args.workOrderId);
     if (!workOrder) throw new Error("Work Order not found");
+    const deliveryAccess = await requireAuthorizedDeliveryScope(ctx, workOrder.projectId, COMPANY_PERMISSIONS.APPROVE_DELIVERY);
+    assertAuthorizedDeliveryRecord(deliveryAccess, workOrder);
     const runs = await ctx.db
       .query("workflowRuns")
       .withIndex("by_work_order", (q) => q.eq("workOrderId", workOrder._id))
@@ -1993,6 +2261,7 @@ export const approvalQueue = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const deliveryAccess = await requireAuthorizedDeliveryScope(ctx, args.projectId);
     const candidateLimit = args.limit ?? 100;
     let approvals = args.projectId
       ? await ctx.db
@@ -2011,11 +2280,12 @@ export const approvalQueue = query({
       approvals = approvals.filter((approval: any) => approval.status === args.status).slice(0, candidateLimit);
     }
 
-    return await Promise.all(approvals.slice(0, candidateLimit).map(async (approval: any) => {
+    const rows = await Promise.all(approvals.slice(0, candidateLimit).map(async (approval: any) => {
       const [workOrder, receipts] = await Promise.all([
         ctx.db.get(approval.workOrderId) as Promise<any>,
         listVerificationReceiptsForWorkOrder(ctx, approval.workOrderId),
       ]);
+      if (workOrder && deliveryAccess && !canAccessDeliveryRecord(deliveryAccess, workOrder)) return null;
 
       const evidenceAvailable = receipts.filter((receipt: any) => ["PASSED", "WAIVED"].includes(receipt.status)).length;
       const [latestRun, approvalDecisions, revisions, policy] = workOrder
@@ -2054,6 +2324,7 @@ export const approvalQueue = query({
         remainingUncertainty: acceptance?.blockingReasons ?? [],
       };
     }));
+    return rows.filter((row): row is NonNullable<typeof row> => row !== null);
   },
 });
 
@@ -2070,16 +2341,20 @@ export const requestApprovalDecision = mutation({
     metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
+    const workOrder = await ctx.db.get(args.workOrderId);
+    if (!workOrder) throw new Error("WorkOrder not found");
+    const deliveryAccess = await requireAuthorizedDeliveryScope(ctx, workOrder.projectId, COMPANY_PERMISSIONS.UPDATE_DELIVERY);
+    assertAuthorizedDeliveryRecord(deliveryAccess, workOrder);
     if (args.idempotencyKey) {
       const existing = await ctx.db
         .query("approvalDecisions")
         .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.idempotencyKey))
         .first();
-      if (existing) return { approvalDecision: existing, created: false };
+      if (existing) {
+        if (existing.workOrderId !== workOrder._id) throw new Error("Idempotency key is already bound to another WorkOrder");
+        return { approvalDecision: existing, created: false };
+      }
     }
-
-    const workOrder = await ctx.db.get(args.workOrderId);
-    if (!workOrder) throw new Error("WorkOrder not found");
     const policy = await resolveGovernancePolicy(ctx, workOrder);
 
     if (args.workflowRunId) {
@@ -2165,6 +2440,8 @@ export const decideApprovalDecision = mutation({
     }
     const workOrder = await ctx.db.get(approvalDecision.workOrderId);
     if (!workOrder) throw new Error("WorkOrder not found");
+    const deliveryAccess = await requireAuthorizedDeliveryScope(ctx, workOrder.projectId, COMPANY_PERMISSIONS.APPROVE_DELIVERY);
+    assertAuthorizedDeliveryRecord(deliveryAccess, workOrder);
     const reason = args.reason?.trim();
     if (!reason) throw new Error("A decision reason is required");
     if (args.decision === "APPROVE_WITH_CONDITIONS" && !(args.conditions ?? []).some((condition) => condition.trim())) {
@@ -2237,6 +2514,9 @@ export const expireApprovalDecision = mutation({
   handler: async (ctx, args) => {
     const approvalDecision = await ctx.db.get(args.approvalDecisionId);
     if (!approvalDecision) throw new Error("ApprovalDecision not found");
+    const scopedWorkOrder = await ctx.db.get(approvalDecision.workOrderId);
+    const deliveryAccess = await requireAuthorizedDeliveryScope(ctx, scopedWorkOrder?.projectId, COMPANY_PERMISSIONS.APPROVE_DELIVERY);
+    if (scopedWorkOrder) assertAuthorizedDeliveryRecord(deliveryAccess, scopedWorkOrder);
     if (approvalDecision.status !== "PENDING") {
       throw new Error(`ApprovalDecision cannot expire from ${approvalDecision.status}`);
     }
@@ -2283,19 +2563,23 @@ export const recordVerificationReceipt = mutation({
     metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
-    if (args.idempotencyKey) {
-      const existing = await ctx.db
-        .query("verificationReceipts")
-        .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.idempotencyKey))
-        .first();
-      if (existing) return { verificationReceipt: existing, created: false };
-    }
-
     const [workOrder, run] = await Promise.all([
       ctx.db.get(args.workOrderId),
       ctx.db.get(args.workflowRunId),
     ]);
     if (!workOrder) throw new Error("WorkOrder not found");
+    const deliveryAccess = await requireAuthorizedDeliveryScope(ctx, workOrder.projectId, COMPANY_PERMISSIONS.VERIFY_DELIVERY);
+    assertAuthorizedDeliveryRecord(deliveryAccess, workOrder);
+    if (args.idempotencyKey) {
+      const existing = await ctx.db
+        .query("verificationReceipts")
+        .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.idempotencyKey))
+        .first();
+      if (existing) {
+        if (existing.workOrderId !== workOrder._id) throw new Error("Idempotency key is already bound to another WorkOrder");
+        return { verificationReceipt: existing, created: false };
+      }
+    }
     const policy = await resolveGovernancePolicy(ctx, workOrder);
     if (!run || run.workOrderId !== workOrder._id) throw new Error("Workflow run does not belong to this WorkOrder");
     if (!workOrder.acceptanceCriteria.some((criterion: any) => criterion.id === args.acceptanceCriterionId)) {
@@ -2427,16 +2711,17 @@ export const accept = mutation({
     idempotencyKey: v.string(),
   },
   handler: async (ctx, args) => {
+    const workOrder = await ctx.db.get(args.workOrderId);
+    if (!workOrder) throw new Error("WorkOrder not found");
+    const deliveryAccess = await requireAuthorizedDeliveryScope(ctx, workOrder.projectId, COMPANY_PERMISSIONS.APPROVE_DELIVERY);
+    assertAuthorizedDeliveryRecord(deliveryAccess, workOrder);
     const existingEvent = await ctx.db
       .query("workOrderEvents")
       .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", `${args.idempotencyKey}:accepted`))
       .first();
     if (existingEvent) {
-      return { accepted: false, workOrder: await ctx.db.get(args.workOrderId), reason: "idempotent-replay" };
+      return { accepted: false, workOrder, reason: "idempotent-replay" };
     }
-
-    const workOrder = await ctx.db.get(args.workOrderId);
-    if (!workOrder) throw new Error("WorkOrder not found");
     if (["DONE", "CANCELED", "DRAFT"].includes(workOrder.state)) {
       throw new Error(`WorkOrder cannot be accepted from ${workOrder.state}`);
     }
@@ -2626,14 +2911,18 @@ export const requestWorkOrderRevision = mutation({
     metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
+    const workOrder = await ctx.db.get(args.workOrderId);
+    if (!workOrder) throw new Error("WorkOrder not found");
+    const deliveryAccess = await requireAuthorizedDeliveryScope(ctx, workOrder.projectId, COMPANY_PERMISSIONS.UPDATE_DELIVERY);
+    assertAuthorizedDeliveryRecord(deliveryAccess, workOrder);
     const existing = await ctx.db
       .query("workOrderRevisions")
       .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.idempotencyKey))
       .first();
-    if (existing) return { revision: existing, created: false };
-
-    const workOrder = await ctx.db.get(args.workOrderId);
-    if (!workOrder) throw new Error("WorkOrder not found");
+    if (existing) {
+      if (existing.workOrderId !== workOrder._id) throw new Error("Idempotency key is already bound to another WorkOrder");
+      return { revision: existing, created: false };
+    }
     if (["SUPERSEDED", "CANCELED"].includes(workOrder.state)) {
       throw new Error(`WorkOrder cannot be revised from ${workOrder.state}`);
     }
@@ -2727,6 +3016,8 @@ export const approveWorkOrderRevision = mutation({
     }
     const workOrder = await ctx.db.get(revision.workOrderId);
     if (!workOrder) throw new Error("WorkOrder not found");
+    const deliveryAccess = await requireAuthorizedDeliveryScope(ctx, workOrder.projectId, COMPANY_PERMISSIONS.APPROVE_DELIVERY);
+    assertAuthorizedDeliveryRecord(deliveryAccess, workOrder);
 
     await logWorkOrderEvent(ctx, {
       tenantId: workOrder.tenantId,
@@ -2760,14 +3051,18 @@ export const reopenWorkOrder = mutation({
     metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
+    const workOrder = await ctx.db.get(args.workOrderId);
+    if (!workOrder) throw new Error("WorkOrder not found");
+    const deliveryAccess = await requireAuthorizedDeliveryScope(ctx, workOrder.projectId, COMPANY_PERMISSIONS.APPROVE_DELIVERY);
+    assertAuthorizedDeliveryRecord(deliveryAccess, workOrder);
     const existing = await ctx.db
       .query("reopenDecisions")
       .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.idempotencyKey))
       .first();
-    if (existing) return { reopenDecision: existing, created: false };
-
-    const workOrder = await ctx.db.get(args.workOrderId);
-    if (!workOrder) throw new Error("WorkOrder not found");
+    if (existing) {
+      if (existing.workOrderId !== workOrder._id) throw new Error("Idempotency key is already bound to another WorkOrder");
+      return { reopenDecision: existing, created: false };
+    }
     if (["SUPERSEDED", "CANCELED"].includes(workOrder.state)) {
       throw new Error(`WorkOrder cannot be reopened from ${workOrder.state}`);
     }
@@ -2864,17 +3159,25 @@ export const supersedeWorkOrder = mutation({
     metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
-    const existing = await ctx.db
-      .query("workOrderSupersessions")
-      .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.idempotencyKey))
-      .first();
-    if (existing) return { supersession: existing, created: false };
-
     const [original, replacement] = await Promise.all([
       ctx.db.get(args.workOrderId),
       ctx.db.get(args.replacementWorkOrderId),
     ]);
     if (!original || !replacement) throw new Error("WorkOrder or replacement WorkOrder not found");
+    const deliveryAccess = await requireAuthorizedDeliveryScope(ctx, original.projectId, COMPANY_PERMISSIONS.APPROVE_DELIVERY);
+    assertAuthorizedDeliveryRecord(deliveryAccess, original);
+    assertAuthorizedDeliveryRecord(deliveryAccess, replacement);
+    const existing = await ctx.db
+      .query("workOrderSupersessions")
+      .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.idempotencyKey))
+      .first();
+    if (existing) {
+      if (existing.originalWorkOrderId !== original._id || existing.replacementWorkOrderId !== replacement._id) {
+        throw new Error("Idempotency key is already bound to another WorkOrder supersession");
+      }
+      return { supersession: existing, created: false };
+    }
+    if (replacement.projectId !== original.projectId) throw new Error("Replacement WorkOrder must belong to the same workspace");
     if (original._id === replacement._id) throw new Error("Replacement WorkOrder must be different");
     if (original.state === "SUPERSEDED") throw new Error("WorkOrder is already superseded");
 
@@ -2944,11 +3247,15 @@ export const expireGovernanceRecords = mutation({
     projectId: v.optional(v.id("projects")),
   },
   handler: async (ctx, args) => {
-    const workOrders = args.workOrderId
+    const scopedWorkOrder = args.workOrderId ? await ctx.db.get(args.workOrderId) : null;
+    const deliveryAccess = await requireAuthorizedDeliveryScope(ctx, scopedWorkOrder?.projectId ?? args.projectId, COMPANY_PERMISSIONS.APPROVE_DELIVERY);
+    if (scopedWorkOrder) assertAuthorizedDeliveryRecord(deliveryAccess, scopedWorkOrder);
+    const candidates = args.workOrderId
       ? [await ctx.db.get(args.workOrderId)].filter(Boolean)
       : args.projectId
         ? await ctx.db.query("workOrders").withIndex("by_project", (q) => q.eq("projectId", args.projectId!)).take(500)
         : await ctx.db.query("workOrders").take(500);
+    const workOrders = candidates.filter((workOrder: any) => canAccessDeliveryRecord(deliveryAccess, workOrder));
 
     let expiredApprovals = 0;
     let staleReceipts = 0;
