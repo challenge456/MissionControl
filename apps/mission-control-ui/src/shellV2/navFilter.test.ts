@@ -44,7 +44,6 @@ describe("filterNavGroups", () => {
       "audit",
       "telemetry",
       "operator-evals",
-      "harness-loops",
       "skills",
       "memory",
       "docs",
@@ -67,6 +66,7 @@ describe("filterNavGroups", () => {
 
     expect(previewViews.find((item) => item.view === "effectiveness")).toBeUndefined();
     expect(previewViews.find((item) => item.view === "dag")?.badge).toBe("Preview");
+    expect(previewViews.find((item) => item.view === "harness-loops")?.badge).toBe("Preview");
     expect(demoViews.find((item) => item.view === "dossier")?.badge).toBe("Demo");
   });
 

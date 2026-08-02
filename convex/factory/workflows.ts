@@ -4,6 +4,7 @@
 
 import { v } from "convex/values";
 import { mutation, query } from "../_generated/server";
+import { FACTORY_PERMISSIONS, requireWorkspacePermission } from "../lib/companyAccess";
 
 const statusArg = v.union(
   v.literal("PENDING"),
@@ -19,6 +20,8 @@ export const list = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    if (!args.projectId) return [];
+    await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.VIEW);
     const limit = args.limit ?? 30;
     let rows = await ctx.db.query("contextWorkflowRuns").collect();
     rows.sort((a, b) => b.createdAt - a.createdAt);
@@ -36,9 +39,16 @@ export const schedule = mutation({
     intelligenceTier: v.optional(v.string()),
     schedule: v.optional(v.string()),
     idempotencyKey: v.optional(v.string()),
+    /** @deprecated Browser actor labels are ignored; authority is server-derived. */
     actorId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    if (!args.projectId) throw new Error("Select a workspace before scheduling an automation");
+    await requireWorkspacePermission(
+      ctx,
+      args.projectId,
+      FACTORY_PERMISSIONS.MANAGE_AUTOMATION
+    );
     if (args.idempotencyKey) {
       const existing = await ctx.db
         .query("contextWorkflowRuns")

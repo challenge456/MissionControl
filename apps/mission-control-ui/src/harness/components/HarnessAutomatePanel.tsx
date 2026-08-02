@@ -41,12 +41,12 @@ export function HarnessAutomatePanel({
   const [scheduled, setScheduled] = useState(false);
 
   const handleSchedule = async () => {
+    if (!projectId) return;
     await scheduleWorkflow({
-      projectId: projectId ?? undefined,
+      projectId,
       skillName,
       schedule,
       idempotencyKey: `automate-${skillName}-${schedule}`,
-      actorId: "harness-automate-ui",
     });
     setScheduled(true);
     onNavigate?.("harness-launch");
@@ -65,7 +65,7 @@ export function HarnessAutomatePanel({
   return (
     <div className="space-y-2">
       <AutomateThisCta
-        onSchedule={() => void handleSchedule()}
+        onSchedule={projectId ? () => void handleSchedule() : undefined}
         onCi={() => void handleCi()}
         onCron={handleCron}
       />

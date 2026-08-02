@@ -202,19 +202,20 @@ export function HarnessCodeReviewWizardSteps({
         </p>
         <Button
           size="sm"
-          disabled={busy || metaScheduled}
+          disabled={!projectId || busy || metaScheduled}
           onClick={() => {
+            if (!projectId) return;
             setBusy(true);
             const key = `meta-loop-${Date.now()}`;
             void schedule({
-              projectId: projectId ?? undefined,
+              projectId,
               skillName: "meta-loop-pr-mining",
               schedule: "0 2 * * *",
               idempotencyKey: key,
             })
               .then(() =>
                 createMeta({
-                  projectId: projectId ?? undefined,
+                  projectId,
                   kind: "EVAL_SCENARIO",
                   title: "Boundary from PR mining",
                   summary: "Extract eval when mutation testing misses empty-input path",

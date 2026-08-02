@@ -9,6 +9,11 @@ import type { Id } from "../_generated/dataModel";
 import {
   buildChangeReviewLenses,
   buildMutationTestingReport,
+  isVerifiedPrLineage,
+  normalizeGitBranch,
+  normalizeGitHubRepository,
+  recordedPrLineageBranch,
+  selectExactPrLineageWorkOrder,
   parseGitHubPrUrl,
   repoFullName,
   type PrCheckSignals,
@@ -17,6 +22,7 @@ import { computeMergeGates } from "../lib/mergeGates";
 import { fetchPullRequestCi } from "../lib/githubCiIngest";
 import { buildFileChanges } from "../lib/runInspector";
 import { mergeAuthoritySatisfied } from "../lib/prEvaluation";
+import { FACTORY_PERMISSIONS, requireWorkspacePermission } from "../lib/companyAccess";
 
 const lensValidator = v.array(
   v.object({
@@ -33,12 +39,12 @@ export const listForProject = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    let rows = args.projectId
-      ? await ctx.db
-          .query("harnessPrChecks")
-          .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
-          .collect()
-      : await ctx.db.query("harnessPrChecks").collect();
+    if (!args.projectId) return [];
+    await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.VIEW);
+    const rows = await ctx.db
+      .query("harnessPrChecks")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
     rows.sort((a, b) => b.syncedAt - a.syncedAt);
     return rows.slice(0, args.limit ?? 20);
   },
@@ -47,12 +53,12 @@ export const listForProject = query({
 export const getLatest = query({
   args: { projectId: v.optional(v.id("projects")) },
   handler: async (ctx, args) => {
-    let rows = args.projectId
-      ? await ctx.db
-          .query("harnessPrChecks")
-          .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
-          .collect()
-      : await ctx.db.query("harnessPrChecks").collect();
+    if (!args.projectId) return null;
+    await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.VIEW);
+    const rows = await ctx.db
+      .query("harnessPrChecks")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
     rows.sort((a, b) => b.syncedAt - a.syncedAt);
     return rows[0] ?? null;
   },
@@ -66,14 +72,24 @@ export const getByPrUrl = query({
       .withIndex("by_pr_url", (q) => q.eq("prUrl", args.prUrl))
       .collect();
     rows.sort((a, b) => b.syncedAt - a.syncedAt);
-    return rows[0] ?? null;
+    const check = rows[0] ?? null;
+    if (!check?.projectId) return null;
+    await requireWorkspacePermission(ctx, check.projectId, FACTORY_PERMISSIONS.VIEW);
+    return check;
   },
 });
 
 export const getMergeGateStatus = query({
-  args: { projectId: v.optional(v.id("projects")), prUrl: v.optional(v.string()) },
+  args: {
+    projectId: v.optional(v.id("projects")),
+    prUrl: v.optional(v.string()),
+    workOrderId: v.optional(v.id("workOrders")),
+    cycleId: v.optional(v.id("loopEngineeringCycles")),
+  },
   handler: async (ctx, args) => {
     let check = null;
+    let projectId = args.projectId;
+    let scope: "EXPLICIT_PR" | "WORK_ORDER" | "CYCLE" | "WORKSPACE_LATEST" | "NONE" = "NONE";
     if (args.prUrl) {
       const rows = await ctx.db
         .query("harnessPrChecks")
@@ -81,21 +97,62 @@ export const getMergeGateStatus = query({
         .collect();
       rows.sort((a, b) => b.syncedAt - a.syncedAt);
       check = rows[0] ?? null;
-    } else {
-      let rows = args.projectId
-        ? await ctx.db
+      projectId = check?.projectId ?? projectId;
+      scope = "EXPLICIT_PR";
+    } else if (args.workOrderId) {
+      const workOrder = await ctx.db.get(args.workOrderId);
+      if (!workOrder) throw new Error("WorkOrder is unavailable or unauthorized");
+      projectId = workOrder.projectId;
+      const rows = await ctx.db
+        .query("harnessPrChecks")
+        .withIndex("by_work_order", (q) => q.eq("workOrderId", args.workOrderId))
+        .collect();
+      const correlatedRows = rows.filter(isVerifiedPrLineage);
+      correlatedRows.sort((a, b) => b.syncedAt - a.syncedAt);
+      check = correlatedRows[0] ?? null;
+      scope = "WORK_ORDER";
+    } else if (args.cycleId) {
+      const cycle = await ctx.db.get(args.cycleId);
+      if (!cycle) throw new Error("Loop Engineering cycle is unavailable or unauthorized");
+      projectId = cycle.projectId;
+      const rows = (await Promise.all(
+        cycle.workOrderIds.map((workOrderId) =>
+          ctx.db
             .query("harnessPrChecks")
-            .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+            .withIndex("by_work_order", (q) => q.eq("workOrderId", workOrderId))
             .collect()
-        : await ctx.db.query("harnessPrChecks").collect();
+        )
+      )).flat();
+      const correlatedRows = rows.filter(isVerifiedPrLineage);
+      correlatedRows.sort((a, b) => b.syncedAt - a.syncedAt);
+      check = correlatedRows[0] ?? null;
+      scope = "CYCLE";
+    } else if (projectId) {
+      const rows = await ctx.db
+        .query("harnessPrChecks")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
+        .collect();
       rows.sort((a, b) => b.syncedAt - a.syncedAt);
       check = rows[0] ?? null;
+      scope = "WORKSPACE_LATEST";
+    }
+
+    if (!projectId) {
+      return {
+        scope,
+        scopeLabel: "No workspace scope",
+        gates: [],
+        allPass: false,
+        correlated: false,
+      };
+    }
+    await requireWorkspacePermission(ctx, projectId, FACTORY_PERMISSIONS.VIEW);
+    if (check?.projectId && check.projectId !== projectId) {
+      throw new Error("PR evidence is outside the selected workspace");
     }
 
     let verifiers = await ctx.db.query("contextVerifiers").collect();
-    if (args.projectId) {
-      verifiers = verifiers.filter((v) => v.projectId === args.projectId);
-    }
+    verifiers = verifiers.filter((v) => v.projectId === projectId);
     const activeVerifierCount = verifiers.filter((v) => v.active).length;
 
     const lenses = check?.changeReviewLenses ?? [];
@@ -112,6 +169,17 @@ export const getMergeGateStatus = query({
     });
 
     return {
+      scope,
+      scopeLabel: scope === "WORKSPACE_LATEST"
+        ? "Workspace latest PR — not linked to the selected cycle"
+        : scope === "CYCLE"
+          ? "Selected Loop Engineering cycle"
+          : scope === "WORK_ORDER"
+            ? "Selected WorkOrder"
+            : scope === "EXPLICIT_PR"
+              ? "Explicit PR"
+              : "No scope",
+      correlated: check ? isVerifiedPrLineage(check) : false,
       gates,
       allPass: gates.every((g) => g.passed),
       evaluationId: check?._id,
@@ -259,6 +327,8 @@ async function upsertPrCheck(
 export const syncFromSources = mutation({
   args: { projectId: v.optional(v.id("projects")) },
   handler: async (ctx, args) => {
+    if (!args.projectId) throw new Error("Select a workspace before syncing PR evidence");
+    await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.IMPROVE);
     const synced: string[] = [];
 
     const codegenRows = args.projectId
@@ -363,6 +433,8 @@ export const recordManual = mutation({
     changeReviewLenses: v.optional(lensValidator),
   },
   handler: async (ctx, args) => {
+    if (!args.projectId) throw new Error("Select a workspace before recording PR evidence");
+    await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.IMPROVE);
     const id = await upsertPrCheck(ctx, {
       projectId: args.projectId,
       prUrl: args.prUrl,
@@ -379,13 +451,20 @@ export const recordManual = mutation({
 export const recordMerge = mutation({
   args: {
     evaluationId: v.id("harnessPrChecks"),
-    actorId: v.string(),
+    /** @deprecated Browser actor labels are ignored; authority is server-derived. */
+    actorId: v.optional(v.string()),
     mergeCommitSha: v.string(),
     humanConfirmed: v.boolean(),
   },
   handler: async (ctx, args) => {
     const evaluation = await ctx.db.get(args.evaluationId);
     if (!evaluation) throw new Error("PR evaluation not found");
+    if (!evaluation.projectId) throw new Error("PR evaluation is not workspace-scoped");
+    const access = await requireWorkspacePermission(
+      ctx,
+      evaluation.projectId,
+      FACTORY_PERMISSIONS.APPROVE
+    );
     if (evaluation.mergedAt && evaluation.mergeCommitSha === args.mergeCommitSha) {
       return { recorded: false, evaluation };
     }
@@ -409,9 +488,9 @@ export const recordMerge = mutation({
     })) {
       throw new Error("Passing gates, WorkOrder approval, and explicit merge confirmation are required before merge");
     }
-    const actorId = args.actorId.trim();
+    const actorId = access.actorId;
     const mergeCommitSha = args.mergeCommitSha.trim();
-    if (!actorId || !mergeCommitSha) throw new Error("Merge actor and commit SHA are required");
+    if (!mergeCommitSha) throw new Error("Merge commit SHA is required");
     const mergedAt = Date.now();
     await ctx.db.patch(evaluation._id, { mergeActor: actorId, mergeCommitSha, mergedAt });
     if (workOrder) {
@@ -444,6 +523,9 @@ export const ingestPullRequest = action({
   args: {
     prUrl: v.string(),
     projectId: v.optional(v.id("projects")),
+    workOrderId: v.optional(v.id("workOrders")),
+    workflowRunId: v.optional(v.id("workflowRuns")),
+    taskId: v.optional(v.id("tasks")),
     releaseDeploymentId: v.optional(v.id("deployments")),
     sourceEventId: v.optional(v.string()),
   },
@@ -470,6 +552,9 @@ export const ingestPullRequest = action({
     );
     const lineage = await ctx.runQuery(internal.factory.prChecks.resolveLineage, {
       projectId: args.projectId,
+      workOrderId: args.workOrderId,
+      workflowRunId: args.workflowRunId,
+      taskId: args.taskId,
       repoFullName: payload.repoFullName,
       branch: payload.branch,
     });
@@ -482,6 +567,7 @@ export const ingestPullRequest = action({
       workflowRunId: lineage.workflowRunId,
       taskId: lineage.taskId,
       loopEngineeringCycleId: lineage.loopEngineeringCycleId,
+      lineageStatus: lineage.lineageStatus,
       releaseDeploymentId: args.releaseDeploymentId,
       prUrl: payload.prUrl,
       prNumber: payload.prNumber,
@@ -511,29 +597,72 @@ export const ingestPullRequest = action({
 export const resolveLineage = internalQuery({
   args: {
     projectId: v.optional(v.id("projects")),
+    workOrderId: v.optional(v.id("workOrders")),
+    workflowRunId: v.optional(v.id("workflowRuns")),
+    taskId: v.optional(v.id("tasks")),
     repoFullName: v.string(),
     branch: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const normalize = (value?: string) => value?.replace(/^https?:\/\/github\.com\//, "").replace(/\.git$/, "").toLowerCase();
     let projectId = args.projectId;
+    if (args.workOrderId) {
+      if (!args.workflowRunId) {
+        throw new Error("Explicit PR artifacts require the producing Attempt/run");
+      }
+      const workOrder = await ctx.db.get(args.workOrderId);
+      if (!workOrder) throw new Error("Explicit PR artifact WorkOrder not found");
+      if (projectId && projectId !== workOrder.projectId) {
+        throw new Error("Explicit PR artifact crosses workspace boundaries");
+      }
+      if (
+        normalizeGitHubRepository(workOrder.repository) !==
+        normalizeGitHubRepository(args.repoFullName)
+      ) {
+        throw new Error("Explicit PR artifact repository does not match the WorkOrder");
+      }
+      const recordedBranch = recordedPrLineageBranch(workOrder);
+      if (recordedBranch && recordedBranch !== normalizeGitBranch(args.branch)) {
+        throw new Error("Explicit PR artifact branch does not match the WorkOrder");
+      }
+      const workflowRun = args.workflowRunId ? await ctx.db.get(args.workflowRunId) : null;
+      if (args.workflowRunId && workflowRun?.workOrderId !== workOrder._id) {
+        throw new Error("Explicit PR artifact run does not belong to the WorkOrder");
+      }
+      const task = args.taskId ? await ctx.db.get(args.taskId) : null;
+      if (args.taskId && task?.workOrderId !== workOrder._id) {
+        throw new Error("Explicit PR artifact Task does not belong to the WorkOrder");
+      }
+      const cycles = await ctx.db.query("loopEngineeringCycles").collect();
+      const cycle = cycles.find((candidate) => candidate.workOrderIds.includes(workOrder._id));
+      return {
+        projectId: workOrder.projectId,
+        workOrderId: workOrder._id,
+        workflowRunId: workflowRun?._id,
+        taskId: task?._id ?? workflowRun?.parentTaskId,
+        loopEngineeringCycleId: cycle?._id,
+        lineageStatus: "EXPLICIT_ARTIFACT" as const,
+      };
+    }
     if (!projectId) {
       const projects = await ctx.db.query("projects").collect();
-      projectId = projects.find((project) => normalize(project.githubRepo) === normalize(args.repoFullName))?._id;
+      projectId = projects.find((project) =>
+        normalizeGitHubRepository(project.githubRepo) ===
+        normalizeGitHubRepository(args.repoFullName)
+      )?._id;
     }
-    if (!projectId) return {};
+    if (!projectId) return { lineageStatus: "UNCORRELATED" as const };
     const workOrders = await ctx.db.query("workOrders")
       .withIndex("by_project", (q) => q.eq("projectId", projectId))
       .collect();
     const candidates = workOrders.filter((workOrder) =>
-      normalize(workOrder.repository) === normalize(args.repoFullName)
-      && !["CANCELED", "SUPERSEDED"].includes(workOrder.state)
+      !["CANCELED", "SUPERSEDED"].includes(workOrder.state)
     );
-    candidates.sort((a, b) => b.updatedAt - a.updatedAt);
-    const workOrder = candidates.find((candidate) =>
-      !args.branch || candidate.branchStrategy?.includes(args.branch)
-    ) ?? candidates[0];
-    if (!workOrder) return { projectId };
+    const workOrder = selectExactPrLineageWorkOrder({
+      candidates,
+      repository: args.repoFullName,
+      branch: args.branch,
+    });
+    if (!workOrder) return { projectId, lineageStatus: "UNCORRELATED" as const };
     const runs = await ctx.db.query("workflowRuns").collect();
     const workflowRun = runs
       .filter((run) => run.workOrderId === workOrder._id)
@@ -549,6 +678,7 @@ export const resolveLineage = internalQuery({
       workflowRunId: workflowRun?._id,
       taskId: workflowRun?.parentTaskId ?? tasks[0]?._id,
       loopEngineeringCycleId: cycle?._id,
+      lineageStatus: "EXACT_BRANCH" as const,
     };
   },
 });

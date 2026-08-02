@@ -1,7 +1,7 @@
 import { v } from "convex/values";
-import { action, internalMutation, mutation, query } from "./_generated/server";
+import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { api, internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import {
   classifyFreshness,
   normalizeSourceUrl,
@@ -10,6 +10,11 @@ import {
 } from "./lib/loopEngineering";
 import { GRAPH_ENGINEERING_PERSONAS } from "./lib/graphEngineering";
 import { projectLoopWorkflowContext } from "./lib/loopWorkflowProjection";
+import {
+  FACTORY_PERMISSIONS,
+  requireWorkspacePermission,
+  type FactoryPermission,
+} from "./lib/companyAccess";
 
 function cycleRef(cycleId: Id<"loopEngineeringCycles">) {
   return `loop-engineering:${cycleId}`;
@@ -38,43 +43,72 @@ async function logCycleActivity(
   });
 }
 
+async function requireCyclePermission(
+  ctx: any,
+  cycleId: Id<"loopEngineeringCycles">,
+  permission: FactoryPermission
+): Promise<{ cycle: Doc<"loopEngineeringCycles">; access: Awaited<ReturnType<typeof requireWorkspacePermission>> }> {
+  const cycle = await ctx.db.get(cycleId) as Doc<"loopEngineeringCycles"> | null;
+  if (!cycle) throw new Error("Loop Engineering cycle is unavailable or unauthorized.");
+  const access = await requireWorkspacePermission(ctx, cycle.projectId, permission);
+  return { cycle, access };
+}
+
+async function findCycleByRootWorkOrder(ctx: any, workOrderId: Id<"workOrders">) {
+  const indexed = await ctx.db
+    .query("loopEngineeringCycles")
+    .withIndex("by_root_work_order", (q: any) => q.eq("rootWorkOrderId", workOrderId))
+    .first();
+  if (indexed) return indexed;
+
+  // Compatibility path for cycles created before rootWorkOrderId was added.
+  const cycles = await ctx.db.query("loopEngineeringCycles").collect();
+  return cycles.find((cycle: any) => cycle.workOrderIds.includes(workOrderId)) ?? null;
+}
+
 export const listByProject = query({
   args: { projectId: v.id("projects") },
-  handler: async (ctx, args) =>
-    await ctx.db
+  handler: async (ctx, args) => {
+    await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.VIEW);
+    return await ctx.db
       .query("loopEngineeringCycles")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .order("desc")
-      .collect(),
+      .collect();
+  },
 });
 
 export const get = query({
   args: { cycleId: v.id("loopEngineeringCycles") },
-  handler: async (ctx, args) => await ctx.db.get(args.cycleId),
+  handler: async (ctx, args) =>
+    (await requireCyclePermission(ctx, args.cycleId, FACTORY_PERMISSIONS.VIEW)).cycle,
 });
 
 export const getByIdempotency = query({
-  args: { idempotencyKey: v.string() },
-  handler: async (ctx, args) =>
-    await ctx.db
+  args: { projectId: v.id("projects"), idempotencyKey: v.string() },
+  handler: async (ctx, args) => {
+    await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.VIEW);
+    const cycle = await ctx.db
       .query("loopEngineeringCycles")
       .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.idempotencyKey))
-      .first(),
+      .first();
+    return cycle?.projectId === args.projectId ? cycle : null;
+  },
 });
 
 export const getByRootWorkOrder = query({
   args: { workOrderId: v.id("workOrders") },
   handler: async (ctx, args) => {
-    const indexed = await ctx.db
-      .query("loopEngineeringCycles")
-      .withIndex("by_root_work_order", (q) => q.eq("rootWorkOrderId", args.workOrderId))
-      .first();
-    if (indexed) return indexed;
-
-    // Compatibility path for cycles created before rootWorkOrderId was added.
-    const cycles = await ctx.db.query("loopEngineeringCycles").collect();
-    return cycles.find((cycle) => cycle.workOrderIds.includes(args.workOrderId)) ?? null;
+    const cycle = await findCycleByRootWorkOrder(ctx, args.workOrderId);
+    if (!cycle) return null;
+    await requireWorkspacePermission(ctx, cycle.projectId, FACTORY_PERMISSIONS.VIEW);
+    return cycle;
   },
+});
+
+export const getByRootWorkOrderInternal = internalQuery({
+  args: { workOrderId: v.id("workOrders") },
+  handler: async (ctx, args) => findCycleByRootWorkOrder(ctx, args.workOrderId),
 });
 
 export const recordProjectionFailure = mutation({
@@ -270,7 +304,7 @@ export const projectWorkflowRun = action({
     }
     if (!run.workOrderId) throw new Error("Loop Engineering run has no linked WorkOrder.");
 
-    const cycle = await ctx.runQuery(api.loopEngineering.getByRootWorkOrder, {
+    const cycle = await ctx.runQuery(internal.loopEngineering.getByRootWorkOrderInternal, {
       workOrderId: run.workOrderId,
     });
     if (!cycle) throw new Error("No Loop Engineering cycle is linked to this WorkOrder.");
@@ -441,11 +475,17 @@ export const create = action({
     stopCondition: v.string(),
     maxIterations: v.number(),
     idempotencyKey: v.string(),
-    createdBy: v.string(),
+    /** @deprecated Browser actor labels are ignored; authority is server-derived. */
+    createdBy: v.optional(v.string()),
     parentCycleId: v.optional(v.id("loopEngineeringCycles")),
     iteration: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<any> => {
+    const authorization = await ctx.runQuery(
+      internal.companyContext.authorizeFactoryAction,
+      { projectId: args.projectId, permission: FACTORY_PERMISSIONS.IMPROVE }
+    );
+    const actorId = authorization.actorId;
     const objective = args.objective.trim();
     const stopCondition = args.stopCondition.trim();
     if (!objective) throw new Error("Objective is required.");
@@ -455,6 +495,7 @@ export const create = action({
     }
 
     const existing = await ctx.runQuery(api.loopEngineering.getByIdempotency, {
+      projectId: args.projectId,
       idempotencyKey: args.idempotencyKey,
     });
     if (existing) return { cycle: existing, created: false };
@@ -498,7 +539,7 @@ export const create = action({
         ? cycleRef(args.parentCycleId)
         : "docs/software-factory/LOOP_ENGINEERING.md",
       createdBy: "HUMAN",
-      createdByRef: args.createdBy,
+      createdByRef: actorId,
       metadata: {
         loopEngineering: true,
         graphEngineering: true,
@@ -519,7 +560,7 @@ export const create = action({
       branchStrategy: "isolated-worktree",
       priority: 2,
       riskLevel: "MEDIUM",
-      requestedBy: args.createdBy,
+      requestedBy: actorId,
       assignedSquad: "Software Factory Research Lab",
       acceptanceCriteria: [
         {
@@ -577,7 +618,7 @@ export const create = action({
       maxIterations: args.maxIterations,
       taskIds,
       workOrderIds,
-      createdBy: args.createdBy,
+      createdBy: actorId,
     });
     return { cycle, created: true };
   },
@@ -601,11 +642,16 @@ export const addSource = mutation({
     )),
     vendorClaim: v.optional(v.boolean()),
     syndicatedFromUrl: v.optional(v.string()),
-    actorId: v.string(),
+    /** @deprecated Browser actor labels are ignored; authority is server-derived. */
+    actorId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const cycle = await ctx.db.get(args.cycleId);
-    if (!cycle) throw new Error("Loop Engineering cycle not found.");
+    const { cycle, access } = await requireCyclePermission(
+      ctx,
+      args.cycleId,
+      FACTORY_PERMISSIONS.IMPROVE
+    );
+    const actorId = access.actorId;
     if (!["RESEARCH", "VERIFY"].includes(cycle.phase)) {
       throw new Error("Sources can only be collected during research or verification.");
     }
@@ -648,7 +694,7 @@ export const addSource = mutation({
       cycleId: args.cycleId,
       action: "LOOP_SOURCE_RECORDED",
       description: `Source recorded: ${title}`,
-      actorId: args.actorId,
+      actorId,
       metadata: { sourceId: source.id, freshness: source.freshness },
     });
     return source;
@@ -663,11 +709,16 @@ export const addClaim = mutation({
     contradictorySourceIds: v.array(v.string()),
     unsupported: v.boolean(),
     confidence: v.union(v.literal("LOW"), v.literal("MEDIUM"), v.literal("HIGH")),
-    actorId: v.string(),
+    /** @deprecated Browser actor labels are ignored; authority is server-derived. */
+    actorId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const cycle = await ctx.db.get(args.cycleId);
-    if (!cycle) throw new Error("Loop Engineering cycle not found.");
+    const { cycle, access } = await requireCyclePermission(
+      ctx,
+      args.cycleId,
+      FACTORY_PERMISSIONS.IMPROVE
+    );
+    const actorId = access.actorId;
     if (!["VERIFY", "RECOMMEND"].includes(cycle.phase)) {
       throw new Error("Claims can only be recorded during verification or recommendation.");
     }
@@ -696,7 +747,7 @@ export const addClaim = mutation({
       unsupported: args.unsupported,
       confidence: args.confidence,
       createdAt: Date.now(),
-      createdBy: args.actorId,
+      createdBy: actorId,
     };
     await ctx.db.patch(args.cycleId, {
       claims: [...(cycle.claims ?? []), claim],
@@ -707,7 +758,7 @@ export const addClaim = mutation({
       cycleId: args.cycleId,
       action: "LOOP_CLAIM_RECORDED",
       description: `Claim recorded: ${statement}`,
-      actorId: args.actorId,
+      actorId,
       metadata: {
         claimId: claim.id,
         supportingEvidence: claim.supportingSourceIds.length,
@@ -725,11 +776,16 @@ export const decideSource = mutation({
     sourceId: v.string(),
     decision: v.union(v.literal("ACCEPTED"), v.literal("REJECTED")),
     reason: v.optional(v.string()),
-    actorId: v.string(),
+    /** @deprecated Browser actor labels are ignored; authority is server-derived. */
+    actorId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const cycle = await ctx.db.get(args.cycleId);
-    if (!cycle) throw new Error("Loop Engineering cycle not found.");
+    const { cycle, access } = await requireCyclePermission(
+      ctx,
+      args.cycleId,
+      FACTORY_PERMISSIONS.IMPROVE
+    );
+    const actorId = access.actorId;
     if (cycle.phase !== "VERIFY") throw new Error("Source decisions belong to the verify phase.");
     if (args.decision === "REJECTED" && !args.reason?.trim()) {
       throw new Error("Rejected evidence requires a reason.");
@@ -743,7 +799,7 @@ export const decideSource = mutation({
             ...item,
             decision: args.decision,
             decisionReason: args.reason?.trim() || undefined,
-            verifiedBy: args.actorId,
+            verifiedBy: actorId,
             verifiedAt: decidedAt,
           }
         : item
@@ -754,7 +810,7 @@ export const decideSource = mutation({
       cycleId: args.cycleId,
       action: "LOOP_SOURCE_DECIDED",
       description: `${args.decision === "ACCEPTED" ? "Accepted" : "Rejected"} source: ${source.title}`,
-      actorId: args.actorId,
+      actorId,
       metadata: { sourceId: source.id, decision: args.decision, reason: args.reason },
     });
   },
@@ -767,11 +823,16 @@ export const addRecommendation = mutation({
     rationale: v.string(),
     evidenceSourceIds: v.array(v.string()),
     confidence: v.union(v.literal("LOW"), v.literal("MEDIUM"), v.literal("HIGH")),
-    actorId: v.string(),
+    /** @deprecated Browser actor labels are ignored; authority is server-derived. */
+    actorId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const cycle = await ctx.db.get(args.cycleId);
-    if (!cycle) throw new Error("Loop Engineering cycle not found.");
+    const { cycle, access } = await requireCyclePermission(
+      ctx,
+      args.cycleId,
+      FACTORY_PERMISSIONS.IMPROVE
+    );
+    const actorId = access.actorId;
     if (cycle.phase !== "RECOMMEND") {
       throw new Error("Recommendations can only be added during the recommend phase.");
     }
@@ -804,7 +865,7 @@ export const addRecommendation = mutation({
       cycleId: args.cycleId,
       action: "LOOP_RECOMMENDATION_CREATED",
       description: `Recommendation created: ${recommendation.title}`,
-      actorId: args.actorId,
+      actorId,
       metadata: { recommendationId: recommendation.id },
     });
     return recommendation;
@@ -814,12 +875,17 @@ export const addRecommendation = mutation({
 export const advance = mutation({
   args: {
     cycleId: v.id("loopEngineeringCycles"),
-    actorId: v.string(),
+    /** @deprecated Browser actor labels are ignored; authority is server-derived. */
+    actorId: v.optional(v.string()),
     note: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const cycle = await ctx.db.get(args.cycleId);
-    if (!cycle) throw new Error("Loop Engineering cycle not found.");
+    const { cycle, access } = await requireCyclePermission(
+      ctx,
+      args.cycleId,
+      FACTORY_PERMISSIONS.IMPROVE
+    );
+    const actorId = access.actorId;
     const result = validateLoopAdvance(cycle.phase as LoopPhase, cycle);
     if ("reason" in result) throw new Error(result.reason);
     const now = Date.now();
@@ -830,7 +896,7 @@ export const advance = mutation({
         {
           phase: result.nextPhase,
           enteredAt: now,
-          actorId: args.actorId,
+          actorId,
           note: args.note?.trim() || undefined,
         },
       ],
@@ -842,7 +908,7 @@ export const advance = mutation({
       cycleId: args.cycleId,
       action: "LOOP_PHASE_CHANGED",
       description: `Loop phase changed: ${cycle.phase} → ${result.nextPhase}`,
-      actorId: args.actorId,
+      actorId,
       metadata: { fromPhase: cycle.phase, toPhase: result.nextPhase },
     });
     return { phase: result.nextPhase };
@@ -908,7 +974,8 @@ export const applyApproval = internalMutation({
 export const approveRecommendations = action({
   args: {
     cycleId: v.id("loopEngineeringCycles"),
-    actorId: v.string(),
+    /** @deprecated Browser actor labels are ignored; authority is server-derived. */
+    actorId: v.optional(v.string()),
     idempotencyKey: v.string(),
   },
   handler: async (ctx, args): Promise<any> => {
@@ -922,7 +989,11 @@ export const approveRecommendations = action({
     }
     const project = await ctx.runQuery(api.projects.get, { projectId: cycle.projectId });
     if (!project) throw new Error("Project not found.");
-    const authorityActor = cycle.approvalActorId ?? args.actorId;
+    const authorization = await ctx.runQuery(
+      internal.companyContext.authorizeFactoryAction,
+      { projectId: cycle.projectId, permission: FACTORY_PERMISSIONS.APPROVE }
+    );
+    const authorityActor = authorization.actorId;
 
     const links = [];
     for (const recommendation of cycle.recommendations) {
@@ -938,7 +1009,7 @@ export const approveRecommendations = action({
         source: "MISSION_PROMPT",
         sourceRef: cycleRef(args.cycleId),
         createdBy: "HUMAN",
-        createdByRef: args.actorId,
+        createdByRef: authorityActor,
         metadata: {
           loopEngineeringCycleId: args.cycleId,
           recommendationId: recommendation.id,
@@ -1023,12 +1094,17 @@ export const approveRecommendations = action({
 export const rejectRecommendations = mutation({
   args: {
     cycleId: v.id("loopEngineeringCycles"),
-    actorId: v.string(),
+    /** @deprecated Browser actor labels are ignored; authority is server-derived. */
+    actorId: v.optional(v.string()),
     reason: v.string(),
   },
   handler: async (ctx, args) => {
-    const cycle = await ctx.db.get(args.cycleId);
-    if (!cycle) throw new Error("Loop Engineering cycle not found.");
+    const { cycle, access } = await requireCyclePermission(
+      ctx,
+      args.cycleId,
+      FACTORY_PERMISSIONS.APPROVE
+    );
+    const actorId = access.actorId;
     if (cycle.phase !== "AWAITING_APPROVAL") {
       throw new Error("Cycle is not awaiting approval.");
     }
@@ -1044,7 +1120,7 @@ export const rejectRecommendations = mutation({
       })),
       phaseHistory: [
         ...cycle.phaseHistory,
-        { phase: "RECOMMEND", enteredAt: now, actorId: args.actorId, note: `Rejected: ${reason}` },
+        { phase: "RECOMMEND", enteredAt: now, actorId, note: `Rejected: ${reason}` },
       ],
       updatedAt: now,
     });
@@ -1053,17 +1129,25 @@ export const rejectRecommendations = mutation({
       cycleId: args.cycleId,
       action: "LOOP_RECOMMENDATIONS_REJECTED",
       description: "Loop recommendations rejected and returned for revision",
-      actorId: args.actorId,
+      actorId,
       metadata: { reason },
     });
   },
 });
 
 export const syncImplementation = mutation({
-  args: { cycleId: v.id("loopEngineeringCycles"), actorId: v.string() },
+  args: {
+    cycleId: v.id("loopEngineeringCycles"),
+    /** @deprecated Browser actor labels are ignored; authority is server-derived. */
+    actorId: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
-    const cycle = await ctx.db.get(args.cycleId);
-    if (!cycle) throw new Error("Loop Engineering cycle not found.");
+    const { cycle, access } = await requireCyclePermission(
+      ctx,
+      args.cycleId,
+      FACTORY_PERMISSIONS.IMPROVE
+    );
+    const actorId = access.actorId;
     if (cycle.phase !== "IMPLEMENT") throw new Error("Cycle is not in implementation.");
     const recommendations = [];
     for (const recommendation of cycle.recommendations) {
@@ -1086,7 +1170,7 @@ export const syncImplementation = mutation({
       description: incomplete === 0
         ? "All approved implementation tasks are complete"
         : `${incomplete} implementation task(s) remain`,
-      actorId: args.actorId,
+      actorId,
     });
     return { complete: incomplete === 0, incomplete };
   },
@@ -1098,11 +1182,16 @@ export const recordValidation = mutation({
     name: v.string(),
     status: v.union(v.literal("PASS"), v.literal("FAIL")),
     evidenceLocation: v.string(),
-    actorId: v.string(),
+    /** @deprecated Browser actor labels are ignored; authority is server-derived. */
+    actorId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const cycle = await ctx.db.get(args.cycleId);
-    if (!cycle) throw new Error("Loop Engineering cycle not found.");
+    const { cycle, access } = await requireCyclePermission(
+      ctx,
+      args.cycleId,
+      FACTORY_PERMISSIONS.APPROVE
+    );
+    const actorId = access.actorId;
     if (cycle.phase !== "VALIDATE") throw new Error("Cycle is not in validation.");
     if (!args.name.trim() || !args.evidenceLocation.trim()) {
       throw new Error("Validation name and evidence location are required.");
@@ -1113,7 +1202,7 @@ export const recordValidation = mutation({
       status: args.status,
       evidenceLocation: args.evidenceLocation.trim(),
       recordedAt: Date.now(),
-      recordedBy: args.actorId,
+      recordedBy: actorId,
     };
     await ctx.db.patch(args.cycleId, {
       validations: [...cycle.validations, validation],
@@ -1124,7 +1213,7 @@ export const recordValidation = mutation({
       cycleId: args.cycleId,
       action: "LOOP_VALIDATION_RECORDED",
       description: `${validation.status}: ${validation.name}`,
-      actorId: args.actorId,
+      actorId,
       metadata: validation,
     });
     return validation;
@@ -1141,11 +1230,16 @@ export const recordMeasurement = mutation({
     target: v.optional(v.number()),
     passed: v.boolean(),
     evidenceLocation: v.string(),
-    actorId: v.string(),
+    /** @deprecated Browser actor labels are ignored; authority is server-derived. */
+    actorId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const cycle = await ctx.db.get(args.cycleId);
-    if (!cycle) throw new Error("Loop Engineering cycle not found.");
+    const { cycle, access } = await requireCyclePermission(
+      ctx,
+      args.cycleId,
+      FACTORY_PERMISSIONS.IMPROVE
+    );
+    const actorId = access.actorId;
     if (cycle.phase !== "MEASURE") throw new Error("Cycle is not in measurement.");
     if (!args.name.trim() || !args.unit.trim() || !args.evidenceLocation.trim()) {
       throw new Error("Measurement name, unit, and evidence location are required.");
@@ -1160,7 +1254,7 @@ export const recordMeasurement = mutation({
       passed: args.passed,
       evidenceLocation: args.evidenceLocation.trim(),
       recordedAt: Date.now(),
-      recordedBy: args.actorId,
+      recordedBy: actorId,
     };
     await ctx.db.patch(args.cycleId, {
       measurements: [...cycle.measurements, measurement],
@@ -1171,7 +1265,7 @@ export const recordMeasurement = mutation({
       cycleId: args.cycleId,
       action: "LOOP_MEASUREMENT_RECORDED",
       description: `Measured ${measurement.name}: ${measurement.result}${measurement.unit}`,
-      actorId: args.actorId,
+      actorId,
       metadata: measurement,
     });
     return measurement;
@@ -1218,7 +1312,8 @@ export const createNextCycle = action({
     objective: v.string(),
     hypothesis: v.optional(v.string()),
     stopCondition: v.string(),
-    actorId: v.string(),
+    /** @deprecated Browser actor labels are ignored; authority is server-derived. */
+    actorId: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<any> => {
     const cycle = await ctx.runQuery(api.loopEngineering.get, { cycleId: args.cycleId });
@@ -1235,6 +1330,11 @@ export const createNextCycle = action({
     if (cycle.iteration >= cycle.maxIterations) {
       throw new Error("The cycle reached its configured maximum iteration count.");
     }
+    const authorization = await ctx.runQuery(
+      internal.companyContext.authorizeFactoryAction,
+      { projectId: cycle.projectId, permission: FACTORY_PERMISSIONS.IMPROVE }
+    );
+    const actorId = authorization.actorId;
     const result: any = await ctx.runAction(api.loopEngineering.create, {
       projectId: cycle.projectId,
       objective: args.objective,
@@ -1242,7 +1342,6 @@ export const createNextCycle = action({
       stopCondition: args.stopCondition,
       maxIterations: cycle.maxIterations,
       idempotencyKey: `${cycle.idempotencyKey}:iteration:${cycle.iteration + 1}`,
-      createdBy: args.actorId,
       parentCycleId: args.cycleId,
       iteration: cycle.iteration + 1,
     });
@@ -1250,7 +1349,7 @@ export const createNextCycle = action({
     await ctx.runMutation(internal.loopEngineering.linkNextCycle, {
       cycleId: args.cycleId,
       nextCycleId: result.cycle._id,
-      actorId: args.actorId,
+      actorId,
     });
     return result;
   },

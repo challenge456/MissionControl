@@ -15,16 +15,23 @@ const GATE_ICONS = {
 
 export function HarnessMergeGatesPanel({
   projectId,
+  cycleId,
   passedIds,
   className,
 }: {
   projectId?: Id<"projects"> | null;
+  cycleId?: Id<"loopEngineeringCycles"> | null;
   passedIds?: string[];
   className?: string;
 }): JSX.Element {
   const live = useQuery(
     api.factory.prChecks.getMergeGateStatus,
-    projectId !== undefined ? { projectId: projectId ?? undefined } : {}
+    projectId !== undefined
+      ? {
+          projectId: projectId ?? undefined,
+          cycleId: cycleId ?? undefined,
+        }
+      : {}
   );
 
   const gates =
@@ -46,17 +53,40 @@ export function HarnessMergeGatesPanel({
     );
   }
 
+  if (projectId !== undefined && live && !live.prUrl) {
+    return (
+      <div className={cn("rounded-xl border border-line bg-surface-2 px-4 py-5", className)}>
+        <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+          {live.scopeLabel}
+        </div>
+        <h3 className="mt-1 text-[15px] font-semibold text-ink">
+          {live.scope === "CYCLE" ? "No correlated PR for this cycle" : "No PR evidence in this workspace"}
+        </h3>
+        <p className="mt-1 max-w-[72ch] text-[12.5px] text-ink-secondary">
+          {live.scope === "CYCLE"
+            ? "Mission Control will not substitute the workspace's latest PR. Record an explicit WorkOrder and Attempt artifact, or ingest an exact recorded branch match."
+            : "Ingest a PR before evaluating the outer loop. Unmatched PRs remain uncorrelated and cannot change WorkOrder state."}
+        </p>
+      </div>
+    );
+  }
+
   return (
     <section className={cn("space-y-4", className)}>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h3 className="text-[15px] font-semibold text-ink">Five merge gates</h3>
+          {live?.scopeLabel ? (
+            <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+              {live.scopeLabel}
+            </p>
+          ) : null}
           <p className="mt-0.5 text-[12.5px] text-ink-muted">
             {live?.prUrl ? (
               <>
                 Live from{" "}
                 <a href={live.prUrl} target="_blank" rel="noreferrer" className="text-registry-accent underline">
-                  latest PR
+                  {live.scope === "WORKSPACE_LATEST" ? "workspace latest PR (unscoped)" : "correlated PR"}
                 </a>
               </>
             ) : (

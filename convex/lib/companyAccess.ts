@@ -12,8 +12,18 @@ export const COMPANY_PERMISSIONS = {
   MANAGE_WORKSPACES: "workspaces.manage",
 } as const;
 
+export const FACTORY_PERMISSIONS = {
+  VIEW: "factory.read",
+  IMPROVE: "factory.improve",
+  APPROVE: "factory.approve",
+  MANAGE_AUTOMATION: "factory.automation.manage",
+} as const;
+
 export type CompanyPermission =
   (typeof COMPANY_PERMISSIONS)[keyof typeof COMPANY_PERMISSIONS];
+
+export type FactoryPermission =
+  (typeof FACTORY_PERMISSIONS)[keyof typeof FACTORY_PERMISSIONS];
 
 export interface CompanyMembership {
   tenant: Doc<"tenants">;
@@ -61,7 +71,8 @@ function roleGrantsPermission(
 async function getOperatorRoles(
   ctx: CompanyCtx,
   operator: Doc<"operators">,
-  tenantId: Id<"tenants">
+  tenantId: Id<"tenants">,
+  projectId?: Id<"projects">
 ) {
   const assignments = await ctx.db
     .query("roleAssignments")
@@ -70,12 +81,62 @@ async function getOperatorRoles(
   const applicable = assignments.filter(
     (assignment) =>
       !assignment.scope ||
-      (assignment.scope.type === "tenant" && assignment.scope.id === tenantId)
+      (assignment.scope.type === "tenant" && assignment.scope.id === tenantId) ||
+      (projectId != null &&
+        assignment.scope.type === "project" &&
+        assignment.scope.id === projectId)
   );
   const roles = (
     await Promise.all(applicable.map((assignment) => ctx.db.get(assignment.roleId)))
   ).filter((role): role is Doc<"roles"> => Boolean(role && role.tenantId === tenantId));
   return roles;
+}
+
+function roleGrantsFactoryPermission(
+  role: Doc<"roles">,
+  permission: FactoryPermission
+): boolean {
+  if (role.permissions.includes(permission) || isCompanyAdminRole(role)) return true;
+
+  const legacyPermissionAliases: Record<FactoryPermission, string[]> = {
+    [FACTORY_PERMISSIONS.VIEW]: [
+      "missions.read",
+      "missions.write",
+      "workorders.read",
+      "workorders.write",
+      "tasks.read",
+      "tasks.view",
+      "tasks.write",
+      "tasks.update",
+      "telemetry.read",
+      "evidence.read",
+      "evidence.write",
+      "approvals.read",
+      "approvals.view",
+      "approvals.decide",
+    ],
+    [FACTORY_PERMISSIONS.IMPROVE]: [
+      "missions.write",
+      "workorders.write",
+      "tasks.write",
+      "tasks.update",
+      "tasks.create",
+      "evidence.write",
+    ],
+    [FACTORY_PERMISSIONS.APPROVE]: [
+      "missions.approve",
+      "workorders.dispatch",
+      "approvals.decide",
+    ],
+    [FACTORY_PERMISSIONS.MANAGE_AUTOMATION]: [
+      "policy.manage",
+      "deployments.activate",
+      "settings.manage",
+    ],
+  };
+  return legacyPermissionAliases[permission].some((candidate) =>
+    role.permissions.includes(candidate)
+  );
 }
 
 async function getAuthenticatedOperators(ctx: CompanyCtx) {
@@ -193,4 +254,42 @@ export async function requireWorkspaceAccess(
     throw new Error("Workspace does not belong to the selected company account.");
   }
   return { membership, project };
+}
+
+export async function requireWorkspacePermission(
+  ctx: CompanyCtx,
+  projectId: Id<"projects">,
+  permission: FactoryPermission
+) {
+  const project = await ctx.db.get(projectId);
+  if (!project?.tenantId) {
+    throw new Error("Workspace is unavailable or unauthorized.");
+  }
+  const { membership } = await requireWorkspaceAccess(
+    ctx,
+    project.tenantId,
+    projectId
+  );
+  if (membership.mode === "DEMO") {
+    return {
+      membership,
+      project,
+      actorId: "demo:company-administrator",
+      permission,
+    };
+  }
+  const operator = membership.operatorId
+    ? await ctx.db.get(membership.operatorId)
+    : null;
+  if (!operator) throw new Error("Authenticated operator membership is required.");
+  const roles = await getOperatorRoles(ctx, operator, project.tenantId, projectId);
+  if (!roles.some((role) => roleGrantsFactoryPermission(role, permission))) {
+    throw new Error("Your workspace role does not permit this factory action.");
+  }
+  return {
+    membership,
+    project,
+    actorId: String(operator._id),
+    permission,
+  };
 }

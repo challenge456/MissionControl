@@ -25,15 +25,14 @@ export function HarnessAutomationsCatalog({
 
   const handleInstall = async (id: AutomationId) => {
     const auto = WORKSHOP_AUTOMATIONS.find((a) => a.id === id);
-    if (!auto) return;
+    if (!auto || !projectId) return;
     setInstalling(id);
     try {
       await schedule({
-        projectId: projectId ?? undefined,
+        projectId,
         skillName: auto.skillName,
         schedule: auto.schedule === "manual" ? "manual" : auto.schedule,
         idempotencyKey: `workshop-auto-${id}`,
-        actorId: "harness-workshop-ui",
       });
       setInstalled((prev) => new Set(prev).add(id));
       onScheduled?.(id);
@@ -78,7 +77,7 @@ export function HarnessAutomationsCatalog({
             </div>
             <button
               type="button"
-              disabled={busy || isInstalled}
+              disabled={!projectId || busy || isInstalled}
               onClick={() => void handleInstall(auto.id)}
               className={cn(
                 "harness-btn mt-4 w-full",

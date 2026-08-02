@@ -52,6 +52,7 @@ import {
   validateTaskAttemptSelection,
   validateTaskAttemptStart,
 } from "./lib/taskAttemptScheduler";
+import { FACTORY_PERMISSIONS, requireWorkspacePermission } from "./lib/companyAccess";
 
 function generateRunId(): string {
   return Math.random().toString(36).substring(2, 10);
@@ -1346,6 +1347,17 @@ export const dispatch = mutation({
     if (!workOrder) {
       throw new Error("WorkOrder not found");
     }
+    let actorId = args.actorId;
+    if (args.actorType === "HUMAN") {
+      if (!workOrder.projectId) {
+        throw new Error("Human dispatch requires a workspace-scoped WorkOrder");
+      }
+      actorId = (await requireWorkspacePermission(
+        ctx,
+        workOrder.projectId,
+        FACTORY_PERMISSIONS.APPROVE
+      )).actorId;
+    }
     if (workOrder.state === "SUPERSEDED") {
       throw new Error("Superseded WorkOrders cannot be dispatched");
     }
@@ -1563,7 +1575,7 @@ export const dispatch = mutation({
       fromState: refreshedWorkOrder.state,
       toState: "DISPATCHED",
       actorType: args.actorType,
-      actorId: args.actorId,
+      actorId,
       summary: `Dispatch requested for workflow ${resolvedWorkflowId}`,
       idempotencyKey: `${args.idempotencyKey}:request`,
       metadata: {
@@ -1651,7 +1663,7 @@ export const dispatch = mutation({
       workflowRunId: runDocId,
       eventType: "RUN_STARTED",
       workflowStep: workflow.steps[0]?.id,
-      actor: args.actorId ?? args.actorType.toLowerCase(),
+      actor: actorId ?? args.actorType.toLowerCase(),
       status: "PENDING",
       startedAt: now,
       commandSummary: `Dispatched ${resolvedWorkflowId}`,
@@ -1688,7 +1700,7 @@ export const dispatch = mutation({
         workOrder: refreshedWorkOrder,
         workflowRunId: runDocId,
         actorType: args.actorType,
-        actorId: args.actorId,
+        actorId,
         idempotencyKey: args.idempotencyKey,
       });
     }
@@ -1697,7 +1709,7 @@ export const dispatch = mutation({
       tenantId: refreshedWorkOrder.tenantId,
       projectId: refreshedWorkOrder.projectId,
       actorType: args.actorType,
-      actorId: args.actorId,
+      actorId,
       action: "WORK_ORDER_DISPATCHED",
       description: `Dispatched work order ${refreshedWorkOrder.title} via ${resolvedWorkflowId}`,
       targetType: "WORK_ORDER",
@@ -1722,7 +1734,7 @@ export const dispatch = mutation({
       fromState: refreshedWorkOrder.state,
       toState: "DISPATCHED",
       actorType: args.actorType,
-      actorId: args.actorId,
+      actorId,
       summary: retryOfRun
         ? `Recovery run ${runId} created for failed run ${retryOfRun.runId}`
         : `Execution run ${runId} created for ${resolvedWorkflowId}`,
@@ -1751,7 +1763,7 @@ export const dispatch = mutation({
         fromState: refreshedWorkOrder.state,
         toState: "DISPATCHED",
         actorType: args.actorType,
-        actorId: args.actorId,
+        actorId,
         summary: `Operator started recovery run ${runId} from failed run ${retryOfRun.runId}`,
         idempotencyKey: `${args.idempotencyKey}:retried`,
         metadata: {
@@ -1772,7 +1784,7 @@ export const dispatch = mutation({
         projectId: selectedTask.projectId,
         eventType: "RUN_STARTED",
         actorType: args.actorType,
-        actorId: args.actorId,
+        actorId,
         relatedId: runDocId,
         beforeState: retryOfRun
           ? {

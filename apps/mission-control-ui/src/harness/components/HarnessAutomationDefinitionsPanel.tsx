@@ -45,7 +45,7 @@ export function HarnessAutomationDefinitionsPanel({
               {definition.enabled ? (
                 <button
                   type="button"
-                  onClick={() => void setEnabled({ definitionId: definition._id, enabled: false, actorId: "harness-ui" })}
+                  onClick={() => void setEnabled({ definitionId: definition._id, enabled: false })}
                   className="font-medium text-warn underline-offset-2 hover:underline"
                 >
                   Disable
@@ -54,7 +54,7 @@ export function HarnessAutomationDefinitionsPanel({
                 <>
                   <button
                     type="button"
-                    onClick={() => void setEnabled({ definitionId: definition._id, enabled: true, actorId: "harness-ui" }).then(() => setPendingActivationId(null))}
+                    onClick={() => void setEnabled({ definitionId: definition._id, enabled: true }).then(() => setPendingActivationId(null))}
                     className="font-medium text-registry-accent underline-offset-2 hover:underline"
                   >
                     Confirm activation

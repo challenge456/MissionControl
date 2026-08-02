@@ -34,11 +34,14 @@ export function MetaLoopInboxPanel({
   projectId: Id<"projects"> | null;
   onNavigate?: (view: MainView) => void;
 }): JSX.Element {
-  const inbox = useQuery(api.factory.metaLoop.listInbox, {
-    projectId: projectId ?? undefined,
-    status: "OPEN",
-  });
-  const history = useQuery(api.factory.metaLoop.listHistory, { projectId: projectId ?? undefined, limit: 10 });
+  const inbox = useQuery(
+    api.factory.metaLoop.listInbox,
+    projectId ? { projectId, status: "OPEN" } : "skip"
+  );
+  const history = useQuery(
+    api.factory.metaLoop.listHistory,
+    projectId ? { projectId, limit: 10 } : "skip"
+  );
   const resolve = useAction(api.factory.metaLoop.resolve);
   const [dismissReasons, setDismissReasons] = useState<Record<string, string>>({});
 
@@ -48,7 +51,11 @@ export function MetaLoopInboxPanel({
           <h2 id="meta-improvements-title" className="text-[18px] font-semibold text-ink">Meta improvements</h2>
           <p className="mt-1 text-sm text-ink-secondary">Real failures become deduplicated proposals; acceptance creates governed work, never a direct policy change.</p>
         </div>
-        {!inbox ? (
+        {!projectId ? (
+          <div className="rounded-xl border border-line bg-surface-1 px-6 py-8 text-center text-sm text-ink-secondary">
+            Select a workspace to review evidence-backed improvements.
+          </div>
+        ) : !inbox ? (
           <p className="text-sm text-ink-muted">Loading…</p>
         ) : inbox.length === 0 ? (
           <div className="rounded-xl border border-line bg-surface-1 px-6 py-10 text-center">
@@ -81,7 +88,7 @@ export function MetaLoopInboxPanel({
                   )}
                 </div>
                 <div className="flex min-w-[250px] flex-col gap-2">
-                  <Button size="sm" onClick={() => void resolve({ suggestionId: s._id, action: "ACCEPT", actorId: "operator" })}>
+                  <Button size="sm" onClick={() => void resolve({ suggestionId: s._id, action: "ACCEPT" })}>
                     Accept
                   </Button>
                   <Input
@@ -94,7 +101,7 @@ export function MetaLoopInboxPanel({
                     size="sm"
                     variant="outline"
                     disabled={!dismissReasons[s._id]?.trim()}
-                    onClick={() => void resolve({ suggestionId: s._id, action: "DISMISS", actorId: "operator", reason: dismissReasons[s._id] })}
+                    onClick={() => void resolve({ suggestionId: s._id, action: "DISMISS", reason: dismissReasons[s._id] })}
                   >
                     Dismiss
                   </Button>

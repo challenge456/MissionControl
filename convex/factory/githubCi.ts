@@ -15,6 +15,11 @@ export const applyCiIngest = internalMutation({
     workflowRunId: v.optional(v.id("workflowRuns")),
     taskId: v.optional(v.id("tasks")),
     loopEngineeringCycleId: v.optional(v.id("loopEngineeringCycles")),
+    lineageStatus: v.optional(v.union(
+      v.literal("EXPLICIT_ARTIFACT"),
+      v.literal("EXACT_BRANCH"),
+      v.literal("UNCORRELATED")
+    )),
     releaseDeploymentId: v.optional(v.id("deployments")),
     prUrl: v.string(),
     prNumber: v.optional(v.number()),
@@ -115,12 +120,13 @@ export const applyCiIngest = internalMutation({
         : undefined;
     const releaseDeploymentId = args.releaseDeploymentId ?? existing?.releaseDeploymentId ?? previous?.releaseDeploymentId;
 
+    const inheritPriorLineage = args.lineageStatus == null;
     const doc = {
       projectId: args.projectId,
-      workOrderId: args.workOrderId ?? existing?.workOrderId ?? previous?.workOrderId,
-      workflowRunId: args.workflowRunId ?? existing?.workflowRunId ?? previous?.workflowRunId,
-      taskId: args.taskId ?? existing?.taskId ?? previous?.taskId,
-      loopEngineeringCycleId: args.loopEngineeringCycleId ?? existing?.loopEngineeringCycleId ?? previous?.loopEngineeringCycleId,
+      workOrderId: args.workOrderId ?? (inheritPriorLineage ? existing?.workOrderId ?? previous?.workOrderId : undefined),
+      workflowRunId: args.workflowRunId ?? (inheritPriorLineage ? existing?.workflowRunId ?? previous?.workflowRunId : undefined),
+      taskId: args.taskId ?? (inheritPriorLineage ? existing?.taskId ?? previous?.taskId : undefined),
+      loopEngineeringCycleId: args.loopEngineeringCycleId ?? (inheritPriorLineage ? existing?.loopEngineeringCycleId ?? previous?.loopEngineeringCycleId : undefined),
       previousEvaluationId: existing?.previousEvaluationId ?? (previous && previous._id !== existing?._id ? previous._id : undefined),
       releaseDeploymentId,
       prUrl: args.prUrl,
@@ -140,6 +146,7 @@ export const applyCiIngest = internalMutation({
       syncedAt: now,
       createdAt: existing?.createdAt ?? now,
       metadata: {
+        lineageStatus: args.lineageStatus ?? "LEGACY_UNVERIFIED",
         headSha: args.headSha,
         checkRuns: args.checkRuns,
         diffLineCount: args.signals?.diffLineCount,
