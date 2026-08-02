@@ -92,6 +92,7 @@ import type * as lib_contextRegistryGate from "../lib/contextRegistryGate.js";
 import type * as lib_deliveryAuthorization from "../lib/deliveryAuthorization.js";
 import type * as lib_demoSeedExtensions from "../lib/demoSeedExtensions.js";
 import type * as lib_evalFrameworkGate from "../lib/evalFrameworkGate.js";
+import type * as lib_factoryActionAuthorization from "../lib/factoryActionAuthorization.js";
 import type * as lib_factoryHealth from "../lib/factoryHealth.js";
 import type * as lib_factoryOverview from "../lib/factoryOverview.js";
 import type * as lib_factoryProjectSeed from "../lib/factoryProjectSeed.js";
@@ -316,6 +317,7 @@ declare const fullApi: ApiFromModules<{
   "lib/deliveryAuthorization": typeof lib_deliveryAuthorization;
   "lib/demoSeedExtensions": typeof lib_demoSeedExtensions;
   "lib/evalFrameworkGate": typeof lib_evalFrameworkGate;
+  "lib/factoryActionAuthorization": typeof lib_factoryActionAuthorization;
   "lib/factoryHealth": typeof lib_factoryHealth;
   "lib/factoryOverview": typeof lib_factoryOverview;
   "lib/factoryProjectSeed": typeof lib_factoryProjectSeed;

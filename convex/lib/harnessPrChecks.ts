@@ -34,6 +34,17 @@ export interface PrLineageCandidate {
   metadata?: unknown;
 }
 
+export interface PrReconciliationAssessment {
+  eligible: boolean;
+  signals: Array<{
+    key: "REPOSITORY" | "BRANCH" | "ATTEMPT" | "STATE";
+    matches: boolean;
+    label: string;
+    detail: string;
+  }>;
+  blockedReasons: string[];
+}
+
 export function normalizeGitHubRepository(value?: string): string | undefined {
   return value
     ?.trim()
@@ -100,8 +111,95 @@ export function isVerifiedPrLineage(row: {
     : {};
   return Boolean(
     row.workOrderId &&
-    ["EXPLICIT_ARTIFACT", "EXACT_BRANCH"].includes(String(metadata.lineageStatus ?? ""))
+    ["EXPLICIT_ARTIFACT", "EXACT_BRANCH", "OPERATOR_RECONCILIATION"].includes(
+      String(metadata.lineageStatus ?? "")
+    )
   );
+}
+
+export function isPendingPrReconciliation(row: {
+  workOrderId?: unknown;
+  metadata?: unknown;
+}): boolean {
+  const metadata = row.metadata && typeof row.metadata === "object"
+    ? row.metadata as Record<string, unknown>
+    : {};
+  return !isVerifiedPrLineage(row)
+    && metadata.lineageStatus !== "RECONCILIATION_DISMISSED";
+}
+
+export function shouldPreserveManualPrLineage(
+  existingStatus: unknown,
+  _incomingStatus: unknown
+): boolean {
+  return ["OPERATOR_RECONCILIATION", "RECONCILIATION_DISMISSED"].includes(
+    String(existingStatus ?? "")
+  );
+}
+
+export function isProducingAttemptStatus(status?: string): boolean {
+  return Boolean(status && !["PENDING", "CANCELED"].includes(status));
+}
+
+export function assessPrReconciliationCandidate(args: {
+  evidence: { repoFullName: string; branch?: string };
+  candidate: PrLineageCandidate & { state: string };
+  hasAttempt: boolean;
+  attemptStatus?: string;
+}): PrReconciliationAssessment {
+  const evidenceRepository = normalizeGitHubRepository(args.evidence.repoFullName);
+  const candidateRepository = normalizeGitHubRepository(args.candidate.repository);
+  const evidenceBranch = normalizeGitBranch(args.evidence.branch);
+  const candidateBranch = recordedPrLineageBranch(args.candidate);
+  const repositoryMatches = Boolean(
+    evidenceRepository && candidateRepository && evidenceRepository === candidateRepository
+  );
+  const branchMatches = Boolean(
+    evidenceBranch && candidateBranch && evidenceBranch === candidateBranch
+  );
+  const active = !["CANCELED", "SUPERSEDED"].includes(args.candidate.state);
+  const producingAttempt = args.hasAttempt && isProducingAttemptStatus(args.attemptStatus);
+  const signals: PrReconciliationAssessment["signals"] = [
+    {
+      key: "REPOSITORY",
+      matches: repositoryMatches,
+      label: "Repository",
+      detail: repositoryMatches
+        ? `Exact repository: ${evidenceRepository}`
+        : `Evidence ${evidenceRepository ?? "unknown"}; WorkOrder ${candidateRepository ?? "not recorded"}`,
+    },
+    {
+      key: "BRANCH",
+      matches: branchMatches,
+      label: "Branch",
+      detail: branchMatches
+        ? `Exact branch: ${evidenceBranch}`
+        : `Evidence ${evidenceBranch ?? "not recorded"}; WorkOrder ${candidateBranch ?? "not recorded"}`,
+    },
+    {
+      key: "ATTEMPT",
+      matches: producingAttempt,
+      label: "Producing attempt",
+      detail: producingAttempt
+        ? `A workspace-scoped execution Attempt is available${args.attemptStatus ? ` (${args.attemptStatus})` : ""}`
+        : args.hasAttempt
+          ? `Attempt state cannot have produced evidence: ${args.attemptStatus ?? "unknown"}`
+          : "No execution Attempt is linked to this WorkOrder",
+    },
+    {
+      key: "STATE",
+      matches: active,
+      label: "WorkOrder state",
+      detail: active
+        ? `Eligible state: ${args.candidate.state}`
+        : `Terminal state cannot receive evidence: ${args.candidate.state}`,
+    },
+  ];
+  return {
+    eligible: signals.every((signal) => signal.matches),
+    signals,
+    blockedReasons: signals.filter((signal) => !signal.matches).map((signal) => signal.detail),
+  };
 }
 
 export function buildChangeReviewLenses(signals: PrCheckSignals): ChangeReviewLens[] {

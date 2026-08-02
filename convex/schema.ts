@@ -5040,6 +5040,33 @@ export default defineSchema({
     .index("by_work_order", ["workOrderId"])
     .index("by_repo", ["repoFullName"]),
 
+  // Immutable operator decisions for valid PR/CI evidence that could not be
+  // correlated automatically to one exact WorkOrder and Attempt.
+  prEvidenceReconciliations: defineTable({
+    projectId: v.id("projects"),
+    evaluationId: v.id("harnessPrChecks"),
+    decision: v.union(v.literal("LINKED"), v.literal("DISMISSED")),
+    workOrderId: v.optional(v.id("workOrders")),
+    workflowRunId: v.optional(v.id("workflowRuns")),
+    taskId: v.optional(v.id("tasks")),
+    loopEngineeringCycleId: v.optional(v.id("loopEngineeringCycles")),
+    reason: v.string(),
+    actorId: v.string(),
+    idempotencyKey: v.string(),
+    evidenceSnapshot: v.object({
+      prUrl: v.string(),
+      repoFullName: v.string(),
+      branch: v.optional(v.string()),
+      headSha: v.optional(v.string()),
+      ciStatus: v.optional(v.string()),
+    }),
+    candidateSnapshot: v.optional(v.any()),
+    decidedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_evaluation", ["evaluationId"])
+    .index("by_idempotency", ["idempotencyKey"]),
+
   // -------------------------------------------------------------------------
   // HARNESS ENGINEERING: META LOOP SUGGESTIONS
   // -------------------------------------------------------------------------

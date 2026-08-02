@@ -1,12 +1,12 @@
 ---
-status: in_progress
+status: complete
 priority: p1
-issue_id: "018"
-tags: [harness, authorization, lineage, loop-engineering, convex, ui]
+issue_id: "022"
+tags: [harness, authorization, lineage, reconciliation, loop-engineering, convex, ui]
 dependencies: ["014"]
 ---
 
-# Harden Harness Authority and Exact Loop Lineage
+# Complete Loop Engineering for Live Promotion
 
 ## Problem Statement
 
@@ -55,11 +55,12 @@ remain follow-on work.
 
 ## Recommended Action
 
-Implement Phase 0 of
+Complete the remaining production boundary after Phase 0 of
 `docs/plans/2026-08-01-feat-productionize-software-factory-harness-plan.md`:
-canonical terminology, server-derived operator identity, workspace access
-checks, exact PR correlation, and visibly truthful outer-loop scope. Capture
-additional product ideas in a separate prioritized backlog.
+trusted service ingress, durable authorization-denial evidence, removal of
+residual browser-authored identity, and an audited reconciliation inbox for
+valid but uncorrelated PR/CI evidence. Promote the route to Live only after the
+automated and browser-operable acceptance gates pass.
 
 ## Technical Details
 
@@ -72,18 +73,27 @@ additional product ideas in a separate prioritized backlog.
 - Harness Loop Engineering components and route capability metadata
 - Focused authorization, vocabulary, and lineage tests
 
-**Database changes:** No new high-volume telemetry tables in this phase.
+**Database changes:** Add a low-volume, append-only reconciliation decision
+record. Reuse the existing audit/activity model where it can safely retain
+denied authorization decisions.
 
 ## Acceptance Criteria
 
 - [x] Inner, outer, and meta copy consistently map to autonomy, automation, and quality.
-- [ ] Browser-supplied actor labels cannot determine decision authority or audit identity.
-- [ ] Loop and meta-loop public reads and writes enforce workspace access.
-- [ ] Sensitive mutations enforce named permissions and fail closed across workspaces.
+- [x] Browser-supplied actor labels cannot determine decision authority or audit identity.
+- [x] Loop and meta-loop public reads and writes enforce workspace access.
+- [x] Sensitive mutations enforce named permissions and fail closed across workspaces.
+- [x] Service ingress cannot be invoked without a trusted server credential or internal Convex boundary.
+- [x] Denied sensitive actions retain safe, workspace-scoped audit evidence.
 - [x] PR ingestion never attaches a PR to a WorkOrder by repository recency.
 - [x] Unmatched PRs remain visibly uncorrelated.
 - [x] Outer-loop evidence is scoped by explicit PR, WorkOrder, or cycle; workspace-latest mode is visibly unscoped.
-- [x] Focused tests, typechecks, and browser journeys pass without critical errors.
+- [x] Valid but uncorrelated PR/CI evidence appears in an exception-first reconciliation inbox.
+- [x] Reconciliation candidates explain exact match and mismatch signals without leaking another workspace.
+- [x] An authorized operator can create an idempotent, immutable reconciliation decision that links exact evidence lineage.
+- [x] Loading, empty, error, denied, success, and refresh/restart behavior are verified.
+- [x] Full tests, typechecks, production build, accessibility checks, and browser journeys pass without critical errors.
+- [x] Loop Engineering is promoted from Preview to Live only after all gates above pass.
 - [x] Additional enhancements are documented and prioritized separately.
 
 ## Work Log
@@ -141,3 +151,48 @@ additional product ideas in a separate prioritized backlog.
 - Browser verification on the corrected Software Factory Demo workspace passes
   with no fresh page or application console errors. Evidence is in
   `docs/testing/evidence/loop-engineering-authority-lineage-2026-08-02/`.
+
+### 2026-08-02 - Live-promotion phase started
+
+**By:** Codex
+
+**Actions:**
+
+- Isolated the remaining work on `codex/loop-engineering-live` from the clean,
+  already-hardened local `main` worktree.
+- Bounded completion to the production trust boundary and reconciliation
+  workflow required to make the existing Loop Engineering feature honest and
+  operable as Live.
+- Preserved intervention telemetry, readiness scoring, experiments, and other
+  expansion work as separate roadmap phases so this release remains
+  independently testable and shippable.
+
+### 2026-08-02 - Live-promotion phase completed
+
+**By:** Codex
+
+**Actions:**
+
+- Added a trusted action authorization boundary that derives operator identity
+  on the server and records denied factory actions in a separate, durable audit
+  transaction.
+- Kept GitHub ingestion behind the verified webhook route and moved workflow
+  executor service authority to the existing server-only Convex JWT.
+- Removed the remaining browser-authored actor labels from the Harness surfaces
+  touched by this release.
+- Added the workspace-scoped evidence reconciliation inbox, deterministic
+  repository/branch/WorkOrder/Attempt signals, exact Attempt selection,
+  confirmation, idempotency, immutable history, and same-head decision
+  preservation.
+- Promoted Loop Engineering from Preview to Live after the acceptance gates passed.
+
+**Verification:**
+
+- All repository tests pass, including 197 UI tests, 389 Convex tests, and 76
+  workflow-engine tests.
+- Repository typechecks and production builds pass.
+- The final Chromium journey passes exact selection, confirmation, persistence,
+  navigation, isolation, responsive overflow, and accessibility checks with
+  zero Axe violations or application errors.
+- Evidence is recorded in
+  `docs/testing/evidence/loop-engineering-live-2026-08-02/README.md`.

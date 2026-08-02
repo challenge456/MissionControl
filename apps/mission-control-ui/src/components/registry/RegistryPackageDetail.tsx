@@ -388,7 +388,6 @@ export function RegistryPackageDetail({
                   onClick={() =>
                     void generateVerifier({
                       packageId: entry._id as Id<"contextPackages">,
-                      actorId: "registry-detail",
                     })
                   }
                 >

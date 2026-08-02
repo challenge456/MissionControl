@@ -21,6 +21,8 @@ import { render, validateContext } from "./renderer";
 
 export interface WorkflowExecutorConfig {
   convexUrl: string;
+  /** Server-only JWT mapped to an active Mission Control operator. */
+  serviceAuthToken?: string;
   pollIntervalMs?: number;
   stepTimeoutMs?: number;
 }
@@ -70,6 +72,9 @@ export class WorkflowExecutor {
 
   constructor(config: WorkflowExecutorConfig) {
     this.client = new ConvexHttpClient(config.convexUrl);
+    if (config.serviceAuthToken?.trim()) {
+      this.client.setAuth(config.serviceAuthToken.trim());
+    }
     this.pollIntervalMs = config.pollIntervalMs ?? 5000;
     this.stepTimeoutMs = config.stepTimeoutMs ?? 60000;
   }
@@ -659,7 +664,7 @@ export class WorkflowExecutor {
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        await this.client.mutation(api.loopEngineering.recordProjectionFailure, {
+        await this.client.action(api.loopEngineering.recordProjectionFailureFromService, {
           workflowRunId: run._id,
           error: message,
         });

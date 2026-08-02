@@ -12,6 +12,7 @@ import {
   requireWorkspacePermission,
   type FactoryPermission,
 } from "../lib/companyAccess";
+import { requireFactoryActionWithAudit } from "../lib/factoryActionAuthorization";
 
 const kindArg = v.union(
   v.literal("VERIFIER"),
@@ -187,10 +188,11 @@ export const resolve = action({
     if (!suggestion) throw new Error("Suggestion not found");
     if (suggestion.status !== "OPEN") throw new Error("Only open suggestions can be resolved");
     if (!suggestion.projectId) throw new Error("A workspace-scoped suggestion is required");
-    const authorization = await ctx.runQuery(
-      internal.companyContext.authorizeFactoryAction,
-      { projectId: suggestion.projectId, permission: FACTORY_PERMISSIONS.APPROVE }
-    );
+    const authorization = await requireFactoryActionWithAudit(ctx, {
+      projectId: suggestion.projectId,
+      permission: FACTORY_PERMISSIONS.APPROVE,
+      operation: "META_LOOP_RESOLVE",
+    });
     const actorId = authorization.actorId;
     if (args.action === "DISMISS") {
       const reason = args.reason?.trim();

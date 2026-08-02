@@ -130,7 +130,6 @@ export function HarnessCodeReviewWizardSteps({
             setBusy(true);
             void generateVerifier({
               packageId: selectedPackageId as Id<"contextPackages">,
-              actorId: "code-review-wizard",
             })
               .then(() => setVerifierCreated(true))
               .finally(() => setBusy(false));
@@ -163,13 +162,13 @@ export function HarnessCodeReviewWizardSteps({
           size="sm"
           disabled={busy || policyApplied}
           onClick={() => {
+            if (!projectId) return;
             setBusy(true);
             void upsertPolicy({
-              projectId: projectId ?? undefined,
+              projectId,
               name: "Code review wizard policy",
               strictness: 45,
               rules: defaultRules ?? [],
-              actorId: "code-review-wizard",
             })
               .then(() => setPolicyApplied(true))
               .finally(() => setBusy(false));
