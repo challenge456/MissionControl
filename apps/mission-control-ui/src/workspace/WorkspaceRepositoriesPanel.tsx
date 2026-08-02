@@ -217,6 +217,7 @@ export function WorkspaceRepositoriesPanel({ project }: WorkspaceRepositoriesPan
 
       {selectedRepository?.repositoryId ? (
         <CodeScopeList
+          projectId={project._id}
           repositoryId={selectedRepository.repositoryId}
           repository={selectedRepository.repository}
           onAdd={() => setScopeOpen(true)}
@@ -228,6 +229,7 @@ export function WorkspaceRepositoriesPanel({ project }: WorkspaceRepositoriesPan
       ) : null}
       {scopeOpen && selectedRepository?.repositoryId ? (
         <AddCodeScopeDialog
+          projectId={project._id}
           repositoryId={selectedRepository.repositoryId}
           repository={selectedRepository.repository}
           onClose={() => setScopeOpen(false)}
@@ -238,15 +240,18 @@ export function WorkspaceRepositoriesPanel({ project }: WorkspaceRepositoriesPan
 }
 
 function CodeScopeList({
+  projectId,
   repositoryId,
   repository,
   onAdd,
 }: {
+  projectId: Id<"projects">;
   repositoryId: Id<"workspaceRepositories">;
   repository: string;
   onAdd: () => void;
 }) {
   const scopes = useQuery(api.projects.listCodeScopes, { repositoryId });
+  const structure = useQuery(api.softwareFactoryControlPlane.listWorkspaceStructure, { projectId });
   const archiveScope = useMutation(api.projects.archiveRepositoryCodeScope);
   const activeScopes = scopes?.filter((scope) => scope.active);
 
@@ -283,9 +288,12 @@ function CodeScopeList({
                     ))}
                   </div>
                   <div className="mt-2 text-[11.5px] text-ink-muted">
-                    {scope.owningTeam ? `Owner: ${scope.owningTeam} · ` : ""}
+                    {scope.owningTeamId
+                      ? `Owner: ${structure?.teams.find((team) => team._id === scope.owningTeamId)?.name ?? scope.owningTeam ?? "Assigned team"} · `
+                      : scope.owningTeam ? `Legacy owner: ${scope.owningTeam} · ` : ""}
                     {scope.allowedEnvironments.join(" + ").toLowerCase()} execution
                     {scope.verificationPolicy ? ` · ${scope.verificationPolicy}` : ""}
+                    {scope.overlapPriority ? ` · overlap priority ${scope.overlapPriority}` : ""}
                   </div>
                 </div>
                 <Button variant="ghost" size="sm" onClick={() => archiveScope({ scopeId: scope._id })}>
@@ -371,23 +379,29 @@ function AddRepositoryDialog({
 }
 
 function AddCodeScopeDialog({
+  projectId,
   repositoryId,
   repository,
   onClose,
 }: {
+  projectId: Id<"projects">;
   repositoryId: Id<"workspaceRepositories">;
   repository: string;
   onClose: () => void;
 }) {
   const createScope = useMutation(api.projects.createRepositoryCodeScope);
+  const structure = useQuery(api.softwareFactoryControlPlane.listWorkspaceStructure, { projectId });
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [slugEdited, setSlugEdited] = useState(false);
   const [includePaths, setIncludePaths] = useState("");
   const [excludePaths, setExcludePaths] = useState("");
-  const [owningTeam, setOwningTeam] = useState("");
+  const [owningTeamId, setOwningTeamId] = useState<Id<"scrumTeams"> | "">("");
   const [requiredReviewers, setRequiredReviewers] = useState("");
   const [verificationPolicy, setVerificationPolicy] = useState("");
+  const [approvalPolicy, setApprovalPolicy] = useState("");
+  const [allowOverlap, setAllowOverlap] = useState(false);
+  const [overlapPriority, setOverlapPriority] = useState("");
   const [allowLocal, setAllowLocal] = useState(true);
   const [allowCloud, setAllowCloud] = useState(true);
   const [error, setError] = useState("");
@@ -422,10 +436,13 @@ function AddCodeScopeDialog({
         slug: slug.trim(),
         includePaths: splitList(includePaths),
         excludePaths: splitList(excludePaths),
-        owningTeam: owningTeam.trim() || undefined,
+        owningTeamId: owningTeamId || undefined,
         requiredReviewers: splitList(requiredReviewers),
         allowedEnvironments,
         verificationPolicy: verificationPolicy.trim() || undefined,
+        approvalPolicy: approvalPolicy.trim() || undefined,
+        allowOverlap,
+        overlapPriority: allowOverlap && overlapPriority ? Number(overlapPriority) : undefined,
       });
       if (!result.success) {
         setError(result.error || "Code scope could not be created.");
@@ -463,7 +480,10 @@ function AddCodeScopeDialog({
               <Textarea id="scope-excludes" value={excludePaths} onChange={(event) => setExcludePaths(event.target.value)} rows={2} placeholder="apps/buyer-portal/generated" />
             </Field>
             <Field id="scope-team" label="Owning team">
-              <Input id="scope-team" value={owningTeam} onChange={(event) => setOwningTeam(event.target.value)} placeholder="Checkout" />
+              <select id="scope-team" value={owningTeamId} onChange={(event) => setOwningTeamId(event.target.value as Id<"scrumTeams"> | "")} className="h-9 w-full rounded-md border border-line bg-surface-1 px-3 text-[13px] text-ink outline-none focus:border-info-accent focus:ring-2 focus:ring-info-accent/25">
+                <option value="">No owning team</option>
+                {(structure?.teams ?? []).filter((team) => team.status === "ACTIVE").map((team) => <option key={team._id} value={team._id}>{team.name}</option>)}
+              </select>
             </Field>
             <Field id="scope-reviewers" label="Required reviewers">
               <Input id="scope-reviewers" value={requiredReviewers} onChange={(event) => setRequiredReviewers(event.target.value)} placeholder="Platform, Security" />
@@ -471,6 +491,22 @@ function AddCodeScopeDialog({
             <Field id="scope-policy" label="Verification policy" className="md:col-span-2">
               <Input id="scope-policy" value={verificationPolicy} onChange={(event) => setVerificationPolicy(event.target.value)} placeholder="Unit + browser + independent review" />
             </Field>
+            <div className="md:col-span-2 rounded-lg border border-line bg-surface-2 px-4 py-3">
+              <label className="flex items-start gap-2 text-[12.5px] text-ink-secondary">
+                <input type="checkbox" checked={allowOverlap} onChange={(event) => setAllowOverlap(event.target.checked)} className="mt-0.5" />
+                <span><strong className="font-medium text-ink">Allow an intentional path overlap</strong><br />Overlaps need deterministic priority and an approval policy.</span>
+              </label>
+              {allowOverlap ? (
+                <div className="mt-3 grid gap-3 md:grid-cols-[140px_1fr]">
+                  <Field id="scope-priority" label="Priority">
+                    <Input id="scope-priority" type="number" min={1} value={overlapPriority} onChange={(event) => setOverlapPriority(event.target.value)} placeholder="1" />
+                  </Field>
+                  <Field id="scope-approval-policy" label="Approval policy">
+                    <Input id="scope-approval-policy" value={approvalPolicy} onChange={(event) => setApprovalPolicy(event.target.value)} placeholder="Both owning team leads approve" />
+                  </Field>
+                </div>
+              ) : null}
+            </div>
             <div className="md:col-span-2 rounded-lg border border-line bg-surface-2 px-4 py-3">
               <div className="flex items-center gap-2 text-[12.5px] font-medium text-ink"><ShieldCheck size={14} /> Allowed execution</div>
               <div className="mt-3 flex flex-wrap gap-5 text-[12.5px] text-ink-secondary">

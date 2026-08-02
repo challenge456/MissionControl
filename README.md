@@ -67,6 +67,12 @@ pnpm run import:knowledge-graph:demo   # optional: Memory → Graph tab
 
 Open [http://localhost:5199/v2/command-center](http://localhost:5199/v2/command-center). Select workspace **Software Factory Demo**.
 
+### Company control plane
+
+The v2 Command Center and Settings → Workspaces & Repositories support the hierarchy **company account → workspace → repository → code scope**. A workspace may connect several repositories; a monorepo is divided into governed code scopes owned by Scrum teams. Role-aware My, Team, Workspace, and Company lenses keep portfolio rollups and dispatch decisions inside the operator's authorized scope.
+
+See [the control-plane architecture](docs/architecture/company-workspace-repository-control-plane.md) and [the rollout runbook](docs/operations/company-control-plane-runbook.md).
+
 Required env: `.env.local` with `CONVEX_URL` / `VITE_CONVEX_URL` (created by `npx convex dev` on first run). The demo command idempotently installs the built-in workflow definitions before starting the executor. Without the executor, dispatched Graph Engineering runs remain safely queued.
 
 ### Legacy: git worktree demo

@@ -53,6 +53,9 @@ export const ConvexMutations = {
     supersedeWorkOrder: "workOrders:supersedeWorkOrder",
     expireGovernanceRecords: "workOrders:expireGovernanceRecords",
   },
+  softwareFactoryControlPlane: {
+    bindExecutor: "softwareFactoryControlPlane:bindExecutor",
+  },
   missions: {
     recordHandoff: "missions:recordHandoff",
     recordValidationResult: "missions:recordValidationResult",
