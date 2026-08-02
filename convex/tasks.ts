@@ -1209,8 +1209,6 @@ export const create = mutation({
       dueAt: args.dueAt,
     });
     
-    const task = await ctx.db.get(taskId);
-    
     // Log activity with provenance context
     const sourceLabel = args.source ? ` via ${args.source}` : "";
     await ctx.db.insert("activities", {
@@ -1243,9 +1241,31 @@ export const create = mutation({
         sourceRef: args.sourceRef,
       },
     });
+
+    // Creation remains immutable INBOX intake. An explicitly assigned Task is
+    // then advanced through the same audited state machine used everywhere
+    // else, so it is immediately eligible for a governed WorkOrder attempt.
+    if (assigneeIds.length > 0) {
+      const actorType = ["AGENT", "HUMAN", "SYSTEM"].includes(args.createdBy ?? "")
+        ? args.createdBy as "AGENT" | "HUMAN" | "SYSTEM"
+        : "SYSTEM";
+      const readyResult = await ctx.runMutation(api.tasks.transition, {
+        taskId,
+        projectId: args.projectId,
+        toStatus: "READY",
+        actorType,
+        actorUserId: args.createdByRef,
+        reason: "Assigned during Task creation",
+        idempotencyKey: `${args.idempotencyKey ?? String(taskId)}:initial-ready`,
+      });
+      if (!readyResult.success) {
+        throw new Error(readyResult.errors?.[0]?.message ?? "Assigned Task could not enter READY");
+      }
+    }
     
-    const projected = task
-      ? (await loadTaskProjections(ctx, [task], task.projectId))[0]
+    const currentTask = await ctx.db.get(taskId);
+    const projected = currentTask
+      ? (await loadTaskProjections(ctx, [currentTask], currentTask.projectId))[0]
       : null;
     return { task: projected, created: true };
   },

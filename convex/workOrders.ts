@@ -28,6 +28,10 @@ import {
 } from "./lib/workOrderRevision";
 import { planAcceptedWorkOrderParentSync } from "./lib/workOrderParentSync";
 import { validateMissionWorkOrderDispatch } from "./lib/missionGovernance";
+import {
+  startMissionForWorkOrderDispatch,
+  syncMissionValidationReceipt,
+} from "./lib/missionExecution";
 import { resolveFlag, type FlagRow } from "./lib/flags";
 import {
   fallbackRoutingPolicy,
@@ -1435,6 +1439,7 @@ export const dispatch = mutation({
       }
     }
 
+    let missionForDispatch: any = null;
     if (refreshedWorkOrder.missionId) {
       const mission = await ctx.db.get(refreshedWorkOrder.missionId);
       const missionPlan = refreshedWorkOrder.missionPlanId
@@ -1458,7 +1463,10 @@ export const dispatch = mutation({
             .withIndex("by_work_order", (q) => q.eq("workOrderId", dependency._id))
             .order("desc")
             .first();
-          return handoff?.outcome === "COMPLETE" && handoff.incompleteAssertionIds.length === 0 && handoff.unknownAssertionIds.length === 0;
+          return dependency.state === "DONE"
+            && handoff?.outcome === "COMPLETE"
+            && handoff.incompleteAssertionIds.length === 0
+            && handoff.unknownAssertionIds.length === 0;
         }));
       const predecessorHandoffValid =
         dependencyWorkOrders.length === blueprint.dependsOnBlueprintIds.length &&
@@ -1468,6 +1476,7 @@ export const dispatch = mutation({
       );
       const missionDispatch = validateMissionWorkOrderDispatch({
         missionState: mission.state,
+        workOrderRole: refreshedWorkOrder.missionRole ?? "WORKER",
         planApproved: missionPlan.status === "APPROVED" && mission.currentPlanId === missionPlan._id,
         executionPolicy: mission.executionPolicy,
         workOrderReleased: !!refreshedWorkOrder.releasedAt,
@@ -1478,6 +1487,7 @@ export const dispatch = mutation({
         correctiveIterationsRemaining: mission.correctiveIterations < mission.maxCorrectiveIterations,
       });
       if (!missionDispatch.ok) throw new Error(`Mission WorkOrder is not dispatchable (${missionDispatch.reason})`);
+      missionForDispatch = mission;
     }
 
     const dispatchable = validateDispatchable({
@@ -1671,6 +1681,17 @@ export const dispatch = mutation({
       blockingIssue: undefined,
       requiredHumanAction: undefined,
     });
+
+    if (missionForDispatch) {
+      await startMissionForWorkOrderDispatch(ctx, {
+        mission: missionForDispatch,
+        workOrder: refreshedWorkOrder,
+        workflowRunId: runDocId,
+        actorType: args.actorType,
+        actorId: args.actorId,
+        idempotencyKey: args.idempotencyKey,
+      });
+    }
 
     await ctx.db.insert("activities", {
       tenantId: refreshedWorkOrder.tenantId,
@@ -2288,6 +2309,18 @@ export const recordVerificationReceipt = mutation({
       .withIndex("by_work_order_criterion", (q) => q.eq("workOrderId", workOrder._id).eq("acceptanceCriterionId", args.acceptanceCriterionId))
       .collect();
 
+    const validationAssertion = workOrder.missionId && workOrder.missionRole === "VALIDATOR"
+      ? await ctx.db
+          .query("validationAssertions")
+          .withIndex("by_mission_assertion", (q) => q
+            .eq("missionId", workOrder.missionId!)
+            .eq("assertionId", args.acceptanceCriterionId))
+          .first()
+      : null;
+    if (workOrder.missionRole === "VALIDATOR" && workOrder.missionId && !validationAssertion) {
+      throw new Error("Validator evidence must map to a Mission assertion");
+    }
+
     for (const receipt of priorReceipts.filter((item: any) => item.status !== "STALE")) {
       await staleVerificationReceipt(ctx, {
         receipt,
@@ -2299,6 +2332,8 @@ export const recordVerificationReceipt = mutation({
     const verificationReceiptId = await ctx.db.insert("verificationReceipts", {
       tenantId: workOrder.tenantId,
       projectId: workOrder.projectId,
+      missionId: workOrder.missionId,
+      validationAssertionId: validationAssertion?._id,
       workOrderId: workOrder._id,
       acceptanceCriterionId: args.acceptanceCriterionId,
       workflowRunId: run._id,
@@ -2340,7 +2375,15 @@ export const recordVerificationReceipt = mutation({
     }
 
     await refreshWorkOrderGovernance(ctx, workOrder._id);
-    return { verificationReceipt: await ctx.db.get(verificationReceiptId), created: true };
+    const verificationReceipt = await ctx.db.get(verificationReceiptId);
+    const missionSync = validationAssertion && verificationReceipt
+      ? await syncMissionValidationReceipt(ctx, {
+          workOrder,
+          workflowRun: run,
+          verificationReceipt,
+        })
+      : { synced: false };
+    return { verificationReceipt, missionSync, created: true };
   },
 });
 

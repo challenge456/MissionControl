@@ -20,6 +20,10 @@ import {
 } from "./lib/missionPlan";
 import { resolveFlag, type FlagRow } from "./lib/flags";
 import { createWorkOrderRecord } from "./lib/workOrderCreate";
+import {
+  loadMissionExecutionState,
+  reconcileMissionAfterHandoff,
+} from "./lib/missionExecution";
 
 const missionState = v.union(
   v.literal("DRAFT"), v.literal("PLANNING"), v.literal("AWAITING_PLAN_APPROVAL"),
@@ -180,7 +184,11 @@ async function getMissionDetail(ctx: any, mission: any) {
     ?? normalizedPlans[0];
   const blueprintById = new Map((currentPlan?.workOrderBlueprints ?? []).map((blueprint: any) => [blueprint.id, blueprint]));
   const workOrderByBlueprintId = new Map(workOrders.map((workOrder: any) => [workOrder.metadata?.missionBlueprintId, workOrder]));
-  const handoffByWorkOrderId = new Map(handoffs.map((handoff: any) => [String(handoff.workOrderId), handoff]));
+  const handoffByWorkOrderId = new Map<string, any>();
+  for (const handoff of handoffs) {
+    const key = String(handoff.workOrderId);
+    if (!handoffByWorkOrderId.has(key)) handoffByWorkOrderId.set(key, handoff);
+  }
   const eligibleWorkOrders = workOrders
     .map((workOrder: any) => {
       const blueprint = blueprintById.get(workOrder.metadata?.missionBlueprintId) as any;
@@ -198,6 +206,39 @@ async function getMissionDetail(ctx: any, mission: any) {
       };
     })
     .sort((left: any, right: any) => (left.missionSequence ?? 0) - (right.missionSequence ?? 0));
+  const executionWorkOrders = await Promise.all(eligibleWorkOrders.map(async (workOrder: any) => {
+    const [childTasks, executionRuns, approvalDecisions, verificationReceipts] = await Promise.all([
+      ctx.db.query("tasks").withIndex("by_work_order", (q: any) => q.eq("workOrderId", workOrder._id)).collect(),
+      ctx.db.query("workflowRuns").withIndex("by_work_order", (q: any) => q.eq("workOrderId", workOrder._id)).order("desc").collect(),
+      ctx.db.query("approvalDecisions").withIndex("by_work_order", (q: any) => q.eq("workOrderId", workOrder._id)).order("desc").collect(),
+      ctx.db.query("verificationReceipts").withIndex("by_work_order", (q: any) => q.eq("workOrderId", workOrder._id)).order("desc").collect(),
+    ]);
+    return {
+      ...workOrder,
+      childTasks,
+      executionRuns,
+      approvalDecisions,
+      verificationReceipts,
+      latestHandoff: handoffByWorkOrderId.get(String(workOrder._id)) ?? null,
+    };
+  }));
+  const acceptance = evaluateMissionAcceptance({
+    assertions: assertions.map((assertion: any) => ({
+      id: assertion.assertionId,
+      status: assertion.status,
+      requiresIndependentValidation: assertion.requiresIndependentValidation,
+      validatorRunId: assertion.validatorWorkflowRunId,
+      verificationReceiptId: assertion.verificationReceiptId,
+      waiverApprovalId: assertion.waiverApprovalDecisionId,
+    })),
+    workOrders: workOrders.map((workOrder: any) => ({ id: String(workOrder._id), state: workOrder.state })),
+    handoffs: [...handoffByWorkOrderId.values()].map((handoff: any) => ({
+      workOrderId: String(handoff.workOrderId),
+      outcome: handoff.outcome,
+      incompleteAssertionIds: handoff.incompleteAssertionIds,
+      unknownAssertionIds: handoff.unknownAssertionIds,
+    })),
+  });
   return {
     mission,
     project,
@@ -205,16 +246,8 @@ async function getMissionDetail(ctx: any, mission: any) {
     assertions,
     handoffs,
     events,
-    workOrders: eligibleWorkOrders,
-    acceptance: evaluateMissionAcceptance({
-      assertions: assertions.map((assertion: any) => ({
-        id: assertion.assertionId,
-        status: assertion.status,
-        requiresIndependentValidation: assertion.requiresIndependentValidation,
-        validatorRunId: assertion.validatorWorkflowRunId,
-        waiverApprovalId: assertion.waiverApprovalDecisionId,
-      })),
-    }),
+    workOrders: executionWorkOrders,
+    acceptance,
   };
 }
 
@@ -721,6 +754,18 @@ export const recordValidationResult = mutation({
     if (args.status === "PASS" && run.status !== "COMPLETED") {
       throw new Error("A passing Mission assertion requires a completed validator WorkflowRun");
     }
+    if (args.status === "PASS") {
+      if (!args.verificationReceiptId) {
+        throw new Error("A passing Mission assertion requires a verification receipt");
+      }
+      const receipt = await ctx.db.get(args.verificationReceiptId);
+      if (!receipt
+        || receipt.validationAssertionId !== assertion._id
+        || receipt.workflowRunId !== run._id
+        || receipt.status !== "PASSED") {
+        throw new Error("The verification receipt does not prove this assertion with this Validator run");
+      }
+    }
     if (args.status === "WAIVED" && (!assertion.waiverAllowed || !args.waiverApprovalDecisionId)) {
       throw new Error("Mission assertion waiver requires an authorized approval");
     }
@@ -731,14 +776,8 @@ export const recordValidationResult = mutation({
       status: args.status, validatorWorkflowRunId: run._id, verificationReceiptId: args.verificationReceiptId,
       waiverApprovalDecisionId: args.waiverApprovalDecisionId, updatedAt: now,
     });
-    const assertions = await ctx.db.query("validationAssertions").withIndex("by_mission", (q) => q.eq("missionId", mission._id)).collect();
-    const acceptance = evaluateMissionAcceptance({ assertions: assertions.map((row) => ({
-      id: row.assertionId,
-      status: row._id === assertion._id ? args.status : row.status,
-      requiresIndependentValidation: row.requiresIndependentValidation,
-      validatorRunId: row._id === assertion._id ? run._id : row.validatorWorkflowRunId,
-      waiverApprovalId: row._id === assertion._id ? args.waiverApprovalDecisionId : row.waiverApprovalDecisionId,
-    })) });
+    const execution = await loadMissionExecutionState(ctx, mission._id);
+    const acceptance = execution.acceptance;
     const nextState = acceptance.eligible ? "AWAITING_ACCEPTANCE" : args.status === "FAIL" || args.status === "UNKNOWN" || args.status === "STALE" ? "BLOCKED" : mission.state;
     await ctx.db.patch(mission._id, {
       state: nextState as any, updatedAt: now,
@@ -792,11 +831,7 @@ export const accept = mutation({
     const duplicate = await ctx.db.query("missionEvents").withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.idempotencyKey)).first();
     if (duplicate) return { mission, created: false };
     if (mission.state !== "AWAITING_ACCEPTANCE") throw new Error(`Mission cannot be accepted while ${mission.state}`);
-    const assertions = await ctx.db.query("validationAssertions").withIndex("by_mission", (q) => q.eq("missionId", mission._id)).collect();
-    const acceptance = evaluateMissionAcceptance({ assertions: assertions.map((assertion) => ({
-      id: assertion.assertionId, status: assertion.status, requiresIndependentValidation: assertion.requiresIndependentValidation,
-      validatorRunId: assertion.validatorWorkflowRunId, waiverApprovalId: assertion.waiverApprovalDecisionId,
-    })) });
+    const acceptance = (await loadMissionExecutionState(ctx, mission._id)).acceptance;
     if (!acceptance.eligible) throw new Error(`Mission cannot be accepted (${acceptance.blockingReasons.join("; ")})`);
     const now = Date.now();
     await ctx.db.patch(mission._id, { state: "DONE", acceptedAt: now, updatedAt: now, requiredHumanAction: undefined, blockingReason: undefined });
@@ -817,12 +852,41 @@ export const recordHandoff = mutation({
   handler: async (ctx, args) => {
     const [mission, workOrder, workflowRun] = await Promise.all([ctx.db.get(args.missionId), ctx.db.get(args.workOrderId), ctx.db.get(args.workflowRunId)]);
     if (!mission || !workOrder || !workflowRun || workOrder.missionId !== mission._id || workflowRun.missionId !== mission._id) throw new Error("Mission handoff references do not match");
+    if (workflowRun.workOrderId !== workOrder._id || workflowRun.status !== "COMPLETED") {
+      throw new Error("Mission handoff requires a completed run from the same WorkOrder");
+    }
+    if (workOrder.state !== "DONE") throw new Error("Accept the WorkOrder before recording its Mission handoff");
+    const missionRole = workOrder.missionRole ?? "WORKER";
+    if (missionRole !== args.producingRole || workflowRun.missionRole !== args.producingRole) {
+      throw new Error("Mission handoff producing role does not match its WorkOrder and run");
+    }
+    const plan = workOrder.missionPlanId ? await ctx.db.get(workOrder.missionPlanId) : null;
+    const blueprintId = workOrder.metadata?.missionBlueprintId;
+    const blueprint = plan?.workOrderBlueprints.find((candidate: any) => candidate.id === blueprintId);
+    if (!blueprint) throw new Error("Mission handoff is missing its approved blueprint contract");
+    const reportedAssertionIds = [
+      ...args.completedAssertionIds,
+      ...args.incompleteAssertionIds,
+      ...args.unknownAssertionIds,
+    ];
+    if (reportedAssertionIds.length !== blueprint.assertionIds.length
+      || reportedAssertionIds.some((assertionId: string) => !blueprint.assertionIds.includes(assertionId))) {
+      throw new Error("Mission handoff must account for every assertion in its approved blueprint");
+    }
+    for (const artifactId of args.artifactIds) {
+      const artifact = await ctx.db.get(artifactId);
+      if (!artifact || artifact.workflowRunId !== workflowRun._id || artifact.workOrderId !== workOrder._id) {
+        throw new Error("Mission handoff artifacts must belong to the same run and WorkOrder");
+      }
+    }
     const validation = validateMissionHandoff({ ...args, role: args.producingRole });
     if (!validation.ok) throw new Error(`Mission handoff is invalid (${validation.reason})`);
     const duplicate = await ctx.db.query("missionHandoffs").withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.idempotencyKey)).first();
     if (duplicate) return { handoff: duplicate, created: false };
     const handoffId = await ctx.db.insert("missionHandoffs", { ...args, tenantId: mission.tenantId, projectId: mission.projectId, createdAt: Date.now() });
     await logMissionEvent(ctx, { mission, eventType: "HANDOFF_RECORDED", actorType: "AGENT", summary: `${args.producingRole} handoff recorded`, idempotencyKey: `${args.idempotencyKey}:event`, metadata: { handoffId, workOrderId: workOrder._id, workflowRunId: workflowRun._id } });
-    return { handoff: await ctx.db.get(handoffId), created: true };
+    const handoff = await ctx.db.get(handoffId);
+    const reconciliation = await reconcileMissionAfterHandoff(ctx, { mission, handoff });
+    return { handoff, mission: reconciliation.mission, acceptance: reconciliation.acceptance, created: true };
   },
 });

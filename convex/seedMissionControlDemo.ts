@@ -20,6 +20,30 @@ const SEED_VERSION = "mc-demo-v2";
 const SEED_TAG = "mc-demo";
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
+const DEMO_WORKSPACE = {
+  name: "Software Factory Demo",
+  slug: "sf-demo",
+  description:
+    "Local software factory demo workspace seeded with coherent fictitious delivery, governance, and evidence data.",
+  purpose:
+    "Demonstrate a governed software factory where one operator manages repo-backed work orders, approvals, runs, and receipts.",
+  owner: "Mission Control Operator",
+  defaultPolicy: "Software Factory v2",
+  repo: "jaydubya818/MissionControl",
+  branch: "main",
+  taskPrefix: "DEMO",
+  hostId: "local-macos-dev",
+  checkoutRoot: "/Users/jaywest/MissionControl",
+  narrative: "Atlas Checkout",
+} as const;
+const ARCHIVED_DUPLICATE_WORKSPACE = {
+  name: "Legacy Sandbox",
+  description:
+    "Archived duplicate workspace kept only as a historical seed artifact. Not part of the active Mission Control demo flow.",
+  purpose: "Historical local seed sandbox retained for migration safety.",
+  owner: "System",
+  defaultPolicy: "No active operator workflow.",
+} as const;
 
 type AnyId = string;
 type IdentityValidationStatus = "VALID" | "INVALID" | "MISSING" | "PARTIAL";
@@ -59,44 +83,363 @@ async function ensureTenant(ctx: any) {
       name: "Mission Control",
       slug: "mission-control",
       description: "Primary tenant for Mission Control demo data",
+      missionStatement:
+        "Operate a trustworthy software factory where intent, approvals, evidence, and outcomes stay visible end to end.",
       active: true,
+      createdAt: Date.now(),
       metadata: withSeedMeta("tenant:mission-control"),
     });
     tenant = await ctx.db.get(tenantId);
+  } else {
+    await ctx.db.patch(tenant._id, {
+      description: tenant.description ?? "Primary tenant for Mission Control demo data",
+      missionStatement:
+        tenant.missionStatement ??
+        "Operate a trustworthy software factory where intent, approvals, evidence, and outcomes stay visible end to end.",
+      active: true,
+      updatedAt: Date.now(),
+    });
+    tenant = await ctx.db.get(tenant._id);
   }
 
   return tenant!;
 }
 
-async function ensureProject(ctx: any, tenantId: Id<"tenants">) {
-  let project = await ctx.db
+async function ensureProject(ctx: any, tenantId: Id<"tenants">, now: number) {
+  const tenantProjects = await ctx.db
     .query("projects")
-    .withIndex("by_slug", (q: any) => q.eq("slug", "mission-control"))
-    .first();
+    .withIndex("by_tenant", (q: any) => q.eq("tenantId", tenantId))
+    .collect();
+  let project =
+    tenantProjects.find((row: any) => row.slug === DEMO_WORKSPACE.slug) ??
+    tenantProjects.find(
+      (row: any) =>
+        row.slug === "mission-control" && row.metadata?.seedTag === SEED_TAG
+    ) ??
+    null;
 
   if (!project) {
     const projectId = await ctx.db.insert("projects", {
       tenantId,
-      name: "Mission Control",
-      slug: "mission-control",
-      description: "Operational command center for ARM + Mission Control validation",
-      metadata: withSeedMeta("project:mission-control", {
-        repo: "MissionControl",
+      name: DEMO_WORKSPACE.name,
+      slug: DEMO_WORKSPACE.slug,
+      description: DEMO_WORKSPACE.description,
+      purpose: DEMO_WORKSPACE.purpose,
+      owner: DEMO_WORKSPACE.owner,
+      defaultPolicy: DEMO_WORKSPACE.defaultPolicy,
+      status: "ACTIVE",
+      githubRepo: DEMO_WORKSPACE.repo,
+      githubBranch: DEMO_WORKSPACE.branch,
+      repositoryStatus: "READY",
+      repositoryValidatedAt: now,
+      taskPrefix: DEMO_WORKSPACE.taskPrefix,
+      nextTaskNumber: 200,
+      metadata: withSeedMeta(`project:${DEMO_WORKSPACE.slug}`, {
+        repo: DEMO_WORKSPACE.repo,
+        workspaceKind: "software-factory-demo",
+        demoNarrative: DEMO_WORKSPACE.narrative,
       }),
     });
     project = await ctx.db.get(projectId);
-  } else if (!project.tenantId || project.tenantId !== tenantId) {
+  } else {
     await ctx.db.patch(project._id, {
       tenantId,
-      metadata: {
+      name: DEMO_WORKSPACE.name,
+      slug: DEMO_WORKSPACE.slug,
+      description: DEMO_WORKSPACE.description,
+      purpose: project.purpose ?? DEMO_WORKSPACE.purpose,
+      owner: project.owner ?? DEMO_WORKSPACE.owner,
+      defaultPolicy: project.defaultPolicy ?? DEMO_WORKSPACE.defaultPolicy,
+      status: project.status ?? "ACTIVE",
+      githubRepo: project.githubRepo ?? DEMO_WORKSPACE.repo,
+      githubBranch: project.githubBranch ?? DEMO_WORKSPACE.branch,
+      repositoryStatus: project.repositoryStatus ?? "READY",
+      repositoryValidatedAt: project.repositoryValidatedAt ?? now,
+      taskPrefix: project.taskPrefix ?? DEMO_WORKSPACE.taskPrefix,
+      nextTaskNumber:
+        typeof project.nextTaskNumber === "number" && project.nextTaskNumber > 0
+          ? project.nextTaskNumber
+          : 200,
+      metadata: withSeedMeta(`project:${DEMO_WORKSPACE.slug}`, {
         ...(project.metadata ?? {}),
-        tenantLinkedAt: Date.now(),
-      },
+        repo: project.githubRepo ?? DEMO_WORKSPACE.repo,
+        workspaceKind: "software-factory-demo",
+        demoNarrative: DEMO_WORKSPACE.narrative,
+        tenantLinkedAt: now,
+      }),
     });
     project = await ctx.db.get(project._id);
   }
 
   return project!;
+}
+
+async function archiveDuplicateDemoProjects(
+  ctx: any,
+  input: {
+    canonicalProjectId: Id<"projects">;
+    now: number;
+  }
+) {
+  const allProjects = await ctx.db.query("projects").collect();
+  const canonicalName = DEMO_WORKSPACE.name.trim().toLowerCase();
+
+  for (const project of allProjects) {
+    if (project._id === input.canonicalProjectId) continue;
+    const projectName = project.name?.trim().toLowerCase();
+    const shouldArchive =
+      project.slug === DEMO_WORKSPACE.slug ||
+      projectName === canonicalName;
+    if (!shouldArchive) continue;
+
+    await ctx.db.patch(project._id, {
+      name: ARCHIVED_DUPLICATE_WORKSPACE.name,
+      description: ARCHIVED_DUPLICATE_WORKSPACE.description,
+      purpose: ARCHIVED_DUPLICATE_WORKSPACE.purpose,
+      owner: ARCHIVED_DUPLICATE_WORKSPACE.owner,
+      defaultPolicy: ARCHIVED_DUPLICATE_WORKSPACE.defaultPolicy,
+      status: "ARCHIVED",
+      metadata: withSeedMeta(`archived-project:${project.slug}`, {
+        ...(project.metadata ?? {}),
+        archivedBySeederAt: input.now,
+        archivedReason: "Canonical software factory demo workspace promoted under Mission Control tenant.",
+      }),
+    });
+  }
+}
+
+async function ensureWorkspaceRepository(
+  ctx: any,
+  input: {
+    tenantId: Id<"tenants">;
+    projectId: Id<"projects">;
+    repository: string;
+    branch: string;
+    now: number;
+  }
+) {
+  const existing = await ctx.db
+    .query("workspaceRepositories")
+    .withIndex("by_project_repository", (q: any) =>
+      q.eq("projectId", input.projectId).eq("repository", input.repository)
+    )
+    .first();
+
+  const value = {
+    tenantId: input.tenantId,
+    projectId: input.projectId,
+    provider: "GITHUB" as const,
+    repository: input.repository,
+    displayName: "MissionControl",
+    defaultBranch: input.branch,
+    isDefault: true,
+    status: "READY" as const,
+    validatedAt: input.now,
+    validationError: undefined,
+    webhookStatus: "READY" as const,
+    updatedAt: input.now,
+  };
+
+  if (existing) {
+    await ctx.db.patch(existing._id, value);
+    return await ctx.db.get(existing._id);
+  }
+
+  const repositoryId = await ctx.db.insert("workspaceRepositories", {
+    ...value,
+    createdAt: input.now,
+  });
+  return await ctx.db.get(repositoryId);
+}
+
+async function ensureRepositoryCodeScope(
+  ctx: any,
+  input: {
+    tenantId: Id<"tenants">;
+    projectId: Id<"projects">;
+    repositoryId: Id<"workspaceRepositories">;
+    slug: string;
+    name: string;
+    description: string;
+    includePaths: string[];
+    excludePaths?: string[];
+    owningTeam: string;
+    requiredReviewers: string[];
+    verificationPolicy: string;
+    now: number;
+  }
+) {
+  const existing = await ctx.db
+    .query("repositoryCodeScopes")
+    .withIndex("by_repository_slug", (q: any) =>
+      q.eq("repositoryId", input.repositoryId).eq("slug", input.slug)
+    )
+    .first();
+
+  const value = {
+    tenantId: input.tenantId,
+    projectId: input.projectId,
+    repositoryId: input.repositoryId,
+    name: input.name,
+    slug: input.slug,
+    description: input.description,
+    includePaths: input.includePaths,
+    excludePaths: input.excludePaths ?? [],
+    owningTeam: input.owningTeam,
+    requiredReviewers: input.requiredReviewers,
+    allowedEnvironments: ["LOCAL", "CLOUD"] as ("LOCAL" | "CLOUD")[],
+    verificationPolicy: input.verificationPolicy,
+    active: true,
+    updatedAt: input.now,
+  };
+
+  if (existing) {
+    await ctx.db.patch(existing._id, value);
+    return await ctx.db.get(existing._id);
+  }
+
+  const scopeId = await ctx.db.insert("repositoryCodeScopes", {
+    ...value,
+    createdAt: input.now,
+  });
+  return await ctx.db.get(scopeId);
+}
+
+async function ensureWorkspaceHostBinding(
+  ctx: any,
+  input: {
+    projectId: Id<"projects">;
+    hostId: string;
+    repository: string;
+    branch: string;
+    checkoutRoot: string;
+    now: number;
+  }
+) {
+  const existing = await ctx.db
+    .query("workspaceHostBindings")
+    .withIndex("by_project_host", (q: any) =>
+      q.eq("projectId", input.projectId).eq("hostId", input.hostId)
+    )
+    .first();
+
+  const value = {
+    projectId: input.projectId,
+    hostId: input.hostId,
+    repository: input.repository,
+    checkoutRoot: input.checkoutRoot,
+    observedBranch: input.branch,
+    observedCommit: "demo-seed-head",
+    dirty: false,
+    status: "READY" as const,
+    error: undefined,
+    checkedAt: input.now,
+  };
+
+  if (existing) {
+    await ctx.db.patch(existing._id, value);
+    return await ctx.db.get(existing._id);
+  }
+
+  const bindingId = await ctx.db.insert("workspaceHostBindings", value);
+  return await ctx.db.get(bindingId);
+}
+
+async function ensureWorkspaceInfrastructure(
+  ctx: any,
+  input: {
+    tenantId: Id<"tenants">;
+    projectId: Id<"projects">;
+    now: number;
+  }
+) {
+  await ctx.db.patch(input.projectId, {
+    purpose: DEMO_WORKSPACE.purpose,
+    owner: DEMO_WORKSPACE.owner,
+    defaultPolicy: DEMO_WORKSPACE.defaultPolicy,
+    status: "ACTIVE",
+    githubRepo: DEMO_WORKSPACE.repo,
+    githubBranch: DEMO_WORKSPACE.branch,
+    repositoryStatus: "READY",
+    repositoryValidatedAt: input.now,
+    repositoryValidationError: undefined,
+    taskPrefix: DEMO_WORKSPACE.taskPrefix,
+    nextTaskNumber: 200,
+  });
+
+  const repository = await ensureWorkspaceRepository(ctx, {
+    tenantId: input.tenantId,
+    projectId: input.projectId,
+    repository: DEMO_WORKSPACE.repo,
+    branch: DEMO_WORKSPACE.branch,
+    now: input.now,
+  });
+
+  const scopes = [
+    {
+      slug: "operator-shell",
+      name: "Operator shell",
+      description: "Classic and v2 operator interfaces, command surfaces, and navigation shells.",
+      includePaths: ["apps/mission-control-ui/src/**"],
+      excludePaths: ["apps/mission-control-ui/src/**/__tests__/**"],
+      owningTeam: "Operator Experience",
+      requiredReviewers: ["UX", "Operator"],
+      verificationPolicy: "Visual QA + route smoke + accessibility pass",
+    },
+    {
+      slug: "convex-control-plane",
+      name: "Convex control plane",
+      description: "Project, mission, work order, registry, and governance backend logic.",
+      includePaths: ["convex/**"],
+      excludePaths: ["convex/_generated/**"],
+      owningTeam: "Factory Platform",
+      requiredReviewers: ["Backend", "Governance"],
+      verificationPolicy: "Mutation-safe state transitions + deterministic seed replay",
+    },
+    {
+      slug: "workflow-executor",
+      name: "Workflow executor",
+      description: "Executor, orchestration, and bounded runtime integration surfaces.",
+      includePaths: ["apps/workflow-executor/**", "packages/workflow-engine/**", "apps/orchestration-server/**"],
+      excludePaths: [],
+      owningTeam: "Runtime",
+      requiredReviewers: ["Runtime", "Security"],
+      verificationPolicy: "Receipt integrity + executor contract verification",
+    },
+    {
+      slug: "knowledge-docs",
+      name: "Knowledge and docs",
+      description: "Documentation, knowledge graph, skills, and operator guidance.",
+      includePaths: ["docs/**", ".claude/**", "scripts/**"],
+      excludePaths: ["docs/testing/evidence/**"],
+      owningTeam: "Knowledge Systems",
+      requiredReviewers: ["Docs", "Operator"],
+      verificationPolicy: "Docs link integrity + operator-readability review",
+    },
+  ];
+
+  for (const scope of scopes) {
+    const { includePaths, excludePaths, requiredReviewers, ...scopeRest } = scope;
+    await ensureRepositoryCodeScope(ctx, {
+      tenantId: input.tenantId,
+      projectId: input.projectId,
+      repositoryId: repository._id,
+      ...scopeRest,
+      includePaths: [...includePaths],
+      excludePaths: [...excludePaths],
+      requiredReviewers: [...requiredReviewers],
+      now: input.now,
+    });
+  }
+
+  await ensureWorkspaceHostBinding(ctx, {
+    projectId: input.projectId,
+    hostId: DEMO_WORKSPACE.hostId,
+    repository: DEMO_WORKSPACE.repo,
+    branch: DEMO_WORKSPACE.branch,
+    checkoutRoot: DEMO_WORKSPACE.checkoutRoot,
+    now: input.now,
+  });
 }
 
 async function ensureEnvironment(
@@ -363,6 +706,24 @@ async function collectCounts(ctx: any, projectId: Id<"projects">, tenantId: Id<"
     .query("alerts")
     .withIndex("by_project", (q: any) => q.eq("projectId", projectId))
     .collect();
+  const repositories = await ctx.db
+    .query("workspaceRepositories")
+    .withIndex("by_project", (q: any) => q.eq("projectId", projectId))
+    .collect();
+  const codeScopes = repositories.length
+    ? await ctx.db
+        .query("repositoryCodeScopes")
+        .withIndex("by_project", (q: any) => q.eq("projectId", projectId))
+        .collect()
+    : [];
+  const hostBindings = await ctx.db
+    .query("workspaceHostBindings")
+    .withIndex("by_project", (q: any) => q.eq("projectId", projectId))
+    .collect();
+  const contentDrops = await ctx.db
+    .query("contentDrops")
+    .withIndex("by_project", (q: any) => q.eq("projectId", projectId))
+    .collect();
 
   return {
     agents: agents.length,
@@ -378,6 +739,10 @@ async function collectCounts(ctx: any, projectId: Id<"projects">, tenantId: Id<"
     workOrders: workOrders.length,
     goals: goals.length,
     alerts: alerts.length,
+    repositories: repositories.length,
+    codeScopes: codeScopes.length,
+    hostBindings: hostBindings.length,
+    contentDrops: contentDrops.length,
   };
 }
 
@@ -388,12 +753,22 @@ export const run = mutation({
   handler: async (ctx, args: { force?: boolean }) => {
     const now = Date.now();
     const tenant = await ensureTenant(ctx);
-    const project = await ensureProject(ctx, tenant._id);
-    const projectMeta = (project.metadata ?? {}) as Record<string, unknown>;
+    const project = await ensureProject(ctx, tenant._id, now);
+    await archiveDuplicateDemoProjects(ctx, {
+      canonicalProjectId: project._id,
+      now,
+    });
+    await ensureWorkspaceInfrastructure(ctx, {
+      tenantId: tenant._id,
+      projectId: project._id,
+      now,
+    });
+    const refreshedProject = (await ctx.db.get(project._id)) as any;
+    const projectMeta = (refreshedProject?.metadata ?? {}) as Record<string, unknown>;
 
     if (!args.force && projectMeta.missionControlDemoSeedVersion === SEED_VERSION) {
       return {
-        message: "Mission Control demo data already seeded",
+        message: "Software Factory Demo already seeded",
         skipped: true,
         tenantId: tenant._id,
         projectId: project._id,
@@ -2347,7 +2722,6 @@ export const run = mutation({
         .withIndex("by_job", (q: any) => q.eq("jobId", spec.jobId))
         .first();
       if (!existing) {
-        const nextRun = now + spec.offsetHours * 60 * 60 * 1000;
         await ctx.db.insert("scheduledJobs", {
           tenantId: tenant._id,
           projectId: project._id,
@@ -2355,11 +2729,22 @@ export const run = mutation({
           name: spec.name,
           jobType: spec.jobType,
           cronExpression: "0 9 * * *",
-          nextRun,
-          targetId: "mission-control",
+          nextRun: now + spec.offsetHours * 60 * 60 * 1000,
+          targetId: DEMO_WORKSPACE.slug,
           autoRerunFlaky: false,
           enabled: true,
           createdBy: "seedMissionControlDemo",
+          metadata: withSeedMeta(`scheduled-job:${spec.jobId}`),
+        });
+      } else {
+        await ctx.db.patch(existing._id, {
+          tenantId: tenant._id,
+          projectId: project._id,
+          name: spec.name,
+          jobType: spec.jobType,
+          nextRun: now + spec.offsetHours * 60 * 60 * 1000,
+          targetId: DEMO_WORKSPACE.slug,
+          enabled: true,
           metadata: withSeedMeta(`scheduled-job:${spec.jobId}`),
         });
       }
@@ -2374,17 +2759,20 @@ export const run = mutation({
       withSeedMeta,
     });
 
+    const latestProject = (await ctx.db.get(project._id)) as any;
     const seedMeta = {
-      ...(projectMeta ?? {}),
+      ...((latestProject?.metadata ?? {}) as Record<string, unknown>),
       missionControlDemoSeedVersion: SEED_VERSION,
       missionControlDemoSeededAt: now,
       missionControlDemoSeedTag: SEED_TAG,
       missionControlDemoExtensionCounts: extensionCounts,
+      demoNarrative: DEMO_WORKSPACE.narrative,
+      workspaceKind: "software-factory-demo",
     };
     await ctx.db.patch(project._id, { metadata: seedMeta });
 
     return {
-      message: "Mission Control demo data seeded",
+      message: "Software Factory Demo seeded under Mission Control company account",
       skipped: false,
       tenantId: tenant._id,
       projectId: project._id,

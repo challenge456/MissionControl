@@ -21,7 +21,7 @@ const TRANSITIONS: Record<MissionState, MissionState[]> = {
   PLANNING: ["DRAFT", "AWAITING_PLAN_APPROVAL", "BLOCKED", "CANCELED"],
   AWAITING_PLAN_APPROVAL: ["DRAFT", "READY", "CANCELED"],
   READY: ["IN_PROGRESS", "BLOCKED", "CANCELED"],
-  IN_PROGRESS: ["AWAITING_VALIDATION", "BLOCKED", "CANCELED"],
+  IN_PROGRESS: ["AWAITING_VALIDATION", "AWAITING_ACCEPTANCE", "BLOCKED", "CANCELED"],
   BLOCKED: ["READY", "CANCELED"],
   AWAITING_VALIDATION: ["IN_PROGRESS", "AWAITING_ACCEPTANCE", "BLOCKED", "CANCELED"],
   AWAITING_ACCEPTANCE: ["DONE", "IN_PROGRESS", "BLOCKED", "CANCELED"],
@@ -36,6 +36,7 @@ export function canTransitionMission(from: MissionState, to: MissionState) {
 
 export function validateMissionWorkOrderDispatch(args: {
   missionState: MissionState;
+  workOrderRole?: Extract<MissionRole, "WORKER" | "VALIDATOR">;
   planApproved: boolean;
   executionPolicy: MissionExecutionPolicy;
   workOrderReleased: boolean;
@@ -47,7 +48,11 @@ export function validateMissionWorkOrderDispatch(args: {
 }) {
   if (!args.planApproved) return { ok: false as const, reason: "plan-not-approved" };
   if (!args.workOrderReleased) return { ok: false as const, reason: "work-order-not-released" };
-  if (!["READY", "IN_PROGRESS"].includes(args.missionState)) {
+  const role = args.workOrderRole ?? "WORKER";
+  const dispatchableStates = role === "VALIDATOR"
+    ? ["IN_PROGRESS", "AWAITING_VALIDATION"]
+    : ["READY", "IN_PROGRESS"];
+  if (!dispatchableStates.includes(args.missionState)) {
     return { ok: false as const, reason: `mission-not-dispatchable:${args.missionState}` };
   }
   if (!args.predecessorHandoffValid) return { ok: false as const, reason: "predecessor-handoff-invalid" };
@@ -97,7 +102,15 @@ export function evaluateMissionAcceptance(args: {
     status: MissionAssertionStatus;
     requiresIndependentValidation: boolean;
     validatorRunId?: string;
+    verificationReceiptId?: string;
     waiverApprovalId?: string;
+  }>;
+  workOrders?: Array<{ id: string; state: string }>;
+  handoffs?: Array<{
+    workOrderId: string;
+    outcome: MissionHandoffOutcome;
+    incompleteAssertionIds: string[];
+    unknownAssertionIds: string[];
   }>;
 }) {
   const missingAssertionIds: string[] = [];
@@ -105,6 +118,7 @@ export function evaluateMissionAcceptance(args: {
   const staleAssertionIds: string[] = [];
   const unverifiedAssertionIds: string[] = [];
   const waiverWithoutApprovalIds: string[] = [];
+  const missingReceiptAssertionIds: string[] = [];
 
   for (const assertion of args.assertions) {
     if (assertion.status === "PENDING" || assertion.status === "UNKNOWN") missingAssertionIds.push(assertion.id);
@@ -113,15 +127,35 @@ export function evaluateMissionAcceptance(args: {
     if (assertion.requiresIndependentValidation && assertion.status === "PASS" && !assertion.validatorRunId) {
       unverifiedAssertionIds.push(assertion.id);
     }
+    if (assertion.requiresIndependentValidation && assertion.status === "PASS" && !assertion.verificationReceiptId) {
+      missingReceiptAssertionIds.push(assertion.id);
+    }
     if (assertion.status === "WAIVED" && !assertion.waiverApprovalId) waiverWithoutApprovalIds.push(assertion.id);
   }
+
+  const incompleteWorkOrderIds = (args.workOrders ?? [])
+    .filter((workOrder) => workOrder.state !== "DONE")
+    .map((workOrder) => workOrder.id);
+  const handoffByWorkOrderId = new Map((args.handoffs ?? []).map((handoff) => [handoff.workOrderId, handoff]));
+  const missingHandoffWorkOrderIds = (args.workOrders ?? [])
+    .filter((workOrder) => {
+      const handoff = handoffByWorkOrderId.get(workOrder.id);
+      return !handoff
+        || handoff.outcome !== "COMPLETE"
+        || handoff.incompleteAssertionIds.length > 0
+        || handoff.unknownAssertionIds.length > 0;
+    })
+    .map((workOrder) => workOrder.id);
 
   const blockingReasons = [
     ...(missingAssertionIds.length ? [`Missing assertion evidence: ${missingAssertionIds.join(", ")}`] : []),
     ...(failedAssertionIds.length ? [`Failed assertions: ${failedAssertionIds.join(", ")}`] : []),
     ...(staleAssertionIds.length ? [`Stale assertions: ${staleAssertionIds.join(", ")}`] : []),
     ...(unverifiedAssertionIds.length ? [`Independent validation missing: ${unverifiedAssertionIds.join(", ")}`] : []),
+    ...(missingReceiptAssertionIds.length ? [`Independent receipt missing: ${missingReceiptAssertionIds.join(", ")}`] : []),
     ...(waiverWithoutApprovalIds.length ? [`Waiver approval missing: ${waiverWithoutApprovalIds.join(", ")}`] : []),
+    ...(incompleteWorkOrderIds.length ? [`WorkOrders not accepted: ${incompleteWorkOrderIds.join(", ")}`] : []),
+    ...(missingHandoffWorkOrderIds.length ? [`Complete handoffs missing: ${missingHandoffWorkOrderIds.join(", ")}`] : []),
   ];
 
   return {
@@ -129,8 +163,39 @@ export function evaluateMissionAcceptance(args: {
     failedAssertionIds,
     staleAssertionIds,
     unverifiedAssertionIds,
+    missingReceiptAssertionIds,
     waiverWithoutApprovalIds,
+    incompleteWorkOrderIds,
+    missingHandoffWorkOrderIds,
     blockingReasons,
     eligible: blockingReasons.length === 0,
+  };
+}
+
+export function evaluateMissionDeliveryProgress(args: {
+  workOrders: Array<{ id: string; role: "WORKER" | "VALIDATOR"; state: string }>;
+  handoffs: Array<{
+    workOrderId: string;
+    outcome: MissionHandoffOutcome;
+    incompleteAssertionIds: string[];
+    unknownAssertionIds: string[];
+  }>;
+}) {
+  const handoffByWorkOrderId = new Map(args.handoffs.map((handoff) => [handoff.workOrderId, handoff]));
+  const isComplete = (workOrder: { id: string; state: string }) => {
+    const handoff = handoffByWorkOrderId.get(workOrder.id);
+    return workOrder.state === "DONE"
+      && handoff?.outcome === "COMPLETE"
+      && handoff.incompleteAssertionIds.length === 0
+      && handoff.unknownAssertionIds.length === 0;
+  };
+  const workers = args.workOrders.filter((workOrder) => workOrder.role === "WORKER");
+  const validators = args.workOrders.filter((workOrder) => workOrder.role === "VALIDATOR");
+  return {
+    allWorkersComplete: workers.length > 0 && workers.every(isComplete),
+    allValidatorsComplete: validators.length > 0 && validators.every(isComplete),
+    hasValidators: validators.length > 0,
+    incompleteWorkerIds: workers.filter((workOrder) => !isComplete(workOrder)).map((workOrder) => workOrder.id),
+    incompleteValidatorIds: validators.filter((workOrder) => !isComplete(workOrder)).map((workOrder) => workOrder.id),
   };
 }

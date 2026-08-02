@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   canTransitionMission,
   evaluateMissionAcceptance,
+  evaluateMissionDeliveryProgress,
   validateMissionHandoff,
   validateMissionWorkOrderDispatch,
 } from "../lib/missionGovernance";
@@ -63,7 +64,67 @@ describe("mission governance", () => {
 
   it("allows a fully evidenced contract", () => {
     expect(evaluateMissionAcceptance({
-      assertions: [{ id: "a-1", status: "PASS", requiresIndependentValidation: true, validatorRunId: "run-1" }],
+      assertions: [{
+        id: "a-1",
+        status: "PASS",
+        requiresIndependentValidation: true,
+        validatorRunId: "run-1",
+        verificationReceiptId: "receipt-1",
+      }],
+      workOrders: [{ id: "wo-1", state: "DONE" }],
+      handoffs: [{
+        workOrderId: "wo-1",
+        outcome: "COMPLETE",
+        incompleteAssertionIds: [],
+        unknownAssertionIds: [],
+      }],
     }).eligible).toBe(true);
+  });
+
+  it("keeps Mission acceptance closed until WorkOrders and handoffs are complete", () => {
+    const result = evaluateMissionAcceptance({
+      assertions: [{ id: "a-1", status: "PASS", requiresIndependentValidation: false }],
+      workOrders: [{ id: "wo-1", state: "IN_PROGRESS" }],
+      handoffs: [],
+    });
+    expect(result.eligible).toBe(false);
+    expect(result.incompleteWorkOrderIds).toEqual(["wo-1"]);
+    expect(result.missingHandoffWorkOrderIds).toEqual(["wo-1"]);
+  });
+
+  it("opens validation only after every Worker is accepted and handed off", () => {
+    const progress = evaluateMissionDeliveryProgress({
+      workOrders: [
+        { id: "worker", role: "WORKER", state: "DONE" },
+        { id: "validator", role: "VALIDATOR", state: "READY" },
+      ],
+      handoffs: [{
+        workOrderId: "worker",
+        outcome: "COMPLETE",
+        incompleteAssertionIds: [],
+        unknownAssertionIds: [],
+      }],
+    });
+    expect(progress.allWorkersComplete).toBe(true);
+    expect(progress.allValidatorsComplete).toBe(false);
+  });
+
+  it("allows Validator dispatch at the validation gate but not initial Worker dispatch", () => {
+    const shared = {
+      missionState: "AWAITING_VALIDATION" as const,
+      planApproved: true,
+      executionPolicy: "SERIAL_MUTATIONS" as const,
+      workOrderReleased: true,
+      isMutating: false,
+      hasActiveMutatingWorkOrder: false,
+      predecessorHandoffValid: true,
+      budgetRemaining: true,
+      correctiveIterationsRemaining: true,
+    };
+    expect(validateMissionWorkOrderDispatch({ ...shared, workOrderRole: "VALIDATOR" })).toEqual({ ok: true });
+    expect(validateMissionWorkOrderDispatch({ ...shared, workOrderRole: "WORKER" })).toEqual({
+      ok: false,
+      reason: "mission-not-dispatchable:AWAITING_VALIDATION",
+    });
   });
 });

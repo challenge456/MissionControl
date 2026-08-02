@@ -15,7 +15,7 @@ import { useModalState } from "./hooks/useModalState";
 import { PrivacyProvider } from "./contexts/PrivacyContext";
 import { useFlag, useFlagResolution } from "./hooks/useFlag";
 import { AppShellV2, initialViewFromLocation } from "./shellV2/AppShellV2";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   WorkspaceScopeProvider,
   useWorkspaceScope,
@@ -204,6 +204,15 @@ const STORAGE_KEY_PROJECT = "mc.last_project";
 const STORAGE_KEY_COMPANY = "mc.last_company";
 const WORKSPACE_RECOVERY_WARNING =
   "The requested workspace was unavailable. Mission Control opened an accessible workspace instead.";
+const LEGACY_AUTOMATION_TABS = new Set([
+  "overview",
+  "definitions",
+  "runs",
+  "schedule",
+  "candidates",
+  "receipts",
+  "decisions",
+]);
 
 function readPersistedProjectId(): string | null {
   if (typeof window === "undefined") return null;
@@ -659,6 +668,7 @@ function CompanyAccessState({ status }: { status: "AUTH_REQUIRED" | "NO_MEMBERSH
 
 export default function App() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const companyContext = useFlagResolution("company.context");
   const companyContextEnabled = companyContext.enabled;
@@ -755,6 +765,23 @@ export default function App() {
   );
 
   // ── Effects ──────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    const looksLikeLegacyAutomationLink =
+      location.pathname === "/v2/skills" &&
+      ((tab !== null && LEGACY_AUTOMATION_TABS.has(tab)) ||
+        searchParams.has("workOrder"));
+    if (!looksLikeLegacyAutomationLink) return;
+    setCurrentView("automations");
+    navigate(
+      {
+        pathname: "/v2/automations",
+        search: `?${searchParams.toString()}`,
+      },
+      { replace: true }
+    );
+  }, [location.pathname, navigate, searchParams]);
+
   useEffect(() => {
     if (!companyContextEnabled || companySession?.status !== "READY") return;
     if (

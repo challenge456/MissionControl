@@ -239,6 +239,7 @@ export class WorkflowExecutor {
         : undefined;
     const taskResult = await this.client.mutation(api.tasks.create, {
       projectId: run.projectId,
+      workOrderId: run.workOrderId,
       title: `[${workflow.name}] ${stepDefinition.id}`,
       description: renderedInput,
       type: agent.allowedTaskTypes[0] ?? "OPS",
@@ -290,15 +291,19 @@ export class WorkflowExecutor {
       return;
     }
 
-    const assignment = await this.client.mutation(api.tasks.transition, {
-      taskId,
-      toStatus: "READY",
-      actorType: "SYSTEM",
-      actorUserId: "workflow-executor",
-      idempotencyKey: `workflow:${run.runId}:${stepDefinition.id}:assign:${run.steps[stepIndex].retryCount}`,
-      reason: `Assigned by workflow ${workflow.workflowId}`,
-    });
-    if (!assignment?.success) {
+    // Assigned Tasks now enter READY through the audited create path. Keep the
+    // fallback for older deployments and unassigned task producers.
+    const assignment = taskResult.task.status === "READY"
+      ? { success: true }
+      : await this.client.mutation(api.tasks.transition, {
+          taskId,
+          toStatus: "READY",
+          actorType: "SYSTEM",
+          actorUserId: "workflow-executor",
+          idempotencyKey: `workflow:${run.runId}:${stepDefinition.id}:assign:${run.steps[stepIndex].retryCount}`,
+          reason: `Assigned by workflow ${workflow.workflowId}`,
+        });
+    if (!assignment.success) {
       await this.client.mutation(api.workflowRuns.updateStep, {
         runId: run.runId,
         stepIndex,

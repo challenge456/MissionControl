@@ -43,6 +43,22 @@ function validPlan(): MissionPlanInput {
         dependsOnBlueprintIds: [],
         assertionIds: ["tests-pass"],
       },
+      {
+        id: "validate",
+        title: "Independently validate checkout change",
+        desiredOutcome: "The approved assertion is proven by a separate read-only run.",
+        workflowId: "software-delivery",
+        workflowVersion: 1,
+        sequence: 2,
+        role: "VALIDATOR",
+        isMutating: false,
+        priority: 2,
+        riskLevel: "MEDIUM",
+        constraints: [],
+        requiredApprovals: [],
+        dependsOnBlueprintIds: ["implement"],
+        assertionIds: ["tests-pass"],
+      },
     ],
   };
 }
@@ -77,15 +93,15 @@ describe("Mission plan contract", () => {
     const plan = validPlan();
     plan.workOrderBlueprints.push({
       ...plan.workOrderBlueprints[0],
-      id: "validate",
+      id: "validate-2",
       title: "Validate",
       role: "VALIDATOR",
       isMutating: false,
       sequence: 2,
-      dependsOnBlueprintIds: ["validate", "missing", "implement"],
+      dependsOnBlueprintIds: ["validate-2", "missing", "implement"],
       branchStrategy: undefined,
     });
-    plan.workOrderBlueprints[0].dependsOnBlueprintIds = ["validate"];
+    plan.workOrderBlueprints[0].dependsOnBlueprintIds = ["validate-2"];
     const codes = validateMissionPlan(plan).map((error) => error.code);
     expect(codes).toEqual(expect.arrayContaining([
       "blueprint-dependency-order",
@@ -100,8 +116,8 @@ describe("Mission plan contract", () => {
     plan.assertions.push({ ...plan.assertions[0], assertionId: "browser-proof", title: "Browser proof" });
     plan.workOrderBlueprints.push({
       ...plan.workOrderBlueprints[0],
-      id: "validate",
-      title: "Validate",
+      id: "extra",
+      title: "Extra work",
       sequence: 1,
       assertionIds: [],
     });

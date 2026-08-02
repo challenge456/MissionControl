@@ -144,6 +144,7 @@ export function validateMissionPlan(input: MissionPlanInput): MissionPlanValidat
   const blueprintsById = new Map(input.workOrderBlueprints.map((blueprint) => [blueprint.id, blueprint]));
   const assertionIdSet = new Set(assertionIds);
   const assertionCoverage = new Map(assertionIds.map((id) => [id, 0]));
+  const validatorAssertionCoverage = new Map(assertionIds.map((id) => [id, 0]));
 
   for (const blueprint of input.workOrderBlueprints) {
     const identity = { blueprintId: blueprint.id };
@@ -162,6 +163,12 @@ export function validateMissionPlan(input: MissionPlanInput): MissionPlanValidat
       push(required(input.repository, "repository-required", "A configured repository is required for mutating work.", "repository", identity));
       push(required(blueprint.branchStrategy, "branch-strategy-required", "A branch strategy is required for mutating work.", `blueprints.${blueprint.id}.branchStrategy`, identity));
     }
+    if (blueprint.role === "VALIDATOR" && blueprint.isMutating) {
+      errors.push({ code: "validator-must-be-read-only", message: "Validator WorkOrders must be read-only.", path: `blueprints.${blueprint.id}.isMutating`, ...identity });
+    }
+    if (blueprint.role === "VALIDATOR" && blueprint.dependsOnBlueprintIds.length === 0) {
+      errors.push({ code: "validator-dependency-required", message: "Validator WorkOrders must depend on an earlier WorkOrder handoff.", path: `blueprints.${blueprint.id}.dependsOnBlueprintIds`, ...identity });
+    }
     if (blueprint.estimatedCostUsd !== undefined && (!Number.isFinite(blueprint.estimatedCostUsd) || blueprint.estimatedCostUsd < 0)) {
       errors.push({ code: "blueprint-cost-invalid", message: "WorkOrder estimated cost must be zero or greater.", path: `blueprints.${blueprint.id}.estimatedCostUsd`, ...identity });
     }
@@ -173,6 +180,9 @@ export function validateMissionPlan(input: MissionPlanInput): MissionPlanValidat
         errors.push({ code: "blueprint-assertion-unknown", message: `Unknown assertion ${assertionId}.`, path: `blueprints.${blueprint.id}.assertionIds`, ...identity, assertionId });
       } else {
         assertionCoverage.set(assertionId, (assertionCoverage.get(assertionId) ?? 0) + 1);
+        if (blueprint.role === "VALIDATOR") {
+          validatorAssertionCoverage.set(assertionId, (validatorAssertionCoverage.get(assertionId) ?? 0) + 1);
+        }
       }
     }
     for (const dependencyId of blueprint.dependsOnBlueprintIds) {
@@ -196,6 +206,9 @@ export function validateMissionPlan(input: MissionPlanInput): MissionPlanValidat
     push(required(assertion.requiredEvidence, "assertion-evidence-required", "Required evidence is required.", `assertions.${assertion.assertionId}.requiredEvidence`, identity));
     if ((assertionCoverage.get(assertion.assertionId) ?? 0) === 0) {
       errors.push({ code: "assertion-uncovered", message: `Assertion ${assertion.assertionId} is not covered by a WorkOrder.`, path: `assertions.${assertion.assertionId}`, ...identity });
+    }
+    if (assertion.requiresIndependentValidation && (validatorAssertionCoverage.get(assertion.assertionId) ?? 0) === 0) {
+      errors.push({ code: "assertion-validator-required", message: `Assertion ${assertion.assertionId} requires a Validator WorkOrder.`, path: `assertions.${assertion.assertionId}`, ...identity });
     }
   }
 

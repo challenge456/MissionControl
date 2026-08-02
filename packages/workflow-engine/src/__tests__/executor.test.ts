@@ -43,6 +43,7 @@ const gateRun = {
   _id: "workflow-run-id",
   runId: "run-123",
   projectId: "project-1",
+  workOrderId: "work-order-1",
   context: { packet: "verified evidence" },
   steps: [
     {
@@ -107,6 +108,32 @@ describe("WorkflowExecutor reliability", () => {
     expect(mutation.mock.calls[0][1].metadata.workflowAttempt).toEqual({
       attemptNumber: 1,
       retryNumber: 0,
+    });
+    expect(mutation.mock.calls[0][1].workOrderId).toBe("work-order-1");
+  });
+
+  it("does not re-transition a Task that creation already moved to READY", async () => {
+    const query = vi.fn().mockResolvedValue({
+      _id: "agent-1",
+      allowedTaskTypes: ["OPS"],
+    });
+    const mutation = vi
+      .fn()
+      .mockResolvedValueOnce({ task: { _id: "task-1", status: "READY" } })
+      .mockResolvedValueOnce({ success: true });
+    const executor = executorWithClient({ query, mutation });
+
+    await executor.executeStep(gateRun, {
+      ...gateWorkflow,
+      steps: [{ ...gateWorkflow.steps[0], kind: "AGENT" }],
+    }, 0);
+
+    expect(mutation).toHaveBeenCalledTimes(2);
+    expect(mutation.mock.calls[1][1]).toMatchObject({
+      runId: "run-123",
+      stepIndex: 0,
+      status: "RUNNING",
+      taskId: "task-1",
     });
   });
 
