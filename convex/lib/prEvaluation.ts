@@ -22,6 +22,13 @@ export function ciBlockCanRecover(input: {
     && input.blockingIssue === `Required CI failed for ${input.priorHeadSha}`;
 }
 
+export function ciBlockedHead(blockingIssue?: string): string | undefined {
+  const prefix = "Required CI failed for ";
+  if (!blockingIssue?.startsWith(prefix)) return undefined;
+  const headSha = blockingIssue.slice(prefix.length).trim();
+  return headSha || undefined;
+}
+
 export function mergeAuthoritySatisfied(input: {
   ciStatus: "PASS" | "FAIL" | "PENDING" | "UNKNOWN";
   gatesPass: boolean;

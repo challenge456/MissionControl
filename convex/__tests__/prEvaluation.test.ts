@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ciBlockCanRecover, correctionRequired, mergeAuthoritySatisfied, prEvaluationKey } from "../lib/prEvaluation";
+import { ciBlockedHead, ciBlockCanRecover, correctionRequired, mergeAuthoritySatisfied, prEvaluationKey } from "../lib/prEvaluation";
 
 describe("PR outer-loop evaluation", () => {
   it("identifies one evaluation per normalized PR head", () => {
@@ -38,5 +38,7 @@ describe("PR outer-loop evaluation", () => {
       priorHeadSha: "old-head",
       headSha: "old-head",
     })).toBe(false);
+    expect(ciBlockedHead("Required CI failed for old-head")).toBe("old-head");
+    expect(ciBlockedHead("Operator blocked this WorkOrder")).toBeUndefined();
   });
 });

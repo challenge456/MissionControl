@@ -112,6 +112,12 @@ exact match to the prior-head CI blocking reason; it cannot clear an operator or
 unrelated product block. The transition is retained as a `STATE_SYNCED` event
 and returns the WorkOrder to explicit merge approval.
 
+The live journey included an intervening passing head before the recovery logic
+was deployed. Recovery therefore resolves the exact failed evaluation named by
+the block rather than assuming the immediately previous evaluation failed. This
+keeps delayed or repeated passing events safe while allowing a later corrected
+head to recover the WorkOrder.
+
 ## Runtime Configuration Boundary
 
 The signed webhook implementation is complete and locally verified. A durable

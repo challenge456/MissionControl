@@ -6,7 +6,7 @@ import {
   buildMutationTestingReport,
   type PrCheckSignals,
 } from "../lib/harnessPrChecks";
-import { ciBlockCanRecover } from "../lib/prEvaluation";
+import { ciBlockedHead, ciBlockCanRecover } from "../lib/prEvaluation";
 
 export const applyCiIngest = internalMutation({
   args: {
@@ -166,10 +166,16 @@ export const applyCiIngest = internalMutation({
     }
     if (linkedWorkOrderId && doc.ciStatus === "PASS") {
       const workOrder = await ctx.db.get(linkedWorkOrderId);
+      const blockedHeadSha = ciBlockedHead(workOrder?.blockingIssue);
+      const blockedEvaluation = blockedHeadSha
+        ? await ctx.db.query("harnessPrChecks")
+            .withIndex("by_pr_head", (q) => q.eq("prUrl", args.prUrl).eq("headSha", blockedHeadSha))
+            .first()
+        : null;
       if (workOrder && ciBlockCanRecover({
         ciStatus: doc.ciStatus,
         blockingIssue: workOrder.blockingIssue,
-        priorHeadSha: priorEvaluation?.headSha,
+        priorHeadSha: blockedEvaluation?.ciStatus === "FAIL" ? blockedEvaluation.headSha : undefined,
         headSha: doc.headSha,
       })) {
         await ctx.db.patch(linkedWorkOrderId, {
@@ -187,9 +193,9 @@ export const applyCiIngest = internalMutation({
           summary: `Passing CI on ${doc.headSha} cleared the prior-head CI block`,
           timestamp: now,
           metadata: {
-            priorEvaluationId: priorEvaluation?._id,
+            priorEvaluationId: blockedEvaluation?._id,
             evaluationId: id,
-            priorHeadSha: priorEvaluation?.headSha,
+            priorHeadSha: blockedEvaluation?.headSha,
             headSha: doc.headSha,
           },
         });
