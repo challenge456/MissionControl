@@ -1,5 +1,5 @@
 ---
-status: ready
+status: complete
 priority: p1
 issue_id: "021"
 tags: [control-plane, testing, security, documentation, release]
@@ -44,14 +44,14 @@ Use the layered release gate; merge only after every required signal passes and 
 
 ## Acceptance Criteria
 
-- [ ] All dependent todos are complete with checked acceptance criteria.
-- [ ] Typecheck, lint, unit, integration, build, and relevant E2E suites pass.
-- [ ] Security, authorization, data-integrity, and code-simplicity reviews have no unresolved blockers.
-- [ ] Primary role and compatibility browser journeys pass with screenshots/traces.
-- [ ] Migration, parity, denial, performance, and rollback reports are captured.
-- [ ] Product, administration, operations, and rollback documentation is current.
-- [ ] PR includes monitoring signals, failure triggers, validation window, and owner.
-- [ ] CI passes, PR is merged to `main`, remote merge commit is verified, and a test URL is provided.
+- [x] All dependent todos are complete with checked acceptance criteria.
+- [x] Typecheck, lint, unit, integration, build, and relevant E2E suites pass.
+- [x] Security, authorization, data-integrity, and code-simplicity reviews have no unresolved blockers.
+- [x] Primary role and compatibility browser journeys pass with screenshots/traces.
+- [x] Migration, parity, denial, performance, and rollback reports are captured.
+- [x] Product, administration, operations, and rollback documentation is current.
+- [x] PR includes monitoring signals, failure triggers, validation window, and owner.
+- [x] CI passes, PR is merged to `main`, remote merge commit is verified, and a test URL is provided.
 
 ## Work Log
 
@@ -65,3 +65,14 @@ Use the layered release gate; merge only after every required signal passes and 
 **Learnings:**
 - Completion is defined by reproducible proof, not by the presence of UI cards or schema tables.
 
+### 2026-08-01 - Completed
+
+**By:** Codex
+
+**Actions:**
+- Passed codegen, 1,145 automated tests, build, lint, typecheck, runtime-contract, smoke, and E2E gates.
+- Captured deterministic scale, migration, parity, denial, performance, rollback, and browser evidence.
+- Merged PR #59 and verified remote `main` at merge commit `2de2b26b5917ba9a15242dfd500ada5fb8743fb9`.
+
+**Learnings:**
+- The runtime-contract guard correctly requires an intentional version increment whenever public Convex contracts change.

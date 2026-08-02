@@ -4,6 +4,14 @@
 
 PASS. The company → workspace → repository → code-scope hierarchy is operational in the v2 shell, role lenses are server-scoped, the two-business scale fixture is idempotent, repository parity is clean, dispatch fails closed with persistent evidence, and the UI is usable at desktop and compact widths.
 
+## Release receipt
+
+- Feature PR: [#59 — Complete company workspace repository control plane](https://github.com/jaydubya818/MissionControl/pull/59).
+- Feature commit: `bf268d647f9728a1d8b3316a93555edfcf41bf3f`.
+- Verified `main` merge commit: `2de2b26b5917ba9a15242dfd500ada5fb8743fb9`.
+- GitHub checks: Smoke Test, TypeScript Type Check, Lint, Unit Tests, Build, E2E Tests, and both Vercel deployments passed.
+- PR rollout contract: Engineering/company administrator owner, one workspace at a time, 24-hour validation window, explicit monitoring and rollback triggers.
+
 ## Automated evidence
 
 | Check | Result |
