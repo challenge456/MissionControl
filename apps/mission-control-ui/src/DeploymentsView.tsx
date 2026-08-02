@@ -223,14 +223,14 @@ export function DeploymentsView({ projectId }: { projectId: Id<"projects"> | nul
   };
 
   const handleIngestGithubCi = async () => {
-    if (!githubCiDeploymentId || !githubPullRequestUrl.trim()) {
+    if (!projectId || !githubCiDeploymentId || !githubPullRequestUrl.trim()) {
       toast("Enter a GitHub pull request URL.", true);
       return;
     }
     try {
       const result = await ingestPullRequest({
         prUrl: githubPullRequestUrl.trim(),
-        projectId: projectId ?? undefined,
+        projectId,
         releaseDeploymentId: githubCiDeploymentId,
       });
       toast(`GitHub CI ingested: ${result.ciStatus}. Shadow decision recorded.`);

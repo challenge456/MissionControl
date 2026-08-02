@@ -7,6 +7,7 @@ import { LoopEngineeringWorkspace } from "../components/LoopEngineeringWorkspace
 import { HarnessLoopsDiagram } from "../components/HarnessLoopsDiagram";
 import { HarnessMergeGatesPanel } from "../components/HarnessMergeGatesPanel";
 import { MetaLoopInboxPanel } from "./HarnessMetaLoopView";
+import { PrEvidenceReconciliationInbox } from "../components/PrEvidenceReconciliationInbox";
 
 export function HarnessLoopsView({
   projectId,
@@ -30,6 +31,7 @@ export function HarnessLoopsView({
       icon={<GitBranch className="h-5 w-5 text-registry-accent" />}
     >
       <div className="mx-auto max-w-[1400px] space-y-8 px-1">
+        <PrEvidenceReconciliationInbox projectId={projectId} />
         <HarnessLoopsDiagram />
         <section aria-labelledby="inner-loop-title">
           <h2 id="inner-loop-title" className="mb-3 text-[18px] font-semibold text-ink">Inner Attempts and Graph execution</h2>

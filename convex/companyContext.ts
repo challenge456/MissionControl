@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { internalQuery, mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import {
   COMPANY_PERMISSIONS,
   FACTORY_PERMISSIONS,
@@ -40,6 +40,103 @@ export const authorizeFactoryAction = internalQuery({
       projectId: access.project._id,
       permission: args.permission,
     };
+  },
+});
+
+/**
+ * Non-throwing authorization decision for public actions that must retain a
+ * denial before returning an error. The response deliberately avoids exposing
+ * role or workspace details to an unauthorized caller.
+ */
+export const evaluateFactoryAction = internalQuery({
+  args: {
+    projectId: v.id("projects"),
+    permission: factoryPermission,
+  },
+  handler: async (ctx, args) => {
+    try {
+      const access = await requireWorkspacePermission(
+        ctx,
+        args.projectId,
+        args.permission
+      );
+      return {
+        allowed: true as const,
+        actorId: access.actorId,
+        mode: access.membership.mode,
+        projectExists: true,
+      };
+    } catch {
+      const [identity, project] = await Promise.all([
+        ctx.auth.getUserIdentity(),
+        ctx.db.get(args.projectId),
+      ]);
+      let actorId: string | undefined;
+      if (identity && project?.tenantId) {
+        const operators = await ctx.db
+          .query("operators")
+          .withIndex("by_auth_id", (q) => q.eq("authId", identity.subject))
+          .collect();
+        actorId = operators.find(
+          (operator) => operator.active && operator.tenantId === project.tenantId
+        )?._id;
+      }
+      return {
+        allowed: false as const,
+        actorId: actorId ? String(actorId) : undefined,
+        projectExists: Boolean(project),
+        reasonCode: "UNAUTHORIZED_OR_UNAVAILABLE" as const,
+      };
+    }
+  },
+});
+
+/** Append-only evidence for an action authorization denial. */
+export const recordFactoryActionDenial = internalMutation({
+  args: {
+    projectId: v.id("projects"),
+    permission: factoryPermission,
+    operation: v.string(),
+    actorId: v.optional(v.string()),
+    attemptId: v.string(),
+    reasonCode: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const project = await ctx.db.get(args.projectId);
+    if (!project) return { recorded: false as const };
+    const existing = await ctx.db
+      .query("activities")
+      .withIndex("by_action", (q) => q.eq("action", "FACTORY_ACTION_DENIED"))
+      .filter((q) => q.eq(q.field("projectId"), args.projectId))
+      .order("desc")
+      .take(100);
+    if (existing.some((entry) => entry.metadata?.attemptId === args.attemptId)) {
+      return { recorded: false as const };
+    }
+    const duplicateWindow = existing.some((entry) =>
+      entry.actorId === args.actorId
+      && entry.metadata?.operation === args.operation
+      && entry.metadata?.reasonCode === args.reasonCode
+      && Date.now() - entry._creationTime < 60_000
+    );
+    if (duplicateWindow) return { recorded: false as const };
+    await ctx.db.insert("activities", {
+      tenantId: project.tenantId,
+      projectId: project._id,
+      actorType: args.actorId ? "HUMAN" : "SYSTEM",
+      actorId: args.actorId,
+      action: "FACTORY_ACTION_DENIED",
+      description: `Denied factory operation: ${args.operation}`,
+      targetType: "FACTORY_OPERATION",
+      targetId: args.operation,
+      metadata: {
+        permission: args.permission,
+        operation: args.operation,
+        attemptId: args.attemptId,
+        reasonCode: args.reasonCode,
+      },
+    });
+    return { recorded: true as const };
   },
 });
 

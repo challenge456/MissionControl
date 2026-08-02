@@ -4,6 +4,7 @@
 
 import { v } from "convex/values";
 import { mutation, query } from "../_generated/server";
+import { FACTORY_PERMISSIONS, requireWorkspacePermission } from "../lib/companyAccess";
 
 const ruleArg = v.object({
   id: v.string(),
@@ -15,6 +16,8 @@ const ruleArg = v.object({
 export const getActivePolicy = query({
   args: { projectId: v.optional(v.id("projects")) },
   handler: async (ctx, args) => {
+    if (!args.projectId) return null;
+    await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.VIEW);
     let policies = await ctx.db
       .query("changeRiskPolicies")
       .withIndex("by_active", (q) => q.eq("active", true))
@@ -33,9 +36,16 @@ export const upsertPolicy = mutation({
     name: v.string(),
     strictness: v.number(),
     rules: v.array(ruleArg),
+    /** @deprecated Browser actor labels are ignored; authority is server-derived. */
     actorId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    if (!args.projectId) throw new Error("Select a workspace before changing risk policy");
+    const access = await requireWorkspacePermission(
+      ctx,
+      args.projectId,
+      FACTORY_PERMISSIONS.APPROVE
+    );
     const existing = await ctx.db
       .query("changeRiskPolicies")
       .withIndex("by_active", (q) => q.eq("active", true))
@@ -46,7 +56,7 @@ export const upsertPolicy = mutation({
       }
     }
     const now = Date.now();
-    return ctx.db.insert("changeRiskPolicies", {
+    const policyId = await ctx.db.insert("changeRiskPolicies", {
       projectId: args.projectId,
       name: args.name,
       strictness: Math.max(0, Math.min(100, args.strictness)),
@@ -55,6 +65,17 @@ export const upsertPolicy = mutation({
       createdAt: now,
       updatedAt: now,
     });
+    await ctx.db.insert("activities", {
+      projectId: args.projectId,
+      actorType: "HUMAN",
+      actorId: access.actorId,
+      action: "CHANGE_RISK_POLICY_UPDATED",
+      description: `Updated change risk policy: ${args.name}`,
+      targetType: "CHANGE_RISK_POLICY",
+      targetId: policyId,
+      metadata: { strictness: Math.max(0, Math.min(100, args.strictness)) },
+    });
+    return policyId;
   },
 });
 

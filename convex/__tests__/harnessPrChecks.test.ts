@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  assessPrReconciliationCandidate,
   buildChangeReviewLenses,
   buildMutationTestingReport,
   isVerifiedPrLineage,
+  isPendingPrReconciliation,
+  isProducingAttemptStatus,
   recordedPrLineageBranch,
   parseGitHubPrUrl,
   parseGitHubRepoUrl,
   selectExactPrLineageWorkOrder,
+  shouldPreserveManualPrLineage,
 } from "../lib/harnessPrChecks";
 
 describe("harnessPrChecks lib", () => {
@@ -90,5 +94,77 @@ describe("harnessPrChecks lib", () => {
       workOrderId: "wo-1",
       metadata: { lineageStatus: "EXPLICIT_ARTIFACT" },
     })).toBe(true);
+    expect(isVerifiedPrLineage({
+      workOrderId: "wo-1",
+      metadata: { lineageStatus: "OPERATOR_RECONCILIATION" },
+    })).toBe(true);
+    expect(isPendingPrReconciliation({
+      metadata: { lineageStatus: "UNCORRELATED" },
+    })).toBe(true);
+    expect(isPendingPrReconciliation({
+      metadata: { lineageStatus: "RECONCILIATION_DISMISSED" },
+    })).toBe(false);
+  });
+
+  it("explains every exact signal before allowing manual reconciliation", () => {
+    const assessment = assessPrReconciliationCandidate({
+      evidence: { repoFullName: "acme/widgets", branch: "refs/heads/feature/exact" },
+      candidate: {
+        _id: "wo-1",
+        repository: "https://github.com/acme/widgets.git",
+        branchStrategy: "feature/exact",
+        state: "IN_PROGRESS",
+      },
+      hasAttempt: true,
+      attemptStatus: "COMPLETED",
+    });
+    expect(assessment.eligible).toBe(true);
+    expect(assessment.signals).toHaveLength(4);
+
+    const blocked = assessPrReconciliationCandidate({
+      evidence: { repoFullName: "acme/widgets", branch: "feature/other" },
+      candidate: {
+        _id: "wo-1",
+        repository: "acme/widgets",
+        branchStrategy: "feature/exact",
+        state: "IN_PROGRESS",
+      },
+      hasAttempt: false,
+    });
+    expect(blocked.eligible).toBe(false);
+    expect(blocked.blockedReasons).toEqual(expect.arrayContaining([
+      expect.stringContaining("Evidence feature/other"),
+      expect.stringContaining("No execution Attempt"),
+    ]));
+
+    const pendingAttempt = assessPrReconciliationCandidate({
+      evidence: { repoFullName: "acme/widgets", branch: "feature/exact" },
+      candidate: {
+        _id: "wo-1",
+        repository: "acme/widgets",
+        branchStrategy: "feature/exact",
+        state: "READY",
+      },
+      hasAttempt: true,
+      attemptStatus: "PENDING",
+    });
+    expect(pendingAttempt.eligible).toBe(false);
+    expect(pendingAttempt.blockedReasons).toContain("Attempt state cannot have produced evidence: PENDING");
+  });
+
+  it("preserves an immutable manual decision whenever the same head is re-ingested", () => {
+    expect(shouldPreserveManualPrLineage("OPERATOR_RECONCILIATION", "UNCORRELATED")).toBe(true);
+    expect(shouldPreserveManualPrLineage("RECONCILIATION_DISMISSED", "UNCORRELATED")).toBe(true);
+    expect(shouldPreserveManualPrLineage("EXACT_BRANCH", "UNCORRELATED")).toBe(false);
+    expect(shouldPreserveManualPrLineage("OPERATOR_RECONCILIATION", "EXACT_BRANCH")).toBe(true);
+  });
+
+  it("requires an Attempt state capable of producing evidence", () => {
+    expect(isProducingAttemptStatus("RUNNING")).toBe(true);
+    expect(isProducingAttemptStatus("COMPLETED")).toBe(true);
+    expect(isProducingAttemptStatus("FAILED")).toBe(true);
+    expect(isProducingAttemptStatus("PENDING")).toBe(false);
+    expect(isProducingAttemptStatus("CANCELED")).toBe(false);
+    expect(isProducingAttemptStatus(undefined)).toBe(false);
   });
 });

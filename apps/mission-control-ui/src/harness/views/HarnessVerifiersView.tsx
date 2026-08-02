@@ -9,26 +9,25 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export function HarnessVerifiersView({ projectId }: { projectId: Id<"projects"> | null }): JSX.Element {
-  const verifiers = useQuery(api.context.verifiers.list, {
-    projectId: projectId ?? undefined,
+  const verifiers = useQuery(api.context.verifiers.list, projectId ? {
+    projectId,
     activeOnly: false,
-  });
-  const stale = useQuery(api.context.verifiers.ruleDecayCandidates, {
-    projectId: projectId ?? undefined,
-  });
+  } : "skip");
+  const stale = useQuery(api.context.verifiers.ruleDecayCandidates, projectId ? {
+    projectId,
+  } : "skip");
   const create = useMutation(api.context.verifiers.create);
   const [label, setLabel] = useState("");
   const [invariant, setInvariant] = useState("");
 
   const handleCreate = async () => {
-    if (!label.trim() || !invariant.trim()) return;
+    if (!projectId || !label.trim() || !invariant.trim()) return;
     await create({
-      projectId: projectId ?? undefined,
+      projectId,
       label: label.trim(),
       invariant: invariant.trim(),
       globPatterns: ["**/*"],
       idempotencyKey: `verifier-${label}-${Date.now()}`,
-      actorId: "harness-ui",
     });
     setLabel("");
     setInvariant("");

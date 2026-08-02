@@ -56,7 +56,7 @@ export function HarnessLoopsDiagram({ className }: { className?: string }): JSX.
         {LOOP_STAGES.map((stage, i) => (
           <div key={stage.id} className="relative flex flex-1 flex-col">
             <div className={cn("flex h-full flex-col rounded-xl border p-4", stage.color)}>
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-secondary">
                 {stage.subtitle}
               </div>
               <h3 className="mt-1 text-base font-semibold text-ink">{stage.title}</h3>
@@ -68,7 +68,7 @@ export function HarnessLoopsDiagram({ className }: { className?: string }): JSX.
                   </li>
                 ))}
               </ul>
-              <p className="mt-3 border-t border-line/60 pt-3 text-[11px] italic text-ink-muted">
+              <p className="mt-3 border-t border-line/60 pt-3 text-[11px] italic text-ink-secondary">
                 "{stage.quote}"
               </p>
             </div>

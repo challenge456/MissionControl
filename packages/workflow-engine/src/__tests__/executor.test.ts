@@ -446,7 +446,10 @@ describe("WorkflowExecutor reliability", () => {
 
   it("records an actionable projection failure without falsifying the completed run", async () => {
     const mutation = vi.fn().mockResolvedValue({ success: true });
-    const action = vi.fn().mockRejectedValue(new Error("approval digest mismatch"));
+    const action = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("approval digest mismatch"))
+      .mockResolvedValueOnce({ recorded: true });
     const executor = executorWithClient({ mutation, action });
 
     await executor.completeRun({
@@ -456,7 +459,8 @@ describe("WorkflowExecutor reliability", () => {
       workflowId: "loop-engineering",
     });
 
-    expect(mutation.mock.calls[2][1]).toEqual({
+    expect(action).toHaveBeenCalledTimes(2);
+    expect(action.mock.calls[1][1]).toEqual({
       workflowRunId: "workflow-run-id",
       error: "approval digest mismatch",
     });

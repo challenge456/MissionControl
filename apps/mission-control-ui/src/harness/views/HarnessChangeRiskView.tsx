@@ -7,9 +7,9 @@ import { HarnessPage } from "../components/HarnessUi";
 import { Button } from "@/components/ui/button";
 
 export function HarnessChangeRiskView({ projectId }: { projectId: Id<"projects"> | null }): JSX.Element {
-  const policy = useQuery(api.context.changeRisk.getActivePolicy, {
-    projectId: projectId ?? undefined,
-  });
+  const policy = useQuery(api.context.changeRisk.getActivePolicy, projectId ? {
+    projectId,
+  } : "skip");
   const defaults = useQuery(api.context.changeRisk.defaultRules, {});
   const upsert = useMutation(api.context.changeRisk.upsertPolicy);
   const [strictness, setStrictness] = useState(50);
@@ -21,8 +21,9 @@ export function HarnessChangeRiskView({ projectId }: { projectId: Id<"projects">
   const rules = policy?.rules ?? defaults ?? [];
 
   const save = async () => {
+    if (!projectId) return;
     await upsert({
-      projectId: projectId ?? undefined,
+      projectId,
       name: "Default change risk",
       strictness,
       rules: rules.map((r) => ({
@@ -31,7 +32,6 @@ export function HarnessChangeRiskView({ projectId }: { projectId: Id<"projects">
         requireHuman: r.requireHuman,
         globPatterns: r.globPatterns,
       })),
-      actorId: "harness-ui",
     });
   };
 

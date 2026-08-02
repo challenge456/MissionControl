@@ -4,6 +4,7 @@ import { internal } from "../_generated/api";
 import {
   buildChangeReviewLenses,
   buildMutationTestingReport,
+  shouldPreserveManualPrLineage,
   type PrCheckSignals,
 } from "../lib/harnessPrChecks";
 import { ciBlockedHead, ciBlockCanRecover } from "../lib/prEvaluation";
@@ -120,7 +121,17 @@ export const applyCiIngest = internalMutation({
         : undefined;
     const releaseDeploymentId = args.releaseDeploymentId ?? existing?.releaseDeploymentId ?? previous?.releaseDeploymentId;
 
-    const inheritPriorLineage = args.lineageStatus == null;
+    const existingMetadata = existing?.metadata && typeof existing.metadata === "object"
+      ? existing.metadata as Record<string, unknown>
+      : {};
+    const preserveManualLineage = shouldPreserveManualPrLineage(
+      existingMetadata.lineageStatus,
+      args.lineageStatus
+    );
+    const inheritPriorLineage = args.lineageStatus == null || preserveManualLineage;
+    const lineageStatus = preserveManualLineage
+      ? String(existingMetadata.lineageStatus)
+      : args.lineageStatus ?? "LEGACY_UNVERIFIED";
     const doc = {
       projectId: args.projectId,
       workOrderId: args.workOrderId ?? (inheritPriorLineage ? existing?.workOrderId ?? previous?.workOrderId : undefined),
@@ -146,7 +157,8 @@ export const applyCiIngest = internalMutation({
       syncedAt: now,
       createdAt: existing?.createdAt ?? now,
       metadata: {
-        lineageStatus: args.lineageStatus ?? "LEGACY_UNVERIFIED",
+        ...existingMetadata,
+        lineageStatus,
         headSha: args.headSha,
         checkRuns: args.checkRuns,
         diffLineCount: args.signals?.diffLineCount,

@@ -163,7 +163,7 @@ http.route({
       return new Response("OK (ignored action)", { status: 200 });
     }
 
-    await ctx.runAction(api.factory.prChecks.ingestPullRequest, {
+    await ctx.runAction(internal.factory.prChecks.ingestPullRequestFromWebhook, {
       prUrl: prRef.prUrl,
       sourceEventId: request.headers.get("x-github-delivery") ?? undefined,
     });
@@ -171,7 +171,10 @@ http.route({
     const review = payload.review as { state?: string; body?: string; html_url?: string } | undefined;
     if (event === "pull_request_review" && review?.state === "changes_requested") {
       const projects = await ctx.runQuery(api.projects.list, {});
-      const project = projects.find((candidate) => candidate.githubRepo?.toLowerCase() === `${prRef.owner}/${prRef.repo}`.toLowerCase());
+      const matchingProjects = projects.filter(
+        (candidate) => candidate.githubRepo?.toLowerCase() === `${prRef.owner}/${prRef.repo}`.toLowerCase()
+      );
+      const project = matchingProjects.length === 1 ? matchingProjects[0] : undefined;
       if (project) {
         await ctx.runMutation(internal.factory.metaLoop.ingestSignal, {
           projectId: project._id,

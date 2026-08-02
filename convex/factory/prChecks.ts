@@ -3,13 +3,16 @@
  */
 
 import { v } from "convex/values";
-import { action, internalQuery, mutation, query } from "../_generated/server";
+import { action, internalAction, internalMutation, internalQuery, mutation, query } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import {
   buildChangeReviewLenses,
   buildMutationTestingReport,
+  assessPrReconciliationCandidate,
   isVerifiedPrLineage,
+  isPendingPrReconciliation,
+  isProducingAttemptStatus,
   normalizeGitBranch,
   normalizeGitHubRepository,
   recordedPrLineageBranch,
@@ -23,6 +26,7 @@ import { fetchPullRequestCi } from "../lib/githubCiIngest";
 import { buildFileChanges } from "../lib/runInspector";
 import { mergeAuthoritySatisfied } from "../lib/prEvaluation";
 import { FACTORY_PERMISSIONS, requireWorkspacePermission } from "../lib/companyAccess";
+import { requireFactoryActionWithAudit } from "../lib/factoryActionAuthorization";
 
 const lensValidator = v.array(
   v.object({
@@ -61,6 +65,88 @@ export const getLatest = query({
       .collect();
     rows.sort((a, b) => b.syncedAt - a.syncedAt);
     return rows[0] ?? null;
+  },
+});
+
+export const listUncorrelated = query({
+  args: { projectId: v.id("projects"), limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.VIEW);
+    const rows = await ctx.db
+      .query("harnessPrChecks")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+    return rows
+      .filter(isPendingPrReconciliation)
+      .sort((a, b) => b.syncedAt - a.syncedAt)
+      .slice(0, args.limit ?? 20);
+  },
+});
+
+export const listReconciliationHistory = query({
+  args: { projectId: v.id("projects"), limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.VIEW);
+    return await ctx.db
+      .query("prEvidenceReconciliations")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .order("desc")
+      .take(args.limit ?? 20);
+  },
+});
+
+async function reconciliationCandidates(ctx: { db: any }, evaluation: any) {
+  const workOrders = await ctx.db
+    .query("workOrders")
+    .withIndex("by_project", (q: any) => q.eq("projectId", evaluation.projectId))
+    .collect();
+  const candidates = (await Promise.all(workOrders.map(async (workOrder: any) => {
+    const workflowRuns = await ctx.db
+      .query("workflowRuns")
+      .withIndex("by_work_order", (q: any) => q.eq("workOrderId", workOrder._id))
+      .order("desc")
+      .take(10);
+    const attempts = workflowRuns.length > 0 ? workflowRuns : [undefined];
+    return attempts.map((workflowRun: any) => {
+      const assessment = assessPrReconciliationCandidate({
+        evidence: evaluation,
+        candidate: workOrder,
+        hasAttempt: Boolean(workflowRun),
+        attemptStatus: workflowRun?.status,
+      });
+      return {
+        workOrderId: workOrder._id,
+        title: workOrder.title,
+        state: workOrder.state,
+        repository: workOrder.repository,
+        branch: recordedPrLineageBranch(workOrder),
+        updatedAt: workflowRun?.startedAt ?? workOrder.updatedAt,
+        workflowRunId: workflowRun?._id,
+        workflowRunLabel: workflowRun?.runId,
+        workflowRunStatus: workflowRun?.status,
+        taskId: workflowRun?.parentTaskId,
+        ...assessment,
+      };
+    });
+  }))).flat();
+  return candidates
+    .sort((left, right) => Number(right.eligible) - Number(left.eligible) || right.updatedAt - left.updatedAt)
+    .slice(0, 20);
+}
+
+export const getReconciliationCandidates = query({
+  args: {
+    projectId: v.id("projects"),
+    evaluationId: v.id("harnessPrChecks"),
+  },
+  handler: async (ctx, args) => {
+    await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.VIEW);
+    const evaluation = await ctx.db.get(args.evaluationId);
+    if (!evaluation || evaluation.projectId !== args.projectId) {
+      throw new Error("PR evidence is unavailable or unauthorized");
+    }
+    if (!isPendingPrReconciliation(evaluation)) return [];
+    return await reconciliationCandidates(ctx, evaluation);
   },
 });
 
@@ -519,26 +605,210 @@ export const recordMerge = mutation({
   },
 });
 
-export const ingestPullRequest = action({
+export const applyReconciliation = internalMutation({
   args: {
-    prUrl: v.string(),
-    projectId: v.optional(v.id("projects")),
+    projectId: v.id("projects"),
+    evaluationId: v.id("harnessPrChecks"),
+    decision: v.union(v.literal("LINKED"), v.literal("DISMISSED")),
     workOrderId: v.optional(v.id("workOrders")),
     workflowRunId: v.optional(v.id("workflowRuns")),
-    taskId: v.optional(v.id("tasks")),
-    releaseDeploymentId: v.optional(v.id("deployments")),
-    sourceEventId: v.optional(v.string()),
+    reason: v.string(),
+    actorId: v.string(),
+    idempotencyKey: v.string(),
   },
-  handler: async (
-    ctx,
-    args
-  ): Promise<{
-    id: Id<"harnessPrChecks">;
-    prUrl: string;
-    ciStatus: "PASS" | "FAIL" | "PENDING" | "UNKNOWN";
-    checkCount: number;
-    diffLineCount?: number;
-  }> => {
+  handler: async (ctx, args) => {
+    const existingByKey = await ctx.db
+      .query("prEvidenceReconciliations")
+      .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.idempotencyKey))
+      .first();
+    if (existingByKey) {
+      if (existingByKey.projectId !== args.projectId) {
+        throw new Error("Reconciliation idempotency key belongs to another workspace");
+      }
+      return { decision: existingByKey, created: false as const };
+    }
+
+    const evaluation = await ctx.db.get(args.evaluationId);
+    if (!evaluation || evaluation.projectId !== args.projectId) {
+      throw new Error("PR evidence is unavailable or unauthorized");
+    }
+    if (!isPendingPrReconciliation(evaluation)) {
+      throw new Error("PR evidence is no longer awaiting reconciliation");
+    }
+    const existingDecision = await ctx.db
+      .query("prEvidenceReconciliations")
+      .withIndex("by_evaluation", (q) => q.eq("evaluationId", evaluation._id))
+      .first();
+    if (existingDecision) {
+      throw new Error("PR evidence already has an immutable reconciliation decision");
+    }
+    const reason = args.reason.trim();
+    if (reason.length < 10) {
+      throw new Error("Retain a reconciliation reason of at least 10 characters");
+    }
+
+    let candidateSnapshot: any;
+    let workOrderId: Id<"workOrders"> | undefined;
+    let workflowRunId: Id<"workflowRuns"> | undefined;
+    let taskId: Id<"tasks"> | undefined;
+    let loopEngineeringCycleId: Id<"loopEngineeringCycles"> | undefined;
+    if (args.decision === "LINKED") {
+      if (!args.workOrderId || !args.workflowRunId) {
+        throw new Error("Linking PR evidence requires one exact WorkOrder and producing Attempt");
+      }
+      const candidates = await reconciliationCandidates(ctx, evaluation);
+      const candidate = candidates.find(
+        (item) => item.workOrderId === args.workOrderId
+          && item.workflowRunId === args.workflowRunId
+      );
+      if (!candidate?.eligible) {
+        throw new Error("Selected lineage does not satisfy exact repository, branch, Attempt, and state checks");
+      }
+      const workflowRun = await ctx.db.get(args.workflowRunId);
+      if (
+        !workflowRun
+        || workflowRun.projectId !== args.projectId
+        || workflowRun.workOrderId !== args.workOrderId
+      ) {
+        throw new Error("Selected Attempt does not belong to this workspace and WorkOrder");
+      }
+      const cycles = await ctx.db
+        .query("loopEngineeringCycles")
+        .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+        .collect();
+      const cycle = cycles.find((item) => item.workOrderIds.includes(args.workOrderId!));
+      workOrderId = args.workOrderId;
+      workflowRunId = args.workflowRunId;
+      taskId = workflowRun.parentTaskId;
+      loopEngineeringCycleId = cycle?._id;
+      candidateSnapshot = candidate;
+    }
+
+    const project = await ctx.db.get(args.projectId);
+    if (!project) throw new Error("Workspace is unavailable");
+    const decidedAt = Date.now();
+    const decisionId = await ctx.db.insert("prEvidenceReconciliations", {
+      projectId: args.projectId,
+      evaluationId: evaluation._id,
+      decision: args.decision,
+      workOrderId,
+      workflowRunId,
+      taskId,
+      loopEngineeringCycleId,
+      reason,
+      actorId: args.actorId,
+      idempotencyKey: args.idempotencyKey,
+      evidenceSnapshot: {
+        prUrl: evaluation.prUrl,
+        repoFullName: evaluation.repoFullName,
+        branch: evaluation.branch,
+        headSha: evaluation.headSha,
+        ciStatus: evaluation.ciStatus,
+      },
+      candidateSnapshot,
+      decidedAt,
+    });
+    await ctx.db.patch(evaluation._id, {
+      workOrderId,
+      workflowRunId,
+      taskId,
+      loopEngineeringCycleId,
+      metadata: {
+        ...((evaluation.metadata && typeof evaluation.metadata === "object")
+          ? evaluation.metadata
+          : {}),
+        lineageStatus: args.decision === "LINKED"
+          ? "OPERATOR_RECONCILIATION"
+          : "RECONCILIATION_DISMISSED",
+        reconciliationDecisionId: decisionId,
+        reconciliationReason: reason,
+        reconciledAt: decidedAt,
+      },
+    });
+    await ctx.db.insert("activities", {
+      tenantId: project.tenantId,
+      projectId: project._id,
+      actorType: "HUMAN",
+      actorId: args.actorId,
+      action: args.decision === "LINKED"
+        ? "PR_EVIDENCE_RECONCILED"
+        : "PR_EVIDENCE_DISMISSED",
+      description: args.decision === "LINKED"
+        ? `Linked ${evaluation.prUrl} to exact WorkOrder and Attempt lineage`
+        : `Dismissed uncorrelated evidence ${evaluation.prUrl}`,
+      targetType: "PR_EVIDENCE_RECONCILIATION",
+      targetId: decisionId,
+      metadata: {
+        evaluationId: evaluation._id,
+        workOrderId,
+        workflowRunId,
+        reason,
+      },
+    });
+    return {
+      decision: await ctx.db.get(decisionId),
+      evaluation: await ctx.db.get(evaluation._id),
+      created: true as const,
+    };
+  },
+});
+
+export const reconcileEvidence = action({
+  args: {
+    projectId: v.id("projects"),
+    evaluationId: v.id("harnessPrChecks"),
+    decision: v.union(v.literal("LINKED"), v.literal("DISMISSED")),
+    workOrderId: v.optional(v.id("workOrders")),
+    workflowRunId: v.optional(v.id("workflowRuns")),
+    reason: v.string(),
+    idempotencyKey: v.string(),
+  },
+  handler: async (ctx, args): Promise<any> => {
+    const authorization = await requireFactoryActionWithAudit(ctx, {
+      projectId: args.projectId,
+      permission: FACTORY_PERMISSIONS.APPROVE,
+      operation: "PR_EVIDENCE_RECONCILE",
+    });
+    return await ctx.runMutation(internal.factory.prChecks.applyReconciliation, {
+      ...args,
+      actorId: authorization.actorId,
+    });
+  },
+});
+
+const pullRequestIngestArgs = {
+  prUrl: v.string(),
+  projectId: v.optional(v.id("projects")),
+  workOrderId: v.optional(v.id("workOrders")),
+  workflowRunId: v.optional(v.id("workflowRuns")),
+  taskId: v.optional(v.id("tasks")),
+  releaseDeploymentId: v.optional(v.id("deployments")),
+  sourceEventId: v.optional(v.string()),
+};
+
+type PullRequestIngestArgs = {
+  prUrl: string;
+  projectId?: Id<"projects">;
+  workOrderId?: Id<"workOrders">;
+  workflowRunId?: Id<"workflowRuns">;
+  taskId?: Id<"tasks">;
+  releaseDeploymentId?: Id<"deployments">;
+  sourceEventId?: string;
+};
+
+async function ingestPullRequestEvidence(
+  ctx: {
+    runQuery: (reference: any, args: any) => Promise<any>;
+    runMutation: (reference: any, args: any) => Promise<any>;
+  },
+  args: PullRequestIngestArgs
+): Promise<{
+  id: Id<"harnessPrChecks">;
+  prUrl: string;
+  ciStatus: "PASS" | "FAIL" | "PENDING" | "UNKNOWN";
+  checkCount: number;
+  diffLineCount?: number;
+}> {
     const parsed = parseGitHubPrUrl(args.prUrl.trim());
     if (!parsed) {
       throw new Error("Invalid GitHub PR URL — expected https://github.com/owner/repo/pull/123");
@@ -591,7 +861,28 @@ export const ingestPullRequest = action({
       checkCount: payload.checkRuns.length,
       diffLineCount: payload.diffLineCount,
     };
+}
+
+/** Operator-triggered ingestion is authorized before any GitHub network call. */
+export const ingestPullRequest = action({
+  args: {
+    ...pullRequestIngestArgs,
+    projectId: v.id("projects"),
   },
+  handler: async (ctx, args) => {
+    await requireFactoryActionWithAudit(ctx, {
+      projectId: args.projectId,
+      permission: FACTORY_PERMISSIONS.IMPROVE,
+      operation: "PR_EVIDENCE_INGEST",
+    });
+    return await ingestPullRequestEvidence(ctx, args);
+  },
+});
+
+/** Called only after the HTTP route verifies the GitHub webhook signature. */
+export const ingestPullRequestFromWebhook = internalAction({
+  args: pullRequestIngestArgs,
+  handler: async (ctx, args) => await ingestPullRequestEvidence(ctx, args),
 });
 
 export const resolveLineage = internalQuery({
@@ -645,10 +936,11 @@ export const resolveLineage = internalQuery({
     }
     if (!projectId) {
       const projects = await ctx.db.query("projects").collect();
-      projectId = projects.find((project) =>
+      const matchingProjects = projects.filter((project) =>
         normalizeGitHubRepository(project.githubRepo) ===
         normalizeGitHubRepository(args.repoFullName)
-      )?._id;
+      );
+      projectId = matchingProjects.length === 1 ? matchingProjects[0]._id : undefined;
     }
     if (!projectId) return { lineageStatus: "UNCORRELATED" as const };
     const workOrders = await ctx.db.query("workOrders")
@@ -665,8 +957,14 @@ export const resolveLineage = internalQuery({
     if (!workOrder) return { projectId, lineageStatus: "UNCORRELATED" as const };
     const runs = await ctx.db.query("workflowRuns").collect();
     const workflowRun = runs
-      .filter((run) => run.workOrderId === workOrder._id)
+      .filter((run) =>
+        run.workOrderId === workOrder._id
+        && isProducingAttemptStatus(run.status)
+      )
       .sort((a, b) => b.startedAt - a.startedAt)[0];
+    if (!workflowRun) {
+      return { projectId, lineageStatus: "UNCORRELATED" as const };
+    }
     const tasks = await ctx.db.query("tasks")
       .withIndex("by_work_order", (q) => q.eq("workOrderId", workOrder._id))
       .collect();

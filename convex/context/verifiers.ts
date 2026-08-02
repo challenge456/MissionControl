@@ -4,6 +4,7 @@
 
 import { v } from "convex/values";
 import { mutation, query } from "../_generated/server";
+import { FACTORY_PERMISSIONS, requireWorkspacePermission } from "../lib/companyAccess";
 
 export const list = query({
   args: {
@@ -12,6 +13,17 @@ export const list = query({
     activeOnly: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    if (args.projectId) {
+      await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.VIEW);
+    } else if (args.packageId) {
+      const pkg = await ctx.db.get(args.packageId);
+      if (!pkg) return [];
+      if (pkg.projectId) {
+        await requireWorkspacePermission(ctx, pkg.projectId, FACTORY_PERMISSIONS.VIEW);
+      }
+    } else {
+      return [];
+    }
     let rows = await ctx.db.query("contextVerifiers").collect();
     if (args.projectId) rows = rows.filter((r) => r.projectId === args.projectId);
     if (args.packageId) rows = rows.filter((r) => r.packageId === args.packageId);
@@ -29,9 +41,16 @@ export const create = mutation({
     globPatterns: v.array(v.string()),
     sourceSkillId: v.optional(v.id("contextPackages")),
     idempotencyKey: v.optional(v.string()),
+    /** @deprecated Browser actor labels are ignored; authority is server-derived. */
     actorId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    if (!args.projectId) throw new Error("Select a workspace before creating a verifier");
+    const access = await requireWorkspacePermission(
+      ctx,
+      args.projectId,
+      FACTORY_PERMISSIONS.IMPROVE
+    );
     if (args.idempotencyKey) {
       const existing = await ctx.db
         .query("contextVerifiers")
@@ -55,7 +74,7 @@ export const create = mutation({
     await ctx.db.insert("activities", {
       projectId: args.projectId,
       actorType: "HUMAN",
-      actorId: args.actorId ?? "operator",
+      actorId: access.actorId,
       action: "VERIFIER_CREATED",
       description: `Created verifier: ${args.label}`,
       targetType: "contextVerifier",
@@ -73,6 +92,12 @@ export const generateFromSkill = mutation({
   handler: async (ctx, args) => {
     const pkg = await ctx.db.get(args.packageId);
     if (!pkg) throw new Error("Package not found");
+    if (!pkg.projectId) throw new Error("Workspace-scoped skill package is required");
+    const access = await requireWorkspacePermission(
+      ctx,
+      pkg.projectId,
+      FACTORY_PERMISSIONS.IMPROVE
+    );
     const now = Date.now();
     const label = `${pkg.displayName ?? pkg.slug} adherence`;
     const id = await ctx.db.insert("contextVerifiers", {
@@ -86,6 +111,15 @@ export const generateFromSkill = mutation({
       createdAt: now,
       updatedAt: now,
     });
+    await ctx.db.insert("activities", {
+      projectId: pkg.projectId,
+      actorType: "HUMAN",
+      actorId: access.actorId,
+      action: "VERIFIER_CREATED",
+      description: `Created verifier from skill: ${label}`,
+      targetType: "contextVerifier",
+      targetId: id,
+    });
     return id;
   },
 });
@@ -93,6 +127,8 @@ export const generateFromSkill = mutation({
 export const ruleDecayCandidates = query({
   args: { projectId: v.optional(v.id("projects")) },
   handler: async (ctx, args) => {
+    if (!args.projectId) return [];
+    await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.VIEW);
     let rows = await ctx.db.query("contextVerifiers").collect();
     if (args.projectId) rows = rows.filter((r) => r.projectId === args.projectId);
     const staleDays = 30 * 24 * 60 * 60 * 1000;
