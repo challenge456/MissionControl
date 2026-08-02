@@ -1,5 +1,5 @@
 ---
-status: in_progress
+status: complete
 priority: p1
 issue_id: "016"
 tags: [loop-engineering, workflow, convex, github, evidence, ui]
@@ -59,16 +59,16 @@ workflow runtime contracts, and Loop Engineering UI.
 
 ## Acceptance Criteria
 
-- [ ] Completed graphs project into cycles exactly once.
-- [ ] Approved implementation work executes in an isolated worktree with immutable Attempts.
-- [ ] PR/CI failures create bounded correction Attempts and preserve evidence.
-- [ ] Meta suggestions originate from real evidence and create governed work when accepted.
-- [ ] The unified UI displays inner, outer, and meta state truthfully.
-- [ ] Refresh and process restart preserve lineage without duplicate events.
-- [ ] Focused and release-gate tests pass.
-- [ ] Browser journeys pass with screenshots and no critical console errors.
-- [ ] Documentation is updated in repository and Mission Control Docs.
-- [ ] Changes are committed, merged, and pushed to `main`.
+- [x] Completed graphs project into cycles exactly once.
+- [x] Approved implementation work executes in an isolated worktree with immutable Attempts.
+- [x] PR/CI failures create bounded correction Attempts and preserve evidence.
+- [x] Meta suggestions originate from real evidence and create governed work when accepted.
+- [x] The unified UI displays inner, outer, and meta state truthfully.
+- [x] Refresh and process restart preserve lineage without duplicate events.
+- [x] Focused and release-gate tests pass.
+- [x] Browser journeys pass with screenshots and no critical console errors.
+- [x] Documentation is updated in repository and Mission Control Docs.
+- [x] Changes are committed, merged, and pushed to `main`.
 
 ## Work Log
 
@@ -138,9 +138,29 @@ workflow runtime contracts, and Loop Engineering UI.
   text is sanitized; worker environment, command, repository, worktree, and
   secret boundaries are enforced.
 
-**Remaining release action:**
-- Create and ingest the real GitHub PR, monitor CI, merge under explicit
-  authority, record merge evidence, and verify remote `main`.
+### 2026-08-01 - Release and learning cycle completed
+
+**By:** Codex
+
+**Actions:**
+- Merged implementation PR #56 and failed-head recovery PR #57 after 9/9
+  GitHub checks passed on their terminal heads.
+- Retained failed evaluation `zh712qbeqyaxw85x0n1k27664s8bqg8z`, passing
+  evaluation `zh74jwc8stmr0gf9ytcxwc21hh8bp8h8`, and recovery event
+  `y57721s4xw9tk96d1g94n86bf98bpks7`.
+- Recorded explicit merge approval `ks7898k3pqr6s17rg1ncqjfzmd8bpb9w`
+  and merge commit `0a4ebdbd92e69179efd46811b45ca20042ff3692`.
+- Completed post-merge quality-audit run `x3mkmu47`, recorded two passing
+  verification receipts, and accepted the governed WorkOrder as `DONE`.
+- Recorded baseline 0, result 1, target 1; the meta suggestion is `EFFECTIVE`
+  with verdict `MET`.
+- Fixed the schema-safe measurement serializer in PR #58 after Convex rejected
+  the foreign nested `suggestionId` without corrupting persisted state.
+
+**Result:**
+- The inner, outer, and meta horizons now complete one governed, auditable
+  learning cycle with failure retention, correction, approval, merge,
+  verification, measurement, and repository/Mission Control documentation.
 
 ## Notes
 
