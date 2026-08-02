@@ -99,6 +99,13 @@ The reducer now prioritizes blocking conclusions, then any pending job, and only
 reports `PASS` after every observed job has a successful, skipped, or neutral
 terminal conclusion. A regression test retains this release-gate finding.
 
+The replacement head then passed build, unit, E2E, smoke, typecheck, and preview
+deployment but failed the runtime-contract guard because this release adds and
+changes public Convex functions. `RUNTIME_CONTRACT_VERSION` is intentionally
+incremented from 2 to 3 so client and backend changes deploy atomically. The
+failed head remains outer-loop evidence and the correction is evaluated as a
+new head.
+
 ## Runtime Configuration Boundary
 
 The signed webhook implementation is complete and locally verified. A durable
