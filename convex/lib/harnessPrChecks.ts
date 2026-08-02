@@ -27,6 +27,83 @@ export interface PrCheckSignals {
   ciStatus?: "PASS" | "FAIL" | "PENDING" | "UNKNOWN";
 }
 
+export interface PrLineageCandidate {
+  _id: string;
+  repository?: string;
+  branchStrategy?: string;
+  metadata?: unknown;
+}
+
+export function normalizeGitHubRepository(value?: string): string | undefined {
+  return value
+    ?.trim()
+    .replace(/^https?:\/\/github\.com\//i, "")
+    .replace(/^git@github\.com:/i, "")
+    .replace(/\.git$/i, "")
+    .toLowerCase();
+}
+
+export function normalizeGitBranch(value?: string): string | undefined {
+  const normalized = value
+    ?.trim()
+    .replace(/^refs\/heads\//i, "")
+    .replace(/^origin\//i, "");
+  return normalized || undefined;
+}
+
+export function recordedPrLineageBranch(
+  candidate: PrLineageCandidate
+): string | undefined {
+  const metadata = candidate.metadata && typeof candidate.metadata === "object"
+    ? candidate.metadata as Record<string, unknown>
+    : {};
+  const pullRequestArtifact = metadata.pullRequestArtifact;
+  const implementationArtifact = metadata.implementationArtifact;
+  const artifactBranch = pullRequestArtifact && typeof pullRequestArtifact === "object"
+    ? (pullRequestArtifact as Record<string, unknown>).branch
+    : implementationArtifact && typeof implementationArtifact === "object"
+      ? (implementationArtifact as Record<string, unknown>).branch
+      : metadata.branch;
+  if (typeof artifactBranch === "string") return normalizeGitBranch(artifactBranch);
+
+  // A branchStrategy is usable only when it is itself one exact branch name.
+  // Descriptions such as "isolated-worktree" or "feat/x in a worktree" are
+  // policies, not lineage evidence.
+  const branchStrategy = candidate.branchStrategy?.trim();
+  if (!branchStrategy || /\s/.test(branchStrategy) || branchStrategy.toLowerCase().includes("worktree")) {
+    return undefined;
+  }
+  return normalizeGitBranch(branchStrategy);
+}
+
+export function selectExactPrLineageWorkOrder<T extends PrLineageCandidate>(args: {
+  candidates: T[];
+  repository: string;
+  branch?: string;
+}): T | null {
+  const repository = normalizeGitHubRepository(args.repository);
+  const branch = normalizeGitBranch(args.branch);
+  if (!repository || !branch) return null;
+  const exact = args.candidates.filter((candidate) =>
+    normalizeGitHubRepository(candidate.repository) === repository &&
+    recordedPrLineageBranch(candidate) === branch
+  );
+  return exact.length === 1 ? exact[0] : null;
+}
+
+export function isVerifiedPrLineage(row: {
+  workOrderId?: unknown;
+  metadata?: unknown;
+}): boolean {
+  const metadata = row.metadata && typeof row.metadata === "object"
+    ? row.metadata as Record<string, unknown>
+    : {};
+  return Boolean(
+    row.workOrderId &&
+    ["EXPLICIT_ARTIFACT", "EXACT_BRANCH"].includes(String(metadata.lineageStatus ?? ""))
+  );
+}
+
 export function buildChangeReviewLenses(signals: PrCheckSignals): ChangeReviewLens[] {
   const securityHits = signals.securityFindingCount ?? countCategory(signals.qcFindings, "security");
   const readabilityHits = countCategory(signals.qcFindings, "readability");

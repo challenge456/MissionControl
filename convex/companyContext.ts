@@ -1,13 +1,47 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalQuery, mutation, query } from "./_generated/server";
 import {
   COMPANY_PERMISSIONS,
+  FACTORY_PERMISSIONS,
   listAccessibleWorkspaces,
   listCompanyMemberships,
   requireCompanyAccess,
   requireCompanyPermission,
   requireWorkspaceAccess,
+  requireWorkspacePermission,
 } from "./lib/companyAccess";
+
+const factoryPermission = v.union(
+  v.literal(FACTORY_PERMISSIONS.VIEW),
+  v.literal(FACTORY_PERMISSIONS.IMPROVE),
+  v.literal(FACTORY_PERMISSIONS.APPROVE),
+  v.literal(FACTORY_PERMISSIONS.MANAGE_AUTOMATION)
+);
+
+/**
+ * Actions do not have direct database access. This internal query gives them
+ * the same authenticated, project-scoped operator decision used by mutations.
+ */
+export const authorizeFactoryAction = internalQuery({
+  args: {
+    projectId: v.id("projects"),
+    permission: factoryPermission,
+  },
+  handler: async (ctx, args) => {
+    const access = await requireWorkspacePermission(
+      ctx,
+      args.projectId,
+      args.permission
+    );
+    return {
+      actorId: access.actorId,
+      mode: access.membership.mode,
+      tenantId: access.project.tenantId,
+      projectId: access.project._id,
+      permission: args.permission,
+    };
+  },
+});
 
 function exceedsLength(value: string | undefined, maximum: number): boolean {
   return Boolean(value && value.trim().length > maximum);

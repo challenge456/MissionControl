@@ -1411,6 +1411,29 @@ export const dispatch = mutation({
       COMPANY_PERMISSIONS.DISPATCH_WORK
     );
     assertAuthorizedDeliveryRecord(deliveryAccess, workOrder);
+    let actorId = args.actorId;
+    if (args.actorType === "HUMAN") {
+      if (!workOrder.projectId) {
+        throw new Error("Human dispatch requires a workspace-scoped WorkOrder");
+      }
+      let humanAccess = deliveryAccess;
+      if (!humanAccess) {
+        const project = await ctx.db.get(workOrder.projectId);
+        if (!project?.tenantId) {
+          throw new Error("Human dispatch requires a company-scoped workspace");
+        }
+        humanAccess = await requireWorkspaceAccess(
+          ctx,
+          project.tenantId,
+          workOrder.projectId,
+          { permission: COMPANY_PERMISSIONS.DISPATCH_WORK }
+        );
+        assertAuthorizedDeliveryRecord(humanAccess, workOrder);
+      }
+      actorId = String(
+        humanAccess.membership.operatorId ?? "demo:company-administrator"
+      );
+    }
 
     const existingEvent = await ctx.db
       .query("workOrderEvents")
@@ -1807,7 +1830,7 @@ export const dispatch = mutation({
       fromState: refreshedWorkOrder.state,
       toState: "DISPATCHED",
       actorType: args.actorType,
-      actorId: args.actorId,
+      actorId,
       summary: `Dispatch requested for workflow ${resolvedWorkflowId}`,
       idempotencyKey: `${args.idempotencyKey}:request`,
       metadata: {
@@ -1909,7 +1932,7 @@ export const dispatch = mutation({
       workflowRunId: runDocId,
       eventType: "RUN_STARTED",
       workflowStep: workflow.steps[0]?.id,
-      actor: args.actorId ?? args.actorType.toLowerCase(),
+      actor: actorId ?? args.actorType.toLowerCase(),
       status: "PENDING",
       startedAt: now,
       commandSummary: `Dispatched ${resolvedWorkflowId}`,
@@ -1954,7 +1977,7 @@ export const dispatch = mutation({
         workOrder: refreshedWorkOrder,
         workflowRunId: runDocId,
         actorType: args.actorType,
-        actorId: args.actorId,
+        actorId,
         idempotencyKey: args.idempotencyKey,
       });
     }
@@ -1963,7 +1986,7 @@ export const dispatch = mutation({
       tenantId: refreshedWorkOrder.tenantId,
       projectId: refreshedWorkOrder.projectId,
       actorType: args.actorType,
-      actorId: args.actorId,
+      actorId,
       action: "WORK_ORDER_DISPATCHED",
       description: `Dispatched work order ${refreshedWorkOrder.title} via ${resolvedWorkflowId}`,
       targetType: "WORK_ORDER",
@@ -1988,7 +2011,7 @@ export const dispatch = mutation({
       fromState: refreshedWorkOrder.state,
       toState: "DISPATCHED",
       actorType: args.actorType,
-      actorId: args.actorId,
+      actorId,
       summary: retryOfRun
         ? `Recovery run ${runId} created for failed run ${retryOfRun.runId}`
         : `Execution run ${runId} created for ${resolvedWorkflowId}`,
@@ -2017,7 +2040,7 @@ export const dispatch = mutation({
         fromState: refreshedWorkOrder.state,
         toState: "DISPATCHED",
         actorType: args.actorType,
-        actorId: args.actorId,
+        actorId,
         summary: `Operator started recovery run ${runId} from failed run ${retryOfRun.runId}`,
         idempotencyKey: `${args.idempotencyKey}:retried`,
         metadata: {
@@ -2038,7 +2061,7 @@ export const dispatch = mutation({
         projectId: selectedTask.projectId,
         eventType: "RUN_STARTED",
         actorType: args.actorType,
-        actorId: args.actorId,
+        actorId,
         relatedId: runDocId,
         beforeState: retryOfRun
           ? {

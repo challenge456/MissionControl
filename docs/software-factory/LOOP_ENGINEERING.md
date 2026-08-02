@@ -14,9 +14,13 @@ an approval gate before repository-changing work.
 
 The operating horizons use one vocabulary everywhere:
 
-- the **inner loop drives automation** through bounded edit, run, check, and correction Attempts;
-- the **outer loop drives autonomy** through immutable PR-head evaluations, CI, review, policy, and merge authority;
+- the **inner loop drives autonomy** by reducing corrective human intervention through bounded edit, run, check, and correction Attempts;
+- the **outer loop drives automation** by proving merge readiness through immutable PR-head evaluations, CI, review, policy, and merge authority;
 - the **meta loop drives quality** by turning real failures and measurements into governed improvement work.
+
+The prior `innerAutomation` and `outerAutonomy` names are deprecated read
+aliases only. New UI, telemetry, and policy code must use the canonical pillar
+names above.
 
 ## Product principles
 
@@ -107,6 +111,16 @@ required check blocks the linked WorkOrder and requests one bounded correction;
 passing CI does not equal approval. Merge recording requires passing configured
 gates, WorkOrder approval, explicit human confirmation, actor, timestamp, PR,
 and commit SHA.
+
+PR evidence is correlated only through an explicit WorkOrder/run artifact or
+an exact recorded branch match. Repository recency is never lineage. A PR that
+cannot be proved remains visibly uncorrelated and cannot block, advance, or
+complete a WorkOrder.
+
+Human Loop Engineering decisions derive their operator identity and permission
+from the authenticated company/workspace membership in Convex. Browser-supplied
+actor labels are compatibility inputs only and cannot determine authority or
+audit attribution.
 
 Meta suggestions are created from real workflow, CI, review, approval,
 verification, measurement, and repeated-work signals. Suggestions are

@@ -48,7 +48,6 @@ type LoopCycle = Doc<"loopEngineeringCycles">;
 type Freshness = LoopCycle["sources"][number]["freshness"];
 type SourceType = NonNullable<LoopCycle["sources"][number]["sourceType"]>;
 
-const ACTOR_ID = "operator";
 const PHASES: Array<LoopCycle["phase"]> = [
   "RESEARCH",
   "VERIFY",
@@ -134,9 +133,11 @@ function PhaseProgress({ phase }: { phase: LoopCycle["phase"] }) {
 export function LoopEngineeringWorkspace({
   projectId,
   onNavigate,
+  onCycleScopeChange,
 }: {
   projectId: Id<"projects"> | null;
   onNavigate: (view: MainView) => void;
+  onCycleScopeChange?: (scope: { cycleId: Id<"loopEngineeringCycles"> | null }) => void;
 }) {
   const cycles = useQuery(
     api.loopEngineering.listByProject,
@@ -176,6 +177,9 @@ export function LoopEngineeringWorkspace({
   }, [cycles, selectedId]);
 
   const cycle = cycles?.find((item) => item._id === selectedId) ?? cycles?.[0];
+  useEffect(() => {
+    onCycleScopeChange?.({ cycleId: cycle?._id ?? null });
+  }, [cycle?._id, onCycleScopeChange]);
   const workOrderDetail = useQuery(
     api.workOrders.get,
     cycle?.workOrderIds[0] ? { workOrderId: cycle.workOrderIds[0] } : "skip"
@@ -279,7 +283,6 @@ export function LoopEngineeringWorkspace({
                   const result = await dispatchGraph({
                     workOrderId: rootWorkOrder._id,
                     actorType: "HUMAN",
-                    actorId: ACTOR_ID,
                     idempotencyKey: `graph-cycle:${cycle._id}:dispatch:${rootWorkOrder.currentRevisionNumber ?? 1}`,
                   });
                   if (!result.run) {
@@ -318,7 +321,7 @@ export function LoopEngineeringWorkspace({
                 busy={busy}
                 onAdvance={() =>
                   run(
-                    () => advance({ cycleId: cycle._id, actorId: ACTOR_ID }),
+                    () => advance({ cycleId: cycle._id }),
                     "Cycle advanced"
                   )
                 }
@@ -327,7 +330,6 @@ export function LoopEngineeringWorkspace({
                     () =>
                       approveRecommendations({
                         cycleId: cycle._id,
-                        actorId: ACTOR_ID,
                         idempotencyKey: `loop-approval:${cycle._id}`,
                       }),
                     "Implementation work created"
@@ -338,7 +340,6 @@ export function LoopEngineeringWorkspace({
                     () =>
                       rejectRecommendations({
                         cycleId: cycle._id,
-                        actorId: ACTOR_ID,
                         reason,
                       }),
                     "Recommendations returned for revision"
@@ -346,7 +347,7 @@ export function LoopEngineeringWorkspace({
                 }
                 onSync={() =>
                   run(
-                    () => syncImplementation({ cycleId: cycle._id, actorId: ACTOR_ID }),
+                    () => syncImplementation({ cycleId: cycle._id }),
                     "Implementation status synchronized"
                   )
                 }
@@ -358,7 +359,6 @@ export function LoopEngineeringWorkspace({
                         objective: values.objective,
                         hypothesis: values.hypothesis || undefined,
                         stopCondition: values.stopCondition,
-                        actorId: ACTOR_ID,
                       }),
                     "Next learning cycle created"
                   )
@@ -382,7 +382,6 @@ export function LoopEngineeringWorkspace({
                         sourceType: values.sourceType,
                         vendorClaim: values.vendorClaim,
                         syndicatedFromUrl: values.syndicatedFromUrl || undefined,
-                        actorId: ACTOR_ID,
                       }),
                     "Source recorded"
                   )
@@ -395,7 +394,6 @@ export function LoopEngineeringWorkspace({
                         sourceId,
                         decision,
                         reason: reason || undefined,
-                        actorId: ACTOR_ID,
                       }),
                     decision === "ACCEPTED" ? "Source accepted" : "Source rejected"
                   )
@@ -411,7 +409,6 @@ export function LoopEngineeringWorkspace({
                       addClaim({
                         cycleId: cycle._id,
                         ...values,
-                        actorId: ACTOR_ID,
                       }),
                     "Claim recorded"
                   )
@@ -430,7 +427,6 @@ export function LoopEngineeringWorkspace({
                         rationale: values.rationale,
                         evidenceSourceIds: values.evidenceSourceIds,
                         confidence: values.confidence,
-                        actorId: ACTOR_ID,
                       }),
                     "Recommendation recorded"
                   )
@@ -448,7 +444,6 @@ export function LoopEngineeringWorkspace({
                         name: values.name,
                         status: values.status,
                         evidenceLocation: values.evidenceLocation,
-                        actorId: ACTOR_ID,
                       }),
                     "Validation evidence recorded"
                   )
@@ -465,7 +460,6 @@ export function LoopEngineeringWorkspace({
                         target: values.target === "" ? undefined : Number(values.target),
                         passed: values.passed,
                         evidenceLocation: values.evidenceLocation,
-                        actorId: ACTOR_ID,
                       }),
                     "Measurement recorded"
                   )
@@ -554,7 +548,6 @@ export function LoopEngineeringWorkspace({
                 stopCondition: values.stopCondition,
                 maxIterations: Number(values.maxIterations),
                 idempotencyKey: `loop-cycle:${projectId}:${values.objective.trim().toLowerCase()}`,
-                createdBy: ACTOR_ID,
               });
               if (result.cycle?._id) setSelectedId(result.cycle._id);
               setCreateOpen(false);

@@ -2,11 +2,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { Id } from "../_generated/dataModel";
 import {
   COMPANY_PERMISSIONS,
+  FACTORY_PERMISSIONS,
   listCompanyMemberships,
   roleGrantsPermission,
   teamMembershipGrantsPermission,
   requireCompanyAccess,
   requireCompanyPermission,
+  requireWorkspacePermission,
 } from "../lib/companyAccess";
 import { canAccessDeliveryRecord } from "../lib/deliveryAuthorization";
 
@@ -24,10 +26,12 @@ function fakeContext({
   identity = null,
   roleName = "Owner",
   permissions = ["settings.manage"],
+  assignmentScope = "tenant",
 }: {
   identity?: { subject: string; tokenIdentifier: string } | null;
   roleName?: string;
   permissions?: string[];
+  assignmentScope?: "tenant" | "project";
 } = {}) {
   const tenantA = {
     _id: "tenant-a" as Id<"tenants">,
@@ -50,6 +54,13 @@ function fakeContext({
     name: roleName,
     permissions,
   };
+  const projectA = {
+    _id: "project-a" as Id<"projects">,
+    _creationTime: 3,
+    tenantId: tenantA._id,
+    name: "Mission Control",
+    slug: "mission-control",
+  };
   const operator = {
     _id: "operator-a" as Id<"operators">,
     _creationTime: 4,
@@ -65,7 +76,9 @@ function fakeContext({
     _creationTime: 5,
     operatorId: operator._id,
     roleId: ownerRole._id,
-    scope: { type: "tenant" as const, id: tenantA._id },
+    scope: assignmentScope === "project"
+      ? { type: "project" as const, id: projectA._id }
+      : { type: "tenant" as const, id: tenantA._id },
     assignedAt: 1,
   };
   const tables: Record<string, any[]> = {
@@ -73,12 +86,14 @@ function fakeContext({
     operators: [operator],
     roles: [ownerRole],
     roleAssignments: [assignment],
+    projects: [projectA],
   };
   const all = Object.values(tables).flat();
 
   return {
     tenantA,
     tenantB,
+    projectA,
     ctx: {
       auth: { getUserIdentity: async () => identity },
       db: {
@@ -176,6 +191,24 @@ describe("company access", () => {
     });
     await expect(
       requireCompanyPermission(ctx, tenantA._id, COMPANY_PERMISSIONS.MANAGE_MEMBERS)
+    ).rejects.toThrow("does not permit");
+  });
+
+  it("derives factory authority from the authenticated project-scoped role", async () => {
+    const { ctx, projectA } = fakeContext({
+      identity: { subject: "auth-user", tokenIdentifier: "issuer|auth-user" },
+      roleName: "Developer",
+      permissions: ["tasks.write", "evidence.write"],
+      assignmentScope: "project",
+    });
+    const access = await requireWorkspacePermission(
+      ctx,
+      projectA._id,
+      FACTORY_PERMISSIONS.IMPROVE
+    );
+    expect(access.actorId).toBe("operator-a");
+    await expect(
+      requireWorkspacePermission(ctx, projectA._id, FACTORY_PERMISSIONS.APPROVE)
     ).rejects.toThrow("does not permit");
   });
 

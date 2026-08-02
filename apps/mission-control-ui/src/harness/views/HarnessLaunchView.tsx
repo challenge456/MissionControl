@@ -8,19 +8,19 @@ import { HarnessVerificationProof } from "../components/HarnessVerificationProof
 import { Button } from "@/components/ui/button";
 
 export function HarnessLaunchView({ projectId }: { projectId: Id<"projects"> | null }): JSX.Element {
-  const runs = useQuery(api.factory.workflows.list, {
-    projectId: projectId ?? undefined,
-    limit: 20,
-  });
+  const runs = useQuery(
+    api.factory.workflows.list,
+    projectId ? { projectId, limit: 20 } : "skip"
+  );
   const schedule = useMutation(api.factory.workflows.schedule);
 
   const handleRun = async (skillName: string) => {
+    if (!projectId) return;
     await schedule({
-      projectId: projectId ?? undefined,
+      projectId,
       skillName,
       schedule: "manual",
       idempotencyKey: `launch-${skillName}-${Date.now()}`,
-      actorId: "harness-ui",
     });
   };
 

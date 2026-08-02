@@ -1,4 +1,5 @@
 import { GitBranch } from "lucide-react";
+import { useCallback, useState } from "react";
 import type { MainView } from "../../TopNav";
 import { HarnessPage } from "../components/HarnessUi";
 import type { Id } from "../../../../../convex/_generated/dataModel";
@@ -14,6 +15,14 @@ export function HarnessLoopsView({
   projectId: Id<"projects"> | null;
   onNavigate: (view: MainView) => void;
 }): JSX.Element {
+  const [selectedCycleId, setSelectedCycleId] = useState<Id<"loopEngineeringCycles"> | null>(null);
+  const handleCycleScopeChange = useCallback(
+    (scope: { cycleId: Id<"loopEngineeringCycles"> | null }) => {
+      setSelectedCycleId(scope.cycleId);
+    },
+    []
+  );
+
   return (
     <HarnessPage
       title="Loop Engineering"
@@ -24,11 +33,15 @@ export function HarnessLoopsView({
         <HarnessLoopsDiagram />
         <section aria-labelledby="inner-loop-title">
           <h2 id="inner-loop-title" className="mb-3 text-[18px] font-semibold text-ink">Inner Attempts and Graph execution</h2>
-        <LoopEngineeringWorkspace projectId={projectId} onNavigate={onNavigate} />
+        <LoopEngineeringWorkspace
+          projectId={projectId}
+          onNavigate={onNavigate}
+          onCycleScopeChange={handleCycleScopeChange}
+        />
         </section>
         <section className="rounded-xl border border-line bg-surface-1 p-5" aria-labelledby="outer-loop-title">
           <h2 id="outer-loop-title" className="mb-4 text-[18px] font-semibold text-ink">Outer PR / CI gate</h2>
-          <HarnessMergeGatesPanel projectId={projectId} />
+          <HarnessMergeGatesPanel projectId={projectId} cycleId={selectedCycleId} />
         </section>
         <MetaLoopInboxPanel projectId={projectId} onNavigate={onNavigate} />
       </div>

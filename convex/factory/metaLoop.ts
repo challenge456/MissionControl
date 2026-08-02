@@ -5,7 +5,13 @@
 import { v } from "convex/values";
 import { action, internalMutation, mutation, query } from "../_generated/server";
 import { api, internal } from "../_generated/api";
+import type { Doc, Id } from "../_generated/dataModel";
 import { buildMetaMeasurement, sanitizeMetaSignalText } from "../lib/metaLoopSignals";
+import {
+  FACTORY_PERMISSIONS,
+  requireWorkspacePermission,
+  type FactoryPermission,
+} from "../lib/companyAccess";
 
 const kindArg = v.union(
   v.literal("VERIFIER"),
@@ -28,19 +34,33 @@ const statusArg = v.union(
   v.literal("RETIRED")
 );
 
+async function requireSuggestionPermission(
+  ctx: any,
+  suggestionId: Id<"metaLoopSuggestions">,
+  permission: FactoryPermission
+): Promise<{ suggestion: Doc<"metaLoopSuggestions">; access: Awaited<ReturnType<typeof requireWorkspacePermission>> }> {
+  const suggestion = await ctx.db.get(suggestionId) as Doc<"metaLoopSuggestions"> | null;
+  if (!suggestion?.projectId) {
+    throw new Error("Improvement proposal is unavailable or unauthorized");
+  }
+  const access = await requireWorkspacePermission(ctx, suggestion.projectId, permission);
+  return { suggestion, access };
+}
+
 export const listInbox = query({
   args: {
-    projectId: v.optional(v.id("projects")),
+    projectId: v.id("projects"),
     status: v.optional(statusArg),
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.VIEW);
     const status = args.status ?? "OPEN";
     let rows = await ctx.db
       .query("metaLoopSuggestions")
       .withIndex("by_status", (q) => q.eq("status", status))
       .collect();
-    if (args.projectId) rows = rows.filter((r) => r.projectId === args.projectId);
+    rows = rows.filter((r) => r.projectId === args.projectId);
     rows.sort((a, b) => b.createdAt - a.createdAt);
     return rows.slice(0, args.limit ?? 40);
   },
@@ -48,15 +68,15 @@ export const listInbox = query({
 
 export const get = query({
   args: { suggestionId: v.id("metaLoopSuggestions") },
-  handler: async (ctx, args) => ctx.db.get(args.suggestionId),
+  handler: async (ctx, args) =>
+    (await requireSuggestionPermission(ctx, args.suggestionId, FACTORY_PERMISSIONS.VIEW)).suggestion,
 });
 
 export const listHistory = query({
-  args: { projectId: v.optional(v.id("projects")), limit: v.optional(v.number()) },
+  args: { projectId: v.id("projects"), limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
-    let rows = args.projectId
-      ? await ctx.db.query("metaLoopSuggestions").withIndex("by_project", (q) => q.eq("projectId", args.projectId)).collect()
-      : await ctx.db.query("metaLoopSuggestions").collect();
+    await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.VIEW);
+    let rows = await ctx.db.query("metaLoopSuggestions").withIndex("by_project", (q) => q.eq("projectId", args.projectId)).collect();
     rows = rows.filter((row) => row.status !== "OPEN").sort((a, b) => (b.resolvedAt ?? b.createdAt) - (a.resolvedAt ?? a.createdAt));
     return rows.slice(0, args.limit ?? 20);
   },
@@ -64,10 +84,11 @@ export const listHistory = query({
 
 export const seedDemoSuggestions = mutation({
   args: {
-    projectId: v.optional(v.id("projects")),
+    projectId: v.id("projects"),
     confirmation: v.string(),
   },
   handler: async (ctx, args) => {
+    await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.IMPROVE);
     if (process.env.ALLOW_DEMO_SEEDING !== "true" || args.confirmation !== "SEED_DEMO_META_LOOP") {
       throw new Error("Demo meta-loop seeding is disabled outside an explicit development fixture run");
     }
@@ -125,8 +146,11 @@ export const applyResolution = internalMutation({
     reason: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const row = await ctx.db.get(args.suggestionId);
-    if (!row) throw new Error("Suggestion not found");
+    const { suggestion: row } = await requireSuggestionPermission(
+      ctx,
+      args.suggestionId,
+      FACTORY_PERMISSIONS.IMPROVE
+    );
     await ctx.db.patch(args.suggestionId, {
       status: args.status,
       workOrderId: args.workOrderId,
@@ -154,6 +178,7 @@ export const resolve = action({
   args: {
     suggestionId: v.id("metaLoopSuggestions"),
     action: v.union(v.literal("ACCEPT"), v.literal("DISMISS")),
+    /** @deprecated Browser actor labels are ignored; authority is server-derived. */
     actorId: v.optional(v.string()),
     reason: v.optional(v.string()),
   },
@@ -161,7 +186,12 @@ export const resolve = action({
     const suggestion = await ctx.runQuery(api.factory.metaLoop.get, { suggestionId: args.suggestionId });
     if (!suggestion) throw new Error("Suggestion not found");
     if (suggestion.status !== "OPEN") throw new Error("Only open suggestions can be resolved");
-    const actorId = args.actorId?.trim() || "operator";
+    if (!suggestion.projectId) throw new Error("A workspace-scoped suggestion is required");
+    const authorization = await ctx.runQuery(
+      internal.companyContext.authorizeFactoryAction,
+      { projectId: suggestion.projectId, permission: FACTORY_PERMISSIONS.APPROVE }
+    );
+    const actorId = authorization.actorId;
     if (args.action === "DISMISS") {
       const reason = args.reason?.trim();
       if (!reason) throw new Error("A dismissal reason is required");
@@ -173,7 +203,6 @@ export const resolve = action({
       });
       return { suggestionId: String(args.suggestionId) };
     }
-    if (!suggestion.projectId) throw new Error("A workspace-scoped suggestion is required before creating governed work");
     const project = await ctx.runQuery(api.projects.get, { projectId: suggestion.projectId });
     if (!project) throw new Error("Suggestion workspace not found");
     if (!project.githubRepo) throw new Error("Connect an approved repository before accepting repository-changing improvement work");
@@ -337,8 +366,11 @@ export const recordMeasurement = mutation({
     evidenceRefs: v.array(v.string()),
   },
   handler: async (ctx, args) => {
-    const row = await ctx.db.get(args.suggestionId);
-    if (!row) throw new Error("Suggestion not found");
+    const { suggestion: row } = await requireSuggestionPermission(
+      ctx,
+      args.suggestionId,
+      FACTORY_PERMISSIONS.IMPROVE
+    );
     if (!row.workOrderId) throw new Error("Measurement requires linked governed work");
     if (args.evidenceRefs.length === 0) throw new Error("Measurement evidence is required");
     const measurement = buildMetaMeasurement(args);
@@ -376,12 +408,17 @@ export const transitionLifecycle = mutation({
   args: {
     suggestionId: v.id("metaLoopSuggestions"),
     toStatus: v.union(v.literal("IMPLEMENTED"), v.literal("VERIFIED"), v.literal("ROLLED_BACK"), v.literal("RETIRED")),
-    actorId: v.string(),
+    /** @deprecated Browser actor labels are ignored; authority is server-derived. */
+    actorId: v.optional(v.string()),
     reason: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const row = await ctx.db.get(args.suggestionId);
-    if (!row) throw new Error("Suggestion not found");
+    const { suggestion: row, access } = await requireSuggestionPermission(
+      ctx,
+      args.suggestionId,
+      FACTORY_PERMISSIONS.APPROVE
+    );
+    const actorId = access.actorId;
     const allowed: Record<string, string[]> = {
       WORK_ORDERED: ["IMPLEMENTED", "ROLLED_BACK", "RETIRED"],
       IMPLEMENTED: ["VERIFIED", "ROLLED_BACK", "RETIRED"],
@@ -403,7 +440,7 @@ export const transitionLifecycle = mutation({
     await ctx.db.insert("activities", {
       projectId: row.projectId,
       actorType: "HUMAN",
-      actorId: args.actorId,
+      actorId,
       action: `META_LOOP_${args.toStatus}`,
       description: `${row.title} transitioned to ${args.toStatus}${reason ? `: ${reason}` : ""}`,
       targetType: "META_LOOP_SUGGESTION",
@@ -415,7 +452,7 @@ export const transitionLifecycle = mutation({
 
 export const create = mutation({
   args: {
-    projectId: v.optional(v.id("projects")),
+    projectId: v.id("projects"),
     kind: kindArg,
     title: v.string(),
     summary: v.string(),
@@ -429,6 +466,7 @@ export const create = mutation({
     dedupeKey: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.IMPROVE);
     return ctx.db.insert("metaLoopSuggestions", {
       projectId: args.projectId,
       kind: args.kind,

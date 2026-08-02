@@ -19,8 +19,18 @@ export const COMPANY_PERMISSIONS = {
   APPROVE_DELIVERY: "delivery.approve",
 } as const;
 
+export const FACTORY_PERMISSIONS = {
+  VIEW: "factory.read",
+  IMPROVE: "factory.improve",
+  APPROVE: "factory.approve",
+  MANAGE_AUTOMATION: "factory.automation.manage",
+} as const;
+
 export type CompanyPermission =
   (typeof COMPANY_PERMISSIONS)[keyof typeof COMPANY_PERMISSIONS];
+
+export type FactoryPermission =
+  (typeof FACTORY_PERMISSIONS)[keyof typeof FACTORY_PERMISSIONS];
 
 export interface CompanyMembership {
   tenant: Doc<"tenants">;
@@ -134,6 +144,61 @@ export async function getOperatorRoles(
     await Promise.all(applicable.map((assignment) => ctx.db.get(assignment.roleId)))
   ).filter((role): role is Doc<"roles"> => Boolean(role && role.tenantId === tenantId));
   return roles;
+}
+
+function roleGrantsFactoryPermission(
+  role: Doc<"roles">,
+  permission: FactoryPermission
+): boolean {
+  if (role.permissions.includes(permission) || isCompanyAdminRole(role)) return true;
+
+  const deliveryPermission: Partial<Record<FactoryPermission, CompanyPermission>> = {
+    [FACTORY_PERMISSIONS.IMPROVE]: COMPANY_PERMISSIONS.UPDATE_DELIVERY,
+    [FACTORY_PERMISSIONS.APPROVE]: COMPANY_PERMISSIONS.APPROVE_DELIVERY,
+    [FACTORY_PERMISSIONS.MANAGE_AUTOMATION]: COMPANY_PERMISSIONS.MANAGE_WORKSPACES,
+  };
+  const mappedPermission = deliveryPermission[permission];
+  if (mappedPermission && roleGrantsPermission(role, mappedPermission)) return true;
+
+  const legacyPermissionAliases: Record<FactoryPermission, string[]> = {
+    [FACTORY_PERMISSIONS.VIEW]: [
+      "missions.read",
+      "missions.write",
+      "workorders.read",
+      "workorders.write",
+      "tasks.read",
+      "tasks.view",
+      "tasks.write",
+      "tasks.update",
+      "telemetry.read",
+      "evidence.read",
+      "evidence.write",
+      "approvals.read",
+      "approvals.view",
+      "approvals.decide",
+    ],
+    [FACTORY_PERMISSIONS.IMPROVE]: [
+      "missions.write",
+      "workorders.write",
+      "tasks.write",
+      "tasks.update",
+      "tasks.create",
+      "evidence.write",
+    ],
+    [FACTORY_PERMISSIONS.APPROVE]: [
+      "missions.approve",
+      "workorders.dispatch",
+      "approvals.decide",
+    ],
+    [FACTORY_PERMISSIONS.MANAGE_AUTOMATION]: [
+      "policy.manage",
+      "deployments.activate",
+      "settings.manage",
+    ],
+  };
+  return legacyPermissionAliases[permission].some((candidate) =>
+    role.permissions.includes(candidate)
+  );
 }
 
 async function getAuthenticatedOperators(ctx: CompanyCtx) {
@@ -312,4 +377,64 @@ export async function listAccessibleWorkspaces(
     }
   }
   return accessible;
+}
+
+export async function requireWorkspacePermission(
+  ctx: CompanyCtx,
+  projectId: Id<"projects">,
+  permission: FactoryPermission
+) {
+  const project = await ctx.db.get(projectId);
+  if (!project?.tenantId) {
+    throw new Error("Workspace is unavailable or unauthorized.");
+  }
+  const access = await requireWorkspaceAccess(
+    ctx,
+    project.tenantId,
+    projectId
+  );
+  const { membership } = access;
+  if (membership.mode === "DEMO") {
+    return {
+      membership,
+      project,
+      actorId: "demo:company-administrator",
+      permission,
+    };
+  }
+  const operator = membership.operatorId
+    ? await ctx.db.get(membership.operatorId)
+    : null;
+  if (!operator) throw new Error("Authenticated operator membership is required.");
+  if (permission === FACTORY_PERMISSIONS.VIEW) {
+    return {
+      membership,
+      project,
+      actorId: String(operator._id),
+      permission,
+    };
+  }
+  const roles = await getOperatorRoles(ctx, operator, project.tenantId, { projectId });
+  const teamPermission = permission === FACTORY_PERMISSIONS.IMPROVE
+    ? COMPANY_PERMISSIONS.UPDATE_DELIVERY
+    : permission === FACTORY_PERMISSIONS.APPROVE
+      ? COMPANY_PERMISSIONS.APPROVE_DELIVERY
+      : undefined;
+  const teamAuthorized = teamPermission
+    ? access.teamMemberships?.some((item) =>
+        teamMembershipGrantsPermission(item.role, teamPermission)
+      )
+    : false;
+  if (
+    !roles.some((role) => roleGrantsFactoryPermission(role, permission)) &&
+    !teamAuthorized
+  ) {
+    throw new Error("Your workspace role does not permit this factory action.");
+  }
+  return {
+    membership,
+    project,
+    actorId: String(operator._id),
+    permission,
+  };
 }

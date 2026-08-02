@@ -1,11 +1,12 @@
 import { cn } from "@/lib/utils";
 import { ArrowDown, ArrowRight } from "lucide-react";
+import { LOOP_SEMANTICS } from "../lib/loopSemantics";
 
 const LOOP_STAGES = [
   {
     id: "inner",
     title: "Inner loop",
-    subtitle: "Drives automation",
+    subtitle: LOOP_SEMANTICS.inner.label,
     color: "border-registry-accent/40 bg-registry-accent-soft",
     items: [
       "Unit tests & linters (agent-maintained)",
@@ -18,7 +19,7 @@ const LOOP_STAGES = [
   {
     id: "outer",
     title: "Outer loop",
-    subtitle: "Drives autonomy",
+    subtitle: LOOP_SEMANTICS.outer.label,
     color: "border-violet-400/40 bg-violet-500/10",
     items: [
       "Multi-lens agentic code review",
@@ -31,7 +32,7 @@ const LOOP_STAGES = [
   {
     id: "meta",
     title: "Meta loop",
-    subtitle: "Drives quality",
+    subtitle: LOOP_SEMANTICS.meta.label,
     color: "border-amber-400/40 bg-amber-500/10",
     items: [
       "Mine PR comments & CI failures",
