@@ -1,6 +1,12 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { listCompanyMemberships, requireCompanyAccess, requireWorkspaceAccess } from "./lib/companyAccess";
+import {
+  COMPANY_PERMISSIONS,
+  listCompanyMemberships,
+  requireCompanyAccess,
+  requireCompanyPermission,
+  requireWorkspaceAccess,
+} from "./lib/companyAccess";
 
 function exceedsLength(value: string | undefined, maximum: number): boolean {
   return Boolean(value && value.trim().length > maximum);
@@ -98,7 +104,11 @@ export const updateCompany = mutation({
     expectedUpdatedAt: v.number(),
   },
   handler: async (ctx, args) => {
-    const membership = await requireCompanyAccess(ctx, args.tenantId, { manage: true });
+    const membership = await requireCompanyPermission(
+      ctx,
+      args.tenantId,
+      COMPANY_PERMISSIONS.MANAGE_COMPANY
+    );
     const name = args.name.trim();
     if (!name) return { success: false, error: "Company name is required." };
     if (exceedsLength(name, 120)) {
@@ -149,7 +159,11 @@ export const createWorkspace = mutation({
     status: v.union(v.literal("ACTIVE"), v.literal("PAUSED")),
   },
   handler: async (ctx, args) => {
-    const membership = await requireCompanyAccess(ctx, args.tenantId, { manage: true });
+    const membership = await requireCompanyPermission(
+      ctx,
+      args.tenantId,
+      COMPANY_PERMISSIONS.CREATE_WORKSPACES
+    );
     const name = args.name.trim();
     const slug = args.slug.trim();
     if (!name) return { success: false, error: "Workspace name is required." };

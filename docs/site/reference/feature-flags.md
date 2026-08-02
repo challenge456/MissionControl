@@ -29,6 +29,12 @@ Company-context local testing additionally requires
 `MC_ALLOW_ANONYMOUS_COMPANY_CONTEXT=1` on the Convex backend. This is an
 explicit demo adapter and must remain disabled in production.
 
+Authentication is an independent deployment mode, not a feature flag. Keep
+`VITE_AUTH_MODE` omitted or set to `legacy` during the compatibility rollout;
+use `demo` only for local testing; and select `clerk` only after the Clerk UI
+key and Convex issuer are configured. See the repository document
+`docs/security/clerk-company-authorization.md`.
+
 ## Documentation
 
 Full list: `docs/FEATURE_FLAGS.md` in repo root.
