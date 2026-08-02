@@ -2189,6 +2189,22 @@ export const decideApprovalDecision = mutation({
       metadata: { ...(approvalDecision.metadata ?? {}), ...(args.metadata ?? {}) },
     });
 
+    if (["REJECTED", "REVISION_REQUESTED"].includes(status) && workOrder.projectId) {
+      await ctx.scheduler.runAfter(0, internal.factory.metaLoop.ingestSignal, {
+        projectId: workOrder.projectId,
+        kind: "MAINTENANCE",
+        signalClass: "APPROVAL_REJECTION",
+        target: `${approvalDecision.approvalType}:${workOrder.workflowId ?? "work-order"}`,
+        title: `Reduce repeated ${approvalDecision.approvalType} rejection`,
+        summary: reason,
+        sourceRef: `approval:${approvalDecision._id}`,
+        sourceLinks: [`work-order:${workOrder._id}`, `approval:${approvalDecision._id}`],
+        confidence: 0.8,
+        impact: workOrder.riskLevel,
+        payload: { workOrderId: workOrder._id, approvalDecisionId: approvalDecision._id },
+      });
+    }
+
     await logWorkOrderEvent(ctx, {
       tenantId: workOrder.tenantId,
       projectId: workOrder.projectId,
@@ -2353,6 +2369,22 @@ export const recordVerificationReceipt = mutation({
       recordedAt: Date.now(),
       metadata: args.metadata,
     });
+
+    if (["FAILED", "WAIVED"].includes(args.status) && workOrder.projectId) {
+      await ctx.scheduler.runAfter(0, internal.factory.metaLoop.ingestSignal, {
+        projectId: workOrder.projectId,
+        kind: "VERIFIER",
+        signalClass: args.status === "WAIVED" ? "WAIVED_RECEIPT" : "VERIFICATION_FAILURE",
+        target: `${workOrder.workflowId ?? "work-order"}:${args.acceptanceCriterionId}`,
+        title: `${args.status === "WAIVED" ? "Remove waiver need" : "Prevent verification failure"}: ${args.acceptanceCriterionId}`,
+        summary: args.exceptionOrWaiver ?? args.result ?? `Verification ${args.status.toLowerCase()}`,
+        sourceRef: `verification-receipt:${verificationReceiptId}`,
+        sourceLinks: [args.evidenceLocation ?? `work-order:${workOrder._id}`],
+        confidence: 0.85,
+        impact: workOrder.riskLevel,
+        payload: { workOrderId: workOrder._id, workflowRunId: run._id, verificationReceiptId },
+      });
+    }
 
     await logWorkOrderEvent(ctx, {
       tenantId: workOrder.tenantId,

@@ -67,16 +67,23 @@ export function mapCheckRunsToSignals(
   }
 
   const completed = checks.filter((c) => c.status === "completed");
+  const hasPending = checks.some((c) => c.status === "in_progress" || c.status === "queued");
+  const hasBlockingConclusion = completed.some((c) =>
+    ["failure", "timed_out", "cancelled", "action_required", "startup_failure"].includes(
+      c.conclusion ?? ""
+    )
+  );
   let ciStatus: "PASS" | "FAIL" | "PENDING" | "UNKNOWN" = "UNKNOWN";
-  if (completed.length > 0) {
-    if (completed.every((c) => c.conclusion === "success" || c.conclusion === "skipped")) {
-      ciStatus = "PASS";
-    } else if (completed.some((c) => c.conclusion === "failure" || c.conclusion === "timed_out")) {
-      ciStatus = "FAIL";
-    } else {
-      ciStatus = "PENDING";
-    }
-  } else if (checks.some((c) => c.status === "in_progress" || c.status === "queued")) {
+  if (hasBlockingConclusion) {
+    ciStatus = "FAIL";
+  } else if (hasPending) {
+    ciStatus = "PENDING";
+  } else if (
+    completed.length > 0 &&
+    completed.every((c) => ["success", "skipped", "neutral"].includes(c.conclusion ?? ""))
+  ) {
+    ciStatus = "PASS";
+  } else if (completed.length > 0) {
     ciStatus = "PENDING";
   }
 
@@ -214,6 +221,18 @@ export function extractPrFromWebhookEvent(event: string, payload: Record<string,
   prUrl: string;
 } | null {
   if (event === "pull_request") {
+    const pr = payload.pull_request as { number?: number; html_url?: string } | undefined;
+    const repo = payload.repository as { full_name?: string } | undefined;
+    if (!pr?.number || !repo?.full_name) return null;
+    const [owner, name] = repo.full_name.split("/");
+    return {
+      owner,
+      repo: name,
+      prNumber: pr.number,
+      prUrl: pr.html_url ?? `https://github.com/${owner}/${name}/pull/${pr.number}`,
+    };
+  }
+  if (event === "pull_request_review") {
     const pr = payload.pull_request as { number?: number; html_url?: string } | undefined;
     const repo = payload.repository as { full_name?: string } | undefined;
     if (!pr?.number || !repo?.full_name) return null;

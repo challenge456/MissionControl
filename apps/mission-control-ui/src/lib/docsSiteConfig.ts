@@ -207,6 +207,18 @@ export const DOCS_SITE_SECTIONS: DocsSiteSection[] = [
         description: "Git-base public Convex validator comparison and version enforcement",
         path: "software-factory-enhancement/testing/runtime-contract-ci-guard-results",
       },
+      {
+        id: "software-factory-research-lab-recovery-results",
+        title: "Software Factory Research Lab Recovery",
+        description: "Original 115-task inventory, recovery evidence, and runtime routing",
+        path: "software-factory-enhancement/testing/software-factory-research-lab-recovery-results",
+      },
+      {
+        id: "three-loop-engineering-plan",
+        title: "Inner, Outer, and Meta Loop Plan",
+        description: "Audit and bounded plan for closing the software-factory learning loop",
+        path: "software-factory-enhancement/three-loop-engineering-plan",
+      },
     ],
   },
   {

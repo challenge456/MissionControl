@@ -6,10 +6,15 @@ import {
   buildMutationTestingReport,
   type PrCheckSignals,
 } from "../lib/harnessPrChecks";
+import { ciBlockCanRecover } from "../lib/prEvaluation";
 
 export const applyCiIngest = internalMutation({
   args: {
     projectId: v.optional(v.id("projects")),
+    workOrderId: v.optional(v.id("workOrders")),
+    workflowRunId: v.optional(v.id("workflowRuns")),
+    taskId: v.optional(v.id("tasks")),
+    loopEngineeringCycleId: v.optional(v.id("loopEngineeringCycles")),
     releaseDeploymentId: v.optional(v.id("deployments")),
     prUrl: v.string(),
     prNumber: v.optional(v.number()),
@@ -64,6 +69,7 @@ export const applyCiIngest = internalMutation({
       })
     ),
     sourceRef: v.optional(v.string()),
+    sourceEventId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     if (args.releaseDeploymentId) {
@@ -86,14 +92,36 @@ export const applyCiIngest = internalMutation({
     const mutationTesting = buildMutationTestingReport(signals);
     const now = Date.now();
 
-    const existing = await ctx.db
-      .query("harnessPrChecks")
+    if (args.sourceEventId) {
+      const duplicateEvent = await ctx.db.query("harnessPrChecks")
+        .withIndex("by_source_event", (q) => q.eq("sourceEventId", args.sourceEventId))
+        .first();
+      if (duplicateEvent) return duplicateEvent._id;
+    }
+    const previousRows = await ctx.db.query("harnessPrChecks")
       .withIndex("by_pr_url", (q) => q.eq("prUrl", args.prUrl))
-      .unique();
-    const releaseDeploymentId = args.releaseDeploymentId ?? existing?.releaseDeploymentId;
+      .collect();
+    previousRows.sort((a, b) => b.syncedAt - a.syncedAt);
+    const previous = previousRows[0];
+    const existing = args.headSha
+      ? await ctx.db.query("harnessPrChecks")
+          .withIndex("by_pr_head", (q) => q.eq("prUrl", args.prUrl).eq("headSha", args.headSha))
+          .first()
+      : previousRows.find((row) => !row.headSha);
+    const priorEvaluation = existing?.previousEvaluationId
+      ? await ctx.db.get(existing.previousEvaluationId)
+      : previous && previous._id !== existing?._id
+        ? previous
+        : undefined;
+    const releaseDeploymentId = args.releaseDeploymentId ?? existing?.releaseDeploymentId ?? previous?.releaseDeploymentId;
 
     const doc = {
       projectId: args.projectId,
+      workOrderId: args.workOrderId ?? existing?.workOrderId ?? previous?.workOrderId,
+      workflowRunId: args.workflowRunId ?? existing?.workflowRunId ?? previous?.workflowRunId,
+      taskId: args.taskId ?? existing?.taskId ?? previous?.taskId,
+      loopEngineeringCycleId: args.loopEngineeringCycleId ?? existing?.loopEngineeringCycleId ?? previous?.loopEngineeringCycleId,
+      previousEvaluationId: existing?.previousEvaluationId ?? (previous && previous._id !== existing?._id ? previous._id : undefined),
       releaseDeploymentId,
       prUrl: args.prUrl,
       prNumber: args.prNumber,
@@ -105,6 +133,8 @@ export const applyCiIngest = internalMutation({
       ciProvider: "github",
       source: "GITHUB" as const,
       sourceRef: args.sourceRef ?? args.headSha,
+      sourceEventId: args.sourceEventId,
+      headSha: args.headSha,
       changeReviewLenses,
       mutationTesting,
       syncedAt: now,
@@ -121,6 +151,64 @@ export const applyCiIngest = internalMutation({
       : await ctx.db.insert("harnessPrChecks", doc);
     if (existing) {
       await ctx.db.patch(existing._id, doc);
+    }
+    const linkedWorkOrderId = doc.workOrderId;
+    if (linkedWorkOrderId && doc.ciStatus === "FAIL") {
+      const workOrder = await ctx.db.get(linkedWorkOrderId);
+      if (workOrder && !["CANCELED", "SUPERSEDED"].includes(workOrder.state)) {
+        await ctx.db.patch(linkedWorkOrderId, {
+          state: "BLOCKED",
+          blockingIssue: `Required CI failed for ${args.headSha ?? args.prUrl}`,
+          requiredHumanAction: "Start one bounded correction Attempt on this WorkOrder after reviewing the failed checks.",
+          updatedAt: now,
+        });
+      }
+    }
+    if (linkedWorkOrderId && doc.ciStatus === "PASS") {
+      const workOrder = await ctx.db.get(linkedWorkOrderId);
+      if (workOrder && ciBlockCanRecover({
+        ciStatus: doc.ciStatus,
+        blockingIssue: workOrder.blockingIssue,
+        priorHeadSha: priorEvaluation?.headSha,
+        headSha: doc.headSha,
+      })) {
+        await ctx.db.patch(linkedWorkOrderId, {
+          state: "AWAITING_APPROVAL",
+          blockingIssue: undefined,
+          requiredHumanAction: "Review the passing replacement head and decide merge approval.",
+          updatedAt: now,
+        });
+        await ctx.db.insert("workOrderEvents", {
+          tenantId: workOrder.tenantId,
+          projectId: workOrder.projectId,
+          workOrderId: workOrder._id,
+          eventType: "STATE_SYNCED",
+          actorType: "SYSTEM",
+          summary: `Passing CI on ${doc.headSha} cleared the prior-head CI block`,
+          timestamp: now,
+          metadata: {
+            priorEvaluationId: priorEvaluation?._id,
+            evaluationId: id,
+            priorHeadSha: priorEvaluation?.headSha,
+            headSha: doc.headSha,
+          },
+        });
+      }
+    }
+    if (doc.projectId && doc.ciStatus === "FAIL") {
+      await ctx.scheduler.runAfter(0, internal.factory.metaLoop.ingestSignal, {
+        projectId: doc.projectId,
+        kind: "EVAL_SCENARIO",
+        signalClass: "CI_FAILURE",
+        target: `${args.repoFullName}:${args.checkRuns?.filter((check) => check.conclusion === "failure").map((check) => check.name).sort().join(",") || "required-check"}`,
+        title: `Prevent recurring CI failure in ${args.repoFullName}`,
+        summary: `Required CI failed for ${args.prUrl} at head ${args.headSha ?? "unknown"}.`,
+        sourceRef: args.sourceEventId ?? args.headSha ?? args.prUrl,
+        sourceLinks: [args.prUrl, ...(args.ciRunUrl ? [args.ciRunUrl] : [])],
+        confidence: 0.9,
+        impact: "HIGH",
+        payload: { prUrl: args.prUrl, headSha: args.headSha, workOrderId: linkedWorkOrderId },
+      });
     }
     if (releaseDeploymentId) {
       await ctx.scheduler.runAfter(0, internal.governance.releaseGateAutomation.fromGithubCi, { harnessPrCheckId: id });

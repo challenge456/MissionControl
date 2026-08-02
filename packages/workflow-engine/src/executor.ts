@@ -652,6 +652,19 @@ export class WorkflowExecutor {
       targetType: "WORKFLOW_RUN",
       targetId: run._id,
     });
+    if (run.workflowId === "loop-engineering") {
+      try {
+        await this.client.action(api.loopEngineering.projectWorkflowRun, {
+          workflowRunId: run._id,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        await this.client.mutation(api.loopEngineering.recordProjectionFailure, {
+          workflowRunId: run._id,
+          error: message,
+        });
+      }
+    }
   }
 
   private async failRun(run: any, reason: string): Promise<void> {

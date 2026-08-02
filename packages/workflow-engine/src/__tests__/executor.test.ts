@@ -8,6 +8,7 @@ import {
 function executorWithClient(client: {
   query?: ReturnType<typeof vi.fn>;
   mutation?: ReturnType<typeof vi.fn>;
+  action?: ReturnType<typeof vi.fn>;
 }) {
   const executor = new WorkflowExecutor({
     convexUrl: "https://example.convex.cloud",
@@ -15,6 +16,7 @@ function executorWithClient(client: {
   (executor as any).client = {
     query: client.query ?? vi.fn(),
     mutation: client.mutation ?? vi.fn(),
+    action: client.action ?? vi.fn(),
   };
   return executor as any;
 }
@@ -423,5 +425,40 @@ describe("WorkflowExecutor reliability", () => {
     expect(await workflowEvidenceDigest("evidence")).toBe(first);
     expect(await workflowEvidenceDigest("different evidence")).not.toBe(first);
     expect(first).toMatch(/^sha256:[0-9a-f]{64}$/);
+  });
+
+  it("projects completed Loop Engineering output exactly once at the completion handoff", async () => {
+    const mutation = vi.fn().mockResolvedValue({ success: true });
+    const action = vi.fn().mockResolvedValue({ projected: true });
+    const executor = executorWithClient({ mutation, action });
+
+    await executor.completeRun({
+      _id: "workflow-run-id",
+      runId: "run-123",
+      projectId: "project-1",
+      workflowId: "loop-engineering",
+    });
+
+    expect(action).toHaveBeenCalledTimes(1);
+    expect(action.mock.calls[0][1]).toEqual({ workflowRunId: "workflow-run-id" });
+    expect(mutation).toHaveBeenCalledTimes(2);
+  });
+
+  it("records an actionable projection failure without falsifying the completed run", async () => {
+    const mutation = vi.fn().mockResolvedValue({ success: true });
+    const action = vi.fn().mockRejectedValue(new Error("approval digest mismatch"));
+    const executor = executorWithClient({ mutation, action });
+
+    await executor.completeRun({
+      _id: "workflow-run-id",
+      runId: "run-123",
+      projectId: "project-1",
+      workflowId: "loop-engineering",
+    });
+
+    expect(mutation.mock.calls[2][1]).toEqual({
+      workflowRunId: "workflow-run-id",
+      error: "approval digest mismatch",
+    });
   });
 });

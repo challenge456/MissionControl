@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mapCheckRunsToSignals } from "../lib/githubCiIngest";
+import { extractPrFromWebhookEvent, mapCheckRunsToSignals, verifyGithubWebhookSignature } from "../lib/githubCiIngest";
 import { buildFileTreeFromPaths } from "../lib/fileTree";
 
 describe("githubCiIngest", () => {
@@ -12,6 +12,37 @@ describe("githubCiIngest", () => {
     expect(mapped.ciStatus).toBe("FAIL");
     expect(mapped.testPassCount).toBe(1);
     expect(mapped.testFailCount).toBe(1);
+  });
+
+  it("does not report pass while any GitHub check is still pending", () => {
+    const mapped = mapCheckRunsToSignals([
+      { name: "Vercel Preview", status: "completed", conclusion: "success" },
+      { name: "unit-tests", status: "in_progress", conclusion: null },
+      { name: "build", status: "queued", conclusion: null },
+    ]);
+
+    expect(mapped.ciStatus).toBe("PENDING");
+  });
+
+  it("fails closed when a webhook signature or secret is missing", async () => {
+    expect(await verifyGithubWebhookSignature("{}", null, "secret")).toBe(false);
+    expect(await verifyGithubWebhookSignature("{}", "sha256=abc", "")).toBe(false);
+  });
+
+  it("correlates pull-request and check-run payloads to the same PR", () => {
+    const repository = { full_name: "owner/repo" };
+    expect(extractPrFromWebhookEvent("pull_request", {
+      repository,
+      pull_request: { number: 42, html_url: "https://github.com/owner/repo/pull/42" },
+    })).toMatchObject({ owner: "owner", repo: "repo", prNumber: 42 });
+    expect(extractPrFromWebhookEvent("check_run", {
+      repository,
+      check_run: { pull_requests: [{ number: 42 }] },
+    })).toMatchObject({ owner: "owner", repo: "repo", prNumber: 42 });
+    expect(extractPrFromWebhookEvent("pull_request_review", {
+      repository,
+      pull_request: { number: 42 },
+    })).toMatchObject({ owner: "owner", repo: "repo", prNumber: 42 });
   });
 });
 

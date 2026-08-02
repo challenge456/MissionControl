@@ -1012,6 +1012,9 @@ export const updateStatus = mutation({
         errorSummary: args.failureReason,
         idempotencyKey: `run-failed:${run.runId}`,
       });
+      await ctx.scheduler.runAfter(0, internal.factory.metaLoop.ingestWorkflowFailure, {
+        workflowRunId: run._id,
+      });
     }
 
     if (args.status === "COMPLETED") {

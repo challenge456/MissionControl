@@ -96,7 +96,7 @@ function parseDate(value: string): number | undefined {
 function PhaseProgress({ phase }: { phase: LoopCycle["phase"] }) {
   const currentIndex = PHASES.indexOf(phase);
   return (
-    <ol className="grid gap-2 md:grid-cols-3 xl:grid-cols-9" aria-label="Graph Engineering phases">
+    <ol className="grid gap-2 md:grid-cols-3 xl:grid-cols-9" aria-label="Loop Engineering phases">
       {PHASES.map((item, index) => {
         const complete = currentIndex > index || phase === "COMPLETE";
         const active = item === phase;
@@ -144,6 +144,7 @@ export function LoopEngineeringWorkspace({
   );
   const tasks = useQuery(api.tasks.listAll, projectId ? { projectId } : {});
   const createCycle = useAction(api.loopEngineering.create);
+  const projectWorkflowRun = useAction(api.loopEngineering.projectWorkflowRun);
   const dispatchGraph = useMutation(api.workOrders.dispatch);
   const addSource = useMutation(api.loopEngineering.addSource);
   const decideSource = useMutation(api.loopEngineering.decideSource);
@@ -198,7 +199,7 @@ export function LoopEngineeringWorkspace({
       await operation();
       toast(success);
     } catch (error) {
-      toast(error instanceof Error ? error.message : "Graph Engineering action failed", true);
+      toast(error instanceof Error ? error.message : "Loop Engineering action failed", true);
     } finally {
       setBusy(false);
     }
@@ -208,7 +209,7 @@ export function LoopEngineeringWorkspace({
     return (
       <div className="rounded-xl border border-line bg-surface-1 p-8 text-center">
         <p className="text-sm text-ink-secondary">
-          Select a workspace before starting a Graph Engineering cycle.
+          Select a workspace before starting a Loop Engineering cycle.
         </p>
       </div>
     );
@@ -232,7 +233,7 @@ export function LoopEngineeringWorkspace({
             onValueChange={(value) => setSelectedId(value as Id<"loopEngineeringCycles">)}
             disabled={cycles.length === 0}
           >
-            <SelectTrigger className="w-[320px]" aria-label="Selected Graph Engineering cycle">
+            <SelectTrigger className="w-[320px]" aria-label="Selected Loop Engineering cycle">
               <SelectValue placeholder="No cycles yet" />
             </SelectTrigger>
             <SelectContent>
@@ -295,6 +296,19 @@ export function LoopEngineeringWorkspace({
             }}
             onInspect={() => latestGraphRun && setInspectedRunId(latestGraphRun._id)}
             onOpenWorkOrder={() => onNavigate("control-work-orders")}
+          />
+
+          <ProjectionStatusCard
+            cycle={cycle}
+            workflowRun={latestGraphRun}
+            busy={busy}
+            onSync={() => {
+              if (!latestGraphRun) return;
+              void run(
+                () => projectWorkflowRun({ workflowRunId: latestGraphRun._id }),
+                "Completed workflow evidence synchronized"
+              );
+            }}
           />
 
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -545,7 +559,7 @@ export function LoopEngineeringWorkspace({
               if (result.cycle?._id) setSelectedId(result.cycle._id);
               setCreateOpen(false);
             },
-            "Graph Engineering cycle created"
+            "Loop Engineering cycle created"
           )
         }
       />
@@ -720,6 +734,66 @@ function GraphMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
+function ProjectionStatusCard({
+  cycle,
+  workflowRun,
+  busy,
+  onSync,
+}: {
+  cycle: LoopCycle;
+  workflowRun?: Doc<"workflowRuns"> | null;
+  busy: boolean;
+  onSync: () => void;
+}) {
+  const completed = workflowRun?.status === "COMPLETED";
+  const currentRunProjected = completed
+    && cycle.latestWorkflowRunId === workflowRun?._id
+    && cycle.projectionStatus === "PROJECTED";
+  const needsSync = completed && !currentRunProjected;
+  const summary = cycle.projectionSummary;
+  const status = cycle.projectionStatus ?? (completed ? "PENDING" : "PENDING");
+  const tone = status === "PROJECTED" ? "success" as const : status === "FAILED" ? "error" as const : "warning" as const;
+
+  return (
+    <section className="rounded-xl border border-line bg-surface-1 p-4" aria-labelledby="projection-status-title">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 id="projection-status-title" className="text-[15px] font-semibold text-ink">
+              Workflow evidence projection
+            </h2>
+            <StatusBadge tone={tone}>{humanize(status)}</StatusBadge>
+          </div>
+          <p className="mt-1 text-[12.5px] text-ink-secondary">
+            Completed graph output is imported once into the cycle ledger; the workflow approval remains the authoritative gate.
+          </p>
+          {cycle.projectionError && (
+            <p className="mt-2 text-[12px] text-danger" role="alert">{cycle.projectionError}</p>
+          )}
+        </div>
+        {needsSync && (
+          <Button size="sm" variant="outline" disabled={busy} onClick={onSync}>
+            <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+            Sync completed evidence
+          </Button>
+        )}
+      </div>
+      {summary && (
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+          <GraphMetric label="Sources" value={String(summary.sourceCount)} />
+          <GraphMetric label="Claims" value={String(summary.claimCount)} />
+          <GraphMetric label="Recommendations" value={String(summary.recommendationCount)} />
+          <GraphMetric label="Measurements" value={String(summary.measurementCount)} />
+          <GraphMetric label="Outcome" value={summary.cleanStop ? "Clean stop" : "Implementation"} />
+        </div>
+      )}
+      {summary?.stopCondition && (
+        <p className="mt-3 text-[11.5px] text-ink-muted">Stop condition: {summary.stopCondition}</p>
+      )}
+    </section>
+  );
+}
+
 function CycleGateCard({
   cycle,
   busy,
@@ -806,7 +880,7 @@ function CycleGateCard({
             Reject
           </Button>
           <Button onClick={onApprove} disabled={busy}>
-            Approve implementation
+            {cycle.workflowApprovalId ? "Create approved implementation work" : "Approve implementation"}
           </Button>
         </div>
       )}
@@ -1482,7 +1556,7 @@ function CreateCycleDialog({
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Start Graph Engineering cycle</DialogTitle>
+          <DialogTitle>Start Loop Engineering cycle</DialogTitle>
           <DialogDescription>
             Define one measurable objective. Research work is created immediately; repository-changing work waits for approval.
           </DialogDescription>

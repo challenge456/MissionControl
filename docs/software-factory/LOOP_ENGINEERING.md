@@ -12,6 +12,12 @@ measured gaps. It is not an unbounded autonomous process. Every cycle has a
 declared objective, stop condition, maximum iteration count, durable state, and
 an approval gate before repository-changing work.
 
+The operating horizons use one vocabulary everywhere:
+
+- the **inner loop drives automation** through bounded edit, run, check, and correction Attempts;
+- the **outer loop drives autonomy** through immutable PR-head evaluations, CI, review, policy, and merge authority;
+- the **meta loop drives quality** by turning real failures and measurements into governed improvement work.
+
 ## Product principles
 
 1. Evidence precedes recommendations.
@@ -83,6 +89,30 @@ recommendations. A runtime may claim and execute the work, but it must write
 progress, artifacts, costs, failures, and verification receipts back through
 Mission Control. If no runtime is configured, the UI says so and leaves work
 actionable; it must not fabricate completion.
+
+Completed research workflows project their structured source, claim,
+recommendation, approval, conflict, limitation, and measurement output into the
+cycle exactly once. A zero-recommendation result is a valid clean stop. The
+workflow gate approval and evidence digest are the single implementation
+authority; the cycle does not invent a second approval.
+
+Repository-changing Tasks are executed only by the separate implementation
+worker. It requires an approved mutating WorkOrder, matching workspace and
+revision, explicit repository, isolated Git worktree, allowlisted targeted
+checks, cost and time limits, maximum Attempts, and a stop condition. The
+read-only research worker rejects worktree Tasks.
+
+Every GitHub head SHA is retained as an outer-loop evaluation. A failed
+required check blocks the linked WorkOrder and requests one bounded correction;
+passing CI does not equal approval. Merge recording requires passing configured
+gates, WorkOrder approval, explicit human confirmation, actor, timestamp, PR,
+and commit SHA.
+
+Meta suggestions are created from real workflow, CI, review, approval,
+verification, measurement, and repeated-work signals. Suggestions are
+deduplicated by workspace, signal class, affected target, and evidence window.
+Acceptance creates an approval-gated WorkOrder and Task; it never directly
+activates a verifier, skill, rule, policy, or automation.
 
 ## Acceptance criteria
 
