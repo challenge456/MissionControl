@@ -3,9 +3,22 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { validateWorkflow } from "../loader";
+import { loadWorkflow, validateWorkflow } from "../loader";
 
 describe("validateWorkflow", () => {
+  it("keeps repository-changing feature steps in isolated worktrees", () => {
+    const workflow = loadWorkflow("../../workflows/feature-dev.yaml");
+    const isolation = Object.fromEntries(workflow.steps.map((step) => [step.id, step.isolation]));
+    expect(isolation).toMatchObject({
+      plan: "READ_ONLY",
+      setup: "WORKTREE",
+      implement: "WORKTREE",
+      verify: "READ_ONLY",
+      test: "WORKTREE",
+      pr: "WORKTREE",
+      review: "READ_ONLY",
+    });
+  });
   it("should validate a correct workflow", () => {
     const workflow = {
       id: "test-workflow",

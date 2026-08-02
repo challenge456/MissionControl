@@ -225,6 +225,18 @@ export function extractPrFromWebhookEvent(event: string, payload: Record<string,
       prUrl: pr.html_url ?? `https://github.com/${owner}/${name}/pull/${pr.number}`,
     };
   }
+  if (event === "pull_request_review") {
+    const pr = payload.pull_request as { number?: number; html_url?: string } | undefined;
+    const repo = payload.repository as { full_name?: string } | undefined;
+    if (!pr?.number || !repo?.full_name) return null;
+    const [owner, name] = repo.full_name.split("/");
+    return {
+      owner,
+      repo: name,
+      prNumber: pr.number,
+      prUrl: pr.html_url ?? `https://github.com/${owner}/${name}/pull/${pr.number}`,
+    };
+  }
   if (event === "check_run") {
     const check = payload.check_run as { pull_requests?: Array<{ number?: number; url?: string }> } | undefined;
     const repo = payload.repository as { full_name?: string } | undefined;

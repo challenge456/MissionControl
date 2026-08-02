@@ -23,7 +23,7 @@ async function createProposals(ctx: { db: any }, projectId?: Id<"projects">) {
       status: "OPEN",
       sourceRef,
       payload: {
-        type: "AUTOMATION_CANDIDATE",
+        type: "REPETITIVE_TASK_AUTOMATION",
         candidateId: candidate.id,
         pattern: candidate.pattern,
         workflowId: candidate.workflowId,
@@ -32,6 +32,7 @@ async function createProposals(ctx: { db: any }, projectId?: Id<"projects">) {
         occurrences: candidate.occurrences,
         receiptCount: candidate.receiptCount,
         suggestedCadence: candidate.suggestedCadence,
+        recommendedSchedule: candidate.suggestedCadence,
         confidence: candidate.confidence,
         riskLevel: candidate.riskLevel,
         estimatedHumanMinutesSaved: candidate.estimatedHumanMinutesSaved,

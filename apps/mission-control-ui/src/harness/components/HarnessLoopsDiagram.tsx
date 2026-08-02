@@ -5,7 +5,7 @@ const LOOP_STAGES = [
   {
     id: "inner",
     title: "Inner loop",
-    subtitle: "Drives autonomy",
+    subtitle: "Drives automation",
     color: "border-registry-accent/40 bg-registry-accent-soft",
     items: [
       "Unit tests & linters (agent-maintained)",
@@ -18,7 +18,7 @@ const LOOP_STAGES = [
   {
     id: "outer",
     title: "Outer loop",
-    subtitle: "Builds automation",
+    subtitle: "Drives autonomy",
     color: "border-violet-400/40 bg-violet-500/10",
     items: [
       "Multi-lens agentic code review",
@@ -31,7 +31,7 @@ const LOOP_STAGES = [
   {
     id: "meta",
     title: "Meta loop",
-    subtitle: "Continuous improvement",
+    subtitle: "Drives quality",
     color: "border-amber-400/40 bg-amber-500/10",
     items: [
       "Mine PR comments & CI failures",
@@ -85,9 +85,9 @@ export function HarnessLoopsDiagram({ className }: { className?: string }): JSX.
         ))}
       </div>
       <div className="rounded-lg border border-line bg-surface-2 px-4 py-3 text-xs text-ink-secondary">
-        <strong className="text-ink">Review bottleneck trap:</strong> agents may be autonomous (few
-        course corrections) but not automated (you still review everything). Drive automation by
-        trusting outer-loop checks — target 40–50% PRs without human review.
+        <strong className="text-ink">Governed autonomy:</strong> the inner loop removes repeated manual
+        edits, the outer loop proves a change at the PR boundary, and the meta loop turns observed
+        failures into reviewable improvements. Required approval is never bypassed.
       </div>
     </div>
   );

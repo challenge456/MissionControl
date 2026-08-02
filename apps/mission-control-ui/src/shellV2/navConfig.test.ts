@@ -69,7 +69,7 @@ describe("navConfig", () => {
     expect(groupForView("tasks")?.id).toBe("operate");
     expect(groupForView("policies")?.id).toBe("govern");
     expect(itemForView("skills")?.label).toBe("Discover skills");
-    expect(itemForView("harness-loops")?.label).toBe("Graph Engineering");
+    expect(itemForView("harness-loops")?.label).toBe("Loop Engineering");
     expect(itemForView("nonexistent" as never)).toBeUndefined();
   });
 });
