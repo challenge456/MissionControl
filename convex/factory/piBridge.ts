@@ -4,7 +4,7 @@
 
 import { v } from "convex/values";
 import { api, internal } from "../_generated/api";
-import { mutation } from "../_generated/server";
+import { internalMutation } from "../_generated/server";
 import { resolveFlag } from "../lib/flags";
 import { validateReceiptPacket } from "../lib/piBridgeEnvelope";
 
@@ -28,7 +28,7 @@ const receiptArg = v.object({
   verifier: v.optional(v.string()),
 });
 
-export const ingestReceiptPacket = mutation({
+export const ingestReceiptPacketInternal = internalMutation({
   args: {
     workOrderId: v.id("workOrders"),
     workflowRunId: v.id("workflowRuns"),
@@ -51,6 +51,7 @@ export const ingestReceiptPacket = mutation({
     })),
     idempotencyKey: v.optional(v.string()),
     contextActivationReceiptId: v.optional(v.id("workflowContextActivationReceipts")),
+    serviceId: v.string(),
   },
   handler: async (ctx, args) => {
     const workOrder = await ctx.db.get(args.workOrderId);
@@ -125,10 +126,11 @@ export const ingestReceiptPacket = mutation({
         result: receipt.result,
         evidenceLocation: receipt.evidenceLocation,
         artifactReference: receipt.artifactReference,
-        verifier: receipt.verifier ?? "pi-runtime",
+        verifier: receipt.verifier ?? `service:${args.serviceId}`,
         status: receipt.status,
         metadata: {
           source: "piBridge.ingestReceiptPacket",
+          serviceId: args.serviceId,
           piSessionId: args.piSessionId,
           contextActivationReceiptId: args.contextActivationReceiptId,
         },

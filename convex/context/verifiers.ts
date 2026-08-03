@@ -8,7 +8,7 @@ import { FACTORY_PERMISSIONS, requireWorkspacePermission } from "../lib/companyA
 
 export const list = query({
   args: {
-    projectId: v.optional(v.id("projects")),
+    projectId: v.id("projects"),
     packageId: v.optional(v.id("contextPackages")),
     activeOnly: v.optional(v.boolean()),
   },
@@ -25,7 +25,7 @@ export const list = query({
       return [];
     }
     let rows = await ctx.db.query("contextVerifiers").collect();
-    if (args.projectId) rows = rows.filter((r) => r.projectId === args.projectId);
+    rows = rows.filter((r) => r.projectId === args.projectId);
     if (args.packageId) rows = rows.filter((r) => r.packageId === args.packageId);
     if (args.activeOnly) rows = rows.filter((r) => r.active);
     return rows.sort((a, b) => b.updatedAt - a.updatedAt);
@@ -34,7 +34,7 @@ export const list = query({
 
 export const create = mutation({
   args: {
-    projectId: v.optional(v.id("projects")),
+    projectId: v.id("projects"),
     packageId: v.optional(v.id("contextPackages")),
     label: v.string(),
     invariant: v.string(),
@@ -87,21 +87,24 @@ export const create = mutation({
 export const generateFromSkill = mutation({
   args: {
     packageId: v.id("contextPackages"),
+    projectId: v.id("projects"),
     actorId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const pkg = await ctx.db.get(args.packageId);
-    if (!pkg) throw new Error("Package not found");
-    if (!pkg.projectId) throw new Error("Workspace-scoped skill package is required");
     const access = await requireWorkspacePermission(
       ctx,
-      pkg.projectId,
+      args.projectId,
       FACTORY_PERMISSIONS.IMPROVE
     );
+    const pkg = await ctx.db.get(args.packageId);
+    if (!pkg) throw new Error("Package not found");
+    if (pkg.projectId && pkg.projectId !== args.projectId) {
+      throw new Error("Package is outside the selected workspace");
+    }
     const now = Date.now();
     const label = `${pkg.displayName ?? pkg.slug} adherence`;
     const id = await ctx.db.insert("contextVerifiers", {
-      projectId: pkg.projectId,
+      projectId: args.projectId,
       packageId: args.packageId,
       label,
       invariant: `Changes must adhere to skill ${pkg.slug} conventions and constraints.`,
@@ -112,7 +115,7 @@ export const generateFromSkill = mutation({
       updatedAt: now,
     });
     await ctx.db.insert("activities", {
-      projectId: pkg.projectId,
+      projectId: args.projectId,
       actorType: "HUMAN",
       actorId: access.actorId,
       action: "VERIFIER_CREATED",
@@ -125,12 +128,12 @@ export const generateFromSkill = mutation({
 });
 
 export const ruleDecayCandidates = query({
-  args: { projectId: v.optional(v.id("projects")) },
+  args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
     if (!args.projectId) return [];
     await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.VIEW);
     let rows = await ctx.db.query("contextVerifiers").collect();
-    if (args.projectId) rows = rows.filter((r) => r.projectId === args.projectId);
+    rows = rows.filter((r) => r.projectId === args.projectId);
     const staleDays = 30 * 24 * 60 * 60 * 1000;
     const now = Date.now();
     return rows

@@ -111,6 +111,30 @@ export function ExecutionRunInspector({
               <Card className="p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
+                    <div className="text-sm font-medium text-foreground">Execution binding</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      Immutable Factory, repository, host, executor, policy, and scope captured before execution.
+                    </div>
+                  </div>
+                  <Badge variant="outline">
+                    {inspector.run.factoryDefinitionVersionId ? "Governed" : "Legacy / unbound"}
+                  </Badge>
+                </div>
+                <div className="mt-4 grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
+                  <Meta label="Factory version" value={inspector.run.factoryDefinitionVersionId ?? "—"} />
+                  <Meta label="Configuration digest" value={inspector.run.factoryConfigurationDigest ?? "—"} />
+                  <Meta label="Repository / branch" value={[inspector.run.repositoryId, inspector.run.branch].filter(Boolean).join(" / ") || "—"} />
+                  <Meta label="Host binding" value={inspector.run.hostBindingId ?? "—"} />
+                  <Meta label="Executor" value={[inspector.run.executorAdapter, inspector.run.executorVersion].filter(Boolean).join("/") || "—"} />
+                  <Meta label="Policy / environment" value={[inspector.run.policyEnvelopeId, inspector.run.environmentId].filter(Boolean).join(" / ") || "—"} />
+                  <Meta label="Worktree" value={inspector.run.worktree ?? "—"} />
+                  <Meta label="Allowed tools" value={inspector.run.allowedTools?.join(", ") || "None declared"} />
+                </div>
+              </Card>
+
+              <Card className="p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
                     <div className="text-sm font-medium text-foreground">Model routing evidence</div>
                     <div className="mt-1 text-xs text-muted-foreground">
                       The exact policy decision captured before provider execution.

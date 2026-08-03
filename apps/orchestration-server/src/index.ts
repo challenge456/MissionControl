@@ -23,7 +23,8 @@ import { serve } from "@hono/node-server";
 import { ConvexHttpClient } from "convex/browser";
 import { createGatewayProxy } from "./gateway-proxy.js";
 import { requireAuth } from "./auth.js";
-import { ConvexQueries, ConvexMutations } from "./convexCalls.js";
+import { ConvexActions, ConvexQueries, ConvexMutations } from "./convexCalls.js";
+import { createSignedServiceCommand } from "./serviceCommandClient.js";
 import { CoordinatorLoop } from "@mission-control/coordinator";
 import { AgentLifecycle } from "@mission-control/agent-runtime";
 import { MemoryManager } from "@mission-control/memory";
@@ -370,12 +371,19 @@ app.post("/workorders/:workOrderId/dispatch", async (c) => {
   try {
     const workOrderId = c.req.param("workOrderId");
     const body = await c.req.json().catch(() => ({}));
-    const result = await client.mutation(ConvexMutations.workOrders.dispatch as any, {
+    if (!body.projectId || !body.repositoryId || !body.factoryDefinitionVersionId) {
+      return c.json({ error: "projectId, repositoryId, and factoryDefinitionVersionId are required" }, 400);
+    }
+    const command = createSignedServiceCommand({
+      capability: "workorders.dispatch",
+      projectId: body.projectId,
+      repositoryId: body.repositoryId,
+      commandId: body.commandId,
+      payload: {
       workOrderId,
       taskId: body.taskId,
       workflowId: body.workflowId,
-      actorType: body.actorType ?? "SYSTEM",
-      actorId: body.actorId ?? "orchestration-server",
+      factoryDefinitionVersionId: body.factoryDefinitionVersionId,
       idempotencyKey:
         body.idempotencyKey ??
         `orch-dispatch:${workOrderId}:${body.taskId ?? "legacy"}:${body.retryOfWorkflowRunId ?? "start"}`,
@@ -390,7 +398,9 @@ app.post("/workorders/:workOrderId/dispatch", async (c) => {
       worktree: body.worktree,
       retryOfWorkflowRunId: body.retryOfWorkflowRunId,
       retryReason: body.retryReason,
+      },
     });
+    const result = await client.action(ConvexActions.serviceCommands.dispatchWorkOrder as any, command);
     if ((result as any)?.reason === "routing-exhausted") {
       return c.json(
         {
@@ -600,9 +610,18 @@ app.post("/workorders/:workOrderId/receipt-packets", async (c) => {
   try {
     const workOrderId = c.req.param("workOrderId");
     const body = await c.req.json().catch(() => ({}));
-    const result = await client.mutation(ConvexMutations.factory.ingestReceiptPacket as any, {
+    if (!body.projectId || !body.repositoryId || !body.factoryDefinitionVersionId) {
+      return c.json({ error: "projectId, repositoryId, and factoryDefinitionVersionId are required" }, 400);
+    }
+    const command = createSignedServiceCommand({
+      capability: "receipts.ingest",
+      projectId: body.projectId,
+      repositoryId: body.repositoryId,
+      commandId: body.commandId,
+      payload: {
       workOrderId,
       workflowRunId: body.workflowRunId,
+      factoryDefinitionVersionId: body.factoryDefinitionVersionId,
       piSessionId: body.piSessionId,
       piExecutionId: body.piExecutionId,
       markRunCompleted: body.markRunCompleted,
@@ -610,7 +629,9 @@ app.post("/workorders/:workOrderId/receipt-packets", async (c) => {
       handoff: body.handoff,
       idempotencyKey: body.idempotencyKey,
       contextActivationReceiptId: body.contextActivationReceiptId,
+      },
     });
+    const result = await client.action(ConvexActions.serviceCommands.ingestReceiptPacket as any, command);
     return c.json({ success: true, result });
   } catch (err: any) {
     return c.json({ error: err.message }, 400);

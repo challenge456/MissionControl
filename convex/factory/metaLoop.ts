@@ -147,7 +147,7 @@ export const applyResolution = internalMutation({
     reason: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const { suggestion: row } = await requireSuggestionPermission(
+    const { suggestion: row, access } = await requireSuggestionPermission(
       ctx,
       args.suggestionId,
       FACTORY_PERMISSIONS.IMPROVE
@@ -368,7 +368,7 @@ export const recordMeasurement = mutation({
     evidenceRefs: v.array(v.string()),
   },
   handler: async (ctx, args) => {
-    const { suggestion: row } = await requireSuggestionPermission(
+    const { suggestion: row, access } = await requireSuggestionPermission(
       ctx,
       args.suggestionId,
       FACTORY_PERMISSIONS.IMPROVE
@@ -402,6 +402,16 @@ export const recordMeasurement = mutation({
         });
       }
     }
+    await ctx.db.insert("activities", {
+      projectId: row.projectId,
+      actorType: "HUMAN",
+      actorId: access.actorId,
+      action: "META_LOOP_MEASUREMENT_RECORDED",
+      description: `Measured ${row.title}: ${args.result}${args.unit} against ${args.target}${args.unit}`,
+      targetType: "META_LOOP_SUGGESTION",
+      targetId: row._id,
+      metadata: { verdict, baseline: args.baseline, result: args.result, target: args.target },
+    });
     return { verdict };
   },
 });

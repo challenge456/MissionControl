@@ -41,9 +41,10 @@ export function HarnessChangeReviewView({
     projectId ? { projectId, limit: 10 } : { limit: 10 }
   );
   const lenses = latest?.changeReviewLenses ?? [];
-  const riskPolicy = useQuery(api.context.changeRisk.getActivePolicy, {
-    projectId: projectId ?? undefined,
-  });
+  const riskPolicy = useQuery(
+    api.context.changeRisk.getActivePolicy,
+    projectId ? { projectId } : "skip"
+  );
   const risk = latest
     ? evaluateChangeRisk({
         strictness: riskPolicy?.strictness ?? 50,

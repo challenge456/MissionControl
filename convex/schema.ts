@@ -765,6 +765,204 @@ export default defineSchema({
     .index("by_project_default", ["projectId", "isDefault"])
     .index("by_tenant", ["tenantId"]),
 
+  // GitHub App identity and its last verified capability envelope. Short-lived
+  // installation tokens are minted by the orchestration boundary and are never
+  // persisted in Convex.
+  githubAppInstallations: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.id("projects"),
+    repositoryId: v.id("workspaceRepositories"),
+    installationId: v.string(),
+    appId: v.string(),
+    accountLogin: v.string(),
+    accountType: v.optional(v.string()),
+    repositorySelection: v.union(v.literal("ALL"), v.literal("SELECTED")),
+    permissions: v.array(v.object({
+      name: v.string(),
+      access: v.union(
+        v.literal("none"),
+        v.literal("read"),
+        v.literal("write"),
+        v.literal("admin")
+      ),
+    })),
+    subscribedEvents: v.array(v.string()),
+    status: v.union(
+      v.literal("CONNECTED"),
+      v.literal("DEGRADED"),
+      v.literal("REVOKED")
+    ),
+    installedAt: v.number(),
+    verifiedAt: v.optional(v.number()),
+    lastTokenIssuedAt: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+    updatedAt: v.number(),
+  })
+    .index("by_repository", ["repositoryId"])
+    .index("by_installation", ["installationId"])
+    .index("by_project", ["projectId"]),
+
+  githubAppSetupSessions: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.id("projects"),
+    repositoryId: v.id("workspaceRepositories"),
+    actorId: v.string(),
+    stateHash: v.string(),
+    status: v.union(
+      v.literal("PENDING"),
+      v.literal("COMPLETED"),
+      v.literal("FAILED"),
+      v.literal("EXPIRED")
+    ),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+    completedAt: v.optional(v.number()),
+    installationId: v.optional(v.string()),
+    error: v.optional(v.string()),
+  })
+    .index("by_state_hash", ["stateHash"])
+    .index("by_repository", ["repositoryId"]),
+
+  // Inbound GitHub webhook ledger. Payload bodies and credentials are
+  // deliberately excluded; exact provider identifiers are enough for replay,
+  // investigation, and idempotency.
+  githubWebhookDeliveries: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.optional(v.id("projects")),
+    repositoryId: v.optional(v.id("workspaceRepositories")),
+    deliveryId: v.string(),
+    event: v.string(),
+    action: v.optional(v.string()),
+    repository: v.optional(v.string()),
+    providerRepositoryId: v.optional(v.string()),
+    installationId: v.optional(v.string()),
+    signatureStatus: v.union(
+      v.literal("VALID"),
+      v.literal("INVALID"),
+      v.literal("MISSING")
+    ),
+    status: v.union(
+      v.literal("RECEIVED"),
+      v.literal("PROCESSED"),
+      v.literal("IGNORED"),
+      v.literal("FAILED")
+    ),
+    replayState: v.union(v.literal("ORIGINAL"), v.literal("DUPLICATE")),
+    attemptCount: v.number(),
+    receivedAt: v.number(),
+    lastAttemptAt: v.number(),
+    completedAt: v.optional(v.number()),
+    result: v.optional(v.string()),
+    error: v.optional(v.string()),
+  })
+    .index("by_delivery", ["deliveryId"])
+    .index("by_repository", ["repositoryId"])
+    .index("by_installation", ["installationId"])
+    .index("by_received", ["receivedAt"]),
+
+  factoryDefinitions: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.id("projects"),
+    repositoryId: v.id("workspaceRepositories"),
+    name: v.string(),
+    status: v.union(v.literal("DRAFT"), v.literal("ACTIVE"), v.literal("ARCHIVED")),
+    activeVersionId: v.optional(v.id("factoryDefinitionVersions")),
+    latestVersion: v.number(),
+    createdBy: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_repository", ["repositoryId"])
+    .index("by_project_status", ["projectId", "status"]),
+
+  factoryDefinitionVersions: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.id("projects"),
+    factoryDefinitionId: v.id("factoryDefinitions"),
+    version: v.number(),
+    configurationDigest: v.string(),
+    repositoryId: v.id("workspaceRepositories"),
+    workflowId: v.id("workflows"),
+    executor: v.object({ adapter: v.string(), version: v.string() }),
+    policyEnvelopeId: v.optional(v.id("policyEnvelopes")),
+    environmentId: v.optional(v.id("environments")),
+    budget: v.object({ maxCostUsd: v.number(), maxRuntimeMinutes: v.number(), maxAttempts: v.number() }),
+    verifierIds: v.array(v.id("contextVerifiers")),
+    riskBoundary: v.union(v.literal("GREEN"), v.literal("YELLOW"), v.literal("RED")),
+    recovery: v.object({ pause: v.boolean(), cancel: v.boolean(), retry: v.boolean(), resume: v.boolean() }),
+    createdBy: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_factory", ["factoryDefinitionId"])
+    .index("by_factory_version", ["factoryDefinitionId", "version"])
+    .index("by_digest", ["configurationDigest"]),
+
+  factoryReadinessAssessments: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.id("projects"),
+    factoryDefinitionId: v.id("factoryDefinitions"),
+    factoryDefinitionVersionId: v.id("factoryDefinitionVersions"),
+    configurationDigest: v.string(),
+    status: v.union(v.literal("PASS"), v.literal("BLOCKED")),
+    checks: v.array(v.object({
+      id: v.string(),
+      label: v.string(),
+      status: v.union(
+        v.literal("VERIFIED"),
+        v.literal("MISSING"),
+        v.literal("STALE"),
+        v.literal("WAIVED"),
+        v.literal("NOT_APPLICABLE")
+      ),
+      evidence: v.optional(v.any()),
+      checkedAt: v.number(),
+      expiresAt: v.optional(v.number()),
+      remediation: v.optional(v.string()),
+      rootBlocker: v.optional(v.string()),
+    })),
+    assessedBy: v.string(),
+    assessedAt: v.number(),
+    expiresAt: v.number(),
+  })
+    .index("by_version", ["factoryDefinitionVersionId"])
+    .index("by_factory", ["factoryDefinitionId"])
+    .index("by_assessed", ["assessedAt"]),
+
+  // Replay-resistant service command ledger. Credentials and command payloads
+  // are deliberately excluded; the digest and scoped identity are sufficient
+  // for audit, idempotency, and incident investigation.
+  serviceCommandReceipts: defineTable({
+    serviceId: v.string(),
+    capability: v.string(),
+    commandId: v.string(),
+    claimedProjectId: v.string(),
+    claimedRepositoryId: v.string(),
+    payloadDigest: v.string(),
+    signatureStatus: v.union(
+      v.literal("VALID"),
+      v.literal("INVALID"),
+      v.literal("MISSING")
+    ),
+    status: v.union(
+      v.literal("RECEIVED"),
+      v.literal("SUCCEEDED"),
+      v.literal("FAILED"),
+      v.literal("DENIED")
+    ),
+    issuedAt: v.number(),
+    expiresAt: v.number(),
+    receivedAt: v.number(),
+    completedAt: v.optional(v.number()),
+    attemptCount: v.number(),
+    replayDetectedAt: v.optional(v.number()),
+    reason: v.optional(v.string()),
+    resultReference: v.optional(v.string()),
+  })
+    .index("by_command", ["commandId"])
+    .index("by_service_received", ["serviceId", "receivedAt"])
+    .index("by_claimed_project", ["claimedProjectId", "receivedAt"]),
+
   // Governed paths/components inside a repository. This is the execution and
   // review boundary for monorepos; it deliberately does not store local paths.
   repositoryCodeScopes: defineTable({
@@ -3365,6 +3563,17 @@ export default defineSchema({
     workOrderId: v.optional(v.id("workOrders")),
     workOrderRevisionNumber: v.optional(v.number()),
     workOrderRevisionId: v.optional(v.id("workOrderRevisions")),
+    factoryDefinitionVersionId: v.optional(v.id("factoryDefinitionVersions")),
+    factoryConfigurationDigest: v.optional(v.string()),
+    repositoryId: v.optional(v.id("workspaceRepositories")),
+    hostBindingId: v.optional(v.id("workspaceHostBindings")),
+    policyEnvelopeId: v.optional(v.id("policyEnvelopes")),
+    environmentId: v.optional(v.id("environments")),
+    executorAdapter: v.optional(v.string()),
+    executorVersion: v.optional(v.string()),
+    branch: v.optional(v.string()),
+    allowedTools: v.optional(v.array(v.string())),
+    isMutating: v.optional(v.boolean()),
     
     // Parent task
     parentTaskId: v.optional(v.id("tasks")),
@@ -3478,6 +3687,7 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_mission", ["missionId"])
     .index("by_work_order", ["workOrderId"])
+    .index("by_repository_status", ["repositoryId", "status"])
     .index("by_status", ["status"])
     .index("by_parent_task", ["parentTaskId"])
     .index("by_project_status", ["projectId", "status"]),

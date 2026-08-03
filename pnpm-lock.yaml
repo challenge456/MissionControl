@@ -172,6 +172,9 @@ importers:
       '@mission-control/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@mission-control/workflow-engine':
+        specifier: workspace:*
+        version: link:../../packages/workflow-engine
       convex:
         specifier: ^1.31.7
         version: 1.31.7(react@18.3.1)

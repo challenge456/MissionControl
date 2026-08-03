@@ -13,11 +13,15 @@ boundary for incremental server enforcement.
 | Tenant/operator registry | `registry/tenants.*`, `registry/operators.*` | Administration and legacy tools | Company membership or named administration permission | Enforced in this slice; tenant provisioning remains platform-controlled |
 | Roles and assignments | `governance/roles.*`, `governance/roleAssignments.*` | Human administration | Company access or `members.manage`; role/operator tenant equality | Enforced in this slice |
 | Mission planning | `missions.createDraft`, `updateDraft`, `savePlanDraft`, `submitPlan`, `approvePlan`, `start`, `accept` | Human UI | Future: workspace access plus `missions.write`/`missions.approve` | Public surface inventoried; enforcement is the next delivery-security slice |
-| Work orders | `workOrders.create`, `dispatch`, governance decisions, revision/acceptance mutations | Human UI, automation scheduler, Pi bridge, mission chat, loop engineering | Split required: human workspace permission versus service capability | Do not blanket-guard; migrate service callers to internal/service functions first |
+| Work orders | `workOrders.create`, `dispatch`, governance decisions, revision/acceptance mutations | Human UI, automation scheduler, Pi bridge, mission chat, loop engineering | Dispatch split enforced: public mutation is human-only; orchestration uses signed `workorders.dispatch`; remaining service callers still require named commands | Continue migration for scheduler/chat/loop paths before production promotion |
 | Tasks | `tasks.create`, `update`, `assign`, `transition`, `linkToWorkOrder` | Human UI, GitHub ingest, planning, chat, loops, WorkOrder flows | Split required: human task permission versus scoped service capability | Do not blanket-guard; add internal command functions and retain audited actor provenance |
 | Approvals | `approvals.request`, `approve`, `deny`, expiration/escalation | Human UI and cron | Human `approvals.decide`; internal scheduler for expiry/escalation | Split decision mutations from internal lifecycle automation |
-| Evidence/receipts | WorkOrder verification receipt and Pi receipt packet paths | Human UI and orchestration/Pi bridge | Humans may attach evidence; services require signed/scoped ingestion authority | Preserve Pi flow; move ingestion behind service authentication before public exposure |
+| Evidence/receipts | WorkOrder verification receipt and Pi receipt packet paths | Human UI and orchestration/Pi bridge | Pi packet ingestion is internal and exposed through signed `receipts.ingest`; human receipt mutation remains workspace-authorized | Add named artifact/handoff service commands rather than widening receipt authority |
 | Release/writeback | GitHub/writeback and future release mutations | Human approval and service integration | Approved human decision plus installation/service credential | Require approval linkage, idempotency, and audited integration identity |
+| Loop Engineering | Cycle reads/writes, recommendation approval, workflow projection | Human UI and workflow completion | Human workspace permission; internal projection after completed run | Human authority enforced; projection and failure recording moved internal; route remains Preview pending durable denied-action audit and real Clerk evidence |
+| Harness PR evidence | Manual/sync ingestion, merge recording, GitHub webhook | Human UI and signed GitHub App webhook | Human workspace permission or registered installation plus signature-verified internal webhook action | Installation identity, exact repository binding, delivery replay ledger, and human/webhook split enforced; live credential verification remains environment-dependent |
+| Verifiers and change risk | Verifier reads/writes and risk-policy reads/writes | Human Harness/Registry UI | Workspace view/improve/approve permission with server-derived operator ID | Enforced for project-scoped UI paths; browser actor labels are ignored |
+| Meta-loop decisions | Suggestion reads, accept/dismiss/resolve, lifecycle, measurement | Human UI plus internal signal ingestion | Workspace view/improve/approve permission; internal signal callers | Human decisions and measurement enforced; internal ingestion retained |
 
 ## Rules for the follow-on delivery-security slice
 
@@ -34,7 +38,9 @@ boundary for incremental server enforcement.
 6. Do not expose global list queries to ordinary company users; require company
    or workspace scope.
 
-This matrix deliberately limits the current change to company/workspace
-administration. Mission, WorkOrder, Task, approval, evidence, and release
-authorization should be implemented as one tested golden-path security slice,
-not as scattered checks that strand service execution.
+This matrix records incremental enforcement. Company/workspace administration,
+Loop Engineering, project-scoped Harness authority, and the signed GitHub
+webhook-to-internal-ingestion split are enforced. Mission, WorkOrder, Task,
+approval, remaining evidence, orchestration/Pi service identity, and release
+authorization still require the tested golden-path security slice; do not apply
+scattered human guards that strand service execution.

@@ -18,6 +18,10 @@ export type DispatchVerificationStatus = "PENDING" | "PASS" | "FAIL" | "WAIVED" 
 
 export const ACTIVE_RUN_STATUSES: DispatchRunStatus[] = ["PENDING", "RUNNING", "PAUSED"];
 
+export function publicDispatchActorAllowed(actorType: "HUMAN" | "SYSTEM" | "AGENT"): boolean {
+  return actorType === "HUMAN";
+}
+
 export function dispatchApprovalAllowed(args: {
   riskLevel: DispatchRiskLevel;
   approvalStatus: DispatchApprovalStatus;

@@ -61,7 +61,7 @@ export function HarnessVerifiersView({ projectId }: { projectId: Id<"projects"> 
             <Input placeholder="Label" value={label} onChange={(e) => setLabel(e.target.value)} />
             <Input placeholder="Invariant (e.g. module A must not import B)" value={invariant} onChange={(e) => setInvariant(e.target.value)} />
           </div>
-          <Button className="mt-3" size="sm" onClick={() => void handleCreate()}>
+          <Button className="mt-3" size="sm" disabled={!projectId} onClick={() => void handleCreate()}>
             <Plus className="mr-1 h-4 w-4" /> Create
           </Button>
         </div>

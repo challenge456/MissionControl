@@ -41,7 +41,7 @@ export function HarnessChangeRiskView({ projectId }: { projectId: Id<"projects">
       description="Policy gate: which PRs require human review vs agent-only merge (target 40–50% bypass)."
       icon={<Scale className="h-5 w-5 text-registry-accent" />}
       actions={
-        <Button size="sm" onClick={() => void save()}>
+        <Button size="sm" disabled={!projectId} onClick={() => void save()}>
           Save policy
         </Button>
       }

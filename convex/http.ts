@@ -7,10 +7,15 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { api, internal } from "./_generated/api";
+import type { Doc } from "./_generated/dataModel";
 import {
   extractPrFromWebhookEvent,
   verifyGithubWebhookSignature,
 } from "./lib/githubCiIngest";
+import {
+  sha256Hex,
+  verifyGithubInstallationSetup,
+} from "./lib/githubAppAuth";
 
 const http = httpRouter();
 
@@ -121,30 +126,179 @@ http.route({
 });
 
 http.route({
+  path: "/github/app/setup",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const state = url.searchParams.get("state");
+    const code = url.searchParams.get("code");
+    const installationId = url.searchParams.get("installation_id");
+    if (!state || !code || !installationId) {
+      return new Response("GitHub App setup parameters are incomplete", { status: 400 });
+    }
+
+    let setup: {
+      session: Doc<"githubAppSetupSessions">;
+      repository: Doc<"workspaceRepositories">;
+    };
+    try {
+      setup = await ctx.runQuery(internal.githubAppConnections.resolveSetupSession, {
+        stateHash: await sha256Hex(state),
+      });
+    } catch {
+      return new Response("GitHub App setup session is invalid or expired", { status: 400 });
+    }
+
+    const appId = process.env.GITHUB_APP_ID;
+    const clientId = process.env.GITHUB_APP_CLIENT_ID;
+    const clientSecret = process.env.GITHUB_APP_CLIENT_SECRET;
+    const privateKey = process.env.GITHUB_APP_PRIVATE_KEY;
+    if (!appId || !clientId || !clientSecret || !privateKey) {
+      await ctx.runMutation(internal.githubAppConnections.completeSetupSession, {
+        setupSessionId: setup.session._id,
+        status: "FAILED",
+        error: "GitHub App server credentials are incomplete.",
+      });
+      return new Response("GitHub App server configuration is incomplete", { status: 503 });
+    }
+
+    try {
+      const verified = await verifyGithubInstallationSetup({
+        code,
+        installationId,
+        repository: setup.repository.repository,
+        appId,
+        clientId,
+        clientSecret,
+        privateKey,
+      });
+      await ctx.runMutation(internal.githubAppConnections.upsertInstallation, {
+        repositoryId: setup.repository._id,
+        providerRepositoryId: verified.providerRepositoryId,
+        installationId: verified.installationId,
+        appId,
+        accountLogin: verified.accountLogin,
+        accountType: verified.accountType,
+        repositorySelection: verified.repositorySelection,
+        permissions: verified.permissions,
+        subscribedEvents: verified.subscribedEvents,
+        status: "CONNECTED",
+        installedAt: verified.installedAt,
+        verifiedAt: verified.verifiedAt,
+        lastTokenIssuedAt: verified.lastTokenIssuedAt,
+      });
+      await ctx.runMutation(internal.githubAppConnections.completeSetupSession, {
+        setupSessionId: setup.session._id,
+        status: "COMPLETED",
+        installationId: verified.installationId,
+      });
+
+      const appUrl = process.env.MISSION_CONTROL_APP_URL;
+      if (appUrl) {
+        const redirect = new URL(appUrl);
+        redirect.searchParams.set("github_app", "connected");
+        redirect.searchParams.set("project", String(setup.repository.projectId));
+        return Response.redirect(redirect.toString(), 302);
+      }
+      return new Response("GitHub App connected. Return to Mission Control.", { status: 200 });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "GitHub App verification failed.";
+      await ctx.runMutation(internal.githubAppConnections.completeSetupSession, {
+        setupSessionId: setup.session._id,
+        status: "FAILED",
+        error: message.slice(0, 1_000),
+      });
+      return new Response("GitHub App verification failed", { status: 403 });
+    }
+  }),
+});
+
+http.route({
   path: "/github/webhook",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     const body = await request.text();
     const secret = process.env.GITHUB_WEBHOOK_SECRET;
     const signature = request.headers.get("x-hub-signature-256");
+    const deliveryId = request.headers.get("x-github-delivery");
+    const event = request.headers.get("x-github-event") ?? "";
+    if (!deliveryId || !event) {
+      return new Response("GitHub delivery and event headers are required", { status: 400 });
+    }
     if (!secret) {
       return new Response("GitHub webhook is not configured", { status: 503 });
     }
     const valid = await verifyGithubWebhookSignature(body, signature, secret);
     if (!valid) {
+      await ctx.runMutation(internal.githubAppConnections.beginWebhookDelivery, {
+        deliveryId,
+        event,
+        signatureStatus: signature ? "INVALID" : "MISSING",
+      });
       return new Response("GitHub webhook signature verification failed", { status: 401 });
     }
 
-    const event = request.headers.get("x-github-event") ?? "";
     let payload: Record<string, unknown>;
     try {
       payload = JSON.parse(body);
     } catch {
+      await ctx.runMutation(internal.githubAppConnections.beginWebhookDelivery, {
+        deliveryId,
+        event,
+        signatureStatus: "VALID",
+      });
       return new Response("Invalid JSON", { status: 400 });
+    }
+
+    const repository = payload.repository as { id?: number; full_name?: string } | undefined;
+    const installation = payload.installation as { id?: number } | undefined;
+    const delivery = await ctx.runMutation(
+      internal.githubAppConnections.beginWebhookDelivery,
+      {
+        deliveryId,
+        event,
+        action: typeof payload.action === "string" ? payload.action : undefined,
+        repository: repository?.full_name,
+        providerRepositoryId: repository?.id != null ? String(repository.id) : undefined,
+        installationId: installation?.id != null ? String(installation.id) : undefined,
+        signatureStatus: "VALID",
+      }
+    );
+    if (delivery.duplicate) {
+      return new Response("OK (duplicate)", { status: 200 });
+    }
+    if (!delivery.accepted) {
+      return new Response(delivery.error ?? "GitHub installation is not authorized", { status: 403 });
+    }
+
+    const complete = async (
+      status: "PROCESSED" | "IGNORED" | "FAILED",
+      result?: string,
+      error?: string
+    ) => {
+      await ctx.runMutation(internal.githubAppConnections.completeWebhookDelivery, {
+        deliveryRecordId: delivery.deliveryRecordId,
+        status,
+        result,
+        error,
+      });
+    };
+
+    if (event === "installation" || event === "installation_repositories") {
+      const removed = payload.repositories_removed as Array<{ id?: number }> | undefined;
+      await ctx.runMutation(internal.githubAppConnections.markInstallationChanged, {
+        installationId: String(installation?.id),
+        action: typeof payload.action === "string" ? payload.action : "changed",
+        removedProviderRepositoryIds: removed
+          ?.flatMap((candidate) => candidate.id == null ? [] : [String(candidate.id)]),
+      });
+      await complete("PROCESSED", `Recorded GitHub installation action ${String(payload.action ?? "changed")}.`);
+      return new Response("OK", { status: 200 });
     }
 
     const prRef = extractPrFromWebhookEvent(event, payload);
     if (!prRef) {
+      await complete("IGNORED", "Event does not carry supported pull request evidence.");
       return new Response("OK (ignored)", { status: 200 });
     }
 
@@ -152,44 +306,52 @@ http.route({
       event === "pull_request" &&
       !["opened", "synchronize", "reopened"].includes(String(payload.action ?? ""))
     ) {
+      await complete("IGNORED", `Unsupported pull_request action ${String(payload.action ?? "")}.`);
       return new Response("OK (ignored action)", { status: 200 });
     }
 
     if (event === "check_run" && payload.action !== "completed") {
+      await complete("IGNORED", `Unsupported check_run action ${String(payload.action ?? "")}.`);
       return new Response("OK (ignored action)", { status: 200 });
     }
 
     if (event === "pull_request_review" && payload.action !== "submitted") {
+      await complete("IGNORED", `Unsupported pull_request_review action ${String(payload.action ?? "")}.`);
       return new Response("OK (ignored action)", { status: 200 });
     }
 
-    await ctx.runAction(internal.factory.prChecks.ingestPullRequestFromWebhook, {
-      prUrl: prRef.prUrl,
-      sourceEventId: request.headers.get("x-github-delivery") ?? undefined,
-    });
+    try {
+      await ctx.runAction(internal.factory.prChecks.ingestPullRequestFromWebhook, {
+        prUrl: prRef.prUrl,
+        projectId: delivery.projectId,
+        sourceEventId: deliveryId,
+      });
 
-    const review = payload.review as { state?: string; body?: string; html_url?: string } | undefined;
-    if (event === "pull_request_review" && review?.state === "changes_requested") {
-      const projects = await ctx.runQuery(api.projects.list, {});
-      const matchingProjects = projects.filter(
-        (candidate) => candidate.githubRepo?.toLowerCase() === `${prRef.owner}/${prRef.repo}`.toLowerCase()
-      );
-      const project = matchingProjects.length === 1 ? matchingProjects[0] : undefined;
-      if (project) {
+      const review = payload.review as { state?: string; body?: string; html_url?: string } | undefined;
+      if (
+        event === "pull_request_review" &&
+        review?.state === "changes_requested" &&
+        delivery.projectId
+      ) {
         await ctx.runMutation(internal.factory.metaLoop.ingestSignal, {
-          projectId: project._id,
+          projectId: delivery.projectId,
           kind: "SKILL_UPDATE",
           signalClass: "REVIEW_CORRECTION",
           target: `${prRef.owner}/${prRef.repo}`,
           title: `Reduce recurring review correction in ${prRef.repo}`,
           summary: review.body?.slice(0, 1_000) || "Pull request review requested changes.",
-          sourceRef: request.headers.get("x-github-delivery") ?? review.html_url ?? prRef.prUrl,
+          sourceRef: deliveryId,
           sourceLinks: [review.html_url ?? prRef.prUrl],
           confidence: 0.75,
           impact: "MEDIUM",
           payload: { prUrl: prRef.prUrl },
         });
       }
+      await complete("PROCESSED", `Ingested ${event} for ${prRef.prUrl}.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "GitHub webhook processing failed.";
+      await complete("FAILED", undefined, message.slice(0, 1_000));
+      return new Response("GitHub webhook processing failed", { status: 500 });
     }
 
     return new Response("OK", { status: 200 });
