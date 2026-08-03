@@ -1,5 +1,5 @@
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import type { Doc, Id } from "../../../../convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/components/factory/badges";
-import { GitBranch, Github, Layers3, Plus, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CheckCircle2, GitBranch, Github, Layers3, Plus, ShieldCheck } from "lucide-react";
+import { FactoryConfigurationPanel } from "./FactoryConfigurationPanel";
 
 interface WorkspaceRepositoriesPanelProps {
   project: Doc<"projects">;
@@ -216,11 +217,15 @@ export function WorkspaceRepositoriesPanel({ project }: WorkspaceRepositoriesPan
       ) : null}
 
       {selectedRepository?.repositoryId ? (
-        <CodeScopeList
-          repositoryId={selectedRepository.repositoryId}
-          repository={selectedRepository.repository}
-          onAdd={() => setScopeOpen(true)}
-        />
+        <>
+          <GitHubAppReadinessPanel repositoryId={selectedRepository.repositoryId} />
+          <FactoryConfigurationPanel projectId={project._id} repositoryId={selectedRepository.repositoryId} />
+          <CodeScopeList
+            repositoryId={selectedRepository.repositoryId}
+            repository={selectedRepository.repository}
+            onAdd={() => setScopeOpen(true)}
+          />
+        </>
       ) : null}
 
       {addRepositoryOpen ? (
@@ -234,6 +239,107 @@ export function WorkspaceRepositoriesPanel({ project }: WorkspaceRepositoriesPan
         />
       ) : null}
     </Card>
+  );
+}
+
+function GitHubAppReadinessPanel({
+  repositoryId,
+}: {
+  repositoryId: Id<"workspaceRepositories">;
+}) {
+  const readiness = useQuery(api.githubAppConnections.getRepositoryReadiness, {
+    repositoryId,
+  });
+  const beginInstallation = useAction(api.githubAppConnections.beginInstallation);
+  const [installPending, setInstallPending] = useState(false);
+  const [installError, setInstallError] = useState("");
+
+  if (readiness === undefined) {
+    return (
+      <div className="mt-5 border-t border-line pt-5" aria-label="Loading GitHub App readiness">
+        <div className="h-24 animate-pulse rounded-lg bg-surface-2" />
+      </div>
+    );
+  }
+
+  const tone = readiness.overall === "VERIFIED"
+    ? "success" as const
+    : readiness.overall === "STALE"
+      ? "warning" as const
+      : "error" as const;
+
+  const install = async () => {
+    setInstallPending(true);
+    setInstallError("");
+    try {
+      const result = await beginInstallation({ repositoryId });
+      if (!result.ok) {
+        setInstallError(
+          "GitHub App setup is not configured for this environment. Add the required server credentials, then try again."
+        );
+        setInstallPending(false);
+        return;
+      }
+      window.location.assign(result.installUrl);
+    } catch (error) {
+      setInstallError("GitHub App setup could not start. Try again or ask a workspace administrator.");
+      setInstallPending(false);
+    }
+  };
+
+  return (
+    <section className="mt-5 border-t border-line pt-5" aria-labelledby="github-app-readiness-title">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div id="github-app-readiness-title" className="flex items-center gap-2 text-[12.5px] font-medium text-ink-secondary">
+            <ShieldCheck size={14} aria-hidden /> GitHub App readiness
+          </div>
+          <div className="mt-1 text-[12px] text-ink-muted">
+            Installation identity, least privilege, webhook coverage, and verification freshness.
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <StatusBadge tone={tone}>{readiness.overall.toLowerCase()}</StatusBadge>
+          {readiness.overall !== "VERIFIED" ? (
+            <Button variant="outline" size="sm" disabled={installPending} onClick={install}>
+              <Github className="h-3.5 w-3.5" aria-hidden />
+              {installPending ? "Opening GitHub…" : readiness.installation ? "Repair installation" : "Install GitHub App"}
+            </Button>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 md:grid-cols-2">
+        {readiness.checks.map((check) => {
+          const passing = check.status === "VERIFIED";
+          return (
+            <div key={check.id} className="rounded-lg border border-line bg-surface-2 px-3 py-3">
+              <div className="flex items-center gap-2 text-[12.5px] font-medium text-ink">
+                {passing ? (
+                  <CheckCircle2 size={14} className="text-success" aria-hidden />
+                ) : (
+                  <AlertTriangle size={14} className="text-warning" aria-hidden />
+                )}
+                {check.label}
+                <span className="sr-only">: {check.status}</span>
+              </div>
+              <div className="mt-1.5 text-[11.5px] leading-relaxed text-ink-muted">{check.detail}</div>
+              {check.remediation ? (
+                <div className="mt-2 text-[11.5px] leading-relaxed text-ink-secondary">
+                  Next: {check.remediation}
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+      {readiness.installation ? (
+        <div className="mt-2 text-[11px] text-ink-muted">
+          Installation {readiness.installation.installationId} · {readiness.installation.accountLogin} · tokens are not stored
+        </div>
+      ) : null}
+      {installError ? <ErrorNotice message={installError} /> : null}
+    </section>
   );
 }
 

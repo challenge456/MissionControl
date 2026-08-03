@@ -44,7 +44,7 @@ function normalizeInstallations(rows: InstallationRow[]) {
     .sort((a, b) => a.packageSlug.localeCompare(b.packageSlug));
 }
 
-describe("governed context bridge integration", () => {
+describe.skipIf(process.env.RUN_GOVERNED_CONTEXT_BRIDGE_INTEGRATION !== "1")("governed context bridge integration", () => {
   it("dispatches governed context and enforces activation receipts end to end", async () => {
     process.env.CONVEX_URL = CONVEX_URL;
     process.env.ORCHESTRATION_DISABLE_STARTUP = "1";

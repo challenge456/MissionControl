@@ -5,7 +5,7 @@
  */
 
 import { v } from "convex/values";
-import { mutation, query, internalMutation } from "./_generated/server";
+import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { appendOpEvent } from "./lib/armAudit";
 import { resolveAgentRef } from "./lib/agentResolver";
@@ -263,6 +263,11 @@ export const getById = query({
   handler: async (ctx, args) => {
     return await ctx.db.get(args.id);
   },
+});
+
+export const getByIdInternal = internalQuery({
+  args: { id: v.id("workflowRuns") },
+  handler: async (ctx, args) => await ctx.db.get(args.id),
 });
 
 export const listEvents = query({
@@ -1031,6 +1036,11 @@ export const updateStatus = mutation({
         endedAt: updates.completedAt,
         idempotencyKey: `run-complete:${run.runId}`,
       });
+      if (run.workflowId === "loop-engineering") {
+        await ctx.scheduler.runAfter(0, internal.loopEngineering.projectWorkflowRunInternal, {
+          workflowRunId: run._id,
+        });
+      }
     }
 
     if (run.workOrderId) {

@@ -4,6 +4,7 @@
 
 import { v } from "convex/values";
 import { mutation, query } from "../_generated/server";
+import { FACTORY_PERMISSIONS, requireWorkspacePermission } from "../lib/companyAccess";
 
 const ruleArg = v.object({
   id: v.string(),
@@ -13,35 +14,33 @@ const ruleArg = v.object({
 });
 
 export const getActivePolicy = query({
-  args: { projectId: v.optional(v.id("projects")) },
+  args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
-    let policies = await ctx.db
+    await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.VIEW);
+    const policies = await ctx.db
       .query("changeRiskPolicies")
       .withIndex("by_active", (q) => q.eq("active", true))
       .collect();
-    if (args.projectId) {
-      const scoped = policies.filter((p) => p.projectId === args.projectId);
-      if (scoped.length > 0) policies = scoped;
-    }
-    return policies[0] ?? null;
+    return policies.find((policy) => policy.projectId === args.projectId) ?? null;
   },
 });
 
 export const upsertPolicy = mutation({
   args: {
-    projectId: v.optional(v.id("projects")),
+    projectId: v.id("projects"),
     name: v.string(),
     strictness: v.number(),
     rules: v.array(ruleArg),
     actorId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.APPROVE);
     const existing = await ctx.db
       .query("changeRiskPolicies")
       .withIndex("by_active", (q) => q.eq("active", true))
       .collect();
     for (const p of existing) {
-      if (p.projectId === args.projectId || (!p.projectId && !args.projectId)) {
+      if (p.projectId === args.projectId) {
         await ctx.db.patch(p._id, { active: false, updatedAt: Date.now() });
       }
     }

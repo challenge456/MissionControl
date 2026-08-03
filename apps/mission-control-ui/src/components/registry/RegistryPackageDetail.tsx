@@ -75,10 +75,12 @@ export function RegistryPackageDetail({
   });
   const ensurePackageEval = useMutation(api.context.evals.ensurePackageEval);
   const generateVerifier = useMutation(api.context.verifiers.generateFromSkill);
-  const packageVerifiers = useQuery(api.context.verifiers.list, {
-    packageId: entry._id as Id<"contextPackages">,
-    activeOnly: true,
-  });
+  const packageVerifiers = useQuery(
+    api.context.verifiers.list,
+    projectId
+      ? { projectId, packageId: entry._id as Id<"contextPackages">, activeOnly: true }
+      : "skip"
+  );
   const ensuredEvalRef = useRef(false);
   const versions = useQuery(api.context.packages.listVersions, {
     packageId: entry._id as Id<"contextPackages">,
@@ -385,10 +387,11 @@ export function RegistryPackageDetail({
                 <Button
                   size="sm"
                   variant="outline"
+                  disabled={!projectId}
                   onClick={() =>
                     void generateVerifier({
                       packageId: entry._id as Id<"contextPackages">,
-                      actorId: "registry-detail",
+                      projectId: projectId!,
                     })
                   }
                 >

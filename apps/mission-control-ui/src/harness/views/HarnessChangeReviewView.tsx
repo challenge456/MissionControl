@@ -41,9 +41,10 @@ export function HarnessChangeReviewView({
     projectId ? { projectId, limit: 10 } : { limit: 10 }
   );
   const lenses = latest?.changeReviewLenses ?? [];
-  const riskPolicy = useQuery(api.context.changeRisk.getActivePolicy, {
-    projectId: projectId ?? undefined,
-  });
+  const riskPolicy = useQuery(
+    api.context.changeRisk.getActivePolicy,
+    projectId ? { projectId } : "skip"
+  );
   const risk = latest
     ? evaluateChangeRisk({
         strictness: riskPolicy?.strictness ?? 50,
@@ -59,7 +60,8 @@ export function HarnessChangeReviewView({
     setIngesting(true);
     setIngestMsg(null);
     try {
-      const result = await ingest({ prUrl: url, projectId: projectId ?? undefined });
+      if (!projectId) throw new Error("Select a workspace before ingesting pull request evidence");
+      const result = await ingest({ prUrl: url, projectId });
       setIngestMsg(
         `Ingested ${result.checkCount} check runs · CI ${result.ciStatus} · ${result.diffLineCount ?? 0} diff lines`
       );
@@ -92,7 +94,7 @@ export function HarnessChangeReviewView({
               placeholder="https://github.com/owner/repo/pull/123"
               className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-surface-2 px-3 text-sm text-ink"
             />
-            <Button size="sm" disabled={!prUrl.trim() || ingesting} onClick={() => void runIngest()}>
+            <Button size="sm" disabled={!projectId || !prUrl.trim() || ingesting} onClick={() => void runIngest()}>
               {ingesting ? "Ingesting…" : "Ingest CI"}
             </Button>
           </div>

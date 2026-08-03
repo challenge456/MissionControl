@@ -9,26 +9,26 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export function HarnessVerifiersView({ projectId }: { projectId: Id<"projects"> | null }): JSX.Element {
-  const verifiers = useQuery(api.context.verifiers.list, {
-    projectId: projectId ?? undefined,
-    activeOnly: false,
-  });
-  const stale = useQuery(api.context.verifiers.ruleDecayCandidates, {
-    projectId: projectId ?? undefined,
-  });
+  const verifiers = useQuery(
+    api.context.verifiers.list,
+    projectId ? { projectId, activeOnly: false } : "skip"
+  );
+  const stale = useQuery(
+    api.context.verifiers.ruleDecayCandidates,
+    projectId ? { projectId } : "skip"
+  );
   const create = useMutation(api.context.verifiers.create);
   const [label, setLabel] = useState("");
   const [invariant, setInvariant] = useState("");
 
   const handleCreate = async () => {
-    if (!label.trim() || !invariant.trim()) return;
+    if (!projectId || !label.trim() || !invariant.trim()) return;
     await create({
-      projectId: projectId ?? undefined,
+      projectId,
       label: label.trim(),
       invariant: invariant.trim(),
       globPatterns: ["**/*"],
       idempotencyKey: `verifier-${label}-${Date.now()}`,
-      actorId: "harness-ui",
     });
     setLabel("");
     setInvariant("");
@@ -62,7 +62,7 @@ export function HarnessVerifiersView({ projectId }: { projectId: Id<"projects"> 
             <Input placeholder="Label" value={label} onChange={(e) => setLabel(e.target.value)} />
             <Input placeholder="Invariant (e.g. module A must not import B)" value={invariant} onChange={(e) => setInvariant(e.target.value)} />
           </div>
-          <Button className="mt-3" size="sm" onClick={() => void handleCreate()}>
+          <Button className="mt-3" size="sm" disabled={!projectId} onClick={() => void handleCreate()}>
             <Plus className="mr-1 h-4 w-4" /> Create
           </Button>
         </div>

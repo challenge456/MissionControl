@@ -61,3 +61,15 @@ export {
   type WorkflowNodeStatus,
   type WorkflowTopology,
 } from "./graph";
+
+export type {
+  ExecutorAdapter,
+  ExecutorCapabilities,
+  ExecutorConfigurationIssue,
+  ExecutorEstimate,
+  ExecutorEvent,
+  ExecutorEventType,
+  ExecutorHealth,
+  ExecutorRequest,
+  ExecutorResult,
+} from "./executorAdapter";

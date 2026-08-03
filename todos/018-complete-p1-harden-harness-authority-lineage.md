@@ -1,5 +1,5 @@
 ---
-status: in_progress
+status: complete
 priority: p1
 issue_id: "018"
 tags: [harness, authorization, lineage, loop-engineering, convex, ui]
@@ -77,9 +77,9 @@ additional product ideas in a separate prioritized backlog.
 ## Acceptance Criteria
 
 - [x] Inner, outer, and meta copy consistently map to autonomy, automation, and quality.
-- [ ] Browser-supplied actor labels cannot determine decision authority or audit identity.
-- [ ] Loop and meta-loop public reads and writes enforce workspace access.
-- [ ] Sensitive mutations enforce named permissions and fail closed across workspaces.
+- [x] Browser-supplied actor labels cannot determine decision authority or audit identity.
+- [x] Loop and meta-loop public reads and writes enforce workspace access.
+- [x] Sensitive mutations enforce named permissions and fail closed across workspaces.
 - [x] PR ingestion never attaches a PR to a WorkOrder by repository recency.
 - [x] Unmatched PRs remain visibly uncorrelated.
 - [x] Outer-loop evidence is scoped by explicit PR, WorkOrder, or cycle; workspace-latest mode is visibly unscoped.
@@ -141,3 +141,38 @@ additional product ideas in a separate prioritized backlog.
 - Browser verification on the corrected Software Factory Demo workspace passes
   with no fresh page or application console errors. Evidence is in
   `docs/testing/evidence/loop-engineering-authority-lineage-2026-08-02/`.
+
+### 2026-08-02 - Authority and service boundaries completed
+
+**By:** Codex
+
+**Actions:**
+
+- Removed the remaining Harness actor literals from verifier and change-risk
+  writes. Those surfaces now require a selected workspace, enforce named
+  permissions, and derive retained activity identity from the authenticated
+  operator.
+- Required approval authority for meta-loop measurement records and retained a
+  measurement activity with the server-derived operator identity.
+- Split pull-request ingestion into a permission-checked human action and an
+  internal webhook action reached only after GitHub HMAC verification.
+- Moved completed Loop workflow projection and failure recording behind the
+  server-owned workflow completion transaction. The external executor can no
+  longer invoke projection or write projection failures directly.
+- Kept the feature at `Preview`; durable audit records for denied actions are a
+  separate promotion gate because failed Convex mutations roll back writes in
+  the same transaction.
+
+**Verification:**
+
+- `git diff --check` passes.
+- Convex and Mission Control UI TypeScript checks pass.
+- All package tests pass, including 76 workflow-engine tests and 193 UI tests.
+- The complete Convex suite passes: 53 files and 375 tests.
+- The production UI build passes (with the existing bundle-size warning).
+- Browser verification at `/v2/harness-loops` confirmed workspace scoping,
+  truthful unscoped PR labeling, Preview capability labeling, and the governed
+  cycle-creation gate. Screenshot:
+  `output/playwright/loop-engineering-authority-gate.png`.
+- The only browser console error was the known unconfigured
+  `/gateway/status` endpoint; no Loop Engineering application error occurred.

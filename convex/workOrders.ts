@@ -1,11 +1,12 @@
 import { v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
+import type { MutationCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { appendChangeRecord } from "./lib/armAudit";
 import { logTaskEvent } from "./lib/taskEvents";
 import { deriveVerificationStatus, currentWorkflowStepLabel, totalWorkflowRetries } from "./lib/workOrders";
-import { ACTIVE_RUN_STATUSES, nextStateForRunStatus, validateDispatchable, validateRetryRequest } from "./lib/workOrderDispatch";
+import { ACTIVE_RUN_STATUSES, nextStateForRunStatus, publicDispatchActorAllowed, validateDispatchable, validateRetryRequest } from "./lib/workOrderDispatch";
 import { isRunNeedingAttention, summarizeFactoryMetrics } from "./lib/factoryOverview";
 import {
   approvalStatusSatisfiesRequirement,
@@ -28,6 +29,10 @@ import {
 } from "./lib/workOrderRevision";
 import { planAcceptedWorkOrderParentSync } from "./lib/workOrderParentSync";
 import { validateMissionWorkOrderDispatch } from "./lib/missionGovernance";
+import { evaluateFactoryDispatchPreflight } from "./lib/factoryDispatch";
+import { validFactoryBudget } from "./lib/factoryConfiguration";
+import { evaluateGithubAppCapabilities, githubInstallationIsStale } from "./lib/githubAppReadiness";
+import { canonicalRepositoryKey } from "./lib/workspaceRepositories";
 import {
   startMissionForWorkOrderDispatch,
   syncMissionValidationReceipt,
@@ -1316,8 +1321,7 @@ export const create = mutation({
   handler: async (ctx, args) => await createWorkOrderRecord(ctx, args),
 });
 
-export const dispatch = mutation({
-  args: {
+const dispatchArgs = {
     workOrderId: v.id("workOrders"),
     taskId: v.optional(v.id("tasks")),
     workflowId: v.optional(v.string()),
@@ -1331,8 +1335,28 @@ export const dispatch = mutation({
     worktree: v.optional(v.string()),
     retryOfWorkflowRunId: v.optional(v.id("workflowRuns")),
     retryReason: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
+    factoryDefinitionVersionId: v.optional(v.id("factoryDefinitionVersions")),
+    branch: v.optional(v.string()),
+};
+
+type DispatchArgs = {
+  workOrderId: Id<"workOrders">;
+  taskId?: Id<"tasks">;
+  workflowId?: string;
+  actorType: "HUMAN" | "SYSTEM" | "AGENT";
+  actorId?: string;
+  idempotencyKey: string;
+  runtime?: string;
+  authorizedModelOverride?: string;
+  model?: string;
+  worktree?: string;
+  retryOfWorkflowRunId?: Id<"workflowRuns">;
+  retryReason?: string;
+  factoryDefinitionVersionId?: Id<"factoryDefinitionVersions">;
+  branch?: string;
+};
+
+async function dispatchWorkOrder(ctx: MutationCtx, args: DispatchArgs) {
     const existingEvent = await ctx.db
       .query("workOrderEvents")
       .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", `${args.idempotencyKey}:dispatched`))
@@ -1436,6 +1460,11 @@ export const dispatch = mutation({
       .query("workflowRuns")
       .withIndex("by_work_order", (q) => q.eq("workOrderId", args.workOrderId))
       .collect();
+    const factoryBinding = await resolveFactoryDispatchBinding(ctx, {
+      args,
+      workOrder: refreshedWorkOrder,
+      workflow,
+    });
     const taskAttempts = selectedTask
       ? existingRuns.filter((run) => run.parentTaskId === selectedTask._id)
       : [];
@@ -1613,6 +1642,17 @@ export const dispatch = mutation({
       workOrderId: refreshedWorkOrder._id,
       workOrderRevisionNumber: refreshedWorkOrder.currentRevisionNumber ?? 1,
       workOrderRevisionId: refreshedWorkOrder.currentRevisionId,
+      factoryDefinitionVersionId: factoryBinding?.version._id,
+      factoryConfigurationDigest: factoryBinding?.version.configurationDigest,
+      repositoryId: factoryBinding?.repository._id,
+      hostBindingId: factoryBinding?.host._id,
+      policyEnvelopeId: factoryBinding?.version.policyEnvelopeId,
+      environmentId: factoryBinding?.version.environmentId,
+      executorAdapter: factoryBinding?.version.executor.adapter,
+      executorVersion: factoryBinding?.version.executor.version,
+      branch: factoryBinding?.branch,
+      allowedTools: factoryBinding?.allowedTools,
+      isMutating: refreshedWorkOrder.isMutating ?? true,
       parentTaskId: selectedTask?._id ?? refreshedWorkOrder.legacyTaskId,
       status: "PENDING",
       currentStepIndex: 0,
@@ -1640,7 +1680,7 @@ export const dispatch = mutation({
       runtime: args.runtime,
       model: routedModel,
       routingDecisionId: routing?.decisionId,
-      worktree: args.worktree,
+      worktree: factoryBinding?.worktree ?? args.worktree,
       startedAt: now,
       metadata: {
         dispatchIdempotencyKey: args.idempotencyKey,
@@ -1653,6 +1693,12 @@ export const dispatch = mutation({
         routingMode: routing?.mode,
         routingSource: routing?.result.source,
         routingPolicyVersion: routing?.policyVersion,
+        factoryDefinitionVersionId: factoryBinding?.version._id,
+        factoryConfigurationDigest: factoryBinding?.version.configurationDigest,
+        repositoryId: factoryBinding?.repository._id,
+        hostBindingId: factoryBinding?.host._id,
+        branch: factoryBinding?.branch,
+        allowedTools: factoryBinding?.allowedTools,
       },
     });
     if (routing) {
@@ -1676,7 +1722,7 @@ export const dispatch = mutation({
         model: routedModel,
         routingDecisionId: routing?.decisionId,
         routingMode: routing?.mode,
-        worktree: args.worktree,
+        worktree: factoryBinding?.worktree ?? args.worktree,
         retryOfWorkflowRunId: args.retryOfWorkflowRunId,
         retryOfRunId: retryOfRun?.runId,
         retryReason: retryRequest?.reason,
@@ -1811,8 +1857,95 @@ export const dispatch = mutation({
 
     const run = await ctx.db.get(runDocId);
     return { created: true, run };
+}
+
+export const dispatch = mutation({
+  args: dispatchArgs,
+  handler: async (ctx, args) => {
+    if (!publicDispatchActorAllowed(args.actorType)) {
+      throw new Error("Service dispatch requires an authenticated service command.");
+    }
+    return await dispatchWorkOrder(ctx, args);
   },
 });
+
+export const dispatchServiceInternal = internalMutation({
+  args: dispatchArgs,
+  handler: async (ctx, args) => await dispatchWorkOrder(ctx, args),
+});
+
+async function resolveFactoryDispatchBinding(
+  ctx: MutationCtx,
+  input: { args: DispatchArgs; workOrder: any; workflow: any }
+): Promise<any | null> {
+  const { args, workOrder, workflow } = input;
+  if (!args.factoryDefinitionVersionId) {
+    const result = evaluateFactoryDispatchPreflight({
+      missionLinked: Boolean(workOrder.missionId), versionProvided: false,
+      definitionActive: false, versionIsActive: false, assessmentPasses: false,
+      assessmentCurrent: false, digestMatches: false, repositoryReady: false,
+      githubReady: false, workflowMatches: false, executorReady: false,
+      policyReady: false, verifiersReady: false, hostReady: false,
+      budgetReady: false, recoveryReady: false, worktreeProvided: false,
+      mutating: workOrder.isMutating !== false, activeRepositoryMutation: false,
+    });
+    if (!result.ok) throw new Error(`Factory dispatch blocked (${result.blocker}): ${result.remediation}`);
+    return null;
+  }
+
+  const now = Date.now();
+  const version = await ctx.db.get(args.factoryDefinitionVersionId);
+  if (!version) throw new Error("Factory dispatch blocked (factory-version-not-found): Select an available Factory version.");
+  const [definition, repository, policy, installation, assessments, bindings, verifiers] = await Promise.all([
+    ctx.db.get(version.factoryDefinitionId),
+    ctx.db.get(version.repositoryId),
+    version.policyEnvelopeId ? ctx.db.get(version.policyEnvelopeId) : null,
+    ctx.db.query("githubAppInstallations").withIndex("by_repository", (q) => q.eq("repositoryId", version.repositoryId)).first(),
+    ctx.db.query("factoryReadinessAssessments").withIndex("by_version", (q) => q.eq("factoryDefinitionVersionId", version._id)).collect(),
+    ctx.db.query("workspaceHostBindings").withIndex("by_project", (q) => q.eq("projectId", version.projectId)).collect(),
+    Promise.all(version.verifierIds.map((id) => ctx.db.get(id))),
+  ]);
+  const latestAssessment = assessments.sort((left, right) => right.assessedAt - left.assessedAt)[0];
+  const github = installation ? evaluateGithubAppCapabilities(installation) : null;
+  const host = bindings.find((candidate) => repository && canonicalRepositoryKey(candidate.repository) === canonicalRepositoryKey(repository.repository));
+  const activeStatuses = ["PENDING", "RUNNING", "PAUSED"] as const;
+  const activeRuns = repository
+    ? (await Promise.all(activeStatuses.map((status) => ctx.db.query("workflowRuns")
+        .withIndex("by_repository_status", (q) => q.eq("repositoryId", repository._id).eq("status", status))
+        .collect()))).flat()
+    : [];
+  const result = evaluateFactoryDispatchPreflight({
+    missionLinked: Boolean(workOrder.missionId),
+    versionProvided: true,
+    definitionActive: definition?.status === "ACTIVE",
+    versionIsActive: definition?.activeVersionId === version._id,
+    assessmentPasses: latestAssessment?.status === "PASS",
+    assessmentCurrent: Boolean(latestAssessment && latestAssessment.expiresAt > now),
+    digestMatches: latestAssessment?.configurationDigest === version.configurationDigest,
+    repositoryReady: Boolean(repository && repository.projectId === workOrder.projectId && repository.status === "READY"),
+    githubReady: Boolean(installation?.status === "CONNECTED" && github?.ready && !githubInstallationIsStale(installation.verifiedAt, now)),
+    workflowMatches: version.workflowId === workflow._id,
+    executorReady: version.executor.adapter === "codex" && version.executor.version === "v1",
+    policyReady: Boolean(policy?.active && (!policy.projectId || policy.projectId === workOrder.projectId)),
+    verifiersReady: verifiers.length > 0 && verifiers.every((item) => item?.active && item.projectId === workOrder.projectId),
+    hostReady: Boolean(host && host.status === "READY" && !host.dirty && now - host.checkedAt <= 24 * 60 * 60 * 1_000),
+    budgetReady: validFactoryBudget(version.budget),
+    recoveryReady: Object.values(version.recovery).every(Boolean),
+    worktreeProvided: Boolean(args.worktree?.trim() || host?.checkoutRoot?.trim()),
+    mutating: workOrder.isMutating !== false,
+    activeRepositoryMutation: activeRuns.some((run) => run.isMutating !== false),
+  });
+  if (!result.ok) throw new Error(`Factory dispatch blocked (${result.blocker}): ${result.remediation}`);
+  if (!repository || !host) throw new Error("Factory dispatch blocked (binding-missing): Reassess Factory readiness.");
+  return {
+    version,
+    repository,
+    host,
+    branch: args.branch?.trim() || `mc/${String(workOrder._id).slice(-12)}`,
+    worktree: args.worktree?.trim() || `${host.checkoutRoot.replace(/\/+$/, "")}/.mission-control/worktrees/${String(workOrder._id).slice(-12)}`,
+    allowedTools: Array.isArray(workflow.metadata?.allowedTools) ? workflow.metadata.allowedTools.filter((item: unknown): item is string => typeof item === "string") : [],
+  };
+}
 
 /**
  * Records a narrow operator exception for the next dispatch only. A model can

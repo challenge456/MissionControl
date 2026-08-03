@@ -3,9 +3,18 @@ import {
   dispatchApprovalAllowed,
   findActiveRun,
   nextStateForRunStatus,
+  publicDispatchActorAllowed,
   validateDispatchable,
   validateRetryRequest,
 } from "../lib/workOrderDispatch";
+
+describe("public work order dispatch authority", () => {
+  it("allows only server-derived human authority on the public mutation", () => {
+    expect(publicDispatchActorAllowed("HUMAN")).toBe(true);
+    expect(publicDispatchActorAllowed("SYSTEM")).toBe(false);
+    expect(publicDispatchActorAllowed("AGENT")).toBe(false);
+  });
+});
 
 describe("work order dispatch policy", () => {
   it("requires approval for high-risk work orders", () => {

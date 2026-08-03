@@ -140,6 +140,13 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
       ? { workOrderId: accessibleSelectedId as Id<"workOrders"> }
       : "skip"
   );
+  const activeFactory = useQuery(
+    api["factory/configuration"].getActiveForWorkOrder,
+    accessibleSelectedId
+      ? { workOrderId: accessibleSelectedId as Id<"workOrders"> }
+      : "skip"
+  );
+  const activeFactoryVersionId = activeFactory?.version._id;
 
   useEffect(() => {
     const requested = searchParams.get("workOrder");
@@ -932,6 +939,9 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                             actorId: "operator",
                             idempotencyKey: `ui-dispatch:${selected.workOrder._id}:${selected.workOrder.updatedAt}`,
                             runtime: "Mission Control UI",
+                            factoryDefinitionVersionId: selected.workOrder.missionId
+                              ? activeFactoryVersionId
+                              : undefined,
                           });
                           if (result.reason === "routing-exhausted") {
                             throw new Error("Dispatch blocked: no safe model route satisfies this Work Order.");
@@ -945,12 +955,18 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                       disabled={
                         !canDispatchSelected ||
                         dispatchingId === selected.workOrder._id ||
-                        (selected.childTasks.length > 0 && !selectedDispatchTaskId)
+                        (selected.childTasks.length > 0 && !selectedDispatchTaskId) ||
+                        (Boolean(selected.workOrder.missionId) && !activeFactoryVersionId)
                       }
                     >
                       {dispatchingId === selected.workOrder._id ? "Dispatching…" : "Dispatch"}
                     </Button>
                   </div>
+                  {selected.workOrder.missionId && !activeFactoryVersionId ? (
+                    <div className="mb-3 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
+                      Activate a passing Factory version before dispatching this Mission WorkOrder.
+                    </div>
+                  ) : null}
                   {dispatchError ? (
                     <div className="mb-3 rounded-md border border-red-500/20 bg-red-500/5 px-3 py-2 text-xs text-red-200">
                       {dispatchError}
@@ -1262,6 +1278,9 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                   worktree,
                   retryOfWorkflowRunId: workflowRunId,
                   retryReason: reason,
+                  factoryDefinitionVersionId: selected.workOrder.missionId
+                    ? activeFactoryVersionId
+                    : undefined,
                 });
                 if (result.reason === "routing-exhausted") {
                   throw new Error("Retry blocked: no safe model route satisfies this Work Order.");

@@ -34,6 +34,13 @@ export const ConvexQueries = {
   },
 } as const;
 
+export const ConvexActions = {
+  serviceCommands: {
+    dispatchWorkOrder: "serviceCommands:dispatchWorkOrder",
+    ingestReceiptPacket: "serviceCommands:ingestReceiptPacket",
+  },
+} as const;
+
 export const ConvexMutations = {
   context: {
     activateForWorkflowRun: "context/activation:activateForWorkflowRun",
@@ -42,7 +49,6 @@ export const ConvexMutations = {
     decomposeTask: "coordinator:decomposeTask",
   },
   workOrders: {
-    dispatch: "workOrders:dispatch",
     requestApprovalDecision: "workOrders:requestApprovalDecision",
     decideApprovalDecision: "workOrders:decideApprovalDecision",
     recordVerificationReceipt: "workOrders:recordVerificationReceipt",
@@ -57,9 +63,6 @@ export const ConvexMutations = {
     recordHandoff: "missions:recordHandoff",
     recordValidationResult: "missions:recordValidationResult",
     accept: "missions:accept",
-  },
-  factory: {
-    ingestReceiptPacket: "factory/piBridge:ingestReceiptPacket",
   },
   workflowRuns: {
     recordEvent: "workflowRuns:recordEvent",

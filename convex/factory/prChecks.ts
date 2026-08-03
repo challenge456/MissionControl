@@ -3,7 +3,7 @@
  */
 
 import { v } from "convex/values";
-import { action, internalQuery, mutation, query } from "../_generated/server";
+import { action, internalAction, internalQuery, mutation, query } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import {
@@ -519,26 +519,36 @@ export const recordMerge = mutation({
   },
 });
 
-export const ingestPullRequest = action({
-  args: {
-    prUrl: v.string(),
-    projectId: v.optional(v.id("projects")),
-    workOrderId: v.optional(v.id("workOrders")),
-    workflowRunId: v.optional(v.id("workflowRuns")),
-    taskId: v.optional(v.id("tasks")),
-    releaseDeploymentId: v.optional(v.id("deployments")),
-    sourceEventId: v.optional(v.string()),
-  },
-  handler: async (
-    ctx,
-    args
-  ): Promise<{
+const ingestPullRequestArgs = {
+  prUrl: v.string(),
+  projectId: v.optional(v.id("projects")),
+  workOrderId: v.optional(v.id("workOrders")),
+  workflowRunId: v.optional(v.id("workflowRuns")),
+  taskId: v.optional(v.id("tasks")),
+  releaseDeploymentId: v.optional(v.id("deployments")),
+  sourceEventId: v.optional(v.string()),
+};
+
+type IngestPullRequestArgs = {
+  prUrl: string;
+  projectId?: Id<"projects">;
+  workOrderId?: Id<"workOrders">;
+  workflowRunId?: Id<"workflowRuns">;
+  taskId?: Id<"tasks">;
+  releaseDeploymentId?: Id<"deployments">;
+  sourceEventId?: string;
+};
+
+async function ingestPullRequestImpl(
+  ctx: any,
+  args: IngestPullRequestArgs
+): Promise<{
     id: Id<"harnessPrChecks">;
     prUrl: string;
     ciStatus: "PASS" | "FAIL" | "PENDING" | "UNKNOWN";
     checkCount: number;
     diffLineCount?: number;
-  }> => {
+  }> {
     const parsed = parseGitHubPrUrl(args.prUrl.trim());
     if (!parsed) {
       throw new Error("Invalid GitHub PR URL — expected https://github.com/owner/repo/pull/123");
@@ -591,6 +601,26 @@ export const ingestPullRequest = action({
       checkCount: payload.checkRuns.length,
       diffLineCount: payload.diffLineCount,
     };
+}
+
+export const ingestPullRequest = action({
+  args: ingestPullRequestArgs,
+  handler: async (ctx, args) => {
+    if (!args.projectId) {
+      throw new Error("Select a workspace before ingesting pull request evidence");
+    }
+    await ctx.runQuery(internal.companyContext.authorizeFactoryAction, {
+      projectId: args.projectId,
+      permission: FACTORY_PERMISSIONS.IMPROVE,
+    });
+    return await ingestPullRequestImpl(ctx, args);
+  },
+});
+
+export const ingestPullRequestFromWebhook = internalAction({
+  args: ingestPullRequestArgs,
+  handler: async (ctx, args) => {
+    return await ingestPullRequestImpl(ctx, args);
   },
 });
 

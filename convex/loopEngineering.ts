@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { action, internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
@@ -111,7 +111,7 @@ export const getByRootWorkOrderInternal = internalQuery({
   handler: async (ctx, args) => findCycleByRootWorkOrder(ctx, args.workOrderId),
 });
 
-export const recordProjectionFailure = mutation({
+export const recordProjectionFailure = internalMutation({
   args: {
     workflowRunId: v.id("workflowRuns"),
     error: v.string(),
@@ -288,13 +288,13 @@ export const applyWorkflowProjection = internalMutation({
   },
 });
 
-export const projectWorkflowRun = action({
-  args: {
-    workflowRunId: v.id("workflowRuns"),
-    dryRun: v.optional(v.boolean()),
-  },
-  handler: async (ctx, args): Promise<any> => {
-    const run = await ctx.runQuery(api.workflowRuns.getById, { id: args.workflowRunId });
+async function projectCompletedWorkflowRun(
+  ctx: any,
+  args: { workflowRunId: Id<"workflowRuns">; dryRun?: boolean }
+): Promise<any> {
+    const run = await ctx.runQuery(internal.workflowRuns.getByIdInternal, {
+      id: args.workflowRunId,
+    });
     if (!run) throw new Error("Workflow run not found.");
     if (run.workflowId !== "loop-engineering") {
       throw new Error("Only Loop Engineering runs can be projected.");
@@ -356,6 +356,40 @@ export const projectWorkflowRun = action({
       approvedAt: approval?.decidedAt,
     });
     return { ...preview, ...result, dryRun: false };
+}
+
+export const projectWorkflowRun = action({
+  args: {
+    workflowRunId: v.id("workflowRuns"),
+    dryRun: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args): Promise<any> => {
+    const run = await ctx.runQuery(internal.workflowRuns.getByIdInternal, {
+      id: args.workflowRunId,
+    });
+    if (!run) throw new Error("Workflow run not found.");
+    if (!run.projectId) throw new Error("Workflow run is not workspace-scoped.");
+    await ctx.runQuery(internal.companyContext.authorizeFactoryAction, {
+      projectId: run.projectId,
+      permission: FACTORY_PERMISSIONS.IMPROVE,
+    });
+    return await projectCompletedWorkflowRun(ctx, args);
+  },
+});
+
+export const projectWorkflowRunInternal = internalAction({
+  args: { workflowRunId: v.id("workflowRuns") },
+  handler: async (ctx, args): Promise<any> => {
+    try {
+      return await projectCompletedWorkflowRun(ctx, args);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await ctx.runMutation(internal.loopEngineering.recordProjectionFailure, {
+        workflowRunId: args.workflowRunId,
+        error: message,
+      });
+      return { projected: false, error: message };
+    }
   },
 });
 

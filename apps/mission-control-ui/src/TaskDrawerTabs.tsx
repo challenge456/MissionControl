@@ -551,6 +551,11 @@ function TaskAttemptSection({
   workflowAttempts: Doc<"workflowRuns">[];
 }) {
   const dispatchWorkOrder = useMutation(api.workOrders.dispatch);
+  const activeFactory = useQuery(
+    api["factory/configuration"].getActiveForWorkOrder,
+    parentDelivery.workOrderId ? { workOrderId: parentDelivery.workOrderId } : "skip"
+  );
+  const activeFactoryVersionId = activeFactory?.version._id;
   const [retryReason, setRetryReason] = useState("");
   const [scheduling, setScheduling] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -562,6 +567,7 @@ function TaskAttemptSection({
   );
   const current =
     attempts.length > 0 ? attempts[attempts.length - 1] : null;
+  const factoryReadyForDispatch = !parentDelivery.missionId || Boolean(activeFactoryVersionId);
   const workOrderCanDispatch = [
     "READY",
     "BLOCKED",
@@ -575,12 +581,14 @@ function TaskAttemptSection({
     parentDelivery.governanceStatus === "GOVERNED" &&
     !!parentDelivery.workOrderId &&
     workOrderCanDispatch &&
+    factoryReadyForDispatch &&
     ["READY", "ASSIGNED", "IN_PROGRESS"].includes(taskStatus) &&
     attempts.length === 0;
   const canRetry =
     parentDelivery.governanceStatus === "GOVERNED" &&
     !!parentDelivery.workOrderId &&
     workOrderCanDispatch &&
+    factoryReadyForDispatch &&
     ["READY", "ASSIGNED", "IN_PROGRESS"].includes(taskStatus) &&
     current?.status === "FAILED";
 
@@ -601,6 +609,9 @@ function TaskAttemptSection({
         runtime: "Mission Control UI",
         retryOfWorkflowRunId: retry ? current?._id : undefined,
         retryReason: retry ? retryReason.trim() : undefined,
+        factoryDefinitionVersionId: parentDelivery.missionId
+          ? activeFactoryVersionId
+          : undefined,
       });
       if (result.reason === "routing-exhausted") {
         throw new Error("Dispatch blocked: no safe model route satisfies this Work Order.");
@@ -647,6 +658,12 @@ function TaskAttemptSection({
         parentDelivery.governanceStatus === "GOVERNED" ? (
           <p className="mt-3 rounded-md border border-line bg-surface-1 px-3 py-2 text-xs text-ink-muted">
             This Work Order is {parentDelivery.workOrderState?.replace(/_/g, " ").toLowerCase() ?? "not ready"} and cannot schedule an Attempt.
+          </p>
+        ) : null}
+
+        {parentDelivery.missionId && !activeFactoryVersionId ? (
+          <p className="mt-3 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+            Activate a passing Factory version for this workspace before starting a Mission Attempt.
           </p>
         ) : null}
 

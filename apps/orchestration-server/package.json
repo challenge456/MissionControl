@@ -21,6 +21,7 @@
     "@mission-control/context-router": "workspace:*",
     "@mission-control/memory": "workspace:*",
     "@mission-control/shared": "workspace:*",
+    "@mission-control/workflow-engine": "workspace:*",
     "dotenv": "^16.3.1",
     "yaml": "^2.3.4"
   },
