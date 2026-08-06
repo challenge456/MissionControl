@@ -11,6 +11,94 @@ decisions without surrendering human authority.
 > makes autonomous software delivery bounded, inspectable, recoverable, and
 > reviewable.
 
+![Mission Control Command Center showing portfolio metrics and ranked exceptions](docs/software-factory/screenshots/readme/mission-control-command-center.png)
+
+*The Command Center turns a large delivery portfolio into a ranked queue of
+decisions, blockers, and evidence—not a wall of agent activity.*
+
+## Contents
+
+- [Why software factories and Mission Control matter](#why-software-factories-and-mission-control-matter)
+- [Project status](#project-status)
+- [The delivery contract](#the-delivery-contract)
+- [How the factory works](#how-the-factory-works)
+- [What is implemented](#what-is-implemented)
+- [What remains for the V1 golden path](#what-remains-for-the-v1-golden-path)
+- [Operator surfaces](#operator-surfaces)
+- [System architecture](#system-architecture)
+- [Local development](#local-development)
+- [Verification](#verification)
+- [Security model](#security-model)
+- [Product and architecture documents](#product-and-architecture-documents)
+
+## Why software factories and Mission Control matter
+
+AI-assisted development begins as a one-to-one interaction: one developer asks
+one agent to make a change, watches the result, and reviews the diff. That model
+can improve individual throughput, but it does not become a reliable delivery
+system simply by opening more agent sessions.
+
+As developers begin supervising tens or hundreds of agents across multiple
+repositories and products, the bottleneck moves from code generation to
+coordination. The operator can no longer keep every plan, branch, permission,
+dependency, retry, validation result, and release decision in working memory.
+More agents without a control plane create more unfinished work, conflicting
+changes, review pressure, cost, and risk.
+
+A chat interface scales conversations. A software factory scales governed work.
+
+### Coding agent, software factory, and Mission Control
+
+These are three different layers:
+
+| Layer | Primary responsibility | What it must not decide alone |
+|---|---|---|
+| **Coding agent** | Execute a bounded task, use approved tools, report events, and produce artifacts | Product intent, its own authority, acceptance, merge, or release |
+| **Software Factory** | Freeze the repository, workflow, executor, policy, budget, verifier, and recovery contract used to produce changes repeatedly | Whether a business outcome is worth pursuing or whether its own output is acceptable |
+| **Mission Control** | Coordinate Missions and Factories across projects; route attention, enforce governance, retain lineage, and present evidence to human operators | Product judgment, risk acceptance, or irreversible decisions reserved for people |
+
+The Factory is the production system for a repository. Mission Control is the
+portfolio-level operating system that lets a human direct many Factories without
+managing every agent interaction manually.
+
+### What breaks when agent fleets grow
+
+| Control problem | Without a control plane | Mission Control response |
+|---|---|---|
+| **Intent** | Prompts drift away from the approved outcome | Versioned Missions, plans, WorkOrders, and acceptance criteria |
+| **Concurrency** | Agents collide on branches, files, migrations, and shared dependencies | Repository and code-scope bindings, dependency-aware dispatch, and one active mutating Attempt per repository |
+| **Authority** | Broad credentials and ambient permissions make every worker overpowered | Server-side authorization, named capabilities, short-lived provider credentials, and risk-tiered approvals |
+| **Context** | Each agent receives a different or stale picture of the system | Frozen execution envelopes, versioned workflows, exact revisions, and durable source references |
+| **Verification** | Workers mark themselves done and weak results move downstream | Independent receipts mapped to acceptance criteria, with pass, fail, stale, conflicting, and waived states |
+| **Human attention** | Developers poll chats and logs until supervision becomes the bottleneck | Exception-first queues that rank blockers, pending decisions, failed evidence, and remediation |
+| **Cost and capacity** | Retries and parallel work consume budgets invisibly | Attempt, runtime, and cost budgets plus provider-capacity and scheduler signals |
+| **Continuity** | A process restart or lost chat destroys operational state | Durable Tasks, Attempts, events, leases, receipts, and idempotent commands |
+| **Accountability** | It is difficult to explain who authorized a change or why it shipped | End-to-end lineage from intent through plan, execution, PR, approval, release, and production evidence |
+
+### The developer becomes an operator
+
+At fleet scale, the human role changes. Developers spend less time driving each
+keystroke and more time setting intent, defining constraints, reviewing
+exceptions, making risk decisions, and accepting evidence. Agents own bounded
+execution, iteration, validation support, recovery, and evidence collection.
+
+Mission Control is designed so one operator can quickly answer:
+
+- What outcome matters most right now?
+- Which work is blocked, and what exact decision or evidence will unblock it?
+- Which agent may change which repository and code scope?
+- What changed relative to the approved plan?
+- Which acceptance criteria passed, failed, became stale, or were waived?
+- How much time, cost, and retry budget remains?
+- Can the work be paused, cancelled, replayed, or recovered safely?
+- What is actually ready for human review, merge, or release?
+
+This repository is designed for that future operating model, but it does **not**
+claim that the current V1 has been production load-tested with hundreds of live
+agents. The present milestone is deliberately stricter: prove one complete,
+browser-operable, repository-backed golden path with durable evidence and safe
+recovery. Correct control primitives come before fleet-size claims.
+
 ## Project status
 
 Mission Control is in active V1 development.
@@ -273,6 +361,27 @@ path earns the production claim.
 
 The EOS V2 shell uses a route-maturity registry. Live routes are available by
 default; Preview and Demo routes remain labeled and can be hidden.
+
+The screenshots below use the deterministic `sf-demo` fixture. Counts,
+timestamps, names, and outcomes are demonstration data—not measured production
+throughput or a claim of 100-agent load validation.
+
+### Governed execution queue
+
+![Mission Control Work Orders showing approval, verification, and dispatch state](docs/software-factory/screenshots/readme/mission-control-work-orders.png)
+
+Work Orders turn approved intent into an executable contract. The operator can
+filter by repository, state, risk, assignment, requestor, and verification;
+inspect automation lineage; and see the next action before dispatching or
+accepting work.
+
+### Approval and audit trail
+
+![Mission Control audit surface showing change and approval records](docs/software-factory/screenshots/readme/mission-control-audit.png)
+
+The audit surface retains lifecycle changes, approvals, denials, deployment
+events, and policy decisions so a high-volume agent fleet remains explainable
+after the fact.
 
 | Route | Operator job | Maturity |
 |---|---|---|
