@@ -23,6 +23,7 @@ import {
 } from "../lib/harnessPrChecks";
 import { computeMergeGates } from "../lib/mergeGates";
 import { fetchPullRequestCi } from "../lib/githubCiIngest";
+import { mintGithubInstallationToken } from "../lib/githubAppAuth";
 import { buildFileChanges } from "../lib/runInspector";
 import { mergeAuthoritySatisfied } from "../lib/prEvaluation";
 import { FACTORY_PERMISSIONS, requireWorkspacePermission } from "../lib/companyAccess";
@@ -814,17 +815,44 @@ async function ingestPullRequestEvidence(
       throw new Error("Invalid GitHub PR URL — expected https://github.com/owner/repo/pull/123");
     }
 
-    const payload = await fetchPullRequestCi(
-      parsed.owner,
-      parsed.repo,
-      parsed.prNumber,
-      process.env.GITHUB_TOKEN
-    );
+    if (!args.projectId) {
+      throw new Error("GitHub App PR evidence ingestion requires an authorized workspace binding");
+    }
+    const binding = await ctx.runQuery(internal.factory.prChecks.resolveGithubIngestBinding, {
+      projectId: args.projectId,
+      repoFullName: `${parsed.owner}/${parsed.repo}`,
+    });
+    const configuredAppId = process.env.GITHUB_APP_ID?.trim();
+    const privateKey = process.env.GITHUB_APP_PRIVATE_KEY?.trim();
+    if (!configuredAppId || !privateKey) {
+      throw new Error("GitHub App PR evidence ingestion is not configured");
+    }
+    if (configuredAppId !== binding.appId) {
+      throw new Error("GitHub App PR evidence binding does not match the configured App identity");
+    }
+    const installation = await mintGithubInstallationToken({
+      installationId: binding.installationId,
+      providerRepositoryId: binding.providerRepositoryId,
+      appId: configuredAppId,
+      privateKey,
+    });
+    let installationToken = installation.token;
+    let payload: Awaited<ReturnType<typeof fetchPullRequestCi>>;
+    try {
+      payload = await fetchPullRequestCi(
+        parsed.owner,
+        parsed.repo,
+        parsed.prNumber,
+        installationToken
+      );
+    } finally {
+      installationToken = "";
+    }
     const lineage = await ctx.runQuery(internal.factory.prChecks.resolveLineage, {
       projectId: args.projectId,
-      workOrderId: args.workOrderId,
-      workflowRunId: args.workflowRunId,
-      taskId: args.taskId,
+      workOrderId: args.workOrderId ?? payload.lineage?.workOrderId as Id<"workOrders"> | undefined,
+      workflowRunId: args.workflowRunId ?? payload.lineage?.workflowRunId as Id<"workflowRuns"> | undefined,
+      taskId: args.taskId ?? payload.lineage?.taskId as Id<"tasks"> | undefined,
       repoFullName: payload.repoFullName,
       branch: payload.branch,
     });
@@ -885,6 +913,44 @@ export const ingestPullRequestFromWebhook = internalAction({
   handler: async (ctx, args) => await ingestPullRequestEvidence(ctx, args),
 });
 
+export const resolveGithubIngestBinding = internalQuery({
+  args: {
+    projectId: v.id("projects"),
+    repoFullName: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const repositories = await ctx.db
+      .query("workspaceRepositories")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+    const requestedRepository = normalizeGitHubRepository(args.repoFullName);
+    const matches = repositories.filter((repository) =>
+      normalizeGitHubRepository(repository.repository) === requestedRepository
+    );
+    if (matches.length !== 1) {
+      throw new Error("GitHub App PR evidence repository does not match one workspace binding");
+    }
+    const repository = matches[0];
+    if (repository.status !== "READY" || !repository.providerRepositoryId) {
+      throw new Error("GitHub App PR evidence repository binding is not ready");
+    }
+    const installation = await ctx.db
+      .query("githubAppInstallations")
+      .withIndex("by_repository", (q) => q.eq("repositoryId", repository._id))
+      .first();
+    if (!installation || installation.status !== "CONNECTED") {
+      throw new Error("GitHub App PR evidence installation is not connected");
+    }
+    return {
+      repositoryId: repository._id,
+      repository: repository.repository,
+      providerRepositoryId: repository.providerRepositoryId,
+      installationId: installation.installationId,
+      appId: installation.appId,
+    };
+  },
+});
+
 export const resolveLineage = internalQuery({
   args: {
     projectId: v.optional(v.id("projects")),
@@ -919,9 +985,18 @@ export const resolveLineage = internalQuery({
       if (args.workflowRunId && workflowRun?.workOrderId !== workOrder._id) {
         throw new Error("Explicit PR artifact run does not belong to the WorkOrder");
       }
+      if (
+        workflowRun?.branch &&
+        normalizeGitBranch(workflowRun.branch) !== normalizeGitBranch(args.branch)
+      ) {
+        throw new Error("Explicit PR artifact branch does not match the producing Attempt");
+      }
       const task = args.taskId ? await ctx.db.get(args.taskId) : null;
       if (args.taskId && task?.workOrderId !== workOrder._id) {
         throw new Error("Explicit PR artifact Task does not belong to the WorkOrder");
+      }
+      if (task && workflowRun?.parentTaskId && task._id !== workflowRun.parentTaskId) {
+        throw new Error("Explicit PR artifact Task does not match the producing Attempt");
       }
       const cycles = await ctx.db.query("loopEngineeringCycles").collect();
       const cycle = cycles.find((candidate) => candidate.workOrderIds.includes(workOrder._id));

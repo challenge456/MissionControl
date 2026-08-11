@@ -43,6 +43,7 @@ import type * as e2e from "../e2e.js";
 import type * as eos_projections from "../eos/projections.js";
 import type * as execution from "../execution.js";
 import type * as executionRequests from "../executionRequests.js";
+import type * as executionWorker from "../executionWorker.js";
 import type * as executorRouter from "../executorRouter.js";
 import type * as executors from "../executors.js";
 import type * as factory_agentFleet from "../factory/agentFleet.js";
@@ -97,6 +98,7 @@ import type * as lib_deliveryAuthorization from "../lib/deliveryAuthorization.js
 import type * as lib_demoSeedExtensions from "../lib/demoSeedExtensions.js";
 import type * as lib_evalFrameworkGate from "../lib/evalFrameworkGate.js";
 import type * as lib_executionManifest from "../lib/executionManifest.js";
+import type * as lib_executionPolicy from "../lib/executionPolicy.js";
 import type * as lib_factoryActionAuthorization from "../lib/factoryActionAuthorization.js";
 import type * as lib_factoryAttempt from "../lib/factoryAttempt.js";
 import type * as lib_factoryConfiguration from "../lib/factoryConfiguration.js";
@@ -284,6 +286,7 @@ declare const fullApi: ApiFromModules<{
   "eos/projections": typeof eos_projections;
   execution: typeof execution;
   executionRequests: typeof executionRequests;
+  executionWorker: typeof executionWorker;
   executorRouter: typeof executorRouter;
   executors: typeof executors;
   "factory/agentFleet": typeof factory_agentFleet;
@@ -338,6 +341,7 @@ declare const fullApi: ApiFromModules<{
   "lib/demoSeedExtensions": typeof lib_demoSeedExtensions;
   "lib/evalFrameworkGate": typeof lib_evalFrameworkGate;
   "lib/executionManifest": typeof lib_executionManifest;
+  "lib/executionPolicy": typeof lib_executionPolicy;
   "lib/factoryActionAuthorization": typeof lib_factoryActionAuthorization;
   "lib/factoryAttempt": typeof lib_factoryAttempt;
   "lib/factoryConfiguration": typeof lib_factoryConfiguration;

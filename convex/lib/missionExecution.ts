@@ -15,6 +15,29 @@ function assertionStatusForReceipt(status: ReceiptStatus): MissionAssertionStatu
   return null;
 }
 
+export function assertionEvidenceCanSatisfy(args: {
+  missionRole?: string;
+  requiresIndependentValidation: boolean;
+}) {
+  return args.missionRole === "VALIDATOR"
+    || ((args.missionRole ?? "WORKER") === "WORKER"
+      && !args.requiresIndependentValidation);
+}
+
+export function missionReceiptMatchesExecution(args: {
+  workOrder: { _id: string; missionId?: string; missionRole?: string; currentRevisionNumber?: number };
+  workflowRun: { _id: string; workOrderId?: string; missionId?: string; missionRole?: string; status: string };
+  verificationReceipt: { workflowRunId: string; workOrderRevisionNumber?: number };
+}) {
+  const role = args.workOrder.missionRole ?? "WORKER";
+  return args.workflowRun.status === "COMPLETED"
+    && args.workflowRun.workOrderId === args.workOrder._id
+    && args.workflowRun.missionId === args.workOrder.missionId
+    && (args.workflowRun.missionRole ?? "WORKER") === role
+    && args.verificationReceipt.workflowRunId === args.workflowRun._id
+    && args.verificationReceipt.workOrderRevisionNumber === (args.workOrder.currentRevisionNumber ?? 1);
+}
+
 async function insertMissionEvent(ctx: any, args: {
   mission: any;
   workOrderId?: any;
@@ -142,12 +165,9 @@ export async function syncMissionValidationReceipt(ctx: any, args: {
 }) {
   const missionStatus = assertionStatusForReceipt(args.verificationReceipt.status);
   if (!args.workOrder.missionId || !missionStatus) return { synced: false };
-  if (args.workOrder.missionRole !== "VALIDATOR") return { synced: false };
-  if (args.workflowRun.status !== "COMPLETED"
-    || args.workflowRun.workOrderId !== args.workOrder._id
-    || args.workflowRun.missionId !== args.workOrder.missionId
-    || args.workflowRun.missionRole !== "VALIDATOR") {
-    throw new Error("Mission validation evidence requires a completed Validator run");
+  const isValidator = args.workOrder.missionRole === "VALIDATOR";
+  if (!missionReceiptMatchesExecution(args)) {
+    throw new Error("Mission assertion evidence requires a completed linked run");
   }
   const mission = await ctx.db.get(args.workOrder.missionId);
   if (!mission) throw new Error("Mission not found for Validator evidence");
@@ -158,7 +178,16 @@ export async function syncMissionValidationReceipt(ctx: any, args: {
       .eq("assertionId", args.verificationReceipt.acceptanceCriterionId))
     .first();
   if (!assertion || !assertion.linkedWorkOrderIds.includes(args.workOrder._id)) {
-    throw new Error("Validator receipt is not linked to the Mission assertion contract");
+    throw new Error("Verification receipt is not linked to the Mission assertion contract");
+  }
+  if (args.verificationReceipt.validationAssertionId !== assertion._id) {
+    throw new Error("Verification receipt does not bind the linked Mission assertion");
+  }
+  if (!assertionEvidenceCanSatisfy({
+    missionRole: args.workOrder.missionRole,
+    requiresIndependentValidation: assertion.requiresIndependentValidation,
+  })) {
+    return { synced: false };
   }
   if (missionStatus === "WAIVED" && (!assertion.waiverAllowed || !args.verificationReceipt.waiverApprovalDecisionId)) {
     throw new Error("Mission assertion waiver requires an authorized approval");
@@ -167,7 +196,7 @@ export async function syncMissionValidationReceipt(ctx: any, args: {
   const now = Date.now();
   await ctx.db.patch(assertion._id, {
     status: missionStatus,
-    validatorWorkflowRunId: args.workflowRun._id,
+    validatorWorkflowRunId: isValidator ? args.workflowRun._id : undefined,
     verificationReceiptId: args.verificationReceipt._id,
     waiverApprovalDecisionId: args.verificationReceipt.waiverApprovalDecisionId,
     updatedAt: now,

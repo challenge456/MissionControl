@@ -67,6 +67,13 @@ const blueprintInput = v.object({
   constraints: v.array(v.string()),
   requiredApprovals: v.array(v.string()),
   estimatedCostUsd: v.optional(v.number()),
+  implementationPolicy: v.optional(v.object({
+    allowedCommands: v.array(v.string()),
+    maxCostUsd: v.optional(v.number()),
+    maxAttempts: v.number(),
+    timeoutMinutes: v.number(),
+    stopCondition: v.string(),
+  })),
   dependsOnBlueprintIds: v.array(v.string()),
   assertionIds: v.array(v.string()),
 });
@@ -304,7 +311,7 @@ export const createDraft = mutation({
     owner: v.optional(v.string()), budgetUsd: v.optional(v.number()), stopCondition: v.string(),
     ownerMemberId: v.optional(v.id("orgMembers")), owningTeamId: v.optional(v.id("scrumTeams")),
     repositoryId: v.optional(v.id("workspaceRepositories")), codeScopeIds: v.optional(v.array(v.id("repositoryCodeScopes"))),
-    executionEnvironment: v.optional(v.union(v.literal("LOCAL"), v.literal("CLOUD"), v.literal("POLICY_SELECTED"))),
+    executionEnvironment: v.optional(v.union(v.literal("LOCAL"), v.literal("CLOUD"), v.literal("REMOTE"), v.literal("POLICY_SELECTED"))),
     maxReadOnlyConcurrency: v.optional(v.number()), maxCorrectiveIterations: v.optional(v.number()), metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
@@ -409,6 +416,10 @@ export const updateDraft = mutation({
     stopCondition: v.string(),
     maxReadOnlyConcurrency: v.optional(v.number()),
     maxCorrectiveIterations: v.optional(v.number()),
+    ownerMemberId: v.optional(v.id("orgMembers")),
+    owningTeamId: v.optional(v.id("scrumTeams")),
+    repositoryId: v.optional(v.id("workspaceRepositories")),
+    codeScopeIds: v.optional(v.array(v.id("repositoryCodeScopes"))),
   },
   handler: async (ctx, args) => {
     const deliveryAccess = await requireAuthorizedDeliveryScope(ctx, args.projectId, COMPANY_PERMISSIONS.UPDATE_DELIVERY);
@@ -427,16 +438,87 @@ export const updateDraft = mutation({
       throw new Error(`Mission draft cannot be edited while ${mission.state}`);
     }
 
+    let ownerMember: any = null;
+    let assignmentAccess: any = null;
+    if (args.ownerMemberId || args.owningTeamId || args.repositoryId || args.codeScopeIds?.length) {
+      if (!mission.tenantId || !args.ownerMemberId || !args.owningTeamId || !args.repositoryId || !args.codeScopeIds?.length) {
+        throw new Error("Mission delivery scope requires an owner, team, repository, and code scope");
+      }
+      assignmentAccess = await requireWorkspaceAccess(ctx, mission.tenantId, args.projectId, {
+        permission: COMPANY_PERMISSIONS.ASSIGN_DELIVERY,
+      });
+      assertAuthorizedDeliveryRecord(assignmentAccess, {
+        ownerMemberId: args.ownerMemberId,
+        owningTeamId: args.owningTeamId,
+      });
+      const [member, team, repository, scopes, teamMembership] = await Promise.all([
+        ctx.db.get(args.ownerMemberId),
+        ctx.db.get(args.owningTeamId),
+        ctx.db.get(args.repositoryId),
+        Promise.all(args.codeScopeIds.map((scopeId) => ctx.db.get(scopeId))),
+        ctx.db.query("teamMemberships")
+          .withIndex("by_team_member", (q) => q.eq("teamId", args.owningTeamId!).eq("memberId", args.ownerMemberId!))
+          .first(),
+      ]);
+      if (!member || !member.active || member.projectId !== args.projectId) throw new Error("Mission owner must be active in the selected workspace");
+      if (!team || team.status !== "ACTIVE" || team.projectId !== args.projectId) throw new Error("Mission team must be active in the selected workspace");
+      if (!teamMembership?.active) throw new Error("Mission owner must be active in the selected team");
+      if (!repository || repository.projectId !== args.projectId) throw new Error("Mission repository must belong to the selected workspace");
+      if (scopes.some((scope) => !scope || !scope.active || scope.projectId !== args.projectId || scope.repositoryId !== repository._id)) {
+        throw new Error("Mission code scopes must be active in the selected repository");
+      }
+      ownerMember = member;
+    }
+
     const {
       missionId: _missionId,
       projectId: _projectId,
       idempotencyKey: _idempotencyKey,
       ...draft
     } = args;
-    const changedFields = changedMissionDraftFields(mission, draft);
+    const normalizedDraft = ownerMember ? { ...draft, owner: ownerMember.name } : draft;
+    const changedFields = changedMissionDraftFields(mission, normalizedDraft);
     if (changedFields.length === 0) return { mission, updated: false };
 
-    await ctx.db.patch(mission._id, { ...draft, updatedAt: Date.now() });
+    const now = Date.now();
+    await ctx.db.patch(mission._id, { ...normalizedDraft, updatedAt: now });
+    if (ownerMember && args.owningTeamId && assignmentAccess) {
+      const assignments = await ctx.db.query("missionAssignments")
+        .withIndex("by_mission_role", (q) => q.eq("missionId", mission._id).eq("role", "OWNER"))
+        .collect();
+      for (const assignment of assignments.filter((item) => item.active && (item.memberId !== ownerMember._id || item.teamId !== args.owningTeamId))) {
+        await ctx.db.patch(assignment._id, {
+          active: false,
+          activeUntil: now,
+          updatedAt: now,
+          updatedBy: assignmentAccess.membership.operatorId,
+        });
+      }
+      const matching = assignments.find((item) => item.memberId === ownerMember._id && item.teamId === args.owningTeamId);
+      if (matching) {
+        await ctx.db.patch(matching._id, {
+          active: true,
+          activeUntil: undefined,
+          updatedAt: now,
+          updatedBy: assignmentAccess.membership.operatorId,
+        });
+      } else {
+        await ctx.db.insert("missionAssignments", {
+          tenantId: mission.tenantId!,
+          projectId: args.projectId,
+          missionId: mission._id,
+          memberId: ownerMember._id,
+          teamId: args.owningTeamId,
+          role: "OWNER",
+          activeFrom: now,
+          active: true,
+          createdAt: now,
+          updatedAt: now,
+          createdBy: assignmentAccess.membership.operatorId,
+          updatedBy: assignmentAccess.membership.operatorId,
+        });
+      }
+    }
     const updated = await ctx.db.get(mission._id);
     if (!updated) throw new Error("Mission draft update failed");
     const operator = await resolveOperator(ctx);
@@ -782,7 +864,18 @@ export const approvePlan = mutation({
         sourceOfTruthRefs: mission.sourceOfTruthRefs,
         requiredApprovals: blueprint.requiredApprovals ?? [],
         state: "READY",
-        metadata: { approvedWorkflowVersion: blueprint.workflowVersion, estimatedCostUsd: blueprint.estimatedCostUsd },
+        metadata: {
+          approvedWorkflowVersion: blueprint.workflowVersion,
+          estimatedCostUsd: blueprint.estimatedCostUsd,
+          implementationPolicy: blueprint.implementationPolicy
+            ? {
+                ...blueprint.implementationPolicy,
+                maxCostUsd: blueprint.implementationPolicy.maxCostUsd
+                  ?? blueprint.estimatedCostUsd
+                  ?? plan.estimatedCostUsd,
+              }
+            : undefined,
+        },
       });
       releasedByBlueprint.set(blueprint.id, result.workOrder);
       workOrders.push(result.workOrder);

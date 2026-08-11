@@ -10,6 +10,14 @@ export type MissionPlanVerificationMethod =
 export type MissionPlanRiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 export type MissionPlanRole = "WORKER" | "VALIDATOR";
 
+export interface MissionPlanImplementationPolicy {
+  allowedCommands: string[];
+  maxCostUsd?: number;
+  maxAttempts: number;
+  timeoutMinutes: number;
+  stopCondition: string;
+}
+
 export interface MissionPlanAssertionInput {
   assertionId: string;
   title: string;
@@ -37,6 +45,7 @@ export interface MissionPlanBlueprintInput {
   constraints: string[];
   requiredApprovals: string[];
   estimatedCostUsd?: number;
+  implementationPolicy?: MissionPlanImplementationPolicy;
   dependsOnBlueprintIds: string[];
   assertionIds: string[];
 }
@@ -162,6 +171,23 @@ export function validateMissionPlan(input: MissionPlanInput): MissionPlanValidat
     if (blueprint.isMutating) {
       push(required(input.repository, "repository-required", "A configured repository is required for mutating work.", "repository", identity));
       push(required(blueprint.branchStrategy, "branch-strategy-required", "A branch strategy is required for mutating work.", `blueprints.${blueprint.id}.branchStrategy`, identity));
+      const implementationPolicy = blueprint.implementationPolicy;
+      if (!implementationPolicy?.allowedCommands.some((command) => command.trim())) {
+        errors.push({ code: "implementation-verifier-required", message: "Mutating WorkOrders require at least one approved verification command.", path: `blueprints.${blueprint.id}.implementationPolicy.allowedCommands`, ...identity });
+      }
+      if ((implementationPolicy?.allowedCommands.length ?? 0) > 20 || implementationPolicy?.allowedCommands.some((command) => command.length > 1_000)) {
+        errors.push({ code: "implementation-verifiers-too-large", message: "Verification policy is limited to 20 commands of 1,000 characters each.", path: `blueprints.${blueprint.id}.implementationPolicy.allowedCommands`, ...identity });
+      }
+      if (!Number.isInteger(implementationPolicy?.maxAttempts) || (implementationPolicy?.maxAttempts ?? 0) < 1 || (implementationPolicy?.maxAttempts ?? 0) > 10) {
+        errors.push({ code: "implementation-attempts-invalid", message: "Maximum attempts must be a whole number from 1 to 10.", path: `blueprints.${blueprint.id}.implementationPolicy.maxAttempts`, ...identity });
+      }
+      if (!Number.isInteger(implementationPolicy?.timeoutMinutes) || (implementationPolicy?.timeoutMinutes ?? 0) < 1 || (implementationPolicy?.timeoutMinutes ?? 0) > 480) {
+        errors.push({ code: "implementation-timeout-invalid", message: "Timeout minutes must be a whole number from 1 to 480.", path: `blueprints.${blueprint.id}.implementationPolicy.timeoutMinutes`, ...identity });
+      }
+      push(required(implementationPolicy?.stopCondition, "implementation-stop-condition-required", "Mutating WorkOrders require an explicit stop condition.", `blueprints.${blueprint.id}.implementationPolicy.stopCondition`, identity));
+      if (implementationPolicy?.maxCostUsd !== undefined && (!Number.isFinite(implementationPolicy.maxCostUsd) || implementationPolicy.maxCostUsd < 0)) {
+        errors.push({ code: "implementation-cost-invalid", message: "Implementation cost must be zero or greater.", path: `blueprints.${blueprint.id}.implementationPolicy.maxCostUsd`, ...identity });
+      }
     }
     if (blueprint.role === "VALIDATOR" && blueprint.isMutating) {
       errors.push({ code: "validator-must-be-read-only", message: "Validator WorkOrders must be read-only.", path: `blueprints.${blueprint.id}.isMutating`, ...identity });

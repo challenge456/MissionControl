@@ -169,6 +169,10 @@ const verificationReceiptStatus = v.union(
 
 const runEventType = v.union(
   v.literal("RUN_STARTED"),
+  v.literal("EXECUTION_CLAIMED"),
+  v.literal("CANCELLATION_REQUESTED"),
+  v.literal("POLICY_DEVIATION"),
+  v.literal("PULL_REQUEST_CREATED"),
   v.literal("STEP_STARTED"),
   v.literal("STEP_COMPLETED"),
   v.literal("TOOL_CALLED"),
@@ -184,6 +188,7 @@ const runEventType = v.union(
   v.literal("CANCELLATION_REQUESTED"),
   v.literal("RUN_CANCELED"),
   v.literal("RUN_FAILED"),
+  v.literal("RUN_CANCELED"),
   v.literal("RUN_COMPLETED")
 );
 
@@ -1313,6 +1318,13 @@ export default defineSchema({
       constraints: v.optional(v.array(v.string())),
       requiredApprovals: v.optional(v.array(v.string())),
       estimatedCostUsd: v.optional(v.number()),
+      implementationPolicy: v.optional(v.object({
+        allowedCommands: v.array(v.string()),
+        maxCostUsd: v.optional(v.number()),
+        maxAttempts: v.number(),
+        timeoutMinutes: v.number(),
+        stopCondition: v.string(),
+      })),
       dependsOnBlueprintIds: v.array(v.string()),
       assertionIds: v.array(v.string()),
     })),
@@ -3732,7 +3744,7 @@ export default defineSchema({
     worktree: v.optional(v.string()),
     failureReason: v.optional(v.string()),
     humanInterventions: v.optional(v.number()),
-    
+
     // Timing
     startedAt: v.number(),
     completedAt: v.optional(v.number()),

@@ -1,5 +1,5 @@
 ---
-status: in_progress
+status: complete
 priority: p1
 issue_id: "017"
 tags: [software-factory, missions, workorders, attempts, evidence, governance]
@@ -54,8 +54,8 @@ Implement Option 2 using `docs/plans/2026-07-31-feat-release-to-evidence-golden-
 - [x] Validator receipts automatically update linked Mission assertions and preserve independent evidence provenance.
 - [x] Mission acceptance requires all assertions, released WorkOrders, and handoffs to be complete.
 - [x] Mission Detail provides a live Execution tab with one clear next action, blockers, evidence, and links to existing approval/run controls.
-- [ ] Loading, empty, blocked, error, success, refresh, desktop, and narrow viewport states are verified.
-- [ ] Focused tests, full typecheck, production build, browser flow, and durable evidence all pass.
+- [x] Loading, empty, blocked, error, success, refresh, desktop, and narrow viewport states are verified.
+- [x] Focused tests, full typecheck, production build, browser flow, and durable evidence all pass.
 
 ## Work Log
 
@@ -83,7 +83,68 @@ Implement Option 2 using `docs/plans/2026-07-31-feat-release-to-evidence-golden-
 - Verified plan approval/release, assigned Task creation, WorkOrder dispatch, failed Attempt inspection, and immutable retry from the browser.
 - Ran all 356 Convex tests, 65 workflow-engine tests, UI and Convex typechecks, and the production UI build successfully.
 
-**Remaining verification:**
+**At this checkpoint:**
 - The first three live Attempts retained the seeded runtime's missing-persona failure and proved immutable retry lineage. After registering the local persona, the next Attempt exposed and fixed a second integration gap: executor-created Tasks now inherit their WorkOrder before entering `READY`.
 - Attempt 4 now starts its governed workflow Task successfully. The local environment has no active agent worker to complete that Task, so live receipt, handoff, validator, and final Mission acceptance proof remains pending rather than being simulated.
 - Complete the success-path browser evidence and narrow-viewport pass when the local agent worker is available.
+
+### 2026-08-08 - Remaining browser-state matrix closed
+
+**By:** Codex
+
+**Actions:**
+
+- Verified loading, explicit no-Task empty state, blocked/failed and immutable
+  retry history, durable cancellation, completed run, refresh persistence,
+  desktop, and 760 × 900 layouts through the WorkOrder and run inspector UI.
+- Verified the fail-closed runtime-contract mismatch state with exact loaded and
+  active contract versions.
+- Corrected scheduled mission prompting so suggestions remain idempotent,
+  unassigned intake until promoted through the canonical WorkOrder hierarchy;
+  the scheduled path no longer attempts an invalid ungoverned `READY`
+  transition.
+- Recorded durable screenshots and results in
+  `docs/testing/evidence/real-codex-github-pr-golden-path/`.
+
+**Remaining verification:**
+
+- The final test/build/browser/evidence criterion stays open until Todo 024
+  produces a real GitHub App pull request from one browser-created,
+  Factory-bound Mission Attempt. The implementation and deterministic test suite
+  pass, but GitHub App owner authentication and installation are still required
+  for that live success proof.
+
+### 2026-08-09 - Real release-to-evidence Mission completed
+
+**By:** Codex
+
+**Actions:**
+
+- Installed the private Mission Control GitHub App only on the existing
+  `jaydubya818/MissionControl` repository with the documented minimum permission
+  envelope.
+- Completed recovered Mission `vn71r4fwfze37ke4scakt5xt8s8c7eg2` through its
+  approved plan, released WorkOrder, canonical Task, immutable Attempt, worker
+  receipt, structured handoff, WorkOrder acceptance, and final Mission
+  acceptance.
+- Published review-ready PR
+  [#61](https://github.com/jaydubya818/MissionControl/pull/61) at commit
+  `2fd0a5a0773560b05174776857545d7cd3bc5f95`; the pull request changes exactly
+  `docs/software-factory/live-github-app-proof-recovery.md` and has all nine
+  repository checks passing.
+- Corrected Mission assertion evidence reconciliation so a worker receipt can
+  satisfy a linked assertion only when independent validation is not required;
+  Validator evidence remains mandatory when it is required.
+- Verified in the browser that the Task and WorkOrder are `DONE`, assertion
+  coverage is 1/1, and final operator acceptance presents the Mission as
+  `Validated`.
+- Preserved PR #61 as open and unmerged so review and merge remain human gates.
+- Passed full workspace typecheck, production build, repository tests,
+  runtime-contract guard, and the focused 16-test durable worker/publisher suite.
+
+**Evidence:**
+
+- `docs/testing/evidence/real-codex-github-pr-golden-path/mission-validated-pr-61.png`
+- `docs/testing/evidence/real-codex-github-pr-golden-path/recovered-completed-attempt-pr-61.png`
+- `docs/testing/evidence/real-codex-github-pr-golden-path/github-pr-61-lineage.png`
+- `docs/testing/evidence/real-codex-github-pr-golden-path/README.md`

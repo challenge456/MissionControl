@@ -20,6 +20,51 @@ export interface GithubCiPayload {
   checkRuns: GithubCheckRun[];
   diffLineCount?: number;
   signals: Partial<PrCheckSignals>;
+  lineage?: GithubPullRequestLineage;
+}
+
+export interface GithubPullRequestLineage {
+  workOrderId: string;
+  workflowRunId: string;
+  taskId: string;
+}
+
+export function canonicalGithubPullRequestUrl(owner: string, repo: string, prNumber: number) {
+  return `https://github.com/${owner}/${repo}/pull/${prNumber}`;
+}
+
+export function isSupportedPullRequestWebhookAction(action: unknown): boolean {
+  return ["opened", "synchronize", "reopened", "edited"].includes(String(action ?? ""));
+}
+
+export function parseMissionControlPullRequestLineage(
+  body?: string | null
+): GithubPullRequestLineage | undefined {
+  if (!body) return undefined;
+  const lineageSection = body.match(/^### Lineage\s*$([\s\S]*?)(?=^###\s|(?![\s\S]))/m)?.[1];
+  if (!lineageSection) return undefined;
+
+  const readField = (key: keyof GithubPullRequestLineage): string | undefined => {
+    const pattern = new RegExp(
+      "^\\s*-\\s+" + key + ":\\s+`([a-z0-9]+)`\\s*$",
+      "gm"
+    );
+    const matches = Array.from(lineageSection.matchAll(pattern), (match) => match[1]);
+    if (matches.length > 1) {
+      throw new Error(`Mission Control PR lineage contains duplicate ${key} values`);
+    }
+    return matches[0];
+  };
+
+  const workOrderId = readField("workOrderId");
+  const workflowRunId = readField("workflowRunId");
+  const taskId = readField("taskId");
+  const presentCount = [workOrderId, workflowRunId, taskId].filter(Boolean).length;
+  if (presentCount === 0) return undefined;
+  if (!workOrderId || !workflowRunId || !taskId) {
+    throw new Error("Mission Control PR lineage is incomplete");
+  }
+  return { workOrderId, workflowRunId, taskId };
 }
 
 const GITHUB_REQUEST_TIMEOUT_MS = 15_000;
@@ -114,6 +159,7 @@ export async function fetchPullRequestCi(
   }
   const pr = (await prRes.json()) as {
     title?: string;
+    body?: string | null;
     head?: { ref?: string; sha?: string };
     html_url?: string;
   };
@@ -184,6 +230,7 @@ export async function fetchPullRequestCi(
           severity: "RED" as const,
         })),
     },
+    lineage: parseMissionControlPullRequestLineage(pr.body),
   };
 }
 
@@ -229,7 +276,7 @@ export function extractPrFromWebhookEvent(event: string, payload: Record<string,
       owner,
       repo: name,
       prNumber: pr.number,
-      prUrl: pr.html_url ?? `https://github.com/${owner}/${name}/pull/${pr.number}`,
+      prUrl: canonicalGithubPullRequestUrl(owner, name, pr.number),
     };
   }
   if (event === "pull_request_review") {
@@ -241,7 +288,7 @@ export function extractPrFromWebhookEvent(event: string, payload: Record<string,
       owner,
       repo: name,
       prNumber: pr.number,
-      prUrl: pr.html_url ?? `https://github.com/${owner}/${name}/pull/${pr.number}`,
+      prUrl: canonicalGithubPullRequestUrl(owner, name, pr.number),
     };
   }
   if (event === "check_run") {
@@ -254,7 +301,7 @@ export function extractPrFromWebhookEvent(event: string, payload: Record<string,
       owner,
       repo: name,
       prNumber: pr.number,
-      prUrl: pr.url ?? `https://github.com/${owner}/${name}/pull/${pr.number}`,
+      prUrl: canonicalGithubPullRequestUrl(owner, name, pr.number),
     };
   }
   return null;

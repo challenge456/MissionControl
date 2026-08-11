@@ -30,6 +30,7 @@ export function validateTaskAttemptSelection(args: {
   workOrderRevisionNumber?: number;
   workOrderDesiredOutcome: string;
   hasCanonicalChildTasks: boolean;
+  allowFailedRecovery?: boolean;
   task?: SchedulableTask | null;
 }): TaskAttemptSelectionResult {
   if (!args.task) {
@@ -57,6 +58,9 @@ export function validateTaskAttemptSelection(args: {
   });
   if (authorityIssue) {
     return { ok: false, reason: authorityIssue };
+  }
+  if (args.allowFailedRecovery && args.task.status === "FAILED") {
+    return { ok: true, taskId: args.task._id };
   }
   if (TERMINAL_TASK_STATUSES.has(args.task.status)) {
     return {
@@ -99,10 +103,10 @@ export function validateTaskAttemptStart(args: {
   if (!latest || latest._id !== args.retryOfRun._id) {
     return { ok: false, reason: "retry-run-not-latest" };
   }
-  if (args.retryOfRun.status !== "FAILED") {
+  if (!["FAILED", "CANCELED"].includes(args.retryOfRun.status)) {
     return {
       ok: false,
-      reason: `retry-run-not-failed:${args.retryOfRun.status}`,
+      reason: `retry-run-not-recoverable:${args.retryOfRun.status}`,
     };
   }
   if ((args.retryReason?.trim().length ?? 0) < 10) {
@@ -147,16 +151,16 @@ export function taskAttemptErrorMessage(reason: string) {
     return "This Task already has an active Attempt.";
   }
   if (reason === "task-retry-required") {
-    return "Retry the latest failed Attempt instead of starting a new Attempt.";
+    return "Retry the latest failed or canceled Attempt instead of starting a new Attempt.";
   }
   if (reason === "retry-run-task-mismatch") {
-    return "The failed Attempt belongs to a different Task.";
+    return "The recoverable Attempt belongs to a different Task.";
   }
   if (reason === "retry-run-not-latest") {
-    return "Only the latest failed Attempt can be retried.";
+    return "Only the latest failed or canceled Attempt can be retried.";
   }
-  if (reason.startsWith("retry-run-not-failed:")) {
-    return "Only a failed Attempt can be retried.";
+  if (reason.startsWith("retry-run-not-recoverable:")) {
+    return "Only a failed or canceled Attempt can be retried.";
   }
   if (reason === "retry-reason-required") {
     return "Explain what changed before retrying (at least 10 characters).";

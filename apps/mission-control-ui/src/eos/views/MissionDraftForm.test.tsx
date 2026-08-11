@@ -4,10 +4,23 @@ import { MissionDraftForm } from "./MissionDraftForm";
 
 const mocks = vi.hoisted(() => ({
   updateDraft: vi.fn(),
+  queryCall: 0,
 }));
 
 vi.mock("convex/react", () => ({
   useMutation: () => mocks.updateDraft,
+  useQuery: () => {
+    const responses = [
+      {
+        teams: [{ _id: "team-1", name: "Platform", status: "ACTIVE" }],
+        memberships: [{ teamId: "team-1", memberId: "member-1", active: true }],
+        members: [{ _id: "member-1", name: "Jay West", active: true }],
+      },
+      [{ repositoryId: "repo-1", displayName: "MissionControl", status: "READY" }],
+      [{ _id: "scope-1", name: "Mission Control", active: true }],
+    ];
+    return responses[mocks.queryCall++ % responses.length];
+  },
 }));
 
 const mission = {
@@ -19,6 +32,10 @@ const mission = {
   constraints: [],
   sourceOfTruthRefs: [],
   owner: undefined,
+  ownerMemberId: "member-1",
+  owningTeamId: "team-1",
+  repositoryId: "repo-1",
+  codeScopeIds: ["scope-1"],
   budgetUsd: undefined,
   stopCondition: "Focused tests pass",
   maxReadOnlyConcurrency: 2,
@@ -28,6 +45,7 @@ const mission = {
 describe("MissionDraftForm", () => {
   beforeEach(() => {
     mocks.updateDraft.mockReset();
+    mocks.queryCall = 0;
   });
 
   it("blocks duplicate saves while the first update is in flight", () => {

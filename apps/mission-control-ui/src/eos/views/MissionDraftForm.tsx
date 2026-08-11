@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import { api } from "../../../../../convex/_generated/api";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,8 @@ export function MissionDraftForm({
   onDirtyChange?: (dirty: boolean) => void;
 }): JSX.Element {
   const updateDraft = useMutation(api.missions.updateDraft);
+  const structure = useQuery(api.softwareFactoryControlPlane.listWorkspaceStructure, { projectId });
+  const repositories = useQuery(api.projects.listRepositories, { projectId });
   const formId = useId();
   const saveButtonRef = useRef<HTMLButtonElement>(null);
   const saveKeyRef = useRef<string | null>(null);
@@ -41,6 +43,23 @@ export function MissionDraftForm({
   const [saveError, setSaveError] = useState<string | null>(null);
   const dirty = !draftsEqual(values, baseline);
   const editable = mission.state === "DRAFT";
+  const codeScopes = useQuery(
+    api.projects.listCodeScopes,
+    values.repositoryId
+      ? { repositoryId: values.repositoryId as Id<"workspaceRepositories"> }
+      : "skip",
+  );
+  const selectedTeamMemberIds = useMemo(
+    () => new Set(
+      (structure?.memberships ?? [])
+        .filter((membership) => membership.active && membership.teamId === values.owningTeamId)
+        .map((membership) => membership.memberId),
+    ),
+    [structure, values.owningTeamId],
+  );
+  const eligibleOwners = (structure?.members ?? []).filter(
+    (member) => member.active && selectedTeamMemberIds.has(member._id),
+  );
 
   useEffect(() => {
     if (!dirty) {
@@ -91,11 +110,16 @@ export function MissionDraftForm({
     setSaveError(null);
     saveKeyRef.current ??= `ui-mission-draft:${crypto.randomUUID()}`;
     try {
+      const payload = missionDraftPayload(values);
       const result = await updateDraft({
         missionId: mission._id,
         projectId,
         idempotencyKey: saveKeyRef.current,
-        ...missionDraftPayload(values),
+        ...payload,
+        ownerMemberId: payload.ownerMemberId as Id<"orgMembers">,
+        owningTeamId: payload.owningTeamId as Id<"scrumTeams">,
+        repositoryId: payload.repositoryId as Id<"workspaceRepositories">,
+        codeScopeIds: payload.codeScopeIds as Array<Id<"repositoryCodeScopes">>,
       });
       const persisted = missionToDraftValues(result.mission);
       setValues(persisted);
@@ -141,9 +165,86 @@ export function MissionDraftForm({
           <Label htmlFor={`${formId}-context`}>Context</Label>
           <Textarea id={`${formId}-context`} value={values.context} onChange={(event) => setField("context", event.target.value)} />
         </div>
-        <div className="space-y-1.5">
-          <Label htmlFor={`${formId}-owner`}>Owner</Label>
-          <Input id={`${formId}-owner`} value={values.owner} onChange={(event) => setField("owner", event.target.value)} placeholder="Optional accountable owner" />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor={`${formId}-owningTeamId`}>Owning team</Label>
+            <select
+              id={`${formId}-owningTeamId`}
+              value={values.owningTeamId}
+              onChange={(event) => {
+                const teamId = event.target.value;
+                setField("owningTeamId", teamId);
+                const remainsEligible = (structure?.memberships ?? []).some(
+                  (membership) => membership.active && membership.teamId === teamId && membership.memberId === values.ownerMemberId,
+                );
+                if (!remainsEligible) {
+                  setField("ownerMemberId", "");
+                  setField("owner", "");
+                }
+              }}
+              aria-invalid={Boolean(errors.owningTeamId)}
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="">Select team</option>
+              {(structure?.teams ?? []).filter((team) => team.status === "ACTIVE").map((team) => <option key={team._id} value={team._id}>{team.name}</option>)}
+            </select>
+            <FieldError id={`${formId}-owningTeamId-error`} message={errors.owningTeamId} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor={`${formId}-ownerMemberId`}>Accountable owner</Label>
+            <select
+              id={`${formId}-ownerMemberId`}
+              value={values.ownerMemberId}
+              onChange={(event) => {
+                const memberId = event.target.value;
+                setField("ownerMemberId", memberId);
+                setField("owner", eligibleOwners.find((member) => member._id === memberId)?.name ?? "");
+              }}
+              disabled={!values.owningTeamId}
+              aria-invalid={Boolean(errors.ownerMemberId)}
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-50"
+            >
+              <option value="">{values.owningTeamId ? "Select owner" : "Select a team first"}</option>
+              {eligibleOwners.map((member) => <option key={member._id} value={member._id}>{member.name}</option>)}
+            </select>
+            <FieldError id={`${formId}-ownerMemberId-error`} message={errors.ownerMemberId} />
+          </div>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor={`${formId}-repositoryId`}>Repository</Label>
+            <select
+              id={`${formId}-repositoryId`}
+              value={values.repositoryId}
+              onChange={(event) => {
+                setField("repositoryId", event.target.value);
+                setField("codeScopeIds", []);
+              }}
+              aria-invalid={Boolean(errors.repositoryId)}
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="">Select repository</option>
+              {(repositories ?? []).filter((repository) => repository.repositoryId && repository.status === "READY").map((repository) => (
+                <option key={repository.repositoryId!} value={repository.repositoryId!}>{repository.displayName}</option>
+              ))}
+            </select>
+            <FieldError id={`${formId}-repositoryId-error`} message={errors.repositoryId} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor={`${formId}-codeScopeIds`}>Code scope</Label>
+            <select
+              id={`${formId}-codeScopeIds`}
+              value={values.codeScopeIds[0] ?? ""}
+              onChange={(event) => setField("codeScopeIds", event.target.value ? [event.target.value] : [])}
+              disabled={!values.repositoryId}
+              aria-invalid={Boolean(errors.codeScopeIds)}
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-50"
+            >
+              <option value="">{values.repositoryId ? "Select scope" : "Select a repository first"}</option>
+              {(codeScopes ?? []).filter((scope) => scope.active).map((scope) => <option key={scope._id} value={scope._id}>{scope.name}</option>)}
+            </select>
+            <FieldError id={`${formId}-codeScopeIds-error`} message={errors.codeScopeIds} />
+          </div>
         </div>
       </section>
 

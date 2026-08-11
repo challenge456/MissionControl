@@ -123,6 +123,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
   const [inspectorCriterionId, setInspectorCriterionId] = useState<string | null>(null);
   const [dispatchError, setDispatchError] = useState<string | null>(null);
   const [dispatchTaskSelections, setDispatchTaskSelections] = useState<Record<string, string>>({});
+  const [dispatchCodeScopeSelections, setDispatchCodeScopeSelections] = useState<Record<string, string>>({});
   const [governanceError, setGovernanceError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [seeding, setSeeding] = useState(false);
@@ -139,6 +140,17 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
     accessibleSelectedId
       ? { workOrderId: accessibleSelectedId as Id<"workOrders"> }
       : "skip"
+  );
+  const repositoryRows = useQuery(
+    api.projects.listRepositories,
+    projectId ? { projectId } : "skip"
+  );
+  const dispatchRepositoryId = selected?.workOrder.repositoryId
+    ?? repositoryRows?.find((repository) => repository.isDefault)?.repositoryId
+    ?? repositoryRows?.[0]?.repositoryId;
+  const dispatchCodeScopes = useQuery(
+    api.projects.listCodeScopes,
+    dispatchRepositoryId ? { repositoryId: dispatchRepositoryId } : "skip"
   );
   const activeFactory = useQuery(
     api["factory/configuration"].getActiveForWorkOrder,
@@ -284,6 +296,18 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
   const selectedDispatchTaskId = selected
     ? dispatchTaskSelections[selected.workOrder._id] ?? ""
     : "";
+  const selectedDispatchCodeScopeId = selected
+    ? dispatchCodeScopeSelections[selected.workOrder._id]
+      ?? (selected.workOrder.codeScopeIds?.length === 1 ? selected.workOrder.codeScopeIds[0] : "")
+    : "";
+  const selectedDispatchCodeScopeIds = selected
+    ? dispatchCodeScopeSelections[selected.workOrder._id]
+      ? [dispatchCodeScopeSelections[selected.workOrder._id] as Id<"repositoryCodeScopes">]
+      : selected.workOrder.codeScopeIds ?? []
+    : [];
+  const activeLocalCodeScopes = (dispatchCodeScopes ?? []).filter((scope) =>
+    scope.active && scope.allowedEnvironments.includes("LOCAL")
+  );
   const verifiedCriteriaCount = selected
     ? Math.max(
         0,
@@ -460,7 +484,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Button size="sm" variant="outline" onClick={() => { setGovernanceError(null); setRevisionOpen(true); }}>Request revision</Button>
-                    <Button size="sm" variant="outline" onClick={() => { setGovernanceError(null); setReopenOpen(true); }} disabled={["SUPERSEDED", "CANCELED"].includes(selected.workOrder.state)}>Reopen</Button>
+                    <Button size="sm" variant="outline" onClick={() => { setGovernanceError(null); setReopenOpen(true); }} disabled={selected.workOrder.state === "SUPERSEDED"}>Reopen</Button>
                     <Button size="sm" variant="outline" onClick={async () => {
                       try {
                         setGovernanceError(null);
@@ -912,7 +936,46 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                 </Section>
 
                 <Section title="Linked execution runs">
-                  <div className="mb-3 grid gap-3 rounded-lg border border-[var(--panel-line)] bg-background/30 p-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+                  <div className="mb-3 grid gap-3 rounded-lg border border-[var(--panel-line)] bg-background/30 p-3 md:grid-cols-2">
+                    <div>
+                      <Label htmlFor={`dispatch-scope-${selected.workOrder._id}`}>
+                        Approved code scope
+                      </Label>
+                      {activeLocalCodeScopes.length > 0 ? (
+                        <>
+                          <Select
+                            value={selectedDispatchCodeScopeId}
+                            onValueChange={(scopeId) =>
+                              setDispatchCodeScopeSelections((current) => ({
+                                ...current,
+                                [selected.workOrder._id]: scopeId,
+                              }))
+                            }
+                          >
+                            <SelectTrigger
+                              id={`dispatch-scope-${selected.workOrder._id}`}
+                              className="mt-2"
+                            >
+                              <SelectValue placeholder="Select the approved file boundary" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {activeLocalCodeScopes.map((scope) => (
+                                <SelectItem key={scope._id} value={scope._id}>
+                                  {scope.name} · {scope.includePaths.join(", ")}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <p className="mt-1.5 text-xs text-muted-foreground">
+                            The worker rejects changed files outside this repository-relative boundary before push.
+                          </p>
+                        </>
+                      ) : (
+                        <p className="mt-1.5 text-xs text-amber-200">
+                          Add an active local code scope to the default repository before dispatch.
+                        </p>
+                      )}
+                    </div>
                     <div>
                       <Label htmlFor={`dispatch-task-${selected.workOrder._id}`}>
                         Task to execute
@@ -955,6 +1018,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                         </p>
                       )}
                     </div>
+                    <div className="flex items-end justify-end md:col-span-2">
                     <Button
                       size="sm"
                       onClick={async () => {
@@ -971,6 +1035,9 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                             actorId: "operator",
                             idempotencyKey: `ui-dispatch:${selected.workOrder._id}:${selected.workOrder.updatedAt}`,
                             runtime: "Mission Control UI",
+                            repositoryId: dispatchRepositoryId,
+                            codeScopeIds: selectedDispatchCodeScopeIds,
+                            executionEnvironment: "LOCAL",
                             factoryDefinitionVersionId: selected.workOrder.missionId
                               ? activeFactoryVersionId
                               : undefined,
@@ -988,12 +1055,19 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                         !canDispatchSelected ||
                         dispatchingId === selected.workOrder._id ||
                         (selected.childTasks.length > 0 && !selectedDispatchTaskId) ||
+                        (Boolean(selected.workOrder.missionId) && selectedDispatchCodeScopeIds.length === 0) ||
                         (Boolean(selected.workOrder.missionId) && !activeFactoryVersionId)
                       }
                     >
                       {dispatchingId === selected.workOrder._id ? "Dispatching…" : "Dispatch"}
                     </Button>
+                    </div>
                   </div>
+                  {selected.workOrder.missionId && selectedDispatchCodeScopeIds.length === 0 ? (
+                    <div className="mb-3 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
+                      Select the approved code scope before dispatching this Mission WorkOrder.
+                    </div>
+                  ) : null}
                   {selected.workOrder.missionId && !activeFactoryVersionId ? (
                     <div className="mb-3 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
                       Activate a passing Factory version before dispatching this Mission WorkOrder.
@@ -1310,6 +1384,9 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                   worktree,
                   retryOfWorkflowRunId: workflowRunId,
                   retryReason: reason,
+                  repositoryId: selected.workOrder.repositoryId,
+                  codeScopeIds: selected.workOrder.codeScopeIds,
+                  executionEnvironment: selected.workOrder.executionEnvironment ?? "LOCAL",
                   factoryDefinitionVersionId: selected.workOrder.missionId
                     ? activeFactoryVersionId
                     : undefined,

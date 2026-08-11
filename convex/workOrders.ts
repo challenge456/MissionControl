@@ -6,7 +6,7 @@ import type { Id } from "./_generated/dataModel";
 import { appendChangeRecord } from "./lib/armAudit";
 import { logTaskEvent } from "./lib/taskEvents";
 import { deriveVerificationStatus, currentWorkflowStepLabel, totalWorkflowRetries } from "./lib/workOrders";
-import { ACTIVE_RUN_STATUSES, nextStateForRunStatus, publicDispatchActorAllowed, validateDispatchable, validateRetryRequest } from "./lib/workOrderDispatch";
+import { ACTIVE_RUN_STATUSES, nextStateForRunStatus, publicDispatchActorAllowed, resolveRetryExecutionBinding, validateDispatchable, validateRetryRequest } from "./lib/workOrderDispatch";
 import { isRunNeedingAttention, summarizeFactoryMetrics } from "./lib/factoryOverview";
 import {
   approvalStatusSatisfiesRequirement,
@@ -34,6 +34,7 @@ import { validFactoryBudget } from "./lib/factoryConfiguration";
 import { evaluateGithubAppCapabilities, githubInstallationIsStale } from "./lib/githubAppReadiness";
 import { canonicalRepositoryKey } from "./lib/workspaceRepositories";
 import {
+  assertionEvidenceCanSatisfy,
   startMissionForWorkOrderDispatch,
   syncMissionValidationReceipt,
 } from "./lib/missionExecution";
@@ -1046,7 +1047,7 @@ export const list = query({
     codeScopeIds: v.optional(v.array(v.id("repositoryCodeScopes"))),
     owningTeamId: v.optional(v.id("scrumTeams")),
     ownerMemberId: v.optional(v.id("orgMembers")),
-    executionEnvironment: v.optional(v.union(v.literal("LOCAL"), v.literal("CLOUD"), v.literal("POLICY_SELECTED"))),
+    executionEnvironment: v.optional(v.union(v.literal("LOCAL"), v.literal("CLOUD"), v.literal("REMOTE"), v.literal("POLICY_SELECTED"))),
     assignedAgent: v.optional(v.string()),
     requestedBy: v.optional(v.string()),
     verificationStatus: v.optional(verificationStatus),
@@ -1349,7 +1350,7 @@ export const create = mutation({
     codeScopeIds: v.optional(v.array(v.id("repositoryCodeScopes"))),
     owningTeamId: v.optional(v.id("scrumTeams")),
     ownerMemberId: v.optional(v.id("orgMembers")),
-    executionEnvironment: v.optional(v.union(v.literal("LOCAL"), v.literal("CLOUD"), v.literal("POLICY_SELECTED"))),
+    executionEnvironment: v.optional(v.union(v.literal("LOCAL"), v.literal("CLOUD"), v.literal("REMOTE"), v.literal("POLICY_SELECTED"))),
     branchStrategy: v.optional(v.string()),
     priority: v.optional(v.union(v.literal(1), v.literal(2), v.literal(3), v.literal(4))),
     riskLevel: v.optional(workOrderRisk),
@@ -1398,7 +1399,7 @@ const dispatchArgs = {
     codeScopeIds: v.optional(v.array(v.id("repositoryCodeScopes"))),
     owningTeamId: v.optional(v.id("scrumTeams")),
     ownerMemberId: v.optional(v.id("orgMembers")),
-    executionEnvironment: v.optional(v.union(v.literal("LOCAL"), v.literal("CLOUD"), v.literal("POLICY_SELECTED"))),
+    executionEnvironment: v.optional(v.union(v.literal("LOCAL"), v.literal("CLOUD"), v.literal("REMOTE"), v.literal("POLICY_SELECTED"))),
     executorHostId: v.optional(v.string()),
     /** Explicit operator-approved exception; normal runtime model metadata must not bypass policy. */
     authorizedModelOverride: v.optional(v.string()),
@@ -1422,7 +1423,7 @@ type DispatchArgs = {
   codeScopeIds?: Id<"repositoryCodeScopes">[];
   owningTeamId?: Id<"scrumTeams">;
   ownerMemberId?: Id<"orgMembers">;
-  executionEnvironment?: "LOCAL" | "CLOUD" | "POLICY_SELECTED";
+  executionEnvironment?: "LOCAL" | "CLOUD" | "REMOTE" | "POLICY_SELECTED";
   executorHostId?: string;
   authorizedModelOverride?: string;
   model?: string;
@@ -1517,6 +1518,7 @@ async function dispatchWorkOrder(ctx: MutationCtx, args: DispatchArgs) {
       // WorkOrder children. Keep their existing recovery route available.
       hasCanonicalChildTasks:
         canonicalChildTasks.length > 0 && !retryOfRun,
+      allowFailedRecovery: Boolean(retryOfRun),
       task: selectedTask,
     });
     if ("reason" in taskSelection) {
@@ -1726,8 +1728,14 @@ async function dispatchWorkOrder(ctx: MutationCtx, args: DispatchArgs) {
       .query("workflowRuns")
       .withIndex("by_work_order", (q) => q.eq("workOrderId", args.workOrderId))
       .collect();
+    const retryExecutionBinding = resolveRetryExecutionBinding({
+      branch: args.branch,
+      worktree: args.worktree,
+      priorRun: retryOfRun,
+      lineage: existingRuns,
+    });
     const factoryBinding = await resolveFactoryDispatchBinding(ctx, {
-      args,
+      args: { ...args, ...retryExecutionBinding },
       workOrder: refreshedWorkOrder,
       workflow,
     });
@@ -2130,7 +2138,7 @@ async function dispatchWorkOrder(ctx: MutationCtx, args: DispatchArgs) {
       actorType: args.actorType,
       actorId,
       summary: retryOfRun
-        ? `Recovery run ${runId} created for failed run ${retryOfRun.runId}`
+        ? `Recovery run ${runId} created for terminal run ${retryOfRun.runId}`
         : `Execution run ${runId} created for ${resolvedWorkflowId}`,
       idempotencyKey: `${args.idempotencyKey}:dispatched`,
       metadata: {
@@ -2158,7 +2166,7 @@ async function dispatchWorkOrder(ctx: MutationCtx, args: DispatchArgs) {
         toState: "DISPATCHED",
         actorType: args.actorType,
         actorId,
-        summary: `Operator started recovery run ${runId} from failed run ${retryOfRun.runId}`,
+        summary: `Operator started recovery run ${runId} from terminal run ${retryOfRun.runId}`,
         idempotencyKey: `${args.idempotencyKey}:retried`,
         metadata: {
           taskId: selectedTask?._id,
@@ -2833,7 +2841,17 @@ export const recordVerificationReceipt = mutation({
         .first();
       if (existing) {
         if (existing.workOrderId !== workOrder._id) throw new Error("Idempotency key is already bound to another WorkOrder");
-        return { verificationReceipt: existing, created: false };
+        if (!run || existing.workflowRunId !== run._id || existing.acceptanceCriterionId !== args.acceptanceCriterionId) {
+          throw new Error("Idempotency key is already bound to different verification evidence");
+        }
+        const missionSync = existing.validationAssertionId
+          ? await syncMissionValidationReceipt(ctx, {
+              workOrder,
+              workflowRun: run,
+              verificationReceipt: existing,
+            })
+          : { synced: false };
+        return { verificationReceipt: existing, missionSync, created: false };
       }
     }
     const policy = await resolveGovernancePolicy(ctx, workOrder);
@@ -2865,7 +2883,7 @@ export const recordVerificationReceipt = mutation({
       .withIndex("by_work_order_criterion", (q) => q.eq("workOrderId", workOrder._id).eq("acceptanceCriterionId", args.acceptanceCriterionId))
       .collect();
 
-    const validationAssertion = workOrder.missionId && workOrder.missionRole === "VALIDATOR"
+    const missionAssertion = workOrder.missionId
       ? await ctx.db
           .query("validationAssertions")
           .withIndex("by_mission_assertion", (q) => q
@@ -2873,9 +2891,15 @@ export const recordVerificationReceipt = mutation({
             .eq("assertionId", args.acceptanceCriterionId))
           .first()
       : null;
-    if (workOrder.missionRole === "VALIDATOR" && workOrder.missionId && !validationAssertion) {
+    if (workOrder.missionRole === "VALIDATOR" && workOrder.missionId && !missionAssertion) {
       throw new Error("Validator evidence must map to a Mission assertion");
     }
+    const validationAssertion = missionAssertion && assertionEvidenceCanSatisfy({
+      missionRole: workOrder.missionRole,
+      requiresIndependentValidation: missionAssertion.requiresIndependentValidation,
+    })
+      ? missionAssertion
+      : null;
 
     for (const receipt of priorReceipts.filter((item: any) => item.status !== "STALE")) {
       await staleVerificationReceipt(ctx, {
@@ -3319,7 +3343,7 @@ export const reopenWorkOrder = mutation({
       if (existing.workOrderId !== workOrder._id) throw new Error("Idempotency key is already bound to another WorkOrder");
       return { reopenDecision: existing, created: false };
     }
-    if (["SUPERSEDED", "CANCELED"].includes(workOrder.state)) {
+    if (workOrder.state === "SUPERSEDED") {
       throw new Error(`WorkOrder cannot be reopened from ${workOrder.state}`);
     }
 
@@ -3384,6 +3408,41 @@ export const reopenWorkOrder = mutation({
       requiredHumanAction: (args.newRequiredActions ?? ["Resolve reopen findings and redispatch work"]).join("; "),
       updatedAt: Date.now(),
     });
+
+    const latestRun = [...runs].sort(
+      (left, right) =>
+        (right.startedAt ?? right._creationTime) -
+        (left.startedAt ?? left._creationTime),
+    )[0];
+    if (latestRun?.status === "CANCELED" && latestRun.parentTaskId) {
+      const canceledTask = await ctx.db.get(latestRun.parentTaskId);
+      if (
+        canceledTask?.workOrderId === workOrder._id &&
+        canceledTask.status === "CANCELED"
+      ) {
+        await ctx.db.patch(canceledTask._id, {
+          status: "READY",
+          stateEnteredAt: Date.now(),
+          completedAt: undefined,
+          blockedReason: undefined,
+        });
+        await logTaskEvent(ctx, {
+          taskId: canceledTask._id,
+          projectId: canceledTask.projectId,
+          eventType: "TASK_TRANSITION",
+          actorType: "HUMAN",
+          actorId: args.approvedBy ?? args.requestedBy,
+          relatedId: reopenDecisionId,
+          beforeState: { status: "CANCELED" },
+          afterState: { status: "READY" },
+          metadata: {
+            reason: args.reason,
+            workOrderId: workOrder._id,
+            reopenDecisionId,
+          },
+        });
+      }
+    }
 
     await logWorkOrderEvent(ctx, {
       tenantId: workOrder.tenantId,
