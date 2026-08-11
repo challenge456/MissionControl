@@ -309,7 +309,7 @@ export function AppShellV2({
               <Breadcrumbs items={crumbs} />
             </div>
             {activeRouteBadge ? (
-              <span className="shrink-0 rounded border border-line bg-surface-1 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.06em] text-ink-muted">
+              <span className="shrink-0 rounded border border-line bg-surface-1 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.06em] text-ink-secondary">
                 {activeRouteBadge}
               </span>
             ) : null}

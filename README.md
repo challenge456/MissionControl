@@ -31,6 +31,7 @@ verification, measurable acceptance criteria, rollback controls, and the
 appropriate human decision.
 
 - [Governed Continuous Learning implementation plan](docs/plans/2026-08-08-feat-governed-continuous-learning-plan.md)
+- [Governed Continuous Learning operator and source contract](docs/software-factory/CONTINUOUS_LEARNING.md)
 - [Mission Control North Star](docs/product/mission-control-north-star.md)
 
 ---

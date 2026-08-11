@@ -369,6 +369,7 @@ export const LEGACY_REPO_DOCS = [
   { title: "Context Manifests", path: "docs/CONTEXT_MANIFESTS.md", description: "Lock and install" },
   { title: "Creating Plugins", path: "docs/CREATING_PLUGINS.md", description: "Registry packages" },
   { title: "Software Factory IA", path: "docs/software-factory/information-architecture.md", description: "Entity model" },
+  { title: "Governed Continuous Learning", path: "docs/software-factory/CONTINUOUS_LEARNING.md", description: "Research source authority and safety contract" },
   { title: "Runbook", path: "docs/runbook/RUNBOOK.md", description: "Operations" },
   { title: "Feature Flags (repo)", path: "docs/FEATURE_FLAGS.md", description: "Full flag list" },
 ];

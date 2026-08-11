@@ -1292,6 +1292,9 @@ body.schematic-no-tele .schematic-tele {
 .registry-page {
   --registry-accent: #4ade80;
 }
+[data-theme="light"] .registry-page {
+  --registry-accent: #187a3f;
+}
 
 /* Unified factory page scope (registry + harness + operator surfaces) */
 .factory-page {

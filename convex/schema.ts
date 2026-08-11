@@ -4976,6 +4976,196 @@ export default defineSchema({
   }).index("by_project", ["projectId"]),
 
   // -------------------------------------------------------------------------
+  // RESEARCH SOURCE REGISTRY (governed source authority; fetching stays off)
+  // -------------------------------------------------------------------------
+  researchSources: defineTable({
+    tenantId: v.id("tenants"),
+    projectId: v.id("projects"),
+    kind: v.union(
+      v.literal("X_USER"),
+      v.literal("YOUTUBE_CHANNEL"),
+      v.literal("WEBSITE"),
+      v.literal("RSS_ATOM")
+    ),
+    locator: v.string(),
+    canonicalProviderId: v.optional(v.string()),
+    canonicalUrl: v.optional(v.string()),
+    displayName: v.string(),
+    state: v.union(
+      v.literal("DRAFT"),
+      v.literal("VERIFIED"),
+      v.literal("ACTIVE"),
+      v.literal("PAUSED"),
+      v.literal("DEGRADED"),
+      v.literal("REVOKED"),
+      v.literal("RETIRED")
+    ),
+    version: v.number(),
+    ownerId: v.string(),
+    adapter: v.object({
+      name: v.string(),
+      version: v.string(),
+      authenticationMode: v.union(
+        v.literal("NONE"),
+        v.literal("API_KEY"),
+        v.literal("OAUTH")
+      ),
+    }),
+    schedule: v.object({
+      cadence: v.union(
+        v.literal("MANUAL"),
+        v.literal("HOURLY"),
+        v.literal("DAILY"),
+        v.literal("WEEKLY")
+      ),
+      timezone: v.string(),
+    }),
+    freshnessTargetMinutes: v.number(),
+    maxItemsPerRun: v.number(),
+    monthlyCostCeilingUsd: v.number(),
+    retentionDays: v.number(),
+    allowedContentClasses: v.array(v.string()),
+    exclusions: v.array(v.string()),
+    providerCursor: v.optional(v.string()),
+    etag: v.optional(v.string()),
+    lastModified: v.optional(v.string()),
+    lastSuccessfulRunAt: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+    nextRetryAt: v.optional(v.number()),
+    consecutiveFailureCount: v.number(),
+    validationStatus: v.union(
+      v.literal("PENDING"),
+      v.literal("PASSED"),
+      v.literal("FAILED"),
+      v.literal("PROVIDER_RESOLUTION_REQUIRED")
+    ),
+    validationMessage: v.optional(v.string()),
+    validatedAt: v.optional(v.number()),
+    policyReviewState: v.union(
+      v.literal("DRAFT"),
+      v.literal("ACKNOWLEDGED"),
+      v.literal("APPROVED"),
+      v.literal("REVIEW_REQUIRED")
+    ),
+    policyVersion: v.string(),
+    approvedBy: v.optional(v.string()),
+    approvedAt: v.optional(v.number()),
+    deletionRequestedAt: v.optional(v.number()),
+    deletionRequestedBy: v.optional(v.string()),
+    idempotencyKey: v.string(),
+    createdBy: v.string(),
+    updatedBy: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_state", ["projectId", "state"])
+    .index("by_project_kind", ["projectId", "kind"])
+    .index("by_project_locator", ["projectId", "locator"])
+    .index("by_canonical_identity", ["projectId", "kind", "canonicalProviderId"])
+    .index("by_next_retry", ["state", "nextRetryAt"])
+    .index("by_idempotency", ["idempotencyKey"]),
+
+  researchSourceEvents: defineTable({
+    tenantId: v.id("tenants"),
+    projectId: v.id("projects"),
+    sourceId: v.id("researchSources"),
+    eventType: v.union(
+      v.literal("DRAFT_CREATED"),
+      v.literal("VALIDATION_PASSED"),
+      v.literal("VALIDATION_FAILED"),
+      v.literal("POLICY_ACKNOWLEDGED"),
+      v.literal("ACTIVATED"),
+      v.literal("PAUSED"),
+      v.literal("RESUMED"),
+      v.literal("DEGRADED"),
+      v.literal("REVOKED"),
+      v.literal("RETIRED"),
+      v.literal("CREDENTIAL_FAILED"),
+      v.literal("POLICY_DRIFT"),
+      v.literal("DELETION_REQUESTED")
+    ),
+    actorId: v.string(),
+    reason: v.string(),
+    fromState: v.optional(v.string()),
+    toState: v.optional(v.string()),
+    sourceVersion: v.number(),
+    policyVersion: v.string(),
+    metadata: v.optional(v.any()),
+    idempotencyKey: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_source", ["sourceId"])
+    .index("by_project", ["projectId"])
+    .index("by_project_time", ["projectId", "createdAt"])
+    .index("by_event_type", ["projectId", "eventType"])
+    .index("by_idempotency", ["idempotencyKey"]),
+
+  researchObservations: defineTable({
+    tenantId: v.id("tenants"),
+    projectId: v.id("projects"),
+    sourceId: v.id("researchSources"),
+    workflowRunId: v.id("workflowRuns"),
+    runArtifactId: v.id("runArtifacts"),
+    providerItemId: v.string(),
+    canonicalUrl: v.string(),
+    authorProviderId: v.optional(v.string()),
+    title: v.optional(v.string()),
+    publishedAt: v.optional(v.number()),
+    retrievedAt: v.number(),
+    state: v.union(
+      v.literal("ACTIVE"),
+      v.literal("DELETED"),
+      v.literal("SUPERSEDED")
+    ),
+    supersedesObservationId: v.optional(v.id("researchObservations")),
+    contentHash: v.string(),
+    adapterVersion: v.string(),
+    language: v.optional(v.string()),
+    contentType: v.string(),
+    trustClassification: v.union(
+      v.literal("PRIMARY"),
+      v.literal("OFFICIAL"),
+      v.literal("VENDOR"),
+      v.literal("COMMUNITY"),
+      v.literal("UNKNOWN")
+    ),
+    safetyScanStatus: v.union(
+      v.literal("PENDING"),
+      v.literal("PASSED"),
+      v.literal("QUARANTINED"),
+      v.literal("FAILED")
+    ),
+    detectedInstructionLikeContent: v.boolean(),
+    quarantineReason: v.optional(v.string()),
+    extractionStatus: v.union(
+      v.literal("PENDING"),
+      v.literal("COMPLETE"),
+      v.literal("FAILED")
+    ),
+    citedClaimIds: v.array(v.string()),
+    verificationDecision: v.union(
+      v.literal("PENDING"),
+      v.literal("ACCEPTED"),
+      v.literal("REJECTED")
+    ),
+    retentionDays: v.number(),
+    sensitivity: v.string(),
+    rightsTermsReference: v.string(),
+    purgeAt: v.number(),
+    idempotencyKey: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_source", ["sourceId"])
+    .index("by_source_provider_item", ["sourceId", "providerItemId"])
+    .index("by_source_content_hash", ["sourceId", "contentHash"])
+    .index("by_workflow_run", ["workflowRunId"])
+    .index("by_artifact", ["runArtifactId"])
+    .index("by_purge_at", ["purgeAt"])
+    .index("by_idempotency", ["idempotencyKey"]),
+
+  // -------------------------------------------------------------------------
   // LOOP ENGINEERING (bounded research -> implementation -> learning cycles)
   // -------------------------------------------------------------------------
   loopEngineeringCycles: defineTable({
