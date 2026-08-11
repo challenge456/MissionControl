@@ -118,9 +118,9 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
   const [revisingId, setRevisingId] = useState<string | null>(null);
   const [reopeningId, setReopeningId] = useState<string | null>(null);
   const [supersedingId, setSupersedingId] = useState<string | null>(null);
-  const [inspectorRunId, setInspectorRunId] = useState<Id<"workflowRuns"> | null>(null);
-  const [inspectorReceiptId, setInspectorReceiptId] = useState<Id<"verificationReceipts"> | null>(null);
-  const [inspectorCriterionId, setInspectorCriterionId] = useState<string | null>(null);
+  const requestedInspectorRunId = searchParams.get("run") as Id<"workflowRuns"> | null;
+  const inspectorReceiptId = searchParams.get("receipt") as Id<"verificationReceipts"> | null;
+  const inspectorCriterionId = searchParams.get("criterion");
   const [dispatchError, setDispatchError] = useState<string | null>(null);
   const [dispatchTaskSelections, setDispatchTaskSelections] = useState<Record<string, string>>({});
   const [dispatchCodeScopeSelections, setDispatchCodeScopeSelections] = useState<Record<string, string>>({});
@@ -141,6 +141,10 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
       ? { workOrderId: accessibleSelectedId as Id<"workOrders"> }
       : "skip"
   );
+  const inspectorRunId = selected?.executionRuns.some((run) => run._id === requestedInspectorRunId)
+    ? requestedInspectorRunId
+    : null;
+  const inspectorUnavailable = Boolean(requestedInspectorRunId && selected !== undefined && !inspectorRunId);
   const repositoryRows = useQuery(
     api.projects.listRepositories,
     projectId ? { projectId } : "skip"
@@ -171,6 +175,28 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
       hadRequestedWorkOrder.current = false;
     }
   }, [searchParams, selectedId]);
+
+  const openRunInspector = (input: {
+    runId: Id<"workflowRuns">;
+    receiptId?: Id<"verificationReceipts"> | null;
+    criterionId?: string | null;
+  }) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("run", input.runId);
+    if (input.receiptId) next.set("receipt", input.receiptId);
+    else next.delete("receipt");
+    if (input.criterionId) next.set("criterion", input.criterionId);
+    else next.delete("criterion");
+    setSearchParams(next, { replace: true });
+  };
+
+  const closeRunInspector = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("run");
+    next.delete("receipt");
+    next.delete("criterion");
+    setSearchParams(next, { replace: true });
+  };
   const createWorkOrder = useMutation(api.workOrders.create);
   const dispatchWorkOrder = useMutation(api.workOrders.dispatch);
   const requestApprovalDecision = useMutation(api.workOrders.requestApprovalDecision);
@@ -903,9 +929,12 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                               variant="outline"
                               disabled={!receipt?.workflowRunId}
                               onClick={() => {
-                                setInspectorRunId((receipt?.workflowRunId ?? null) as Id<"workflowRuns"> | null);
-                                setInspectorReceiptId((receipt?._id ?? null) as Id<"verificationReceipts"> | null);
-                                setInspectorCriterionId(receipt?.acceptanceCriterionId ?? criterion.id);
+                                if (!receipt?.workflowRunId) return;
+                                openRunInspector({
+                                  runId: receipt.workflowRunId,
+                                  receiptId: receipt._id,
+                                  criterionId: receipt.acceptanceCriterionId ?? criterion.id,
+                                });
                               }}
                             >
                               Inspect evidence
@@ -1095,11 +1124,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => {
-                                  setInspectorRunId(run._id);
-                                  setInspectorReceiptId(null);
-                                  setInspectorCriterionId(null);
-                                }}
+                                onClick={() => openRunInspector({ runId: run._id })}
                               >
                                 Inspect run
                               </Button>
@@ -1363,10 +1388,11 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
       />
 
       <ExecutionRunInspector
-        open={!!inspectorRunId}
+        open={Boolean(requestedInspectorRunId && selected !== undefined)}
         workflowRunId={inspectorRunId}
         verificationReceiptId={inspectorReceiptId}
         acceptanceCriterionId={inspectorCriterionId}
+        unavailable={inspectorUnavailable}
         retrying={!!selected && dispatchingId === selected.workOrder._id}
         onRetryFailedRun={selected
           ? async ({ workflowRunId, reason, runtime, model, worktree }) => {
@@ -1399,11 +1425,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
               }
             }
           : undefined}
-        onClose={() => {
-          setInspectorRunId(null);
-          setInspectorReceiptId(null);
-          setInspectorCriterionId(null);
-        }}
+        onClose={closeRunInspector}
       />
     </div>
   );

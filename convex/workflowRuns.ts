@@ -15,6 +15,8 @@ import { reconcileTerminalWorkflowSteps } from "./lib/workflowRunState";
 import { snapshotWorkflowDefinition } from "./lib/workflowSnapshot";
 import { assertAuthorizedDeliveryRecord, requireAuthorizedDeliveryScope } from "./lib/deliveryAuthorization";
 import { COMPANY_PERMISSIONS } from "./lib/companyAccess";
+import { buildExecutionRecoverySummary } from "./lib/executionRecovery";
+import { buildReviewPackage } from "./lib/reviewPackage";
 
 // ============================================================================
 // HELPERS
@@ -315,9 +317,12 @@ export const getInspector = query({
     const run = await ctx.db.get(args.workflowRunId);
     if (!run) return null;
 
-    const [installedWorkflow, workOrder, events, artifacts, receipts, linkedAgentRuns] = await Promise.all([
+    const workOrder = run.workOrderId ? await ctx.db.get(run.workOrderId) : null;
+    const access = await requireAuthorizedDeliveryScope(ctx, workOrder?.projectId ?? run.projectId);
+    if (workOrder) assertAuthorizedDeliveryRecord(access, workOrder);
+
+    const [installedWorkflow, events, artifacts, receipts, linkedAgentRuns] = await Promise.all([
       ctx.db.query("workflows").withIndex("by_workflow_id", (q) => q.eq("workflowId", run.workflowId)).first(),
-      run.workOrderId ? ctx.db.get(run.workOrderId) : null,
       ctx.db.query("runEvents").withIndex("by_run_sequence", (q) => q.eq("workflowRunId", run._id)).collect(),
       ctx.db.query("runArtifacts").withIndex("by_run", (q) => q.eq("workflowRunId", run._id)).order("desc").collect(),
       run.workOrderId
@@ -346,6 +351,38 @@ export const getInspector = query({
       fileChanges,
       artifacts: artifacts as any,
       receipts: receipts as any,
+    });
+    const [workOrderReceipts, prChecks, missionPlan, factoryVersion] = await Promise.all([
+      workOrder
+        ? ctx.db.query("verificationReceipts").withIndex("by_work_order", (q) => q.eq("workOrderId", workOrder._id)).collect()
+        : [],
+      workOrder
+        ? ctx.db.query("harnessPrChecks").withIndex("by_work_order", (q) => q.eq("workOrderId", workOrder._id)).collect()
+        : [],
+      workOrder?.missionPlanId ? ctx.db.get(workOrder.missionPlanId) : null,
+      run.factoryDefinitionVersionId ? ctx.db.get(run.factoryDefinitionVersionId) : null,
+    ]);
+    const configuredMaxAttempts = Number(
+      workOrder?.metadata?.implementationPolicy?.maxAttempts
+      ?? factoryVersion?.budget?.maxAttempts,
+    );
+    const recovery = buildExecutionRecoverySummary({
+      run,
+      now: Date.now(),
+      maxAttempts: Number.isFinite(configuredMaxAttempts) ? configuredMaxAttempts : null,
+    });
+    const reviewPackage = buildReviewPackage({
+      now: Date.now(),
+      run,
+      workOrder,
+      receipts: workOrderReceipts,
+      prChecks,
+      events: orderedEvents,
+      fileChanges,
+      rollbackApproach: missionPlan?.rollbackApproach
+        ?? (typeof workOrder?.metadata?.rollbackApproach === "string"
+          ? workOrder.metadata.rollbackApproach
+          : null),
     });
     const inspectorRun = run.executionManifest
       ? {
@@ -383,6 +420,8 @@ export const getInspector = query({
       retryTimeline,
       evidenceLineage,
       continuousEvidenceLineage,
+      recovery,
+      reviewPackage,
     };
   },
 });

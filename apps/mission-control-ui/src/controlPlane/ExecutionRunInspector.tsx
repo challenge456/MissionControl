@@ -10,12 +10,15 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { orderTimelineEvents, latestHumanAttention, filterEvidenceArtifacts } from "./runInspectorModel";
 import { RunRecoveryPanel } from "./RunRecoveryPanel";
 import { EvidenceLineagePanel, type EvidenceLineageStage } from "./EvidenceLineagePanel";
+import { ExecutionRecoveryCard, type ExecutionRecoveryData } from "./ExecutionRecoveryCard";
+import { ReviewEvidencePackage, type ReviewEvidencePackageData } from "./ReviewEvidencePackage";
 
 export function ExecutionRunInspector({
   open,
   workflowRunId,
   verificationReceiptId,
   acceptanceCriterionId,
+  unavailable = false,
   retrying = false,
   onRetryFailedRun,
   onClose,
@@ -24,6 +27,7 @@ export function ExecutionRunInspector({
   workflowRunId: Id<"workflowRuns"> | null;
   verificationReceiptId?: Id<"verificationReceipts"> | null;
   acceptanceCriterionId?: string | null;
+  unavailable?: boolean;
   retrying?: boolean;
   onRetryFailedRun?: (input: {
     workflowRunId: Id<"workflowRuns">;
@@ -84,10 +88,26 @@ export function ExecutionRunInspector({
         </DialogHeader>
 
         <div className="max-h-[80vh] overflow-y-auto p-6">
-          {!workflowRunId ? (
+          {unavailable ? (
+            <Card role="alert" className="border-red-500/30 p-6">
+              <div className="text-sm font-medium text-foreground">Run unavailable</div>
+              <p className="mt-2 text-sm text-muted-foreground">
+                This run no longer exists or is outside the selected WorkOrder. Close the inspector and select a current Attempt.
+              </p>
+              <Button className="mt-4" variant="outline" onClick={onClose}>Close inspector</Button>
+            </Card>
+          ) : !workflowRunId ? (
             <Card className="p-6 text-sm text-muted-foreground">Select a run to inspect.</Card>
-          ) : !inspector ? (
-            <Card className="p-6 text-sm text-muted-foreground">Loading run inspector…</Card>
+          ) : inspector === undefined ? (
+            <Card className="p-6 text-sm text-muted-foreground" aria-live="polite">Loading run inspector…</Card>
+          ) : inspector === null ? (
+            <Card role="alert" className="border-red-500/30 p-6">
+              <div className="text-sm font-medium text-foreground">Run unavailable</div>
+              <p className="mt-2 text-sm text-muted-foreground">
+                This run no longer exists or is outside your authorized workspace. Close the inspector and select a current Attempt.
+              </p>
+              <Button className="mt-4" variant="outline" onClick={onClose}>Close inspector</Button>
+            </Card>
           ) : (
             <div className="space-y-6">
               <Card className="p-4">
@@ -119,6 +139,10 @@ export function ExecutionRunInspector({
                   <Meta label="Human intervention" value={attention ?? (inspector.summary.humanInterventionRequired ? "Required" : "Not required")} />
                 </div>
               </Card>
+
+              <ReviewEvidencePackage review={inspector.reviewPackage as ReviewEvidencePackageData} />
+
+              <ExecutionRecoveryCard recovery={inspector.recovery as ExecutionRecoveryData} />
 
               {inspector.run.executionManifest ? (
                 <Card className="p-4">
@@ -497,9 +521,9 @@ export function ExecutionRunInspector({
 
 function Meta({ label, value }: { label: string; value?: string | null }) {
   return (
-    <div>
+    <div className="min-w-0">
       <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{label}</div>
-      <div className="mt-1 text-sm text-foreground">{value ?? "—"}</div>
+      <div className="mt-1 break-all text-sm text-foreground">{value ?? "—"}</div>
     </div>
   );
 }
