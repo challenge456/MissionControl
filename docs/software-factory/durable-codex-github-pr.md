@@ -20,13 +20,18 @@ revision. The durable worker then:
 2. Revalidates current Mission, WorkOrder, Factory assessment, policy, host,
    repository, scope, and GitHub App readiness.
 3. Creates or recovers the exact linked worktree and server-owned branch.
-4. Runs Codex with the frozen request and a credential-free environment.
+4. Runs Codex with the frozen request and a credential-minimized environment;
+   model authentication is available to Codex, but orchestration and GitHub
+   publication credentials are not.
 5. Computes the complete committed and uncommitted Git change set.
 6. Blocks publication and records a policy-deviation artifact if any path is
    outside or excluded by the approved repository scopes.
-7. Runs every approved verification command and fails closed when no command
-   is bound.
-8. Commits the exact staged change set, mints a repository-scoped installation
+7. Runs every approved verification command in a temporary home directory
+   without Codex, GitHub CLI, or ambient Git credentials. It then rechecks Git
+   identity, branch, history, repository configuration, changed-file scope, and
+   secret patterns before staging the final result. It fails closed when no
+   command is bound.
+8. Commits with repository hooks disabled, mints a repository-scoped installation
    token, pushes the exact branch, and finds or creates the pull request.
 9. Persists commit, pull request, changed files, installation identity, and the
    complete Mission-to-Factory lineage before marking the Attempt complete.
@@ -65,7 +70,16 @@ preserving the canceled Attempt in the lineage.
 Verification commands are frozen into the claim from the narrowest approved
 source: Work Order implementation policy, then policy-envelope commands, then
 constraints explicitly labeled `Verification command:`. Unlabeled prose is
-never promoted into an executable command.
+never promoted into an executable command. Because the approved contract is a
+shell command, plan approval is the authority boundary; runtime isolation and
+the post-command Git/scope scan prevent that command from changing publication
+identity or expanding the approved repository mutation.
+
+V1 enforces the approved runtime and retry limits and blocks execution when its
+preflight cost estimate exceeds the approved amount. The Codex CLI adapter does
+not yet expose authoritative actual-cost telemetry, so estimate-versus-actual
+reconciliation is an explicit operational-hardening follow-up rather than a
+claimed hard stop.
 
 ## Runtime configuration
 
@@ -121,4 +135,6 @@ No branch push or PR request occurs when the GitHub App is absent or stale,
 Factory readiness expired, the host is dirty/stale, governance changed after
 dispatch, code scope is incomplete, a changed file violates scope, no approved
 verification command exists, a verification command fails, budget estimate is
-over limit, cancellation is requested, or the lease is lost.
+over limit, verification changes Git identity/history/configuration, a changed
+file exceeds the governed scan limit, cancellation is requested, or the lease
+is lost.

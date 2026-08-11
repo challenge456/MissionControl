@@ -175,11 +175,14 @@ export function validateMissionPlan(input: MissionPlanInput): MissionPlanValidat
       if (!implementationPolicy?.allowedCommands.some((command) => command.trim())) {
         errors.push({ code: "implementation-verifier-required", message: "Mutating WorkOrders require at least one approved verification command.", path: `blueprints.${blueprint.id}.implementationPolicy.allowedCommands`, ...identity });
       }
-      if (!Number.isInteger(implementationPolicy?.maxAttempts) || (implementationPolicy?.maxAttempts ?? 0) < 1) {
-        errors.push({ code: "implementation-attempts-invalid", message: "Maximum attempts must be a positive whole number.", path: `blueprints.${blueprint.id}.implementationPolicy.maxAttempts`, ...identity });
+      if ((implementationPolicy?.allowedCommands.length ?? 0) > 20 || implementationPolicy?.allowedCommands.some((command) => command.length > 1_000)) {
+        errors.push({ code: "implementation-verifiers-too-large", message: "Verification policy is limited to 20 commands of 1,000 characters each.", path: `blueprints.${blueprint.id}.implementationPolicy.allowedCommands`, ...identity });
       }
-      if (!Number.isInteger(implementationPolicy?.timeoutMinutes) || (implementationPolicy?.timeoutMinutes ?? 0) < 1) {
-        errors.push({ code: "implementation-timeout-invalid", message: "Timeout minutes must be a positive whole number.", path: `blueprints.${blueprint.id}.implementationPolicy.timeoutMinutes`, ...identity });
+      if (!Number.isInteger(implementationPolicy?.maxAttempts) || (implementationPolicy?.maxAttempts ?? 0) < 1 || (implementationPolicy?.maxAttempts ?? 0) > 10) {
+        errors.push({ code: "implementation-attempts-invalid", message: "Maximum attempts must be a whole number from 1 to 10.", path: `blueprints.${blueprint.id}.implementationPolicy.maxAttempts`, ...identity });
+      }
+      if (!Number.isInteger(implementationPolicy?.timeoutMinutes) || (implementationPolicy?.timeoutMinutes ?? 0) < 1 || (implementationPolicy?.timeoutMinutes ?? 0) > 480) {
+        errors.push({ code: "implementation-timeout-invalid", message: "Timeout minutes must be a whole number from 1 to 480.", path: `blueprints.${blueprint.id}.implementationPolicy.timeoutMinutes`, ...identity });
       }
       push(required(implementationPolicy?.stopCondition, "implementation-stop-condition-required", "Mutating WorkOrders require an explicit stop condition.", `blueprints.${blueprint.id}.implementationPolicy.stopCondition`, identity));
       if (implementationPolicy?.maxCostUsd !== undefined && (!Number.isFinite(implementationPolicy.maxCostUsd) || implementationPolicy.maxCostUsd < 0)) {

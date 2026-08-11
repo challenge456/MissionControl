@@ -1,6 +1,6 @@
 import { generateKeyPairSync } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
-import { GithubAppPublisher } from "../githubAppPublisher";
+import { GithubAppPublisher, parseGithubRepository } from "../githubAppPublisher";
 
 function privateKey() {
   return generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey.export({ type: "pkcs8", format: "pem" }).toString();
@@ -10,7 +10,7 @@ describe("GithubAppPublisher", () => {
   it("mints a repository-scoped installation token without returning it in metadata", async () => {
     const fetcher = vi.fn(async (_url: string, _init?: RequestInit) => new Response(JSON.stringify({
       token: "installation-secret",
-      expires_at: "2026-08-08T00:00:00Z",
+      expires_at: new Date(Date.now() + 60 * 60 * 1_000).toISOString(),
     }), { status: 201, headers: { "Content-Type": "application/json" } }));
     const publisher = new GithubAppPublisher("123", privateKey(), fetcher as any);
     const result = await publisher.mintInstallationToken({
@@ -22,6 +22,34 @@ describe("GithubAppPublisher", () => {
     const init = fetcher.mock.calls[0][1];
     expect(init).toBeDefined();
     expect(JSON.parse(String(init?.body))).toEqual({ repository_ids: [789] });
+  });
+
+  it("rejects unsafe repository and provider identities before publication", async () => {
+    expect(() => parseGithubRepository("github.com@attacker.invalid/repo")).toThrow("safe owner/name");
+    const publisher = new GithubAppPublisher("123", privateKey(), vi.fn() as any);
+    await expect(publisher.mintInstallationToken({
+      installationId: "456",
+      repository: "jaydubya818/MissionControl",
+      providerRepositoryId: "9007199254740992",
+    })).rejects.toThrow("supported integer range");
+  });
+
+  it("propagates an already-requested cancellation to GitHub", async () => {
+    const fetcher = vi.fn(async (_url: string, init?: RequestInit) => {
+      expect(init?.signal?.aborted).toBe(true);
+      throw new DOMException("Aborted", "AbortError");
+    });
+    const publisher = new GithubAppPublisher("123", privateKey(), fetcher as any);
+    const controller = new AbortController();
+    controller.abort();
+    await expect(publisher.findOrCreatePullRequest({
+      token: "ephemeral",
+      repository: "jaydubya818/MissionControl",
+      branch: "mc/canceled",
+      baseBranch: "main",
+      title: "Canceled",
+      body: "lineage",
+    }, controller.signal)).rejects.toThrow("Aborted");
   });
 
   it("reuses the open pull request for the exact branch", async () => {

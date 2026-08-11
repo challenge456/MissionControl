@@ -1,17 +1,30 @@
 import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { access, mkdir, readFile, realpath, stat } from "node:fs/promises";
+import { access, lstat, mkdir, mkdtemp, readFile, readlink, realpath, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { validateChangedFileScope, type RepositoryScope } from "@mission-control/workflow-engine";
 import type { ExecutorEvent } from "@mission-control/workflow-engine";
 import { CodexV1ExecutorAdapter } from "./codexExecutorAdapter.js";
-import { type GithubAppPublisher, type GithubPullRequestIdentity } from "./githubAppPublisher.js";
+import {
+  parseGithubRepository,
+  type GithubAppPublisher,
+  type GithubPullRequestIdentity,
+} from "./githubAppPublisher.js";
 import { createSignedServiceCommand, type ServiceCapability } from "./serviceCommandClient.js";
 import { ConvexActions } from "./convexCalls.js";
 
 const execFileAsync = promisify(execFile);
 const SECRET_PATTERN = /(gh[opsu]_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----)/;
+const MAX_SECRET_SCAN_BYTES = 20 * 1024 * 1024;
+
+export interface GitBoundary {
+  commonDir: string;
+  branch: string;
+  headSha: string;
+  localConfigDigest: string;
+}
 
 interface ConvexActionClient {
   action(name: any, args: any): Promise<any>;
@@ -82,6 +95,12 @@ export class DurableCodexWorker {
     this.leaseDurationMs = options.leaseDurationMs ?? 60_000;
     this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? 15_000;
     this.executor = options.executor ?? new CodexV1ExecutorAdapter();
+    if (!Number.isSafeInteger(this.leaseDurationMs) || this.leaseDurationMs < 10_000 || this.leaseDurationMs > 5 * 60_000) {
+      throw new Error("Worker lease duration must be between 10 seconds and 5 minutes.");
+    }
+    if (!Number.isSafeInteger(this.heartbeatIntervalMs) || this.heartbeatIntervalMs < 1_000) {
+      throw new Error("Worker heartbeat interval must be at least one second.");
+    }
     if (this.heartbeatIntervalMs >= this.leaseDurationMs / 2) {
       throw new Error("Worker heartbeat interval must be less than half of the lease duration.");
     }
@@ -177,6 +196,11 @@ export class DurableCodexWorker {
         checkpointBaseSha: baseSha,
       });
       baseSha = prepared.baseSha;
+      await assertGitBoundary(manifest.worktree, prepared.gitBoundary, {
+        expectedBranch: manifest.branch,
+        requireHeadDescendantOf: baseSha,
+      });
+      await assertSafeGitPublicationConfig(manifest.worktree);
       checkpointSummary = prepared.recovered
         ? "Recovered the existing durable worktree and exact branch."
         : "Created the isolated durable worktree and exact branch.";
@@ -220,7 +244,6 @@ export class DurableCodexWorker {
       await heartbeat();
       if (abortController.signal.aborted) throw new CancellationError(leaseState.error?.message);
       const changedFiles = await completeChangedFileSet(manifest.worktree, baseSha);
-      approvedChangedFiles = changedFiles;
       if (changedFiles.length === 0) throw new Error("Execution produced no repository changes.");
       const violations = validateChangedFileScope(changedFiles, manifest.scopes);
       if (violations.length) {
@@ -241,16 +264,11 @@ export class DurableCodexWorker {
         await this.finalize(manifest, { status: "FAILED", summary, failureReason: summary, baseSha });
         return;
       }
-      await this.report(manifest, `files:${manifest.executionAttemptNumber}`, changedFiles.map((repositoryPath) => ({
-        eventType: "FILE_CHANGED",
-        status: "COMPLETED",
-        commandSummary: repositoryPath,
-        metadata: { repositoryPath, approvedScope: true },
-      })));
-      await stageAndScan(manifest.worktree, changedFiles);
+      await scanChangedFilesForSecrets(manifest.worktree, changedFiles);
       if (manifest.policy.allowedCommands.length === 0) {
         throw new Error("No approved verification commands are bound to this Attempt; publication fails closed.");
       }
+      const verificationBoundary = await captureGitBoundary(manifest.worktree);
       await runVerificationCommands(manifest.worktree, manifest.policy.allowedCommands, manifest.policy.timeoutMinutes, abortController.signal, async (command, result) => {
         await this.report(manifest, `verify:${createHash("sha256").update(command).digest("hex").slice(0, 16)}`, [{
           eventType: "COMMAND_EXECUTED",
@@ -271,6 +289,47 @@ export class DurableCodexWorker {
       });
       if (abortController.signal.aborted) throw new CancellationError(leaseState.error?.message);
 
+      await assertGitBoundary(manifest.worktree, verificationBoundary, {
+        expectedBranch: manifest.branch,
+        expectedHead: verificationBoundary.headSha,
+        requireHeadDescendantOf: baseSha,
+      });
+      await assertGitBoundary(manifest.worktree, prepared.gitBoundary, {
+        expectedBranch: manifest.branch,
+        requireHeadDescendantOf: baseSha,
+      });
+      await assertSafeGitPublicationConfig(manifest.worktree);
+
+      const verifiedChangedFiles = await completeChangedFileSet(manifest.worktree, baseSha);
+      if (verifiedChangedFiles.length === 0) throw new Error("Verification left no repository changes to publish.");
+      const postVerificationViolations = validateChangedFileScope(verifiedChangedFiles, manifest.scopes);
+      if (postVerificationViolations.length) {
+        const summary = `Publication blocked: verification produced ${postVerificationViolations.length} changed file(s) outside approved repository scope.`;
+        await this.report(manifest, `post-verification-policy-deviation:${manifest.executionAttemptNumber}`, [{
+          eventType: "POLICY_DEVIATION",
+          status: "FAILED",
+          commandSummary: summary,
+          errorCategory: "APPROVED_FILE_SCOPE_VIOLATION",
+          errorSummary: postVerificationViolations.map((item) => `${item.path}: ${item.reason}`).join("; "),
+          metadata: { violations: postVerificationViolations, changedFiles: verifiedChangedFiles, source: "verification-command" },
+        }], [{
+          artifactType: "VERIFICATION_EVIDENCE",
+          name: "Post-verification file-scope deviation",
+          description: postVerificationViolations.map((item) => `${item.path}: ${item.reason}`).join("\n"),
+          metadata: { outcome: "BLOCKED", violations: postVerificationViolations, changedFiles: verifiedChangedFiles, approvedScopes: manifest.scopes },
+        }]);
+        await this.finalize(manifest, { status: "FAILED", summary, failureReason: summary, baseSha });
+        return;
+      }
+      approvedChangedFiles = verifiedChangedFiles;
+      await this.report(manifest, `files:${manifest.executionAttemptNumber}`, verifiedChangedFiles.map((repositoryPath) => ({
+        eventType: "FILE_CHANGED",
+        status: "COMPLETED",
+        commandSummary: repositoryPath,
+        metadata: { repositoryPath, approvedScope: true, verifiedAfterPolicyCommands: true },
+      })));
+      await stageAndScan(manifest.worktree, verifiedChangedFiles);
+
       const currentHead = await git(manifest.worktree, ["rev-parse", "HEAD"]);
       if (currentHead !== baseSha && (await git(manifest.worktree, ["status", "--porcelain"])) === "") {
         headSha = currentHead;
@@ -279,10 +338,18 @@ export class DurableCodexWorker {
         await git(manifest.worktree, [
           "-c", "user.name=Mission Control GitHub App",
           "-c", "user.email=mission-control[bot]@users.noreply.github.com",
+          "-c", "core.hooksPath=/dev/null",
+          "-c", "commit.gpgSign=false",
           "commit", "-m", commitMessage,
         ]);
         headSha = await git(manifest.worktree, ["rev-parse", "HEAD"]);
       }
+      await assertGitBoundary(manifest.worktree, prepared.gitBoundary, {
+        expectedBranch: manifest.branch,
+        expectedHead: headSha,
+        requireHeadDescendantOf: baseSha,
+      });
+      await assertSafeGitPublicationConfig(manifest.worktree);
 
       currentPhase = "PUBLISHING";
       checkpointSummary = "Scope and verification passed; publishing the exact commit through the GitHub App.";
@@ -295,13 +362,14 @@ export class DurableCodexWorker {
         installationId: manifest.github.installationId,
         repository: manifest.repository,
         providerRepositoryId: manifest.providerRepositoryId,
-      });
+      }, abortController.signal);
       try {
         await pushWithInstallationToken({
           worktree: manifest.worktree,
           repository: manifest.repository,
           branch: manifest.branch,
           token: installation.token,
+          signal: abortController.signal,
         });
         const pullRequest = await this.options.publisher.findOrCreatePullRequest({
           token: installation.token,
@@ -310,7 +378,7 @@ export class DurableCodexWorker {
           baseBranch: manifest.defaultBranch,
           title: `Mission Control: ${manifest.prompt.split("\n")[0].slice(0, 180)}`,
           body: pullRequestBody(manifest, headSha),
-        });
+        }, abortController.signal);
         await this.finalize(manifest, {
           status: "COMPLETED",
           summary: `Review-ready pull request #${pullRequest.number} published from the approved Attempt.`,
@@ -444,7 +512,8 @@ export async function prepareWorktree(input: {
   }
   const headSha = await git(worktree, ["rev-parse", "HEAD"]);
   const changedFiles = await uncommittedChangedFiles(worktree);
-  return { repositoryRoot, worktree, baseSha, headSha, changedFiles, recovered };
+  const gitBoundary = await captureGitBoundary(worktree);
+  return { repositoryRoot, worktree, baseSha, headSha, changedFiles, recovered, gitBoundary };
 }
 
 export async function completeChangedFileSet(worktree: string, baseSha: string): Promise<string[]> {
@@ -510,59 +579,93 @@ function mapExecutorEvent(event: ExecutorEvent) {
   };
 }
 
-async function stageAndScan(worktree: string, changedFiles: string[]) {
+export async function scanChangedFilesForSecrets(worktree: string, changedFiles: string[]) {
   for (const repositoryPath of changedFiles) {
     const absolute = path.join(worktree, repositoryPath);
-    const info = await stat(absolute).catch(() => null);
-    if (!info?.isFile() || info.size > 5 * 1024 * 1024) continue;
-    const content = await readFile(absolute, "utf8").catch(() => "");
+    const info = await lstat(absolute).catch(() => null);
+    if (!info) continue;
+    if (info.size > MAX_SECRET_SCAN_BYTES) {
+      throw new Error(`Changed file ${repositoryPath} exceeds the governed secret-scan limit.`);
+    }
+    const content = info.isSymbolicLink()
+      ? await readlink(absolute).catch(() => "")
+      : info.isFile()
+        ? (await readFile(absolute)).toString("utf8")
+        : "";
     if (SECRET_PATTERN.test(content)) throw new Error(`Potential credential material detected in ${repositoryPath}.`);
   }
+}
+
+async function stageAndScan(worktree: string, changedFiles: string[]) {
+  await scanChangedFilesForSecrets(worktree, changedFiles);
   await git(worktree, ["add", "-A"]);
   const diff = await git(worktree, ["diff", "--cached", "--no-ext-diff", "--no-color"], 20 * 1024 * 1024);
   if (SECRET_PATTERN.test(diff)) throw new Error("Potential credential material detected in the staged change set.");
 }
 
-async function runVerificationCommands(
+export async function runVerificationCommands(
   worktree: string,
   commands: string[],
   timeoutMinutes: number,
   signal: AbortSignal,
   report: (command: string, result: { ok: boolean; startedAt: number; endedAt: number; exitCode: number; output: string; error?: string }) => Promise<void>
 ) {
-  for (const command of commands) {
-    if (signal.aborted) throw new CancellationError("Cancellation requested during verification.");
-    const startedAt = Date.now();
-    try {
-      const result = await execFileAsync("/bin/sh", ["-lc", command], {
-        cwd: worktree,
-        env: childEnvironment(),
-        signal,
-        timeout: timeoutMinutes * 60_000,
-        maxBuffer: 20 * 1024 * 1024,
-      });
-      const output = redact(`${result.stdout}\n${result.stderr}`).slice(-4_000);
-      await report(command, { ok: true, startedAt, endedAt: Date.now(), exitCode: 0, output });
-    } catch (error: any) {
-      const output = redact(`${error?.stdout ?? ""}\n${error?.stderr ?? ""}`).slice(-4_000);
-      const message = safeError(error);
-      await report(command, { ok: false, startedAt, endedAt: Date.now(), exitCode: typeof error?.code === "number" ? error.code : 1, output, error: message });
-      throw new Error(`Approved verification command failed: ${command}. ${message}`);
+  const verificationHome = await mkdtemp(path.join(tmpdir(), "mc-verification-home-"));
+  try {
+    for (const command of commands) {
+      if (signal.aborted) throw new CancellationError("Cancellation requested during verification.");
+      const startedAt = Date.now();
+      try {
+        const result = await execFileAsync("/bin/sh", ["-c", command], {
+          cwd: worktree,
+          env: verificationEnvironment(verificationHome),
+          signal,
+          timeout: timeoutMinutes * 60_000,
+          maxBuffer: 20 * 1024 * 1024,
+        });
+        const output = redact(`${result.stdout}\n${result.stderr}`).slice(-4_000);
+        await report(command, { ok: true, startedAt, endedAt: Date.now(), exitCode: 0, output });
+      } catch (error: any) {
+        const output = redact(`${error?.stdout ?? ""}\n${error?.stderr ?? ""}`).slice(-4_000);
+        const message = safeError(error);
+        await report(command, { ok: false, startedAt, endedAt: Date.now(), exitCode: typeof error?.code === "number" ? error.code : 1, output, error: message });
+        throw new Error(`Approved verification command failed: ${command}. ${message}`);
+      }
     }
+  } finally {
+    await rm(verificationHome, { recursive: true, force: true });
   }
 }
 
-async function pushWithInstallationToken(input: { worktree: string; repository: string; branch: string; token: string }) {
+async function pushWithInstallationToken(input: {
+  worktree: string;
+  repository: string;
+  branch: string;
+  token: string;
+  signal?: AbortSignal;
+}) {
+  parseGithubRepository(input.repository);
   const authorization = Buffer.from(`x-access-token:${input.token}`, "utf8").toString("base64");
-  await execFileAsync("git", ["push", `https://github.com/${input.repository}.git`, `HEAD:refs/heads/${input.branch}`], {
+  await execFileAsync("git", [
+    "-c", "core.hooksPath=/dev/null",
+    "-c", "credential.helper=",
+    "-c", "http.sslVerify=true",
+    "push",
+    `https://github.com/${input.repository}.git`,
+    `HEAD:refs/heads/${input.branch}`,
+  ], {
     cwd: input.worktree,
     env: {
       ...childEnvironment(),
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_CONFIG_SYSTEM: "/dev/null",
+      GIT_CONFIG_GLOBAL: "/dev/null",
       GIT_TERMINAL_PROMPT: "0",
       GIT_CONFIG_COUNT: "1",
       GIT_CONFIG_KEY_0: "http.https://github.com/.extraheader",
       GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${authorization}`,
     },
+    signal: input.signal,
     timeout: 5 * 60_000,
     maxBuffer: 2 * 1024 * 1024,
   }).catch((error) => { throw new Error(`GitHub App push failed. ${safeError(error)}`); });
@@ -607,6 +710,80 @@ async function gitExitCode(cwd: string, args: string[]) {
 function childEnvironment(): NodeJS.ProcessEnv {
   const allowed = ["PATH", "HOME", "TMPDIR", "USER", "SHELL", "TERM", "LANG", "LC_ALL", "CODEX_HOME"];
   return Object.fromEntries(allowed.flatMap((name) => process.env[name] ? [[name, process.env[name]]] : []));
+}
+
+function verificationEnvironment(verificationHome: string): NodeJS.ProcessEnv {
+  const allowed = ["PATH", "TMPDIR", "USER", "SHELL", "TERM", "LANG", "LC_ALL"];
+  return {
+    ...Object.fromEntries(allowed.flatMap((name) => process.env[name] ? [[name, process.env[name]]] : [])),
+    HOME: verificationHome,
+    CI: "true",
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_CONFIG_SYSTEM: "/dev/null",
+    GIT_CONFIG_GLOBAL: "/dev/null",
+    GIT_TERMINAL_PROMPT: "0",
+    GCM_INTERACTIVE: "never",
+    GH_PROMPT_DISABLED: "1",
+  };
+}
+
+export async function captureGitBoundary(worktree: string): Promise<GitBoundary> {
+  const commonDirValue = await git(worktree, ["rev-parse", "--git-common-dir"]);
+  const commonDir = await realpath(path.resolve(worktree, commonDirValue));
+  const branch = await git(worktree, ["branch", "--show-current"]);
+  const headSha = await git(worktree, ["rev-parse", "HEAD"]);
+  const localConfig = await execFileAsync("git", ["config", "--local", "--null", "--list"], {
+    cwd: worktree,
+    env: childEnvironment(),
+    encoding: "buffer",
+    maxBuffer: 2 * 1024 * 1024,
+  });
+  return {
+    commonDir,
+    branch,
+    headSha,
+    localConfigDigest: createHash("sha256").update(localConfig.stdout).digest("hex"),
+  };
+}
+
+export async function assertGitBoundary(worktree: string, expected: GitBoundary, options: {
+  expectedBranch?: string;
+  expectedHead?: string;
+  requireHeadDescendantOf?: string;
+} = {}) {
+  const current = await captureGitBoundary(worktree);
+  if (current.commonDir !== expected.commonDir) {
+    throw new Error("Git repository identity changed during governed execution.");
+  }
+  if (current.localConfigDigest !== expected.localConfigDigest) {
+    throw new Error("Git repository configuration changed during governed execution.");
+  }
+  const expectedBranch = options.expectedBranch ?? expected.branch;
+  if (current.branch !== expectedBranch) {
+    throw new Error(`Git branch changed during governed execution (${current.branch || "detached HEAD"}).`);
+  }
+  if (options.expectedHead && current.headSha !== options.expectedHead) {
+    throw new Error("Approved verification commands changed Git history; publication is blocked.");
+  }
+  if (options.requireHeadDescendantOf && await gitExitCode(worktree, [
+    "merge-base", "--is-ancestor", options.requireHeadDescendantOf, current.headSha,
+  ]) !== 0) {
+    throw new Error("Execution HEAD is not descended from the approved base commit.");
+  }
+  return current;
+}
+
+export async function assertSafeGitPublicationConfig(worktree: string) {
+  const result = await execFileAsync("git", ["config", "--local", "--name-only", "--list"], {
+    cwd: worktree,
+    env: childEnvironment(),
+    maxBuffer: 2 * 1024 * 1024,
+  });
+  const prohibited = /^(?:include(?:if)?\.|url\..*\.insteadof$|http(?:\.|$)|credential(?:\.|$)|core\.(?:hookspath|sshcommand|fsmonitor)$|remote\..*\.proxy$|protocol\..*\.allow$|diff\.external$|diff\..*\.command$|filter\..*\.(?:clean|smudge|process)$|merge\..*\.driver$|gpg\.|commit\.gpgsign$)/i;
+  const unsafeKeys = result.stdout.split(/\r?\n/).map((key) => key.trim()).filter((key) => prohibited.test(key));
+  if (unsafeKeys.length > 0) {
+    throw new Error(`Git repository configuration contains publication-unsafe settings: ${unsafeKeys.join(", ")}.`);
+  }
 }
 
 async function exists(candidate: string) {

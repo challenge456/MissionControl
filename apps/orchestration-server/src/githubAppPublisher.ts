@@ -2,6 +2,7 @@ import { createSign } from "node:crypto";
 
 const GITHUB_API = "https://api.github.com";
 const GITHUB_API_VERSION = "2022-11-28";
+const GITHUB_REQUEST_TIMEOUT_MS = 30_000;
 
 export interface GithubInstallationToken {
   token: string;
@@ -30,18 +31,28 @@ export class GithubAppPublisher {
     installationId: string;
     repository: string;
     providerRepositoryId?: string;
-  }): Promise<GithubInstallationToken> {
+  }, signal?: AbortSignal): Promise<GithubInstallationToken> {
+    if (!/^[1-9]\d*$/.test(input.installationId)) {
+      throw new Error("GitHub installation identity must be a positive integer.");
+    }
     const jwt = createGithubAppJwt(this.appId, this.privateKey);
-    const repositoryName = splitRepository(input.repository).repo;
-    const body = input.providerRepositoryId && /^\d+$/.test(input.providerRepositoryId)
-      ? { repository_ids: [Number(input.providerRepositoryId)] }
-      : { repositories: [repositoryName] };
+    const repositoryName = parseGithubRepository(input.repository).repo;
+    const providerRepositoryId = input.providerRepositoryId === undefined
+      ? undefined
+      : parsePositiveSafeInteger(input.providerRepositoryId, "GitHub repository provider identity");
+    const body = providerRepositoryId === undefined
+      ? { repositories: [repositoryName] }
+      : { repository_ids: [providerRepositoryId] };
     const result = await this.githubJson<{ token?: string; expires_at?: string }>(
       `/app/installations/${encodeURIComponent(input.installationId)}/access_tokens`,
-      { method: "POST", token: jwt, body }
+      { method: "POST", token: jwt, body, signal }
     );
     if (!result.token || !result.expires_at) throw new Error("GitHub App did not issue an installation token.");
-    return { token: result.token, expiresAt: Date.parse(result.expires_at) };
+    const expiresAt = Date.parse(result.expires_at);
+    if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+      throw new Error("GitHub App issued an invalid or expired installation token.");
+    }
+    return { token: result.token, expiresAt };
   }
 
   async findOrCreatePullRequest(input: {
@@ -51,8 +62,8 @@ export class GithubAppPublisher {
     baseBranch: string;
     title: string;
     body: string;
-  }): Promise<GithubPullRequestIdentity> {
-    const { owner } = splitRepository(input.repository);
+  }, signal?: AbortSignal): Promise<GithubPullRequestIdentity> {
+    const { owner } = parseGithubRepository(input.repository);
     const head = `${owner}:${input.branch}`;
     const existing = await this.githubJson<Array<{
       id: number;
@@ -62,7 +73,7 @@ export class GithubAppPublisher {
       head?: { ref?: string };
     }>>(
       `/repos/${input.repository}/pulls?state=all&head=${encodeURIComponent(head)}&base=${encodeURIComponent(input.baseBranch)}&per_page=20`,
-      { method: "GET", token: input.token }
+      { method: "GET", token: input.token, signal }
     );
     const exact = existing.find((pullRequest) => pullRequest.head?.ref === input.branch) ?? existing[0];
     if (exact) {
@@ -87,6 +98,7 @@ export class GithubAppPublisher {
         draft: false,
         maintainer_can_modify: false,
       },
+      signal,
     });
     return { id: String(created.id), number: created.number, url: created.html_url, state: created.state, created: true };
   }
@@ -95,23 +107,35 @@ export class GithubAppPublisher {
     method: "GET" | "POST";
     token: string;
     body?: unknown;
+    signal?: AbortSignal;
   }): Promise<T> {
-    const response = await this.fetcher(`${GITHUB_API}${path}`, {
-      method: input.method,
-      headers: {
-        Accept: "application/vnd.github+json",
-        Authorization: `Bearer ${input.token}`,
-        "Content-Type": "application/json",
-        "User-Agent": "Mission-Control-GitHub-App",
-        "X-GitHub-Api-Version": GITHUB_API_VERSION,
-      },
-      body: input.body === undefined ? undefined : JSON.stringify(input.body),
-    });
-    if (!response.ok) {
-      const requestId = response.headers.get("x-github-request-id");
-      throw new Error(`GitHub API request failed (${response.status}${requestId ? `; request ${requestId}` : ""}).`);
+    const controller = new AbortController();
+    const abort = () => controller.abort(input.signal?.reason);
+    if (input.signal?.aborted) abort();
+    else input.signal?.addEventListener("abort", abort, { once: true });
+    const timeout = setTimeout(() => controller.abort(new Error("GitHub API request timed out.")), GITHUB_REQUEST_TIMEOUT_MS);
+    try {
+      const response = await this.fetcher(`${GITHUB_API}${path}`, {
+        method: input.method,
+        headers: {
+          Accept: "application/vnd.github+json",
+          Authorization: `Bearer ${input.token}`,
+          "Content-Type": "application/json",
+          "User-Agent": "Mission-Control-GitHub-App",
+          "X-GitHub-Api-Version": GITHUB_API_VERSION,
+        },
+        body: input.body === undefined ? undefined : JSON.stringify(input.body),
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        const requestId = response.headers.get("x-github-request-id");
+        throw new Error(`GitHub API request failed (${response.status}${requestId ? `; request ${requestId}` : ""}).`);
+      }
+      return await response.json() as T;
+    } finally {
+      clearTimeout(timeout);
+      input.signal?.removeEventListener("abort", abort);
     }
-    return await response.json() as T;
   }
 }
 
@@ -131,8 +155,18 @@ function base64Url(value: string): string {
   return Buffer.from(value, "utf8").toString("base64url");
 }
 
-function splitRepository(repository: string) {
+export function parseGithubRepository(repository: string) {
   const [owner, repo, ...rest] = repository.trim().split("/");
-  if (!owner || !repo || rest.length) throw new Error("GitHub repository must use owner/name format.");
+  const validPart = /^(?!\.{1,2}$)[A-Za-z0-9_.-]{1,100}$/;
+  if (!owner || !repo || rest.length || !validPart.test(owner) || !validPart.test(repo)) {
+    throw new Error("GitHub repository must use a safe owner/name identifier.");
+  }
   return { owner, repo };
+}
+
+function parsePositiveSafeInteger(value: string, label: string): number {
+  if (!/^[1-9]\d*$/.test(value)) throw new Error(`${label} must be a positive integer.`);
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) throw new Error(`${label} exceeds the supported integer range.`);
+  return parsed;
 }

@@ -6,6 +6,16 @@ import { evaluateGithubAppCapabilities, githubInstallationIsStale } from "./lib/
 import { resolveApprovedVerificationCommands } from "./lib/executionPolicy";
 
 const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED", "CANCELED"]);
+const MIN_EXECUTION_LEASE_MS = 10_000;
+const MAX_EXECUTION_LEASE_MS = 5 * 60_000;
+
+function assertLeaseDuration(leaseDurationMs: number) {
+  if (!Number.isSafeInteger(leaseDurationMs)
+    || leaseDurationMs < MIN_EXECUTION_LEASE_MS
+    || leaseDurationMs > MAX_EXECUTION_LEASE_MS) {
+    throw new Error("Execution lease duration must be between 10 seconds and 5 minutes.");
+  }
+}
 
 async function nextSequenceNumber(ctx: any, workflowRunId: any) {
   const events = await ctx.db
@@ -112,6 +122,7 @@ export const claimInternal = internalMutation({
     leaseDurationMs: v.number(),
   },
   handler: async (ctx, args) => {
+    assertLeaseDuration(args.leaseDurationMs);
     const now = Date.now();
     const candidates = (await Promise.all(
       (["PENDING", "RUNNING"] as const).map((status) =>
@@ -343,6 +354,7 @@ export const heartbeatInternal = internalMutation({
     headSha: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    assertLeaseDuration(args.leaseDurationMs);
     const run = await ctx.db.get(args.workflowRunId);
     if (!run) throw new Error("Workflow run not found.");
     assertClaim(run, args.claimId);

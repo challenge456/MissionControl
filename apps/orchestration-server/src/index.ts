@@ -294,6 +294,11 @@ export const app = new Hono();
 // CORS so UI (different origin/port) can call gateway/status and other endpoints
 app.use("*", cors());
 
+// Default-deny every orchestration route except the explicit public health and
+// connection-status probes declared in auth.ts. This avoids silently exposing
+// new mutation routes when a path prefix is added in the future.
+app.use("*", requireAuth());
+
 // Health check (unauthenticated for load balancers)
 app.get("/health", (c) => {
   return c.json({
@@ -307,16 +312,6 @@ app.get("/health", (c) => {
     codexFactoryWorker: CODEX_FACTORY_WORKER_ENABLED ? "enabled" : "disabled",
   });
 });
-
-// Protected routes: require Bearer token when ORCHESTRATION_API_TOKEN or MC_API_TOKEN is set
-// GET /gateway/status is left unauthenticated so the UI can check configured/token status (no secrets returned)
-app.use("/status", requireAuth());
-app.use("/tick", requireAuth());
-app.use("/agents/*", requireAuth());
-app.use("/workorders/*", requireAuth());
-app.use("/runs/*", requireAuth());
-app.use("/run-artifacts/*", requireAuth());
-app.use("/local-inference/*", requireAuth());
 
 // Detailed status
 app.get("/status", (c) => {

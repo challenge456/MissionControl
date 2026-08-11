@@ -146,4 +146,20 @@ describe("Mission plan contract", () => {
       "implementation-stop-condition-required",
     ]));
   });
+
+  it("bounds verification payload, recovery attempts, and runtime", () => {
+    const plan = validPlan();
+    plan.workOrderBlueprints[0].implementationPolicy = {
+      allowedCommands: Array.from({ length: 21 }, (_, index) => `check-${index}`),
+      maxAttempts: 11,
+      timeoutMinutes: 481,
+      stopCondition: "Stop after verification.",
+    };
+    const codes = validateMissionPlan(plan).map((error) => error.code);
+    expect(codes).toEqual(expect.arrayContaining([
+      "implementation-verifiers-too-large",
+      "implementation-attempts-invalid",
+      "implementation-timeout-invalid",
+    ]));
+  });
 });

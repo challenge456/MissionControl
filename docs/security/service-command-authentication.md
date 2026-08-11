@@ -43,9 +43,12 @@ Production orchestration requires:
 - optional `MISSION_CONTROL_SERVICE_ID`, defaulting to `orchestration-server` in
   both processes.
 
-Production HTTP routes return `503` when inbound authentication is not
-configured. Outbound commands fail before calling Convex when the signing secret
-is absent. Rotate the bearer and signing credentials independently.
+The orchestration HTTP server applies authentication as a default-deny policy.
+Only `GET /health`, `GET /gateway/status`, and CORS preflight are public.
+Production requests to every other current or future route return `503` when
+inbound authentication is not configured. Outbound commands fail before
+calling Convex when the signing secret is absent. Rotate the bearer and signing
+credentials independently.
 
 ## Current command capabilities
 

@@ -4,7 +4,16 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it, vi } from "vitest";
-import { completeChangedFileSet, DurableCodexWorker, prepareWorktree, pullRequestBody } from "../durableCodexWorker";
+import {
+  assertGitBoundary,
+  assertSafeGitPublicationConfig,
+  captureGitBoundary,
+  completeChangedFileSet,
+  DurableCodexWorker,
+  prepareWorktree,
+  pullRequestBody,
+  runVerificationCommands,
+} from "../durableCodexWorker";
 
 const exec = promisify(execFile);
 
@@ -59,6 +68,128 @@ describe("durable Codex worker Git boundary", () => {
       branch: "mc/attempt-escape",
       baseBranch: "main",
     })).rejects.toThrow("must resolve inside the configured repository root");
+  });
+
+  it("blocks verification commands that change Git history", async () => {
+    const repository = await mkdtemp(path.join(tmpdir(), "mc-worker-verifier-boundary-"));
+    await exec("git", ["init", "-b", "main"], { cwd: repository });
+    await exec("git", ["config", "user.name", "Test"], { cwd: repository });
+    await exec("git", ["config", "user.email", "test@example.com"], { cwd: repository });
+    await writeFile(path.join(repository, "README.md"), "base\n");
+    await exec("git", ["add", "README.md"], { cwd: repository });
+    await exec("git", ["commit", "-m", "base"], { cwd: repository });
+    const worktree = path.join(repository, ".mission-control", "worktrees", "verifier-boundary");
+    await prepareWorktree({ repositoryRoot: repository, worktree, branch: "mc/verifier-boundary", baseBranch: "main" });
+    await mkdir(path.join(worktree, "docs"), { recursive: true });
+    await writeFile(path.join(worktree, "docs", "proof.md"), "proof\n");
+    const boundary = await captureGitBoundary(worktree);
+
+    await runVerificationCommands(
+      worktree,
+      ["git add -A && git commit -m verifier-history-rewrite"],
+      1,
+      new AbortController().signal,
+      async () => undefined
+    );
+
+    await expect(assertGitBoundary(worktree, boundary, {
+      expectedBranch: "mc/verifier-boundary",
+      expectedHead: boundary.headSha,
+    })).rejects.toThrow("changed Git history");
+  });
+
+  it("rejects local Git settings that can redirect or intercept publication", async () => {
+    const repository = await mkdtemp(path.join(tmpdir(), "mc-worker-unsafe-config-"));
+    await exec("git", ["init", "-b", "main"], { cwd: repository });
+    await exec("git", ["config", "url.https://attacker.invalid/.insteadOf", "https://github.com/"], { cwd: repository });
+    await expect(assertSafeGitPublicationConfig(repository)).rejects.toThrow("publication-unsafe settings");
+  });
+
+  it("rechecks approved file scope after verification commands mutate the worktree", async () => {
+    vi.stubEnv("MISSION_CONTROL_SERVICE_COMMAND_SECRET", "test-service-command-secret");
+    const repository = await mkdtemp(path.join(tmpdir(), "mc-worker-post-verification-scope-"));
+    await exec("git", ["init", "-b", "main"], { cwd: repository });
+    await exec("git", ["config", "user.name", "Test"], { cwd: repository });
+    await exec("git", ["config", "user.email", "test@example.com"], { cwd: repository });
+    await writeFile(path.join(repository, "README.md"), "base\n");
+    await exec("git", ["add", "README.md"], { cwd: repository });
+    await exec("git", ["commit", "-m", "base"], { cwd: repository });
+
+    const manifest = {
+      workflowRunId: "run-scope-id",
+      runId: "run-scope",
+      claimId: "claim-scope",
+      leaseExpiresAt: Date.now() + 60_000,
+      executionAttemptNumber: 1,
+      projectId: "project-1",
+      workOrderId: "work-order-1",
+      taskId: "task-1",
+      factoryDefinitionVersionId: "factory-version-1",
+      factoryConfigurationDigest: "factory-digest-1",
+      repositoryId: "repository-1",
+      repository: "jaydubya818/MissionControl",
+      defaultBranch: "main",
+      worktree: path.join(repository, ".mission-control", "worktrees", "scope"),
+      branch: "codex/post-verification-scope-test",
+      prompt: "Create docs/proof.md",
+      allowedTools: [],
+      scopes: [{ id: "scope-1", name: "Docs", includePaths: ["docs/**"], excludePaths: [] }],
+      policy: {
+        allowedCommands: ["printf 'outside\\n' > outside.txt"],
+        maxCostUsd: 5,
+        maxAttempts: 3,
+        timeoutMinutes: 5,
+        stopCondition: "Stop after verification",
+      },
+      github: { installationId: "123", appId: "123", accountLogin: "jaydubya818" },
+      lineage: { workflowRunId: "run-scope-id" },
+      checkpoint: {},
+      cancellationRequested: false,
+    };
+    let claimed = false;
+    let finalPayload: any;
+    const client = {
+      action: vi.fn(async (name: string, command: { payloadJson: string }) => {
+        if (name === "serviceCommands:claimExecution") {
+          if (claimed) return null;
+          claimed = true;
+          return manifest;
+        }
+        if (name === "serviceCommands:heartbeatExecution") {
+          return { cancellationRequested: false, leaseExpiresAt: Date.now() + 60_000 };
+        }
+        if (name === "serviceCommands:finalizeExecution") {
+          finalPayload = JSON.parse(command.payloadJson);
+        }
+        return {};
+      }),
+    };
+    const executor = {
+      estimate: vi.fn().mockResolvedValue({ estimatedCostUsd: 1, estimatedRuntimeMinutes: 1, confidence: "HIGH" }),
+      execute: vi.fn(async (request) => {
+        await mkdir(path.join(request.workingDirectory, "docs"), { recursive: true });
+        await writeFile(path.join(request.workingDirectory, "docs", "proof.md"), "proof\n");
+        return { executionId: request.executionId, status: "COMPLETED", output: "done" };
+      }),
+    };
+    const publisher = {
+      mintInstallationToken: vi.fn(),
+      findOrCreatePullRequest: vi.fn(),
+    };
+    const worker = new DurableCodexWorker({
+      client,
+      repositoryRoot: repository,
+      projectId: "project-1",
+      repositoryId: "repository-1",
+      publisher: publisher as any,
+      executor: executor as any,
+    });
+
+    await expect(worker.runOnce()).resolves.toBe(true);
+    expect(finalPayload).toMatchObject({ status: "FAILED" });
+    expect(finalPayload.summary).toContain("verification produced 1 changed file");
+    expect(publisher.mintInstallationToken).not.toHaveBeenCalled();
+    vi.unstubAllEnvs();
   });
 
   it("retains a non-terminal lease when the worker shuts down", async () => {
