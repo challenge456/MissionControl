@@ -55,6 +55,7 @@
     "taskmaster": "taskmaster"
   },
   "dependencies": {
+    "@mission-control/research-adapters": "workspace:*",
     "convex": "^1.42.3"
   },
   "devDependencies": {

@@ -5029,6 +5029,17 @@ export default defineSchema({
     providerCursor: v.optional(v.string()),
     etag: v.optional(v.string()),
     lastModified: v.optional(v.string()),
+    cursorState: v.optional(v.object({
+      providerCursor: v.optional(v.string()),
+      etag: v.optional(v.string()),
+      lastModified: v.optional(v.string()),
+      knownItems: v.array(v.object({
+        providerItemId: v.string(),
+        contentHash: v.string(),
+      })),
+      checkpointedAt: v.number(),
+      workflowRunId: v.id("workflowRuns"),
+    })),
     lastSuccessfulRunAt: v.optional(v.number()),
     lastError: v.optional(v.string()),
     nextRetryAt: v.optional(v.number()),
@@ -5101,6 +5112,89 @@ export default defineSchema({
     .index("by_event_type", ["projectId", "eventType"])
     .index("by_idempotency", ["idempotencyKey"]),
 
+  researchSourceRuns: defineTable({
+    tenantId: v.id("tenants"),
+    projectId: v.id("projects"),
+    sourceId: v.id("researchSources"),
+    workOrderId: v.id("workOrders"),
+    workflowRunId: v.id("workflowRuns"),
+    runArtifactId: v.optional(v.id("runArtifacts")),
+    verificationReceiptId: v.optional(v.id("verificationReceipts")),
+    observationIds: v.array(v.id("researchObservations")),
+    trigger: v.literal("MANUAL"),
+    status: v.union(
+      v.literal("RUNNING"),
+      v.literal("AWAITING_VERIFICATION"),
+      v.literal("VERIFIED"),
+      v.literal("FAILED")
+    ),
+    sourceVersion: v.number(),
+    adapterName: v.string(),
+    adapterVersion: v.string(),
+    cursorBefore: v.object({
+      providerCursor: v.optional(v.string()),
+      etag: v.optional(v.string()),
+      lastModified: v.optional(v.string()),
+      knownItems: v.array(v.object({
+        providerItemId: v.string(),
+        contentHash: v.string(),
+      })),
+    }),
+    cursorAfter: v.optional(v.object({
+      providerCursor: v.optional(v.string()),
+      etag: v.optional(v.string()),
+      lastModified: v.optional(v.string()),
+      knownItems: v.array(v.object({
+        providerItemId: v.string(),
+        contentHash: v.string(),
+      })),
+    })),
+    lease: v.optional(v.object({
+      leaseId: v.string(),
+      ownerId: v.string(),
+      claimedAt: v.number(),
+      expiresAt: v.number(),
+    })),
+    receipt: v.optional(v.object({
+      finalUrl: v.string(),
+      statusCode: v.number(),
+      requestCount: v.number(),
+      bytesRead: v.number(),
+      elapsedMs: v.number(),
+      itemCount: v.number(),
+      duplicateCount: v.number(),
+      changedItemCount: v.number(),
+      notModified: v.boolean(),
+      etag: v.optional(v.string()),
+      lastModified: v.optional(v.string()),
+    })),
+    artifactHash: v.optional(v.string()),
+    discoveredItemCount: v.number(),
+    insertedObservationCount: v.number(),
+    duplicateObservationCount: v.number(),
+    quarantinedObservationCount: v.number(),
+    attemptCount: v.number(),
+    requestedBy: v.string(),
+    failureCode: v.optional(v.string()),
+    failureMessage: v.optional(v.string()),
+    retryable: v.optional(v.boolean()),
+    nextRetryAt: v.optional(v.number()),
+    idempotencyKey: v.string(),
+    startedAt: v.number(),
+    committedAt: v.optional(v.number()),
+    verifiedAt: v.optional(v.number()),
+    failedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_status", ["projectId", "status"])
+    .index("by_source", ["sourceId"])
+    .index("by_source_status", ["sourceId", "status"])
+    .index("by_workflow_run", ["workflowRunId"])
+    .index("by_work_order", ["workOrderId"])
+    .index("by_idempotency", ["idempotencyKey"]),
+
   researchObservations: defineTable({
     tenantId: v.id("tenants"),
     projectId: v.id("projects"),
@@ -5110,7 +5204,9 @@ export default defineSchema({
     providerItemId: v.string(),
     canonicalUrl: v.string(),
     authorProviderId: v.optional(v.string()),
+    authorName: v.optional(v.string()),
     title: v.optional(v.string()),
+    normalizedExcerpt: v.optional(v.string()),
     publishedAt: v.optional(v.number()),
     retrievedAt: v.number(),
     state: v.union(

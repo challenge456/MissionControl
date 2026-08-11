@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import type { Doc, Id } from "../../../../../convex/_generated/dataModel";
 import { api } from "../../../../../convex/_generated/api";
 import { useToast } from "../../Toast";
@@ -31,11 +31,14 @@ import {
   FlaskConical,
   History,
   Loader2,
+  Play,
   Plus,
+  RotateCcw,
   ShieldCheck,
 } from "lucide-react";
 
 type ResearchSource = Doc<"researchSources">;
+type ResearchSourceRun = Doc<"researchSourceRuns">;
 type SourceKind = ResearchSource["kind"];
 type Cadence = ResearchSource["schedule"]["cadence"];
 
@@ -66,6 +69,13 @@ function stateTone(state: ResearchSource["state"]) {
   return "neutral" as const;
 }
 
+function runTone(status: ResearchSourceRun["status"]) {
+  if (status === "VERIFIED") return "success" as const;
+  if (status === "FAILED") return "error" as const;
+  if (status === "AWAITING_VERIFICATION") return "warning" as const;
+  return "info" as const;
+}
+
 function splitLines(value: string) {
   return value.split("\n").map((item) => item.trim()).filter(Boolean);
 }
@@ -88,6 +98,8 @@ export function ResearchWatchlistPanel({ projectId }: { projectId: Id<"projects"
   const activate = useMutation(api.researchSources.activate);
   const pause = useMutation(api.researchSources.pause);
   const retire = useMutation(api.researchSources.retire);
+  const runOnce = useAction(api.researchIngestionActions.runOnce);
+  const verifyRun = useAction(api.researchIngestionActions.verifyRun);
   const { toast } = useToast();
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -96,6 +108,15 @@ export function ResearchWatchlistPanel({ projectId }: { projectId: Id<"projects"
   const events = useQuery(
     api.researchSources.listEvents,
     selectedSourceId ? { projectId, sourceId: selectedSourceId } : "skip",
+  );
+  const sourceRuns = useQuery(
+    api.researchIngestion.listRunsBySource,
+    selectedSourceId ? { projectId, sourceId: selectedSourceId } : "skip",
+  );
+  const selectedRunId = sourceRuns?.[0]?._id;
+  const observations = useQuery(
+    api.researchIngestion.listObservationsByRun,
+    selectedRunId ? { projectId, sourceRunId: selectedRunId } : "skip",
   );
 
   const counts = useMemo(() => ({
@@ -132,7 +153,7 @@ export function ResearchWatchlistPanel({ projectId }: { projectId: Id<"projects"
             <StatusBadge tone="info">Source authority</StatusBadge>
           </div>
           <p className="mt-1.5 max-w-[78ch] text-[12.5px] text-ink-secondary">
-            Approve exact public sources, limits, and retention before any future collection. Phase 1 validates authority only; fetching and schedules are off.
+            Approve exact public sources, limits, and retention. Active RSS feeds can be collected with an explicit manual run; continuous scheduling remains off.
           </p>
         </div>
         <Button size="sm" onClick={() => setCreateOpen(true)}>
@@ -157,7 +178,7 @@ export function ResearchWatchlistPanel({ projectId }: { projectId: Id<"projects"
           <ShieldCheck className="mx-auto h-6 w-6 text-ink-muted" aria-hidden />
           <h3 className="mt-3 text-sm font-medium text-ink">No approved source authority</h3>
           <p className="mx-auto mt-1 max-w-[58ch] text-[12.5px] text-ink-secondary">
-            Add one public website or RSS feed. Mission Control will preview the exact host and policy envelope without making a network request.
+            Add one public website or RSS feed. Mission Control previews the exact host and policy envelope without making a network request.
           </p>
           <Button className="mt-4" size="sm" onClick={() => setCreateOpen(true)}>
             Add the first source
@@ -211,36 +232,66 @@ export function ResearchWatchlistPanel({ projectId }: { projectId: Id<"projects"
                 }),
                 "Source authority retired",
               )}
+              onRunOnce={() => void run(
+                source._id,
+                () => runOnce({
+                  projectId,
+                  sourceId: source._id,
+                  idempotencyKey: `research-run:${projectId}:${source._id}:${crypto.randomUUID()}`,
+                }),
+                "Manual collection persisted and independently verified",
+              )}
             />
           ))}
         </div>
       )}
 
       {selectedSourceId && (
-        <div className="border-t border-line bg-surface-2/40 px-5 py-4">
-          <div className="flex items-center gap-2">
-            <History className="h-3.5 w-3.5 text-ink-muted" aria-hidden />
-            <h3 className="text-[12px] font-semibold uppercase tracking-[0.06em] text-ink-muted">
-              Immutable decisions
-            </h3>
+        <div className="grid border-t border-line bg-surface-2/40 lg:grid-cols-2 lg:divide-x lg:divide-line">
+          <div className="px-5 py-4">
+            <div className="flex items-center gap-2">
+              <History className="h-3.5 w-3.5 text-ink-muted" aria-hidden />
+              <h3 className="text-[12px] font-semibold uppercase tracking-[0.06em] text-ink-muted">
+                Immutable decisions
+              </h3>
+            </div>
+            {events === undefined ? (
+              <p className="mt-3 text-[12.5px] text-ink-secondary">Loading decision history…</p>
+            ) : events.length === 0 ? (
+              <p className="mt-3 text-[12.5px] text-ink-secondary">No decision events recorded.</p>
+            ) : (
+              <ol className="mt-3 grid gap-2">
+                {events.slice(0, 6).map((event) => (
+                  <li key={event._id} className="rounded-lg border border-line bg-surface-1 px-3 py-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[12px] font-medium text-ink">{humanize(event.eventType)}</span>
+                      <time className="text-[11px] text-ink-muted">{formatTime(event.createdAt)}</time>
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-[11.5px] text-ink-secondary">{event.reason}</p>
+                  </li>
+                ))}
+              </ol>
+            )}
           </div>
-          {events === undefined ? (
-            <p className="mt-3 text-[12.5px] text-ink-secondary">Loading decision history…</p>
-          ) : events.length === 0 ? (
-            <p className="mt-3 text-[12.5px] text-ink-secondary">No decision events recorded.</p>
-          ) : (
-            <ol className="mt-3 grid gap-2 lg:grid-cols-2">
-              {events.slice(0, 6).map((event) => (
-                <li key={event._id} className="rounded-lg border border-line bg-surface-1 px-3 py-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-[12px] font-medium text-ink">{humanize(event.eventType)}</span>
-                    <time className="text-[11px] text-ink-muted">{formatTime(event.createdAt)}</time>
-                  </div>
-                  <p className="mt-1 line-clamp-2 text-[11.5px] text-ink-secondary">{event.reason}</p>
-                </li>
-              ))}
-            </ol>
-          )}
+          <RunHistory
+            runs={sourceRuns}
+            observations={observations}
+            busy={busySourceId === selectedSourceId}
+            onRetry={(runRecord) => void run(
+              selectedSourceId,
+              () => runOnce({
+                projectId,
+                sourceId: selectedSourceId,
+                idempotencyKey: runRecord.idempotencyKey,
+              }),
+              "Manual collection retry persisted and independently verified",
+            )}
+            onVerify={(runRecord) => void run(
+              selectedSourceId,
+              () => verifyRun({ projectId, sourceRunId: runRecord._id }),
+              "Independent evidence verification passed",
+            )}
+          />
         </div>
       )}
 
@@ -289,6 +340,7 @@ function SourceRow({
   onActivate,
   onPause,
   onRetire,
+  onRunOnce,
 }: {
   source: ResearchSource;
   busy: boolean;
@@ -299,6 +351,7 @@ function SourceRow({
   onActivate: () => void;
   onPause: () => void;
   onRetire: () => void;
+  onRunOnce: () => void;
 }) {
   const needsResolution = source.validationStatus === "PROVIDER_RESOLUTION_REQUIRED";
   const canRetire = ["DRAFT", "VERIFIED", "PAUSED", "DEGRADED"].includes(source.state);
@@ -375,6 +428,18 @@ function SourceRow({
             </Button>
           )}
           {source.state === "ACTIVE" && (
+            <Button
+              size="sm"
+              variant="success"
+              disabled={busy || source.kind !== "RSS_ATOM"}
+              title={source.kind === "RSS_ATOM" ? undefined : "Manual collection currently supports RSS or Atom sources only."}
+              onClick={onRunOnce}
+            >
+              <Play className="h-3.5 w-3.5" />
+              Run once
+            </Button>
+          )}
+          {source.state === "ACTIVE" && (
             <Button size="sm" variant="outline" disabled={busy} onClick={onPause}>
               <CirclePause className="h-3.5 w-3.5" />
               Pause
@@ -393,6 +458,99 @@ function SourceRow({
       </div>
       {selected && <span className="sr-only">Decision history expanded</span>}
     </article>
+  );
+}
+
+function RunHistory({
+  runs,
+  observations,
+  busy,
+  onRetry,
+  onVerify,
+}: {
+  runs: ResearchSourceRun[] | undefined;
+  observations: Doc<"researchObservations">[] | undefined;
+  busy: boolean;
+  onRetry: (run: ResearchSourceRun) => void;
+  onVerify: (run: ResearchSourceRun) => void;
+}) {
+  const latest = runs?.[0];
+  return (
+    <div className="border-t border-line px-5 py-4 lg:border-t-0">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="h-3.5 w-3.5 text-ink-muted" aria-hidden />
+          <h3 className="text-[12px] font-semibold uppercase tracking-[0.06em] text-ink-muted">
+            Manual evidence
+          </h3>
+        </div>
+        <span className="text-[10.5px] text-ink-muted">Scheduling off</span>
+      </div>
+      {runs === undefined ? (
+        <p className="mt-3 text-[12.5px] text-ink-secondary">Loading manual attempts…</p>
+      ) : !latest ? (
+        <p className="mt-3 text-[12.5px] text-ink-secondary">
+          No manual collection attempts. Run once to create an atomic evidence checkpoint.
+        </p>
+      ) : (
+        <div className="mt-3 rounded-lg border border-line bg-surface-1 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <StatusBadge tone={runTone(latest.status)}>{humanize(latest.status)}</StatusBadge>
+              <span className="font-mono text-[10.5px] text-ink-muted">attempt {latest.attemptCount}/3</span>
+            </div>
+            <time className="text-[10.5px] text-ink-muted">{formatTime(latest.updatedAt)}</time>
+          </div>
+          {latest.status === "FAILED" && (
+            <div className="mt-3" role="alert">
+              <p className="text-[11.5px] text-err">{latest.failureMessage ?? "Manual collection failed."}</p>
+              {latest.retryable ? (
+                <Button className="mt-2" size="sm" variant="outline" disabled={busy} onClick={() => onRetry(latest)}>
+                  <RotateCcw className="h-3.5 w-3.5" /> Retry same run
+                </Button>
+              ) : (
+                <p className="mt-1 text-[11px] text-ink-muted">Operator review is required before creating a new run.</p>
+              )}
+            </div>
+          )}
+          {latest.status === "AWAITING_VERIFICATION" && (
+            <Button className="mt-3" size="sm" variant="outline" disabled={busy} onClick={() => onVerify(latest)}>
+              <ShieldCheck className="h-3.5 w-3.5" /> Verify evidence
+            </Button>
+          )}
+          {latest.status !== "FAILED" && (
+            <dl className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-ink-muted sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
+              <div><dt>Discovered</dt><dd className="font-mono text-sm text-ink">{latest.discoveredItemCount}</dd></div>
+              <div><dt>Persisted</dt><dd className="font-mono text-sm text-ink">{latest.insertedObservationCount}</dd></div>
+              <div><dt>Duplicates</dt><dd className="font-mono text-sm text-ink">{latest.duplicateObservationCount}</dd></div>
+              <div><dt>Quarantined</dt><dd className="font-mono text-sm text-ink">{latest.quarantinedObservationCount}</dd></div>
+            </dl>
+          )}
+          {latest.status === "VERIFIED" && latest.discoveredItemCount === 0 && (
+            <p className="mt-3 text-[11.5px] text-ink-secondary">No source changes; the cursor checkpoint was still verified.</p>
+          )}
+          {observations === undefined && latest.insertedObservationCount > 0 ? (
+            <p className="mt-3 text-[11.5px] text-ink-secondary">Loading persisted observations…</p>
+          ) : observations && observations.length > 0 ? (
+            <ol className="mt-3 space-y-2 border-t border-line pt-3">
+              {observations.slice(0, 5).map((observation) => (
+                <li key={observation._id} className="text-[11.5px]">
+                  <div className="flex items-start justify-between gap-3">
+                    <a href={safeCanonicalUrl(observation.canonicalUrl)} target="_blank" rel="noreferrer" className="line-clamp-2 font-medium text-ink hover:underline">
+                      {observation.title ?? observation.providerItemId}
+                    </a>
+                    <StatusBadge tone={observation.safetyScanStatus === "QUARANTINED" ? "error" : "success"}>
+                      {humanize(observation.safetyScanStatus)}
+                    </StatusBadge>
+                  </div>
+                  {observation.quarantineReason && <p className="mt-1 text-err">{observation.quarantineReason}</p>}
+                </li>
+              ))}
+            </ol>
+          ) : null}
+        </div>
+      )}
+    </div>
   );
 }
 
