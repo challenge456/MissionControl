@@ -11,6 +11,37 @@ decisions without surrendering human authority.
 > makes autonomous software delivery bounded, inspectable, recoverable, and
 > reviewable.
 
+## Software Factory: governed recursive self-improvement
+
+The Mission Control Software Factory is designed as a **governed Recursive
+Self-Improvement (RSI) and continuous-learning system**. It continuously
+researches operator-approved sources, learns from delivery evidence, recommends
+improvements, implements approved changes, verifies the result, measures the
+outcome, and uses that evidence to propose the next bounded iteration.
+
+The operating loop is:
+
+`research -> verify -> recommend -> approve -> implement -> validate -> measure -> iterate`
+
+This allows the factory to evaluate new engineering practices and technology
+and apply useful advances to Mission Control without becoming an uncontrolled
+self-modifying agent. External content is treated as untrusted evidence, not
+authority. Recommendations cannot approve themselves, and every repository,
+workflow, skill, verifier, model-route, or policy change must follow the normal
+Mission Control hierarchy:
+
+`Mission -> WorkOrder -> Task -> Attempt -> evidence -> pull request -> release`
+
+Continuous read-only research may run within explicit source, cost, time, and
+retention limits. Material changes still require governed scope, independent
+verification, measurable acceptance criteria, rollback controls, and the
+appropriate human decision.
+
+- [Governed Continuous Learning implementation plan](docs/plans/2026-08-08-feat-governed-continuous-learning-plan.md)
+- [Mission Control North Star](docs/product/mission-control-north-star.md)
+
+---
+
 ![Mission Control Command Center showing portfolio metrics and ranked exceptions](docs/software-factory/screenshots/readme/mission-control-command-center.png)
 
 *The Command Center turns a large delivery portfolio into a ranked queue of

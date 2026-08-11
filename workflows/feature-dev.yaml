@@ -1,12 +1,12 @@
 # Feature Development Workflow
-# 7-agent workflow: plan → setup → implement → verify → test → PR → review
+# 7-agent workflow: plan → setup → implement → verify → test → PR handoff → review recommendation
 # 
 # Inspired by Antfarm's proven feature-dev pattern.
-# Drop in a feature request, get back a tested PR.
+# Pull-request creation remains a deterministic control-plane action.
 #
 # AGENT CONTRACT:
 #   Inputs:  {{goal}} - The feature request string
-#   Outputs: PR URL - The created pull request
+#   Outputs: Structured implementation and review handoff
 #   Steps:   7 sequential steps with verification gates
 #
 # STEP REFERENCE:
@@ -15,8 +15,8 @@
 #   3. developer:  Implement feature → outputs code changes
 #   4. verifier:   Verify implementation matches plan → outputs verification report
 #   5. tester:     Run tests → outputs test results
-#   6. pr-creator: Create PR → outputs PR URL
-#   7. reviewer:   Final review → outputs approval
+#   6. pr-creator: Prepare PR handoff → outputs structured evidence
+#   7. reviewer:   Final review → outputs a recommendation, never merge authority
 #
 # ERROR HANDLING:
 #   - Step failure triggers retry (max 3)
@@ -80,7 +80,7 @@ steps:
       Break down this feature request into implementation stories:
       {{task}}
       
-      Reply with STATUS: done and STORIES: ...
+      Return JSON with status: "COMPLETED", a stories array, and a compact handoff.
       
       Include:
       - User stories (3-7 stories)
@@ -92,7 +92,13 @@ steps:
       Story N: [title]
       - Acceptance: [criteria]
       - Depends on: [story numbers or "none"]
-    expects: "STATUS: done"
+    expects: "stories"
+    outputSchema:
+      type: object
+      required: [status, stories]
+      properties:
+        status: { type: string }
+        stories: { type: array }
     retryLimit: 2
     timeoutMinutes: 10
     isolation: READ_ONLY
@@ -103,14 +109,21 @@ steps:
       Set up the development environment for:
       {{planOutput}}
       
-      Reply with STATUS: done and SETUP: ...
+      Return JSON with status: "COMPLETED", setupSummary, and a compact handoff.
       
       Tasks:
-      - Create feature branch (feature/{{task}})
+      - Inspect the allocated worktree and server-owned branch
       - Install any new dependencies needed
       - Verify build passes
       - Prepare test environment
-    expects: "STATUS: done"
+      Do not create or push branches; the control plane owns repository publication.
+    expects: "setupSummary"
+    outputSchema:
+      type: object
+      required: [status, setupSummary]
+      properties:
+        status: { type: string }
+        setupSummary: { type: string }
     retryLimit: 2
     timeoutMinutes: 5
     isolation: WORKTREE
@@ -123,20 +136,28 @@ steps:
       
       Environment: {{setupOutput}}
       
-      Reply with STATUS: done and IMPLEMENTATION: ...
+      Return JSON with status: "COMPLETED", implementationSummary, changedFiles,
+      and a compact handoff.
       
       For each story:
       - Write implementation following .cursorrules conventions
       - Add inline tests for core logic
       - Use TypeScript strict mode (no any types)
       - Follow existing patterns in the codebase
-      - Commit changes with clear messages
+      - Leave changes reviewable; the control plane owns commit and publication
       
       IMPORTANT:
       - Read relevant existing code before making changes
       - Use Convex for backend (no Express)
       - Follow Mission Control's architecture patterns
-    expects: "STATUS: done"
+    expects: "implementationSummary"
+    outputSchema:
+      type: object
+      required: [status, implementationSummary, changedFiles]
+      properties:
+        status: { type: string }
+        implementationSummary: { type: string }
+        changedFiles: { type: array }
     retryLimit: 3
     timeoutMinutes: 45
     isolation: WORKTREE
@@ -149,7 +170,7 @@ steps:
       Stories: {{planOutput}}
       Implementation: {{implementOutput}}
       
-      Reply with STATUS: done and VERIFICATION: ...
+      Return JSON with status: "COMPLETED", verifiedCriteria, issues, and a compact handoff.
       
       Check each story:
       - All acceptance criteria met
@@ -160,7 +181,14 @@ steps:
       
       If issues found, list them clearly.
       If all criteria met, state "All acceptance criteria verified."
-    expects: "STATUS: done"
+    expects: "verifiedCriteria"
+    outputSchema:
+      type: object
+      required: [status, verifiedCriteria, issues]
+      properties:
+        status: { type: string }
+        verifiedCriteria: { type: array }
+        issues: { type: array }
     retryLimit: 2
     timeoutMinutes: 15
     isolation: READ_ONLY
@@ -173,7 +201,7 @@ steps:
       Implementation: {{implementOutput}}
       Verification: {{verifyOutput}}
       
-      Reply with STATUS: done and TEST_RESULTS: ...
+      Return JSON with status: "COMPLETED", passed, commands, failures, and a compact handoff.
       
       Run:
       - Unit tests (npm test or pnpm test)
@@ -185,7 +213,15 @@ steps:
       - All tests passing: yes/no
       - Coverage: [percentage if available]
       - Issues found: [list or "none"]
-    expects: "STATUS: done"
+    expects: "passed"
+    outputSchema:
+      type: object
+      required: [status, passed, commands, failures]
+      properties:
+        status: { type: string }
+        passed: { type: boolean }
+        commands: { type: array }
+        failures: { type: array }
     retryLimit: 2
     timeoutMinutes: 20
     isolation: WORKTREE
@@ -193,13 +229,14 @@ steps:
   - id: pr
     agent: pr-creator
     input: |
-      Create a pull request for the completed feature.
+      Prepare the pull-request evidence handoff for the completed feature.
       
       Implementation: {{implementOutput}}
       Verification: {{verifyOutput}}
       Tests: {{testOutput}}
       
-      Reply with STATUS: done and PR_URL: ...
+      Return JSON with status: "COMPLETED", title, body, evidenceReferences,
+      and a compact handoff for the control plane.
       
       PR should include:
       - Clear title and description
@@ -208,8 +245,16 @@ steps:
       - Test results
       - Screenshots (if UI changes)
       
-      Use: gh pr create --title "..." --body "..."
-    expects: "STATUS: done"
+      Do not push, create, update, approve, or merge a pull request.
+    expects: "evidenceReferences"
+    outputSchema:
+      type: object
+      required: [status, title, body, evidenceReferences]
+      properties:
+        status: { type: string }
+        title: { type: string }
+        body: { type: string }
+        evidenceReferences: { type: array }
     retryLimit: 2
     timeoutMinutes: 5
     isolation: WORKTREE
@@ -217,24 +262,31 @@ steps:
   - id: review
     agent: reviewer
     input: |
-      Review the completed work and approve for merge.
+      Review the completed work and return a non-authoritative recommendation.
       
       PR: {{prOutput}}
       Stories: {{planOutput}}
       Verification: {{verifyOutput}}
       Tests: {{testOutput}}
       
-      Reply with STATUS: done and DECISION: approved/changes-requested
+      Return JSON with status: "COMPLETED", recommendation, findings, and a compact handoff.
       
       Final checks:
       - All stories completed
       - Tests passing
       - Code quality acceptable
-      - Ready to merge
+      - Ready for human review
       
       If changes needed, list them clearly.
-      If approved, state "DECISION: approved"
-    expects: "STATUS: done"
+      Do not approve or merge; human governance owns that decision.
+    expects: "recommendation"
+    outputSchema:
+      type: object
+      required: [status, recommendation, findings]
+      properties:
+        status: { type: string }
+        recommendation: { type: string }
+        findings: { type: array }
     retryLimit: 1
     timeoutMinutes: 10
     isolation: READ_ONLY

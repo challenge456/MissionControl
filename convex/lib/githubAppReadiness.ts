@@ -14,10 +14,16 @@ export const REQUIRED_GITHUB_APP_PERMISSIONS = [
 
 export const REQUIRED_GITHUB_WEBHOOK_EVENTS = [
   "check_run",
-  "installation",
-  "installation_repositories",
   "pull_request",
   "pull_request_review",
+] as const;
+
+// GitHub delivers these lifecycle events to every GitHub App and does not
+// expose them as selectable subscriptions. They remain part of the inbound
+// contract, but must not be expected in the installation `events` response.
+export const AUTOMATIC_GITHUB_WEBHOOK_EVENTS = [
+  "installation",
+  "installation_repositories",
 ] as const;
 
 const ACCESS_RANK: Record<GithubPermissionAccess, number> = {

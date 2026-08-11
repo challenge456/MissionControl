@@ -462,14 +462,19 @@ export const cloneDefinition = mutation({
 });
 
 export const getExecutionManifest = query({
-  args: { workOrderId: v.id("workOrders"), allowCompleted: v.optional(v.boolean()) },
+  args: {
+    workOrderId: v.id("workOrders"),
+    allowCompleted: v.optional(v.boolean()),
+    claimId: v.optional(v.string()),
+    ownerId: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
     const workOrder = await ctx.db.get(args.workOrderId);
     if (!workOrder) throw new Error("WorkOrder not found");
     const definitionId = workOrder.metadata?.automationDefinitionId as Id<"automationDefinitions"> | undefined;
     if (!definitionId) throw new Error("WorkOrder is not linked to an Automation Definition");
     const definition = await ctx.db.get(definitionId);
-    if (!definition || definition.status !== "ACTIVE") throw new Error("Automation Definition is not active");
+    if (!definition) throw new Error("Automation Definition is unavailable");
     if (definition.reviewStatus !== "APPROVED" || definition.validationStatus !== "PASSED") {
       throw new Error("Automation Definition is not approved and validated");
     }
@@ -484,6 +489,19 @@ export const getExecutionManifest = query({
     }
     const allowedRunStatuses = args.allowCompleted ? ["COMPLETED"] : ["PENDING", "RUNNING"];
     if (!run || !allowedRunStatuses.includes(run.status)) throw new Error("WorkOrder has no eligible dispatch-created run");
+    if (!args.allowCompleted) {
+      const matchingActiveClaim = Boolean(
+        args.claimId
+        && args.ownerId
+        && run.executionClaimId === args.claimId
+        && run.executionClaimedBy === args.ownerId
+        && (run.executionLeaseExpiresAt ?? 0) > Date.now()
+      );
+      if (!matchingActiveClaim) throw new Error("Automation execution requires the active matching claim");
+      if (definition.status !== "ACTIVE" && definition.status !== "PAUSED") {
+        throw new Error("Automation Definition is not executable");
+      }
+    }
     const artifact = definition.artifactId ? await ctx.db.get(definition.artifactId as Id<"automationArtifacts">) : null;
     if (!artifact || artifact.validationStatus !== "PASSED") throw new Error("Approved artifact is unavailable");
     const evaluation = await ctx.db.query("automationEvaluations")
@@ -566,11 +584,18 @@ export const finalizeVerification = mutation({
     const evaluation = await ctx.db.query("automationEvaluations")
       .withIndex("by_work_order", (q: any) => q.eq("workOrderId", workOrder._id)).order("desc").first();
     const next = args.receiptStatus === "PASSED" ? "VERIFIED" : args.receiptStatus === "FAILED" ? "REJECTED" : "AWAITING_VERIFICATION";
-    if (evaluation) await ctx.db.patch(evaluation._id, { status: next as any, reason: args.reason, updatedAt: Date.now() });
+    const now = Date.now();
+    if (evaluation) await ctx.db.patch(evaluation._id, { status: next as any, reason: args.reason, updatedAt: now });
     await ctx.db.patch(definition._id, {
       lastResult: next,
       health: next === "VERIFIED" ? "HEALTHY" : next === "REJECTED" ? "DEGRADED" : "ATTENTION",
-      updatedAt: Date.now(),
+      status: next === "REJECTED" ? "SUSPENDED" : definition.status,
+      reliabilityState: next === "REJECTED" ? "SUSPENDED" : definition.reliabilityState,
+      pausedBy: next === "REJECTED" ? args.actorId : definition.pausedBy,
+      pausedAt: next === "REJECTED" ? now : definition.pausedAt,
+      pauseReason: next === "REJECTED" ? args.reason : definition.pauseReason,
+      nextRunAt: next === "REJECTED" ? undefined : definition.nextRunAt,
+      updatedAt: now,
     });
     await recordDecision(ctx, {
       projectId: definition.projectId, definitionId: definition._id,

@@ -111,19 +111,53 @@ async function executeArgv(manifest: ExecutionManifest, argv: string[], signal?:
     !/(TOKEN|SECRET|PASSWORD|KEY|COOKIE|AUTH)/i.test(name) || manifest.secretReferences.includes(name)
   ));
   return await new Promise<{ code: number | null; stdout: string; stderr: string; timedOut: boolean; cancelled: boolean }>((resolve, reject) => {
-    const child = spawn(argv[0], argv.slice(1), { cwd, env, shell: false, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(argv[0], argv.slice(1), {
+      cwd,
+      env,
+      shell: false,
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: process.platform !== "win32",
+    });
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", chunk => { stdout += String(chunk); });
     child.stderr.on("data", chunk => { stderr += String(chunk); });
     let timedOut = false;
-    const timer = setTimeout(() => { timedOut = true; child.kill("SIGTERM"); }, manifest.timeoutMs);
-    const abort = () => child.kill("SIGTERM");
-    signal?.addEventListener("abort", abort, { once: true });
-    child.on("error", reject);
-    child.on("close", code => {
+    let forceKillTimer: ReturnType<typeof setTimeout> | null = null;
+    const terminate = () => {
+      if (child.exitCode !== null || child.signalCode !== null) return;
+      try {
+        if (process.platform !== "win32" && child.pid) process.kill(-child.pid, "SIGTERM");
+        else child.kill("SIGTERM");
+      } catch {
+        child.kill("SIGTERM");
+      }
+      forceKillTimer = setTimeout(() => {
+        if (child.exitCode !== null || child.signalCode !== null) return;
+        try {
+          if (process.platform !== "win32" && child.pid) process.kill(-child.pid, "SIGKILL");
+          else child.kill("SIGKILL");
+        } catch {
+          child.kill("SIGKILL");
+        }
+      }, 1_000);
+      forceKillTimer.unref?.();
+    };
+    const timer = setTimeout(() => { timedOut = true; terminate(); }, manifest.timeoutMs);
+    const abort = () => terminate();
+    const cleanup = () => {
       clearTimeout(timer);
+      if (forceKillTimer) clearTimeout(forceKillTimer);
       signal?.removeEventListener("abort", abort);
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
+    child.on("error", (error) => {
+      cleanup();
+      reject(error);
+    });
+    child.on("close", code => {
+      cleanup();
       resolve({
         code,
         stdout: redactAutomationLog(stdout, secretValues),

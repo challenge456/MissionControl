@@ -8,6 +8,8 @@ import {
 } from "../lib/factoryConfiguration";
 import { evaluateGithubAppCapabilities, githubInstallationIsStale } from "../lib/githubAppReadiness";
 import { canonicalRepositoryKey } from "../lib/workspaceRepositories";
+import { codexV1RecoveryReady } from "../lib/factoryDispatch";
+import { factoryWorkflowContractIssues } from "../lib/factoryWorkflowContract";
 
 const budget = v.object({
   maxCostUsd: v.number(),
@@ -48,6 +50,48 @@ export const getDetail = query({
       definition,
       versions: versions.sort((left, right) => right.version - left.version),
       assessments: assessments.sort((left, right) => right.assessedAt - left.assessedAt),
+    };
+  },
+});
+
+export const getVersionOptions = query({
+  args: {
+    projectId: v.id("projects"),
+    repositoryId: v.id("workspaceRepositories"),
+  },
+  handler: async (ctx, args) => {
+    await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.VIEW);
+    const repository = await ctx.db.get(args.repositoryId);
+    if (!repository || repository.projectId !== args.projectId) {
+      throw new Error("Factory repository is outside the workspace.");
+    }
+    const [codeScopes, approvedVersions] = await Promise.all([
+      ctx.db.query("repositoryCodeScopes")
+        .withIndex("by_repository", (q) => q.eq("repositoryId", repository._id))
+        .collect(),
+      ctx.db.query("agentVersions")
+        .withIndex("by_status", (q) => q.eq("status", "APPROVED"))
+        .collect(),
+    ]);
+    const agentVersions = (await Promise.all(approvedVersions
+      .filter((version) => !version.projectId || version.projectId === args.projectId)
+      .map(async (version) => {
+        const template = await ctx.db.get(version.templateId);
+        if (!template?.active || (template.projectId && template.projectId !== args.projectId)) return null;
+        return {
+          _id: version._id,
+          version: version.version,
+          genomeHash: version.genomeHash,
+          modelConfig: version.genome.modelConfig,
+          promptBundleHash: version.genome.promptBundleHash,
+          toolManifestHash: version.genome.toolManifestHash,
+          template: { _id: template._id, name: template.name, slug: template.slug },
+        };
+      })))
+      .filter((item): item is NonNullable<typeof item> => Boolean(item));
+    return {
+      codeScopes: codeScopes.filter((scope) => scope.active),
+      agentVersions,
     };
   },
 });
@@ -110,6 +154,11 @@ export const createVersion = mutation({
     factoryDefinitionId: v.id("factoryDefinitions"),
     workflowId: v.id("workflows"),
     executor: v.object({ adapter: v.string(), version: v.string() }),
+    codeScopeIds: v.array(v.id("repositoryCodeScopes")),
+    agentBindings: v.array(v.object({
+      workflowAgentId: v.string(),
+      agentVersionId: v.id("agentVersions"),
+    })),
     policyEnvelopeId: v.optional(v.id("policyEnvelopes")),
     environmentId: v.optional(v.id("environments")),
     budget,
@@ -125,12 +174,51 @@ export const createVersion = mutation({
     const workflow = await ctx.db.get(args.workflowId);
     const policy = args.policyEnvelopeId ? await ctx.db.get(args.policyEnvelopeId) : null;
     const environment = args.environmentId ? await ctx.db.get(args.environmentId) : null;
-    const verifiers = await Promise.all(args.verifierIds.map((id) => ctx.db.get(id)));
+    const [verifiers, codeScopes, agentVersions] = await Promise.all([
+      Promise.all(args.verifierIds.map((id) => ctx.db.get(id))),
+      Promise.all(args.codeScopeIds.map((id) => ctx.db.get(id))),
+      Promise.all(args.agentBindings.map((binding) => ctx.db.get(binding.agentVersionId))),
+    ]);
     if (!repository || repository.projectId !== definition.projectId) throw new Error("Factory repository scope is invalid.");
     if (!workflow) throw new Error("Workflow not found.");
+    const workflowContractIssues = factoryWorkflowContractIssues(workflow);
+    if (workflowContractIssues.length > 0) {
+      throw new Error(`Workflow execution contract is unsafe (${workflowContractIssues.join(", ")}).`);
+    }
     if (policy && policy.projectId && policy.projectId !== definition.projectId) throw new Error("Policy is outside the Factory workspace.");
     if (environment && definition.tenantId && environment.tenantId !== definition.tenantId) throw new Error("Environment is outside the Factory company.");
     if (verifiers.some((item) => !item || item.projectId !== definition.projectId)) throw new Error("Verifier is outside the Factory workspace.");
+    if (args.codeScopeIds.length === 0 || codeScopes.some((scope) =>
+      !scope || !scope.active || scope.repositoryId !== repository._id || scope.projectId !== definition.projectId
+    )) {
+      throw new Error("Select at least one active code scope from the Factory repository.");
+    }
+    const workflowAgentIds = new Set(workflow.agents.map((agent) => agent.id));
+    const boundAgentIds = new Set(args.agentBindings.map((binding) => binding.workflowAgentId));
+    if (
+      args.agentBindings.length !== workflowAgentIds.size
+      || boundAgentIds.size !== workflowAgentIds.size
+      || [...workflowAgentIds].some((id) => !boundAgentIds.has(id))
+      || args.agentBindings.some((binding) => !workflowAgentIds.has(binding.workflowAgentId))
+    ) {
+      throw new Error("Every workflow agent must bind to exactly one approved agent version.");
+    }
+    for (let index = 0; index < agentVersions.length; index += 1) {
+      const version = agentVersions[index];
+      if (!version || version.status !== "APPROVED" || (version.projectId && version.projectId !== definition.projectId)) {
+        throw new Error("Every workflow agent binding must reference an approved workspace agent version.");
+      }
+      const template = await ctx.db.get(version.templateId);
+      if (!template?.active || (template.projectId && template.projectId !== definition.projectId)) {
+        throw new Error("Every workflow agent binding must reference an active workspace agent template.");
+      }
+      if (!version.genome.promptBundleHash.trim() || !version.genome.toolManifestHash.trim() || !version.genome.modelConfig.modelId.trim()) {
+        throw new Error("Approved agent versions require prompt, tool, and model manifests.");
+      }
+    }
+    if (args.executor.adapter === "codex" && args.executor.version === "v1" && !codexV1RecoveryReady(args.recovery)) {
+      throw new Error("codex/v1 supports cancel and bounded retry, but does not support pause or in-process resume.");
+    }
     if (!validFactoryBudget(args.budget)) {
       throw new Error("Factory budget must use positive V1 limits: cost <= $1,000, runtime <= 480 minutes, attempts <= 3.");
     }
@@ -139,6 +227,11 @@ export const createVersion = mutation({
       repositoryId: String(repository._id),
       workflowId: String(workflow._id),
       executor: args.executor,
+      codeScopeIds: args.codeScopeIds.map(String),
+      agentBindings: args.agentBindings.map((binding) => ({
+        workflowAgentId: binding.workflowAgentId,
+        agentVersionId: String(binding.agentVersionId),
+      })),
       policyEnvelopeId: args.policyEnvelopeId ? String(args.policyEnvelopeId) : undefined,
       environmentId: args.environmentId ? String(args.environmentId) : undefined,
       budget: args.budget,
@@ -162,6 +255,8 @@ export const createVersion = mutation({
       repositoryId: repository._id,
       workflowId: workflow._id,
       executor: args.executor,
+      codeScopeIds: args.codeScopeIds,
+      agentBindings: args.agentBindings,
       policyEnvelopeId: args.policyEnvelopeId,
       environmentId: args.environmentId,
       budget: args.budget,
@@ -184,15 +279,20 @@ export const assessReadiness = mutation({
     const access = await requireWorkspacePermission(ctx, version.projectId, FACTORY_PERMISSIONS.MANAGE_AUTOMATION);
     const now = Date.now();
     const expiry = now + 24 * 60 * 60 * 1_000;
-    const [repository, workflow, policy, installation, bindings, verifiers] = await Promise.all([
+    const [repository, workflow, policy, installation, bindings, verifiers, codeScopes, agentVersions] = await Promise.all([
       ctx.db.get(version.repositoryId),
       ctx.db.get(version.workflowId),
       version.policyEnvelopeId ? ctx.db.get(version.policyEnvelopeId) : null,
       ctx.db.query("githubAppInstallations").withIndex("by_repository", (q) => q.eq("repositoryId", version.repositoryId)).first(),
       ctx.db.query("workspaceHostBindings").withIndex("by_project", (q) => q.eq("projectId", version.projectId)).collect(),
       Promise.all(version.verifierIds.map((id) => ctx.db.get(id))),
+      Promise.all((version.codeScopeIds ?? []).map((id) => ctx.db.get(id))),
+      Promise.all((version.agentBindings ?? []).map((binding) => ctx.db.get(binding.agentVersionId))),
     ]);
     const github = installation ? evaluateGithubAppCapabilities(installation) : null;
+    const agentTemplates = await Promise.all(agentVersions.map((agentVersion) =>
+      agentVersion ? ctx.db.get(agentVersion.templateId) : null
+    ));
     const githubReady = Boolean(
       repository && installation?.status === "CONNECTED" && github?.ready &&
       !githubInstallationIsStale(installation.verifiedAt, now)
@@ -204,12 +304,30 @@ export const assessReadiness = mutation({
       check("github", "GitHub App connection", githubReady, now, expiry, "Install or repair the exact least-privilege GitHub App connection."),
       check("repository", "Repository access", repository?.status === "READY", now, expiry, "Validate repository access before activation."),
       check("workflow", "Workflow version", workflow?.active === true, now, undefined, "Select an active versioned workflow."),
+      check("workflow-contract", "Structured workflow contract", factoryWorkflowContractIssues(workflow).length === 0, now, undefined, "Replace heuristic completion and provider authority with schema-validated handoffs."),
       check("executor", "Codex executor adapter", version.executor.adapter === "codex" && version.executor.version === "v1", now, undefined, "Select the approved codex/v1 executor adapter."),
+      check("code-scopes", "Frozen code scopes", Boolean(
+        version.codeScopeIds?.length
+        && repository
+        && codeScopes.every((scope) => scope?.active && scope.repositoryId === repository._id)
+      ), now, undefined, "Create a new Factory version with at least one active repository code scope."),
+      check("agent-manifests", "Approved agent manifests", Boolean(
+        workflow
+        && version.agentBindings?.length === workflow.agents.length
+        && new Set(version.agentBindings?.map((binding) => binding.workflowAgentId)).size === workflow.agents.length
+        && agentVersions.every((agentVersion) =>
+          agentVersion?.status === "APPROVED"
+          && Boolean(agentVersion.genome.promptBundleHash.trim())
+          && Boolean(agentVersion.genome.toolManifestHash.trim())
+          && Boolean(agentVersion.genome.modelConfig.modelId.trim())
+        )
+        && agentTemplates.every((template) => template?.active)
+      ), now, undefined, "Bind every workflow agent to an approved agent version."),
       check("policy", "Governance policy", Boolean(policy?.active), now, undefined, "Select an active workspace policy envelope."),
       check("budget", "Bounded budget", validFactoryBudget(version.budget), now, undefined, "Set positive V1 limits: cost <= $1,000, runtime <= 480 minutes, attempts <= 3."),
       check("verifiers", "Independent verifiers", verifiers.length > 0 && verifiers.every((item) => item?.active && item.projectId === version.projectId), now, expiry, "Select at least one active workspace verifier."),
       check("host", "Sandbox host binding", Boolean(host && host.status === "READY" && !host.dirty && now - host.checkedAt <= 24 * 60 * 60 * 1_000), now, expiry, "Report a clean, current READY checkout for this repository."),
-      check("recovery", "Recovery controls", Object.values(version.recovery).every(Boolean), now, undefined, "Enable pause, resume, cancel, and bounded retry controls."),
+      check("recovery", "Executor-compatible recovery", codexV1RecoveryReady(version.recovery), now, undefined, "Enable cancel and bounded retry; codex/v1 cannot advertise pause or in-process resume."),
     ];
     const status = checks.every((item) => item.status === "VERIFIED") ? "PASS" as const : "BLOCKED" as const;
     return await ctx.db.insert("factoryReadinessAssessments", {

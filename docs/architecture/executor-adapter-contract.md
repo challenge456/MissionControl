@@ -29,9 +29,22 @@ inside that root, repository-relative allowed paths, timeout, model, and explici
 work outside the repository root, empty scope, missing prompts, and unbounded
 timeouts. Codex runs ephemerally with the matching CLI sandbox mode.
 
-The repository root should be an attempt-specific worktree. The adapter records
-approved path boundaries in its start event and prompt, but exact post-run changed
-file enforcement remains a dispatch/golden-path responsibility before PR creation.
+The Factory worker creates or reconciles the exact server-owned `mc/` branch in
+the frozen attempt worktree. After Codex returns, it compares both committed and
+uncommitted changes to the frozen include/exclude scopes. Any deviation creates
+a reviewable artifact, fails the attempt, and blocks GitHub token issuance and
+PR creation.
+
+## Frozen execution manifest
+
+Every new Factory version binds active repository code scopes and one approved
+agent version for each workflow agent. Dispatch compiles one immutable
+`factory-execution-manifest/v1` containing causation IDs, WorkOrder revision,
+Factory digest, repository/branch/worktree authority, prompt and context hashes,
+per-step agent genome/prompt/tool/model identities, timeout, isolation, and the
+`factory-result/v1` completion contract. The full compiled prompt is available
+only through the signed claim boundary; public run queries and the inspector
+return its hash but redact its content.
 
 ## Event and secret rules
 
@@ -46,7 +59,15 @@ or application logs.
 
 ## Recovery
 
-`codex/v1` supports cancel and does not claim resume support. Recovery creates a
-new bounded WorkOrder attempt referencing the prior failed/canceled attempt. A
-future adapter version may implement resume only with deterministic checkpoint
-and evidence semantics; that is not implied by this V1 contract.
+`codex/v1` supports cancel and does not claim pause or in-process resume support.
+Factory readiness rejects configurations that advertise those capabilities.
+The control plane does support crash reconciliation: an expired durable lease
+can be reclaimed against the same immutable manifest, branch, and worktree, and
+branch push / PR creation are idempotent. Once an attempt reaches a terminal
+state, recovery creates a new bounded WorkOrder attempt referencing the prior
+failed/canceled attempt.
+
+Set `FACTORY_EXECUTION_ENABLED=1` on the orchestration server to enable the
+polling worker. `FACTORY_EXECUTION_POLL_MS` may be set between 5 seconds and 5
+minutes; the default is 15 seconds. Startup polls both pending and running bound
+attempts, while the durable lease prevents duplicate execution across workers.

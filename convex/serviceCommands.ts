@@ -206,11 +206,100 @@ export const ingestReceiptPacket = action({
   },
 });
 
+export const claimFactoryAttempt = action({
+  args: { envelope, payloadJson: v.string() },
+  handler: async (ctx, args): Promise<any> => {
+    const payload = await authorize(ctx, args.envelope, args.payloadJson, "attempts.claim");
+    const scope = await ctx.runQuery(internal.factory.attempts.resolveScope, {
+      workflowRunId: payload.workflowRunId,
+    });
+    const receipt = await claimScoped(ctx, args.envelope, scope);
+    try {
+      const result = await ctx.runMutation(internal.factory.attempts.claimInternal, {
+        workflowRunId: payload.workflowRunId,
+        leaseId: payload.leaseId,
+        ownerId: args.envelope.serviceId,
+        leaseDurationMs: payload.leaseDurationMs,
+      });
+      await ctx.runMutation(internal.serviceCommands.complete, {
+        receiptId: receipt.receiptId,
+        status: "SUCCEEDED",
+        resultReference: result?.claimed ? String(payload.workflowRunId) : result?.reason,
+      });
+      return result;
+    } catch (error) {
+      await fail(ctx, receipt.receiptId, error);
+      throw error;
+    }
+  },
+});
+
+export const renewFactoryAttempt = action({
+  args: { envelope, payloadJson: v.string() },
+  handler: async (ctx, args): Promise<any> => {
+    const payload = await authorize(ctx, args.envelope, args.payloadJson, "attempts.renew");
+    const scope = await ctx.runQuery(internal.factory.attempts.resolveScope, {
+      workflowRunId: payload.workflowRunId,
+    });
+    const receipt = await claimScoped(ctx, args.envelope, scope);
+    try {
+      const result = await ctx.runMutation(internal.factory.attempts.renewInternal, {
+        workflowRunId: payload.workflowRunId,
+        leaseId: payload.leaseId,
+        ownerId: args.envelope.serviceId,
+        leaseDurationMs: payload.leaseDurationMs,
+      });
+      await ctx.runMutation(internal.serviceCommands.complete, {
+        receiptId: receipt.receiptId,
+        status: result?.renewed ? "SUCCEEDED" : "FAILED",
+        reason: result?.renewed ? undefined : result?.reason,
+        resultReference: String(payload.workflowRunId),
+      });
+      return result;
+    } catch (error) {
+      await fail(ctx, receipt.receiptId, error);
+      throw error;
+    }
+  },
+});
+
+export const reportFactoryAttempt = action({
+  args: { envelope, payloadJson: v.string() },
+  handler: async (ctx, args): Promise<any> => {
+    const payload = await authorize(ctx, args.envelope, args.payloadJson, "attempts.report");
+    const scope = await ctx.runQuery(internal.factory.attempts.resolveScope, {
+      workflowRunId: payload.workflowRunId,
+    });
+    const receipt = await claimScoped(ctx, args.envelope, scope);
+    try {
+      const result = await ctx.runMutation(internal.factory.attempts.reportInternal, {
+        workflowRunId: payload.workflowRunId,
+        leaseId: payload.leaseId,
+        ownerId: args.envelope.serviceId,
+        packet: payload.packet,
+      });
+      await ctx.runMutation(internal.serviceCommands.complete, {
+        receiptId: receipt.receiptId,
+        status: "SUCCEEDED",
+        resultReference: String(payload.workflowRunId),
+      });
+      return result;
+    } catch (error) {
+      await fail(ctx, receipt.receiptId, error);
+      throw error;
+    }
+  },
+});
+
 async function authorize(ctx: any, candidate: ServiceCommandEnvelope, payloadJson: string, capability: string): Promise<any> {
   const expectedServiceId = process.env.MISSION_CONTROL_SERVICE_ID?.trim() || "orchestration-server";
   const secret = process.env.MISSION_CONTROL_SERVICE_COMMAND_SECRET?.trim();
   const now = Date.now();
   const syntaxError = validateServiceCommandEnvelope(candidate, now, { serviceId: expectedServiceId, capability });
+  if (payloadJson.length > 256_000) {
+    await ctx.runMutation(internal.serviceCommands.deny, { envelope: candidate, signatureStatus: "INVALID", reason: "payload-too-large" });
+    throw new Error("Service command denied (payload-too-large).");
+  }
   const payloadDigest = await sha256(payloadJson);
   const signatureStatus: SignatureStatus = !candidate.signature ? "MISSING" : "INVALID";
   if (!secret || syntaxError || payloadDigest !== candidate.payloadDigest || !await verifyHmac(secret, candidate)) {

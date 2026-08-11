@@ -2,6 +2,8 @@ export interface FactoryConfigurationInput {
   repositoryId: string;
   workflowId: string;
   executor: { adapter: string; version: string };
+  codeScopeIds: string[];
+  agentBindings: Array<{ workflowAgentId: string; agentVersionId: string }>;
   policyEnvelopeId?: string;
   environmentId?: string;
   budget: { maxCostUsd: number; maxRuntimeMinutes: number; maxAttempts: number };
@@ -26,6 +28,11 @@ function stable(value: unknown): unknown {
 export function factoryConfigurationDigest(input: FactoryConfigurationInput): string {
   const serialized = JSON.stringify(stable({
     ...input,
+    codeScopeIds: [...input.codeScopeIds].sort(),
+    agentBindings: [...input.agentBindings].sort((left, right) =>
+      left.workflowAgentId.localeCompare(right.workflowAgentId)
+      || left.agentVersionId.localeCompare(right.agentVersionId)
+    ),
     verifierIds: [...input.verifierIds].sort(),
   }));
   let hash = 0x811c9dc5;

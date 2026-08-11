@@ -1,8 +1,11 @@
+import { workOrderTaskAuthorityIssue } from "./taskAuthority";
+
 export type SchedulableTask = {
   _id: string;
   projectId?: string;
   workOrderId?: string;
   status: string;
+  metadata?: unknown;
 };
 
 export type TaskAttemptRun = {
@@ -24,6 +27,8 @@ const SCHEDULABLE_TASK_STATUSES = new Set(["READY", "ASSIGNED", "IN_PROGRESS"]);
 export function validateTaskAttemptSelection(args: {
   workOrderId: string;
   projectId?: string;
+  workOrderRevisionNumber?: number;
+  workOrderDesiredOutcome: string;
   hasCanonicalChildTasks: boolean;
   task?: SchedulableTask | null;
 }): TaskAttemptSelectionResult {
@@ -37,6 +42,21 @@ export function validateTaskAttemptSelection(args: {
   }
   if (args.task.projectId !== args.projectId) {
     return { ok: false, reason: "task-workspace-mismatch" };
+  }
+  const metadata =
+    args.task.metadata && typeof args.task.metadata === "object"
+      ? args.task.metadata as Record<string, unknown>
+      : {};
+  const authorityIssue = workOrderTaskAuthorityIssue({
+    scope: metadata.authorityScope,
+    workOrder: {
+      _id: args.workOrderId,
+      currentRevisionNumber: args.workOrderRevisionNumber,
+      desiredOutcome: args.workOrderDesiredOutcome,
+    },
+  });
+  if (authorityIssue) {
+    return { ok: false, reason: authorityIssue };
   }
   if (TERMINAL_TASK_STATUSES.has(args.task.status)) {
     return {
@@ -110,6 +130,12 @@ export function taskAttemptErrorMessage(reason: string) {
   }
   if (reason === "task-workspace-mismatch") {
     return "The selected Task and Work Order must belong to the same workspace.";
+  }
+  if (reason === "task-authority-missing") {
+    return "The selected Task has no authoritative Work Order scope. Relink or recreate it before execution.";
+  }
+  if (reason === "task-authority-mismatch") {
+    return "The selected Task scope does not match the current Work Order objective or revision.";
   }
   if (reason.startsWith("task-terminal:")) {
     return "A completed or canceled Task cannot start an Attempt.";

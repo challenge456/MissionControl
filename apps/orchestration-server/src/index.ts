@@ -32,9 +32,10 @@ import * as dotenv from "dotenv";
 import * as fs from "fs";
 import * as path from "path";
 import { pathToFileURL } from "url";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { executeAutomation } from "./automationAdapter.js";
 import { discoverLocalInference } from "./localInference.js";
+import { FactoryAttemptWorker } from "./factoryAttemptWorker.js";
 
 const envSearchPaths = [
   path.resolve(process.cwd(), ".env.local"),
@@ -74,9 +75,14 @@ const CONVEX_SERVICE_AUTH_TOKEN = process.env.CONVEX_SERVICE_AUTH_TOKEN?.trim();
 if (CONVEX_SERVICE_AUTH_TOKEN) {
   client.setAuth(CONVEX_SERVICE_AUTH_TOKEN);
 }
+const factoryAttemptWorker = new FactoryAttemptWorker(client);
 const coordinator = new CoordinatorLoop({ pollIntervalMs: TICK_INTERVAL_MS });
 const activeAgents = new Map<string, AgentLifecycle>();
 const memoryManagers = new Map<string, MemoryManager>();
+const activeAutomationExecutions = new Map<string, { claimId: string; controller: AbortController }>();
+const READ_ONLY_EXECUTION_OWNER = "orchestration-server:read-only-automation";
+const READ_ONLY_EXECUTION_LEASE_MS = 60_000;
+const READ_ONLY_EXECUTION_HEARTBEAT_MS = 20_000;
 let tickTimer: ReturnType<typeof setInterval> | null = null;
 let lastTickAt: number | null = null;
 let lastTickResult: any = null;
@@ -293,6 +299,7 @@ app.get("/health", (c) => {
     tickCount,
     lastTickAt,
     activeAgents: Array.from(activeAgents.keys()),
+    factoryAttemptWorker: factoryAttemptWorker.status(),
   });
 });
 
@@ -327,6 +334,7 @@ app.get("/status", (c) => {
       uptime: startedAt ? Math.round((Date.now() - startedAt) / 1000) : 0,
       port: PORT,
     },
+    factoryAttemptWorker: factoryAttemptWorker.status(),
   });
 });
 
@@ -334,6 +342,11 @@ app.get("/status", (c) => {
 app.post("/tick", async (c) => {
   const result = await runTick();
   return c.json({ success: true, result });
+});
+
+app.post("/runs/factory-worker/tick", async (c) => {
+  await factoryAttemptWorker.tick();
+  return c.json({ success: true, status: factoryAttemptWorker.status() });
 });
 
 // Spawn an agent
@@ -461,11 +474,69 @@ app.post("/workorders/:workOrderId/dispatch", async (c) => {
  * and read-only.
  */
 app.post("/workorders/:workOrderId/automation-execution", async (c) => {
+  const workOrderId = c.req.param("workOrderId");
+  if (activeAutomationExecutions.has(workOrderId)) {
+    return c.json({ error: "A read-only Automation execution is already active for this WorkOrder" }, 409);
+  }
+  const body = await c.req.json().catch(() => ({}));
+  const claimId = randomUUID();
+  const controller = new AbortController();
+  let heartbeat: ReturnType<typeof setInterval> | null = null;
+  let heartbeatTask: Promise<void> | null = null;
+  let claimHealthy = true;
+  let claimAcquired = false;
+  let claimedRunId: string | null = null;
+  let claimedWorkflowRunId: string | null = null;
   try {
-    const workOrderId = c.req.param("workOrderId");
-    const manifest = await client.query(ConvexQueries.skillAutomations.getExecutionManifest as any, { workOrderId }) as any;
+    const claim = await client.mutation(ConvexMutations.automationExecutions.claim as any, {
+      workOrderId,
+      claimId,
+      ownerId: READ_ONLY_EXECUTION_OWNER,
+      leaseDurationMs: READ_ONLY_EXECUTION_LEASE_MS,
+      estimatedCostUsd: 0,
+      retryOfClaimId: body.retryOfClaimId,
+      retryReason: body.retryReason,
+    }) as any;
+    if (!claim?.claimed) {
+      return c.json({
+        error: `Read-only execution claim rejected (${claim?.reason ?? "unknown"})`,
+        quarantined: Boolean(claim?.quarantined),
+      }, 409);
+    }
+    claimAcquired = true;
+    claimedRunId = claim.runId;
+    claimedWorkflowRunId = claim.workflowRunId;
+    activeAutomationExecutions.set(workOrderId, { claimId, controller });
+    heartbeat = setInterval(() => {
+      if (heartbeatTask || controller.signal.aborted) return;
+      heartbeatTask = (async () => {
+        const renewed = await client.mutation(ConvexMutations.automationExecutions.renew as any, {
+          workOrderId,
+          claimId,
+          ownerId: READ_ONLY_EXECUTION_OWNER,
+          leaseDurationMs: READ_ONLY_EXECUTION_LEASE_MS,
+        }) as any;
+        if (!renewed?.renewed) {
+          const controlledAbort = renewed?.reason === "cancellation-requested"
+            || String(renewed?.reason ?? "").startsWith("operator-mode-");
+          if (!controlledAbort) claimHealthy = false;
+          controller.abort();
+        }
+      })().catch(() => {
+        claimHealthy = false;
+        controller.abort();
+      }).finally(() => {
+        heartbeatTask = null;
+      });
+    }, READ_ONLY_EXECUTION_HEARTBEAT_MS);
+
+    const manifest = await client.query(ConvexQueries.skillAutomations.getExecutionManifest as any, {
+      workOrderId,
+      claimId,
+      ownerId: READ_ONLY_EXECUTION_OWNER,
+    }) as any;
     const missingSecrets = (manifest.secretReferences as string[]).filter(name => !process.env[name]);
-    if (missingSecrets.length) return c.json({ error: `Required secret references are unavailable: ${missingSecrets.join(", ")}` }, 409);
+    if (missingSecrets.length) throw new Error(`Required secret references are unavailable: ${missingSecrets.join(", ")}`);
     const result = await executeAutomation({
       adapterType: manifest.adapterType,
       repository: manifest.repository,
@@ -477,25 +548,117 @@ app.post("/workorders/:workOrderId/automation-execution", async (c) => {
       timeoutMs: manifest.timeoutMs,
       secretReferences: manifest.secretReferences,
       configuration: manifest.configuration,
-    });
-    await client.mutation(ConvexMutations.workflowRuns.updateStatus as any, {
-      runId: manifest.runId,
-      status: result.status === "passed" ? "COMPLETED" : "FAILED",
-      failureReason: result.error ?? undefined,
-    });
-    await client.mutation(ConvexMutations.skillAutomations.recordExecutionResult as any, {
+    }, controller.signal);
+    if (heartbeat) clearInterval(heartbeat);
+    heartbeat = null;
+    if (heartbeatTask) await heartbeatTask;
+    if (!claimHealthy) {
+      throw new Error("Read-only execution claim was lost before terminal evidence could be recorded");
+    }
+    const outcome = await client.mutation(ConvexMutations.automationExecutions.finish as any, {
       workOrderId,
-      workflowRunId: manifest.workflowRunId,
+      claimId,
+      ownerId: READ_ONLY_EXECUTION_OWNER,
       status: result.status,
       result,
-      actorId: `adapter:${manifest.adapterType.toLowerCase()}`,
+      costUsd: 0,
+    }) as any;
+    if (outcome.retryAllowed) {
+      return c.json({
+        success: false,
+        result,
+        disposition: outcome.disposition,
+        retryRequired: true,
+        retryOfClaimId: outcome.retryOfClaimId,
+        attemptNumber: outcome.attemptNumber,
+        workflowRunId: manifest.workflowRunId,
+      }, 202);
+    }
+    await client.mutation(ConvexMutations.workflowRuns.updateStatus as any, {
+      runId: manifest.runId,
+      status: outcome.terminalStatus,
+      failureReason: result.error ?? undefined,
     });
     return c.json({
-      success: result.status === "passed",
+      success: outcome.disposition === "AWAITING_VERIFICATION",
       result,
-      verificationRequired: result.status === "passed",
+      disposition: outcome.disposition,
+      verificationRequired: outcome.disposition === "AWAITING_VERIFICATION",
       workflowRunId: manifest.workflowRunId,
-    }, result.status === "passed" ? 200 : 422);
+    }, outcome.disposition === "AWAITING_VERIFICATION" ? 200 : 422);
+  } catch (err: any) {
+    if (claimAcquired && claimHealthy) {
+      const failureResult = {
+        status: controller.signal.aborted ? "cancelled" : "infrastructure_error",
+        exitCode: null,
+        startedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+        durationMs: 0,
+        tests: { total: 0, passed: 0, failed: 0, skipped: 0 },
+        artifacts: [],
+        evidence: [],
+        redactedLogs: [],
+        error: err instanceof Error ? err.message : "Read-only Automation execution failed",
+      };
+      const recovery = await client.mutation(ConvexMutations.automationExecutions.finish as any, {
+        workOrderId,
+        claimId,
+        ownerId: READ_ONLY_EXECUTION_OWNER,
+        status: failureResult.status,
+        result: failureResult,
+        costUsd: 0,
+      }).catch(() => null) as any;
+      if (recovery?.terminalStatus && claimedRunId) {
+        await client.mutation(ConvexMutations.workflowRuns.updateStatus as any, {
+          runId: claimedRunId,
+          status: recovery.terminalStatus,
+          failureReason: failureResult.error,
+        }).catch(() => undefined);
+      }
+      if (recovery?.retryAllowed) {
+        return c.json({
+          error: failureResult.error,
+          disposition: recovery.disposition,
+          retryRequired: true,
+          retryOfClaimId: recovery.retryOfClaimId,
+          workflowRunId: claimedWorkflowRunId,
+        }, 202);
+      }
+    }
+    return c.json({ error: err.message }, 400);
+  } finally {
+    if (heartbeat) clearInterval(heartbeat);
+    await (heartbeatTask as Promise<void> | null)?.catch(() => undefined);
+    const active = activeAutomationExecutions.get(workOrderId);
+    if (active?.claimId === claimId) activeAutomationExecutions.delete(workOrderId);
+  }
+});
+
+app.post("/workorders/:workOrderId/automation-cancel", async (c) => {
+  try {
+    const workOrderId = c.req.param("workOrderId");
+    const body = await c.req.json().catch(() => ({}));
+    const result = await client.mutation(ConvexMutations.automationExecutions.requestCancellation as any, {
+      workOrderId,
+      actorId: body.actorId ?? "operator",
+      reason: body.reason ?? "Operator requested cancellation",
+    }) as any;
+    if (!result?.requested) return c.json({ success: false, result }, 409);
+    const active = activeAutomationExecutions.get(workOrderId);
+    if (active && (!result.claimId || active.claimId === result.claimId)) active.controller.abort();
+    if (!result.activeLease) {
+      await client.mutation(ConvexMutations.workflowRuns.updateStatus as any, {
+        runId: result.runId,
+        status: "CANCELED",
+        failureReason: body.reason ?? "Operator requested cancellation",
+      });
+    }
+    return c.json({
+      success: true,
+      cancellationRequested: true,
+      activeAdapterSignaled: Boolean(active),
+      workflowRunId: result.workflowRunId,
+    });
   } catch (err: any) {
     return c.json({ error: err.message }, 400);
   }
@@ -906,60 +1069,15 @@ app.get("/runs/:workflowRunId/artifacts", async (c) => {
 });
 
 app.post("/runs/:workflowRunId/events", async (c) => {
-  try {
-    const workflowRunId = c.req.param("workflowRunId");
-    const body = await c.req.json().catch(() => ({}));
-    const result = await client.mutation(ConvexMutations.workflowRuns.recordEvent as any, {
-      workflowRunId,
-      idempotencyKey: body.idempotencyKey,
-      eventType: body.eventType,
-      workflowStep: body.workflowStep,
-      actor: body.actor,
-      agentId: body.agentId,
-      toolName: body.toolName,
-      commandSummary: body.commandSummary,
-      status: body.status,
-      startedAt: body.startedAt,
-      endedAt: body.endedAt,
-      durationMs: body.durationMs,
-      retryNumber: body.retryNumber,
-      verificationReceiptId: body.verificationReceiptId,
-      evidenceArtifactIds: body.evidenceArtifactIds,
-      errorCategory: body.errorCategory,
-      errorSummary: body.errorSummary,
-      metadata: body.metadata,
-    });
-    return c.json({ success: true, result });
-  } catch (err: any) {
-    return c.json({ error: err.message }, 400);
-  }
+  return c.json({
+    error: "Direct execution-event writes are retired. Factory workers must use the signed attempts.report service command.",
+  }, 410);
 });
 
 app.post("/runs/:workflowRunId/artifacts", async (c) => {
-  try {
-    const workflowRunId = c.req.param("workflowRunId");
-    const body = await c.req.json().catch(() => ({}));
-    const result = await client.mutation(ConvexMutations.workflowRuns.createArtifact as any, {
-      workflowRunId,
-      idempotencyKey: body.idempotencyKey,
-      artifactType: body.artifactType,
-      name: body.name,
-      description: body.description,
-      repositoryPath: body.repositoryPath,
-      externalLocation: body.externalLocation,
-      contentHash: body.contentHash,
-      producer: body.producer,
-      verificationReceiptId: body.verificationReceiptId,
-      acceptanceCriterionId: body.acceptanceCriterionId,
-      producingEventId: body.producingEventId,
-      retentionPolicy: body.retentionPolicy,
-      sensitivity: body.sensitivity,
-      metadata: body.metadata,
-    });
-    return c.json({ success: true, result });
-  } catch (err: any) {
-    return c.json({ error: err.message }, 400);
-  }
+  return c.json({
+    error: "Direct execution-artifact writes are retired. Factory workers must use the signed attempts.report service command.",
+  }, 410);
 });
 
 app.post("/run-artifacts/:runArtifactId/link-receipt", async (c) => {
@@ -1111,10 +1229,12 @@ export function startServer() {
   runTick().then((result) => {
     console.log(`[orchestration] Initial tick complete:`, result);
   });
+  factoryAttemptWorker.start();
 
   process.on("SIGINT", async () => {
     console.log("\n[orchestration] Shutting down...");
     if (tickTimer) clearInterval(tickTimer);
+    await factoryAttemptWorker.stop();
     for (const [name] of activeAgents) {
       try {
         await stopAgent(name);
@@ -1128,6 +1248,7 @@ export function startServer() {
   process.on("SIGTERM", async () => {
     console.log("\n[orchestration] SIGTERM received, shutting down...");
     if (tickTimer) clearInterval(tickTimer);
+    await factoryAttemptWorker.stop();
     process.exit(0);
   });
 

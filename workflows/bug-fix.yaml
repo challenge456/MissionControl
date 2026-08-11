@@ -1,12 +1,12 @@
 # Bug Fix Workflow
-# 6-agent workflow: triage → investigate → setup → fix → verify → PR
+# 6-agent workflow: triage → investigate → setup → fix → verify → PR handoff
 # 
 # Inspired by Antfarm's proven bug-fix pattern.
 # Paste a bug report, get back a fix with regression test.
 #
 # AGENT CONTRACT:
 #   Inputs:  {{bug_report}} - Bug description with reproduction steps
-#   Outputs: PR URL with fix + regression test
+#   Outputs: Structured fix, verification, and pull-request handoff
 #   Steps:   6 sequential steps with root cause analysis
 #
 # STEP REFERENCE:
@@ -15,7 +15,7 @@
 #   3. setup:        Prepare workspace → outputs ready signal
 #   4. fixer:        Implement fix → outputs code changes
 #   5. tester:       Add regression test → outputs test results
-#   6. pr-creator:   Create PR → outputs PR URL
+#   6. pr-creator:   Prepare PR handoff → outputs evidence packet
 #
 # ERROR HANDLING:
 #   - Step failure triggers retry (max 3)
@@ -69,7 +69,8 @@ steps:
       Reproduce this bug:
       {{task}}
       
-      Reply with STATUS: done and TRIAGE: ...
+      Return JSON with status: "COMPLETED", reproduced, severity, observations,
+      and a compact handoff.
       
       Document:
       - Steps to reproduce
@@ -80,9 +81,18 @@ steps:
       - Screenshots/logs (if available)
       
       If you cannot reproduce, state "TRIAGE: Cannot reproduce"
-    expects: "STATUS: done"
+    expects: "observations"
+    outputSchema:
+      type: object
+      required: [status, reproduced, severity, observations]
+      properties:
+        status: { type: string }
+        reproduced: { type: boolean }
+        severity: { type: string }
+        observations: { type: array }
     retryLimit: 2
     timeoutMinutes: 15
+    isolation: READ_ONLY
 
   - id: investigate
     agent: investigator
@@ -90,7 +100,8 @@ steps:
       Find the root cause of this bug:
       {{triageOutput}}
       
-      Reply with STATUS: done and ROOT_CAUSE: ...
+      Return JSON with status: "COMPLETED", rootCause, affectedPaths,
+      recommendedFix, and a compact handoff.
       
       Investigate:
       - Read affected code paths
@@ -102,9 +113,18 @@ steps:
       - Root cause explanation
       - Affected files/functions
       - Recommended fix strategy
-    expects: "STATUS: done"
+    expects: "rootCause"
+    outputSchema:
+      type: object
+      required: [status, rootCause, affectedPaths, recommendedFix]
+      properties:
+        status: { type: string }
+        rootCause: { type: string }
+        affectedPaths: { type: array }
+        recommendedFix: { type: string }
     retryLimit: 2
     timeoutMinutes: 20
+    isolation: READ_ONLY
 
   - id: setup
     agent: setup
@@ -112,15 +132,23 @@ steps:
       Set up environment for bug fix:
       {{investigateOutput}}
       
-      Reply with STATUS: done and SETUP: ...
+      Return JSON with status: "COMPLETED", setupSummary, and a compact handoff.
       
       Tasks:
-      - Create fix branch (fix/{{task}})
+      - Inspect the allocated worktree and server-owned branch
       - Prepare test environment
       - Verify bug reproduces in dev
-    expects: "STATUS: done"
+      Do not create or push branches.
+    expects: "setupSummary"
+    outputSchema:
+      type: object
+      required: [status, setupSummary]
+      properties:
+        status: { type: string }
+        setupSummary: { type: string }
     retryLimit: 2
     timeoutMinutes: 5
+    isolation: WORKTREE
 
   - id: fix
     agent: fixer
@@ -130,22 +158,32 @@ steps:
       Root cause: {{investigateOutput}}
       Environment: {{setupOutput}}
       
-      Reply with STATUS: done and FIX: ...
+      Return JSON with status: "COMPLETED", fixSummary, changedFiles,
+      regressionTests, and a compact handoff.
       
       Implementation:
       - Apply the fix following the proposed approach
       - Add regression test to prevent recurrence
       - Include manual verification steps
       - Update relevant documentation
-      - Commit with clear message
+      - Leave changes reviewable; the control plane owns commit and publication
       
       IMPORTANT:
       - Fix the root cause, not just the symptom
       - Ensure fix doesn't introduce new issues
       - Follow project conventions
-    expects: "STATUS: done"
+    expects: "fixSummary"
+    outputSchema:
+      type: object
+      required: [status, fixSummary, changedFiles, regressionTests]
+      properties:
+        status: { type: string }
+        fixSummary: { type: string }
+        changedFiles: { type: array }
+        regressionTests: { type: array }
     retryLimit: 3
     timeoutMinutes: 30
+    isolation: WORKTREE
 
   - id: verify
     agent: verifier
@@ -155,7 +193,8 @@ steps:
       Original bug: {{triageOutput}}
       Fix: {{fixOutput}}
       
-      Reply with STATUS: done and VERIFICATION: ...
+      Return JSON with status: "COMPLETED", passed, commands, failures,
+      and a compact handoff.
       
       Confirm:
       - Original bug no longer reproduces
@@ -165,19 +204,29 @@ steps:
       
       Test thoroughly with edge cases.
       If issues found, list them clearly.
-    expects: "STATUS: done"
+    expects: "passed"
+    outputSchema:
+      type: object
+      required: [status, passed, commands, failures]
+      properties:
+        status: { type: string }
+        passed: { type: boolean }
+        commands: { type: array }
+        failures: { type: array }
     retryLimit: 2
     timeoutMinutes: 15
+    isolation: READ_ONLY
 
   - id: pr
     agent: pr-creator
     input: |
-      Create PR for bug fix:
+      Prepare the pull-request handoff for the bug fix:
       
       Fix: {{fixOutput}}
       Verification: {{verifyOutput}}
       
-      Reply with STATUS: done and PR_URL: ...
+      Return JSON with status: "COMPLETED", title, body, evidenceReferences,
+      and a compact handoff for the control plane.
       
       PR should include:
       - Title: "Fix: [bug description]"
@@ -187,7 +236,16 @@ steps:
       - Test results
       - Closes #[issue-number] (if applicable)
       
-      Use: gh pr create --title "..." --body "..."
-    expects: "STATUS: done"
+      Do not push, create, update, approve, or merge a pull request.
+    expects: "evidenceReferences"
+    outputSchema:
+      type: object
+      required: [status, title, body, evidenceReferences]
+      properties:
+        status: { type: string }
+        title: { type: string }
+        body: { type: string }
+        evidenceReferences: { type: array }
     retryLimit: 2
     timeoutMinutes: 5
+    isolation: WORKTREE

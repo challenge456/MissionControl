@@ -27,7 +27,7 @@ export class CodexV1ExecutorAdapter implements ExecutorAdapter {
   private readonly active = new Map<string, AbortController>();
 
   constructor(
-    private readonly executable = process.env.CODEX_EXECUTABLE ?? "/Applications/Codex.app/Contents/Resources/codex",
+    private readonly executable = process.env.CODEX_EXECUTABLE ?? "codex",
     private readonly runner: ProcessRunner = runCodexProcess
   ) {}
 
@@ -147,7 +147,13 @@ export class CodexV1ExecutorAdapter implements ExecutorAdapter {
 
   async health(): Promise<ExecutorHealth> {
     try {
-      await access(this.executable, constants.X_OK);
+      if (path.isAbsolute(this.executable) || this.executable.includes(path.sep)) {
+        await access(this.executable, constants.X_OK);
+      } else {
+        await new Promise<void>((resolve, reject) => {
+          execFile(this.executable, ["--version"], { timeout: 5_000 }, (error) => error ? reject(error) : resolve());
+        });
+      }
       return { status: "READY", checkedAt: Date.now(), adapter: "codex", version: "v1" };
     } catch {
       return { status: "UNAVAILABLE", checkedAt: Date.now(), adapter: "codex", version: "v1", details: "Codex executable is unavailable or not executable." };
@@ -180,7 +186,7 @@ function commandArguments(request: ExecutorRequest, outputPath: string): string[
 
 async function runCodexProcess(args: Parameters<ProcessRunner>[0]): Promise<{ exitCode: number; output: string; diagnostics?: string }> {
   return await new Promise((resolve, reject) => {
-    execFile(args.executable, args.argv, {
+    const child = execFile(args.executable, args.argv, {
       cwd: args.cwd,
       timeout: args.timeoutMs,
       signal: args.signal,
@@ -195,6 +201,10 @@ async function runCodexProcess(args: Parameters<ProcessRunner>[0]): Promise<{ ex
         diagnostics: error ? redact(stderr || error.message) : undefined,
       });
     });
+    // `codex exec` appends piped stdin to an explicit prompt. `execFile` opens
+    // a stdin pipe by default, so close it immediately or the CLI waits
+    // indefinitely for EOF before it starts the model request.
+    child.stdin?.end();
   });
 }
 

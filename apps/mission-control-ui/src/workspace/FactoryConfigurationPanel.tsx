@@ -63,7 +63,7 @@ export function FactoryConfigurationPanel({
           No Factory exists for this repository. Creating one does not activate or dispatch work.
         </div>
       ) : (
-        <FactoryVersionEditor factoryDefinitionId={definition._id} projectId={projectId} />
+        <FactoryVersionEditor factoryDefinitionId={definition._id} projectId={projectId} repositoryId={repositoryId} />
       )}
     </section>
   );
@@ -72,20 +72,25 @@ export function FactoryConfigurationPanel({
 function FactoryVersionEditor({
   factoryDefinitionId,
   projectId,
+  repositoryId,
 }: {
   factoryDefinitionId: Id<"factoryDefinitions">;
   projectId: Id<"projects">;
+  repositoryId: Id<"workspaceRepositories">;
 }) {
   const detail = useQuery(api["factory/configuration"].getDetail, { factoryDefinitionId });
   const workflows = useQuery(api.workflows.list, { activeOnly: true });
   const policies = useQuery(api["governance/policyEnvelopes"].listPolicyEnvelopes, { projectId, activeOnly: true });
   const verifiers = useQuery(api["context/verifiers"].list, { projectId, activeOnly: true });
+  const versionOptions = useQuery(api["factory/configuration"].getVersionOptions, { projectId, repositoryId });
   const createVersion = useMutation(api["factory/configuration"].createVersion);
   const assess = useMutation(api["factory/configuration"].assessReadiness);
   const activate = useMutation(api["factory/configuration"].activate);
   const [workflowId, setWorkflowId] = useState("");
   const [policyId, setPolicyId] = useState("");
   const [verifierIds, setVerifierIds] = useState<string[]>([]);
+  const [codeScopeIds, setCodeScopeIds] = useState<string[]>([]);
+  const [agentBindings, setAgentBindings] = useState<Record<string, string>>({});
   const [maxCostUsd, setMaxCostUsd] = useState("100");
   const [maxRuntimeMinutes, setMaxRuntimeMinutes] = useState("120");
   const [maxAttempts, setMaxAttempts] = useState("2");
@@ -102,15 +107,20 @@ function FactoryVersionEditor({
     [detail, latestVersion]
   );
 
-  if (!detail || !workflows || !policies || !verifiers) {
+  if (!detail || !workflows || !policies || !verifiers || !versionOptions) {
     return <div className="mt-3 h-28 animate-pulse rounded-lg bg-surface-2" aria-label="Loading Factory version editor" />;
   }
 
   const save = async () => {
     setError("");
     setMessage("");
-    if (!workflowId || !policyId || verifierIds.length === 0) {
-      setError("Select an active workflow, policy, and at least one independent verifier.");
+    const workflow = workflows.find((item) => item._id === workflowId);
+    if (!workflowId || !policyId || verifierIds.length === 0 || codeScopeIds.length === 0) {
+      setError("Select an active workflow, policy, code scope, and at least one independent verifier.");
+      return;
+    }
+    if (!workflow || workflow.agents.some((agent) => !agentBindings[agent.id])) {
+      setError("Bind every workflow agent to an approved agent version.");
       return;
     }
     setPending("save");
@@ -119,6 +129,11 @@ function FactoryVersionEditor({
         factoryDefinitionId,
         workflowId: workflowId as Id<"workflows">,
         executor: { adapter: "codex", version: "v1" },
+        codeScopeIds: codeScopeIds as Id<"repositoryCodeScopes">[],
+        agentBindings: workflow.agents.map((agent) => ({
+          workflowAgentId: agent.id,
+          agentVersionId: agentBindings[agent.id] as Id<"agentVersions">,
+        })),
         policyEnvelopeId: policyId as Id<"policyEnvelopes">,
         budget: {
           maxCostUsd: Number(maxCostUsd),
@@ -127,7 +142,7 @@ function FactoryVersionEditor({
         },
         verifierIds: verifierIds as Id<"contextVerifiers">[],
         riskBoundary: risk,
-        recovery: { pause: true, cancel: true, retry: true, resume: true },
+        recovery: { pause: false, cancel: true, retry: true, resume: false },
       });
       setMessage("Immutable Factory version created. Run readiness before activation.");
     } catch {
@@ -198,8 +213,33 @@ function FactoryVersionEditor({
             ))}
           </div>
         </fieldset>
+        <fieldset className="md:col-span-2">
+          <legend className="text-[11.5px] text-ink-muted">Approved repository code scopes</legend>
+          <div className="mt-1 flex flex-wrap gap-2">
+            {versionOptions.codeScopes.length === 0 ? <span className="text-[12px] text-warning">No active code scopes available.</span> : versionOptions.codeScopes.map((scope) => (
+              <label key={scope._id} className="flex items-center gap-2 rounded border border-line bg-surface-1 px-2 py-1.5 text-[12px] text-ink-secondary">
+                <input type="checkbox" checked={codeScopeIds.includes(scope._id)} onChange={(event) => setCodeScopeIds((current) => event.target.checked ? [...current, scope._id] : current.filter((id) => id !== scope._id))} /> {scope.name}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        {workflows.find((item) => item._id === workflowId)?.agents.length ? (
+          <fieldset className="md:col-span-2">
+            <legend className="text-[11.5px] text-ink-muted">Frozen workflow agent versions</legend>
+            <div className="mt-1 grid gap-2 md:grid-cols-2">
+              {workflows.find((item) => item._id === workflowId)?.agents.map((agent) => (
+                <label key={agent.id} className="text-[11.5px] text-ink-muted">{agent.persona} · {agent.id}
+                  <select className="mt-1 w-full rounded-md border border-line bg-surface-1 px-2 py-2 text-[12px] text-ink" value={agentBindings[agent.id] ?? ""} onChange={(event) => setAgentBindings((current) => ({ ...current, [agent.id]: event.target.value }))}>
+                    <option value="">Select approved version</option>
+                    {versionOptions.agentVersions.map((version) => <option key={version._id} value={version._id}>{version.template.name} · v{version.version} · {version.modelConfig.modelId}</option>)}
+                  </select>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        ) : null}
         <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
-          <span className="text-[11.5px] text-ink-muted">Executor: codex/v1 · pause, resume, cancel, and bounded retry enabled</span>
+          <span className="text-[11.5px] text-ink-muted">Executor: codex/v1 · cancel and bounded retry enabled · pause/resume unsupported</span>
           <Button size="sm" disabled={Boolean(pending)} onClick={save}>{pending === "save" ? "Saving…" : "Create configuration version"}</Button>
         </div>
       </div>

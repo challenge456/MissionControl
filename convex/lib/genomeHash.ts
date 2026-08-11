@@ -14,7 +14,7 @@ export interface GenomePayload {
   };
 }
 
-function canonicalize(value: unknown): string {
+export function canonicalize(value: unknown): string {
   if (value === null || typeof value !== "object") {
     return JSON.stringify(value);
   }
@@ -44,7 +44,7 @@ function rightRotate(value: number, amount: number) {
   return (value >>> amount) | (value << (32 - amount));
 }
 
-function sha256Hex(input: string): string {
+export function sha256Hex(input: string): string {
   const bytes = Array.from(new TextEncoder().encode(input));
   const bitLength = BigInt(bytes.length) * 8n;
 
@@ -113,8 +113,11 @@ function sha256Hex(input: string): string {
 }
 
 export function computeGenomeHash(genome: GenomePayload): string {
-  const canonical = canonicalize(genome);
-  return sha256Hex(canonical);
+  return computeCanonicalHash(genome);
+}
+
+export function computeCanonicalHash(value: unknown): string {
+  return sha256Hex(canonicalize(value));
 }
 
 export function verifyGenomeHash(genome: GenomePayload, hash: string): boolean {

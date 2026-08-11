@@ -15,8 +15,6 @@ const minimumPermissions = [
 
 const requiredEvents = [
   "check_run",
-  "installation",
-  "installation_repositories",
   "pull_request",
   "pull_request_review",
 ];
@@ -50,6 +48,17 @@ describe("GitHub App readiness", () => {
     expect(result.missingPermissions).toEqual(["pull_requests:write"]);
     expect(result.excessivePermissions).toEqual(["contents:admin", "issues:write"]);
     expect(result.missingEvents).toContain("check_run");
+  });
+
+  it("does not require GitHub lifecycle events in selectable subscriptions", () => {
+    const result = evaluateGithubAppCapabilities({
+      permissions: minimumPermissions,
+      subscribedEvents: requiredEvents,
+    });
+
+    expect(result.ready).toBe(true);
+    expect(result.missingEvents).not.toContain("installation");
+    expect(result.missingEvents).not.toContain("installation_repositories");
   });
 
   it("treats missing and older verification evidence as stale", () => {

@@ -4,7 +4,12 @@ import {
   type ServiceCommandEnvelope,
 } from "@mission-control/shared";
 
-export type ServiceCapability = "workorders.dispatch" | "receipts.ingest";
+export type ServiceCapability =
+  | "workorders.dispatch"
+  | "receipts.ingest"
+  | "attempts.claim"
+  | "attempts.renew"
+  | "attempts.report";
 
 export function createSignedServiceCommand(args: {
   capability: ServiceCapability;

@@ -1,18 +1,18 @@
 # Code Review Workflow
-# 4-agent workflow: intake → review → verify-suggestions → approval/changes-requested
+# 4-agent workflow: intake → review → verify-suggestions → review recommendation
 #
 # Purpose: Thorough code review with security, style, and logic verification
 #
 # AGENT CONTRACT:
 #   Inputs:  {{pr_url}} or {{diff}} - Code to review
-#   Outputs: Review approval or changes requested with comments
+#   Outputs: Structured non-authoritative review recommendation with comments
 #   Steps:   4 sequential steps
 #
 # STEP REFERENCE:
 #   1. intake:    Parse PR/diff → outputs structured review request
 #   2. reviewer:  Analyze code → outputs review comments
 #   3. verifier:  Check suggestions → outputs verification report
-#   4. approver:  Final decision → outputs APPROVED or CHANGES_REQUESTED
+#   4. approver:  Final synthesis → outputs a human-review recommendation
 #
 # ERROR HANDLING:
 #   - Step failure triggers retry (max 3)
@@ -58,14 +58,23 @@ steps:
       Code to review:
       {{diff}}
       
-      Reply with STATUS: done and INTAKE_SUMMARY: ...
+      Return JSON with status: "COMPLETED", summary, changedFiles, redFlags,
+      and a compact handoff.
       
       Tasks:
       - Summarize what the code change does
       - Identify files changed and scope
       - Note any obvious red flags
       - Check if PR description matches the actual changes
-    expects: "STATUS: done"
+    expects: "summary"
+    outputSchema:
+      type: object
+      required: [status, summary, changedFiles, redFlags]
+      properties:
+        status: { type: string }
+        summary: { type: string }
+        changedFiles: { type: array }
+        redFlags: { type: array }
     retryLimit: 1
     timeoutMinutes: 5
 
@@ -78,7 +87,8 @@ steps:
       Code:
       {{diff}}
       
-      Reply with STATUS: done and REVIEW: ...
+      Return JSON with status: "COMPLETED", findings, strengths,
+      architecturalConcerns, and a compact handoff.
       
       Check for:
       1. Security issues (injection, auth, secrets)
@@ -97,7 +107,15 @@ steps:
       Also note:
       - What this code does well
       - Any architectural concerns
-    expects: "STATUS: done"
+    expects: "findings"
+    outputSchema:
+      type: object
+      required: [status, findings, strengths, architecturalConcerns]
+      properties:
+        status: { type: string }
+        findings: { type: array }
+        strengths: { type: array }
+        architecturalConcerns: { type: array }
     retryLimit: 2
     timeoutMinutes: 15
 
@@ -110,7 +128,8 @@ steps:
       Code:
       {{diff}}
       
-      Reply with STATUS: done and VERIFICATION: ...
+      Return JSON with status: "COMPLETED", validFindings, rejectedFindings,
+      assessment, and a compact handoff.
       
       Tasks:
       - Check that each suggestion is actionable and specific
@@ -123,37 +142,57 @@ steps:
       - Valid suggestions (list by severity)
       - Any suggestions to disregard (with reason)
       - Overall assessment: thorough/superficial/missed issues
-    expects: "STATUS: done"
+    expects: "validFindings"
+    outputSchema:
+      type: object
+      required: [status, validFindings, rejectedFindings, assessment]
+      properties:
+        status: { type: string }
+        validFindings: { type: array }
+        rejectedFindings: { type: array }
+        assessment: { type: string }
     retryLimit: 1
     timeoutMinutes: 10
 
   - id: approve
     agent: approver
     input: |
-      Make final approval decision based on:
+      Produce a final non-authoritative review recommendation based on:
       {{verifyOutput}}
       
       Original code:
       {{diff}}
       
-      Reply with STATUS: done and DECISION: ...
+      Return JSON with status: "COMPLETED", recommendation, findings,
+      requiredChanges, optionalImprovements, securityVerdict, and a compact handoff.
       
-      Decision options:
-      - APPROVE: Code is good to merge
-      - APPROVE_WITH_NITS: Minor suggestions, not blocking
-      - CHANGES_REQUESTED: Issues must be addressed
+      Recommendation options:
+      - READY_FOR_HUMAN_REVIEW: Evidence supports review readiness
+      - READY_WITH_NITS: Minor suggestions remain
+      - CHANGES_REQUIRED: Issues must be addressed
       
       Include:
-      - Decision (APPROVE / APPROVE_WITH_NITS / CHANGES_REQUESTED)
+      - Recommendation
       - Summary of findings
       - Required changes (if any)
       - Optional improvements (if any)
       - Security verdict (CLEAR / NEEDS_FIX)
       
-      If CHANGES_REQUESTED:
+      If CHANGES_REQUIRED:
       - List must-fix issues by severity
       - Suggest re-review after fixes
-    expects: "STATUS: done"
+      This step cannot submit a provider review, approve, or merge. Human governance owns the decision.
+    expects: "recommendation"
+    outputSchema:
+      type: object
+      required: [status, recommendation, findings, requiredChanges, optionalImprovements, securityVerdict]
+      properties:
+        status: { type: string }
+        recommendation: { type: string }
+        findings: { type: array }
+        requiredChanges: { type: array }
+        optionalImprovements: { type: array }
+        securityVerdict: { type: string }
     retryLimit: 1
     timeoutMinutes: 5
 

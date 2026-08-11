@@ -181,6 +181,8 @@ const runEventType = v.union(
   v.literal("HUMAN_INTERVENTION_REQUESTED"),
   v.literal("RUN_PAUSED"),
   v.literal("RUN_RESUMED"),
+  v.literal("CANCELLATION_REQUESTED"),
+  v.literal("RUN_CANCELED"),
   v.literal("RUN_FAILED"),
   v.literal("RUN_COMPLETED")
 );
@@ -885,6 +887,11 @@ export default defineSchema({
     repositoryId: v.id("workspaceRepositories"),
     workflowId: v.id("workflows"),
     executor: v.object({ adapter: v.string(), version: v.string() }),
+    codeScopeIds: v.optional(v.array(v.id("repositoryCodeScopes"))),
+    agentBindings: v.optional(v.array(v.object({
+      workflowAgentId: v.string(),
+      agentVersionId: v.id("agentVersions"),
+    }))),
     policyEnvelopeId: v.optional(v.id("policyEnvelopes")),
     environmentId: v.optional(v.id("environments")),
     budget: v.object({ maxCostUsd: v.number(), maxRuntimeMinutes: v.number(), maxAttempts: v.number() }),
@@ -1207,6 +1214,9 @@ export default defineSchema({
       location: v.string(),
     }))),
     owner: v.optional(v.string()),
+    // Compatibility fields already present on governed factory Mission records.
+    // Keep them optional until the Mission editor adopts the repository registry
+    // and organization membership records as canonical inputs.
     ownerMemberId: v.optional(v.id("orgMembers")),
     owningTeamId: v.optional(v.id("scrumTeams")),
     repositoryId: v.optional(v.id("workspaceRepositories")),
@@ -1215,7 +1225,8 @@ export default defineSchema({
     executionEnvironment: v.optional(v.union(
       v.literal("LOCAL"),
       v.literal("CLOUD"),
-      v.literal("POLICY_SELECTED")
+      v.literal("REMOTE"),
+      v.literal("POLICY_SELECTED"),
     )),
     modelRoutingDecisionId: v.optional(v.id("modelRoutingDecisions")),
     state: v.union(
@@ -1398,6 +1409,18 @@ export default defineSchema({
     context: v.optional(v.string()),
     workflowId: v.optional(v.string()),
     repository: v.optional(v.string()),
+    repositoryId: v.optional(v.id("workspaceRepositories")),
+    codeScopeIds: v.optional(v.array(v.id("repositoryCodeScopes"))),
+    requestingOperatorId: v.optional(v.id("operators")),
+    ownerMemberId: v.optional(v.id("orgMembers")),
+    owningTeamId: v.optional(v.id("scrumTeams")),
+    executionEnvironment: v.optional(v.union(
+      v.literal("LOCAL"),
+      v.literal("CLOUD"),
+      v.literal("REMOTE"),
+      v.literal("POLICY_SELECTED"),
+    )),
+    scopeEnforcementVersion: v.optional(v.number()),
     branchStrategy: v.optional(v.string()),
     priority: taskPriority,
     riskLevel: workOrderRiskLevel,
@@ -1409,21 +1432,10 @@ export default defineSchema({
     authorizedModelOverride: v.optional(v.string()),
     authorizedModelOverrideReason: v.optional(v.string()),
     authorizedModelOverrideUpdatedAt: v.optional(v.number()),
+    modelRoutingDecisionId: v.optional(v.id("modelRoutingDecisions")),
     requestedBy: v.optional(v.string()),
-    requestingOperatorId: v.optional(v.id("operators")),
     assignedAgent: v.optional(v.string()),
     assignedSquad: v.optional(v.string()),
-    ownerMemberId: v.optional(v.id("orgMembers")),
-    owningTeamId: v.optional(v.id("scrumTeams")),
-    repositoryId: v.optional(v.id("workspaceRepositories")),
-    codeScopeIds: v.optional(v.array(v.id("repositoryCodeScopes"))),
-    executionEnvironment: v.optional(v.union(
-      v.literal("LOCAL"),
-      v.literal("CLOUD"),
-      v.literal("POLICY_SELECTED")
-    )),
-    modelRoutingDecisionId: v.optional(v.id("modelRoutingDecisions")),
-    scopeEnforcementVersion: v.optional(v.number()),
 
     acceptanceCriteria: v.array(v.object({
       id: v.string(),
@@ -3065,7 +3077,7 @@ export default defineSchema({
       v.literal("DEVELOPER"),
       v.literal("QA"),
       v.literal("PM"),
-      v.literal("VIEWER")
+      v.literal("VIEWER"),
     ),
     activeFrom: v.number(),
     activeUntil: v.optional(v.number()),
@@ -3094,7 +3106,7 @@ export default defineSchema({
       v.literal("OWNER"),
       v.literal("CONTRIBUTOR"),
       v.literal("REVIEWER"),
-      v.literal("STAKEHOLDER")
+      v.literal("STAKEHOLDER"),
     ),
     capacityAllocationPct: v.optional(v.number()),
     activeFrom: v.number(),
@@ -3140,7 +3152,12 @@ export default defineSchema({
     codeScopeIds: v.array(v.id("repositoryCodeScopes")),
     teamId: v.optional(v.id("scrumTeams")),
     ownerMemberId: v.optional(v.id("orgMembers")),
-    executionEnvironment: v.optional(v.union(v.literal("LOCAL"), v.literal("CLOUD"), v.literal("POLICY_SELECTED"))),
+    executionEnvironment: v.optional(v.union(
+      v.literal("LOCAL"),
+      v.literal("CLOUD"),
+      v.literal("REMOTE"),
+      v.literal("POLICY_SELECTED"),
+    )),
     policyRequirements: v.optional(v.object({
       owningTeamIds: v.array(v.id("scrumTeams")),
       requiredReviewers: v.array(v.string()),
@@ -3573,7 +3590,17 @@ export default defineSchema({
     executorVersion: v.optional(v.string()),
     branch: v.optional(v.string()),
     allowedTools: v.optional(v.array(v.string())),
+    approvedCodeScopeIds: v.optional(v.array(v.id("repositoryCodeScopes"))),
     isMutating: v.optional(v.boolean()),
+    executionManifest: v.optional(v.any()),
+    executionManifestDigest: v.optional(v.string()),
+    lease: v.optional(v.object({
+      leaseId: v.string(),
+      ownerId: v.string(),
+      claimedAt: v.number(),
+      heartbeatAt: v.number(),
+      expiresAt: v.number(),
+    })),
     
     // Parent task
     parentTaskId: v.optional(v.id("tasks")),
@@ -3648,20 +3675,51 @@ export default defineSchema({
     // Execution environment
     runtime: v.optional(v.string()),
     model: v.optional(v.string()),
-    routingDecisionId: v.optional(v.id("modelRoutingDecisions")),
-    executionEnvironment: v.optional(v.union(v.literal("LOCAL"), v.literal("CLOUD"), v.literal("POLICY_SELECTED"))),
+    executionEnvironment: v.optional(v.union(
+      v.literal("LOCAL"),
+      v.literal("CLOUD"),
+      v.literal("REMOTE"),
+      v.literal("POLICY_SELECTED"),
+    )),
     executorHostId: v.optional(v.string()),
-    checkpointSummary: v.optional(v.string()),
-    checkpointAt: v.optional(v.number()),
     budgetUsd: v.optional(v.number()),
     spentUsd: v.optional(v.number()),
     stopCondition: v.optional(v.string()),
-    escalationOwner: v.optional(v.string()),
     scheduledWindow: v.optional(v.object({
       startsAt: v.number(),
       endsAt: v.number(),
       timezone: v.string(),
     })),
+    checkpointAt: v.optional(v.number()),
+    checkpointSummary: v.optional(v.string()),
+    cancellationRequestedAt: v.optional(v.number()),
+    cancellationRequestedBy: v.optional(v.string()),
+    executionClaimId: v.optional(v.string()),
+    executionClaimedBy: v.optional(v.string()),
+    executionClaimedAt: v.optional(v.number()),
+    executionLeaseExpiresAt: v.optional(v.number()),
+    executionHeartbeatAt: v.optional(v.number()),
+    executionAttemptNumber: v.optional(v.number()),
+    executionStaleRecoveryCount: v.optional(v.number()),
+    executionRetryOfClaimId: v.optional(v.string()),
+    executionRetryReason: v.optional(v.string()),
+    executionBindingDigest: v.optional(v.string()),
+    executionPhase: v.optional(v.union(
+      v.literal("CLAIMED"),
+      v.literal("PREPARING"),
+      v.literal("EXECUTING"),
+      v.literal("VALIDATING"),
+      v.literal("PUBLISHING"),
+      v.literal("TERMINAL"),
+    )),
+    executionBaseSha: v.optional(v.string()),
+    headSha: v.optional(v.string()),
+    pullRequestNumber: v.optional(v.number()),
+    pullRequestId: v.optional(v.string()),
+    pullRequestUrl: v.optional(v.string()),
+    publishedAt: v.optional(v.number()),
+    escalationOwner: v.optional(v.string()),
+    routingDecisionId: v.optional(v.id("modelRoutingDecisions")),
     returnHandoff: v.optional(v.object({
       summary: v.string(),
       changedArtifacts: v.array(v.string()),
@@ -3688,6 +3746,7 @@ export default defineSchema({
     .index("by_mission", ["missionId"])
     .index("by_work_order", ["workOrderId"])
     .index("by_repository_status", ["repositoryId", "status"])
+    .index("by_repository_lease", ["repositoryId", "executionLeaseExpiresAt"])
     .index("by_status", ["status"])
     .index("by_parent_task", ["parentTaskId"])
     .index("by_project_status", ["projectId", "status"]),

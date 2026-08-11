@@ -2,19 +2,15 @@ import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
+import {
+  buildTaskboardStats,
+  CANONICAL_TASK_STATUSES,
+  TASK_STATUS_LABELS,
+} from "./taskboardStatsModel";
 
 interface TaskboardStatsProps {
   projectId: Id<"projects"> | null;
   className?: string;
-}
-
-function startOfWeek(date: Date): number {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  d.setDate(diff);
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
 }
 
 export function TaskboardStats({ projectId, className }: TaskboardStatsProps) {
@@ -22,40 +18,45 @@ export function TaskboardStats({ projectId, className }: TaskboardStatsProps) {
 
   if (tasks === undefined) return null;
 
-  const weekStart = startOfWeek(new Date());
-  const thisWeek = tasks.filter(
-    (t) => (t as { _creationTime?: number })._creationTime >= weekStart
-  ).length;
-  const inProgress = tasks.filter(
-    (t) =>
-      t.status === "IN_PROGRESS" ||
-      t.status === "READY" ||
-      t.status === "ASSIGNED" ||
-      t.status === "REVIEW" ||
-      t.status === "NEEDS_APPROVAL"
-  ).length;
-  const total = tasks.length;
-  const done = tasks.filter((t) => t.status === "DONE").length;
-  const completionPct = total > 0 ? Math.round((done / total) * 100) : 0;
+  const stats = buildTaskboardStats(tasks);
 
   return (
     <div
       className={cn(
-        "flex shrink-0 items-center gap-4 overflow-x-auto flex-nowrap px-4 py-2 border-b border-line bg-surface-1 text-[12.5px]",
+        "flex shrink-0 items-center gap-3 overflow-x-auto flex-nowrap px-4 py-2 border-b border-line bg-surface-1 text-[12.5px]",
         className
       )}
     >
-      <span className="text-ink-secondary">
-        <span className="font-medium text-ink">{thisWeek}</span> This week
+      <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-muted">
+        Canonical status
       </span>
-      <span className="text-ink-secondary">
-        <span className="font-medium text-ink">{inProgress}</span> In progress
+      {CANONICAL_TASK_STATUSES.map((status) => (
+        <span key={status} className="shrink-0 text-ink-secondary">
+          <span className="font-medium text-ink">{stats.canonicalCounts[status]}</span>{" "}
+          {TASK_STATUS_LABELS[status]}
+        </span>
+      ))}
+      {stats.unknownStatusCount > 0 ? (
+        <span className="shrink-0 text-amber-300">
+          <span className="font-medium">{stats.unknownStatusCount}</span> Unknown
+        </span>
+      ) : null}
+      <span aria-hidden="true" className="h-4 w-px shrink-0 bg-line" />
+      <span
+        className="shrink-0 text-ink-secondary"
+        title="Presentation grouping: Ready, Assigned, In progress, Review, and Needs approval"
+      >
+        <span className="font-medium text-ink">{stats.presentationActiveCount}</span>{" "}
+        Presentation active
       </span>
-      <span className="text-ink-secondary">
-        <span className="font-medium text-ink">{total}</span> Total
+      <span className="shrink-0 text-ink-secondary">
+        <span className="font-medium text-ink">{stats.thisWeek}</span> Created this week
       </span>
-      <span className="text-ink-secondary">
-        <span className="font-medium text-ink">{completionPct}%</span> Completion
+      <span className="shrink-0 text-ink-secondary">
+        <span className="font-medium text-ink">{stats.total}</span> Total
+      </span>
+      <span className="shrink-0 text-ink-secondary">
+        <span className="font-medium text-ink">{stats.completionPct}%</span> Completion
       </span>
     </div>
   );

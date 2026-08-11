@@ -1,3 +1,6 @@
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { CodexV1ExecutorAdapter } from "../codexExecutorAdapter.js";
 
@@ -61,5 +64,42 @@ describe("CodexV1ExecutorAdapter", () => {
     await vi.waitFor(() => expect(runner).toHaveBeenCalled());
     expect(await adapter.cancel(request.executionId)).toBe(true);
     await expect(execution).resolves.toMatchObject({ status: "CANCELED" });
+  });
+
+  it("closes the Codex CLI stdin pipe so an explicit prompt can start", async () => {
+    const repositoryRoot = await mkdtemp(path.join(tmpdir(), "mc-codex-stdin-"));
+    const executable = path.join(repositoryRoot, "codex-stub.sh");
+    await writeFile(executable, `#!/bin/sh
+output=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "-o" ]; then
+    shift
+    output="$1"
+  fi
+  shift
+done
+if IFS= read -r _line; then
+  exit 41
+fi
+printf '%s' 'Codex started after EOF.' > "$output"
+`);
+    await chmod(executable, 0o700);
+
+    try {
+      const adapter = new CodexV1ExecutorAdapter(executable);
+      const result = await adapter.execute({
+        ...request,
+        repositoryRoot,
+        workingDirectory: repositoryRoot,
+        timeoutMs: 2_000,
+      }, () => undefined);
+
+      expect(result).toMatchObject({
+        status: "COMPLETED",
+        output: "Codex started after EOF.",
+      });
+    } finally {
+      await rm(repositoryRoot, { recursive: true, force: true });
+    }
   });
 });

@@ -6,6 +6,7 @@
 - Follow documentation-first / spec-driven development (SDD): plan and reference docs before implementing, not chat-only coding.
 - When implementing attached plans: do not edit the plan file; use existing todos, mark them in_progress, and complete all of them.
 - For v2 demo and UI review, use `http://localhost:5199` via `pnpm run dev:demo`; use `http://localhost:5180` for latest main-repo UI during active development (EOS flags on).
+- When the user asks to start `localhost:5199` without naming another workspace, use `pnpm run dev:research-lab`; `dev:demo` intentionally opens the separate Software Factory Demo database and makes the preserved Research Lab unavailable.
 - Prefer waku-agent-inspired schematic operator UI (KPI strip, dispatch gate, clickable architecture diagram) for factory overview surfaces.
 - Product UI focus: exceptions and evidence first, not agent-activity wallpaper.
 - When fixing layout on one v2 shell page, apply the same pattern consistently across all v2 shell pages.

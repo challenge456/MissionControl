@@ -26,11 +26,22 @@ uses: [Choosing permissions for a GitHub App](https://docs.github.com/en/apps/cr
 
 ## Required webhook events
 
+- Select these events in the GitHub App configuration:
+
 - `pull_request`
 - `pull_request_review`
 - `check_run`
+
+GitHub also delivers these lifecycle events to every GitHub App by default;
+they cannot be selected or removed in the App configuration:
+
 - `installation`
 - `installation_repositories`
+
+Mission Control handles all five events, but readiness only expects the three
+selectable events in GitHub's installation API response. See GitHub's
+[webhook event documentation](https://docs.github.com/en/webhooks/webhook-events-and-payloads#installation),
+which defines both installation lifecycle events as automatic.
 
 The webhook endpoint is `POST /github/webhook`. Configure the App with a strong
 webhook secret and `application/json` payloads. Mission Control validates
@@ -41,7 +52,10 @@ headers](https://docs.github.com/en/webhooks/webhook-events-and-payloads#deliver
 
 ## Setup and credential configuration
 
-Configure these Convex environment variables:
+Configure these Convex environment variables. The orchestration server also
+requires `GITHUB_APP_ID` and `GITHUB_APP_PRIVATE_KEY` when real Factory execution
+is enabled so it can mint the just-in-time repository token at the provider
+boundary.
 
 | Variable | Purpose |
 | --- | --- |
@@ -50,6 +64,7 @@ Configure these Convex environment variables:
 | `GITHUB_APP_CLIENT_ID` | OAuth client identity for validating the installing GitHub user |
 | `GITHUB_APP_CLIENT_SECRET` | OAuth exchange secret; server-only |
 | `GITHUB_APP_PRIVATE_KEY` | GitHub RSA private key in PKCS#1 or PKCS#8 PEM form; literal newlines or escaped `\n` supported |
+| `GITHUB_APP_PRIVATE_KEY_FILE` | Optional orchestration-host-only path to an owner-readable PEM file; used when the inline key is unset |
 | `GITHUB_WEBHOOK_SECRET` | HMAC secret used only by the signed ingress boundary |
 | `MISSION_CONTROL_APP_URL` | Optional post-setup redirect back to Mission Control |
 
@@ -64,9 +79,13 @@ GitHub user can access the selected repository through that installation:
 ## Token handling
 
 Mission Control mints an installation access token only after GitHub user and
-App identity validation. The token is restricted to the selected repository,
-used as ephemeral proof that issuance works, and discarded. Only its issue
-time is retained. GitHub installation tokens expire after one hour:
+App identity validation. During Factory execution, it mints a fresh token only
+after Codex finishes, changed-file scope passes, and the exact installation and
+provider repository IDs match the leased attempt. The token is restricted to
+that repository, held only in process memory, passed to Git through a temporary
+askpass helper that reads an environment variable, used for branch push and PR
+creation, and discarded. It never appears in a remote URL, command argument,
+record, artifact, or log. GitHub installation tokens expire after one hour:
 [Generating an installation access token](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-an-installation-access-token-for-a-github-app).
 
 Never store or return:
@@ -109,6 +128,5 @@ freshness. The aggregate state is:
 - `BLOCKED`: revoked/degraded installation, missing permission/event, or
   excessive authority.
 
-Factory activation and later dispatch must consume this evidence and fail
-closed. That dispatch gate belongs to the next versioned Factory configuration
-slice, not this connection PR.
+Factory activation, dispatch, and attempt claim consume this evidence and fail
+closed when it is missing, stale, or mismatched.

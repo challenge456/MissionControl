@@ -197,6 +197,27 @@ export function validateWorkflow(data: any): WorkflowValidationError[] {
       if (!step.expects || typeof step.expects !== "string") {
         errors.push({ field: `steps[${index}].expects`, message: "Step expects is required" });
       }
+      if (typeof step.expects === "string" && /STATUS\s*:\s*done/i.test(step.expects)) {
+        errors.push({
+          field: `steps[${index}].expects`,
+          message: "Heuristic STATUS completion is retired; use a schema-validated status field",
+        });
+      }
+      if (step.kind !== "GATE") {
+        const required = Array.isArray(step.outputSchema?.required) ? step.outputSchema.required : [];
+        if (step.outputSchema?.type !== "object" || !required.includes("status") || step.outputSchema?.properties?.status?.type !== "string") {
+          errors.push({
+            field: `steps[${index}].outputSchema`,
+            message: "Executable steps require an object output schema with a required string status field",
+          });
+        }
+      }
+      if (typeof step.input === "string" && /\bgh\s+pr\s+(?:create|merge|review)\b|approve\s+for\s+merge|merge\s+(?:the\s+)?pull\s+request/i.test(step.input)) {
+        errors.push({
+          field: `steps[${index}].input`,
+          message: "Agents cannot create, approve, or merge pull requests; return a control-plane handoff instead",
+        });
+      }
       if (typeof step.retryLimit !== "number" || step.retryLimit < 0) {
         errors.push({ field: `steps[${index}].retryLimit`, message: "Step retryLimit must be a non-negative number" });
       }

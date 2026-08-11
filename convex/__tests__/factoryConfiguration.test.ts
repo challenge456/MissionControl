@@ -9,6 +9,11 @@ const configuration: FactoryConfigurationInput = {
   repositoryId: "repository-1",
   workflowId: "workflow-1",
   executor: { adapter: "codex", version: "v1" },
+  codeScopeIds: ["scope-b", "scope-a"],
+  agentBindings: [
+    { workflowAgentId: "implementer", agentVersionId: "agent-version-1" },
+    { workflowAgentId: "reviewer", agentVersionId: "agent-version-2" },
+  ],
   policyEnvelopeId: "policy-1",
   budget: { maxCostUsd: 100, maxRuntimeMinutes: 120, maxAttempts: 2 },
   verifierIds: ["verifier-b", "verifier-a"],
@@ -31,6 +36,31 @@ describe("Factory configuration", () => {
       factoryConfigurationDigest({
         ...configuration,
         executor: { adapter: "codex", version: "v2" },
+      })
+    );
+  });
+
+  it("canonicalizes code scopes and agent binding order", () => {
+    expect(factoryConfigurationDigest(configuration)).toBe(
+      factoryConfigurationDigest({
+        ...configuration,
+        codeScopeIds: ["scope-a", "scope-b"],
+        agentBindings: [...configuration.agentBindings].reverse(),
+      })
+    );
+  });
+
+  it("changes the digest when path or agent authority changes", () => {
+    expect(factoryConfigurationDigest(configuration)).not.toBe(
+      factoryConfigurationDigest({
+        ...configuration,
+        codeScopeIds: ["scope-a"],
+      })
+    );
+    expect(factoryConfigurationDigest(configuration)).not.toBe(
+      factoryConfigurationDigest({
+        ...configuration,
+        agentBindings: [{ workflowAgentId: "implementer", agentVersionId: "agent-version-3" }],
       })
     );
   });

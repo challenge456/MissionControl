@@ -12,6 +12,20 @@ const task = {
   projectId: "project-a",
   workOrderId: "work-order-a",
   status: "READY",
+  metadata: {
+    authorityScope: {
+      kind: "WORK_ORDER_DESIRED_OUTCOME",
+      workOrderId: "work-order-a",
+      workOrderRevisionNumber: 1,
+      authorityRef: "work-order:work-order-a:revision:1:desired-outcome",
+      objective: "Research reasoned retry scheduling.",
+    },
+  },
+};
+
+const authority = {
+  workOrderRevisionNumber: 1,
+  workOrderDesiredOutcome: "Research reasoned retry scheduling.",
 };
 
 function attempt(
@@ -35,6 +49,7 @@ describe("Task Attempt selection", () => {
       validateTaskAttemptSelection({
         workOrderId: task.workOrderId,
         projectId: task.projectId,
+        ...authority,
         hasCanonicalChildTasks: true,
       }),
     ).toEqual({ ok: false, reason: "task-selection-required" });
@@ -45,6 +60,7 @@ describe("Task Attempt selection", () => {
       validateTaskAttemptSelection({
         workOrderId: task.workOrderId,
         projectId: task.projectId,
+        ...authority,
         hasCanonicalChildTasks: false,
       }),
     ).toEqual({ ok: true, taskId: null });
@@ -55,6 +71,7 @@ describe("Task Attempt selection", () => {
       validateTaskAttemptSelection({
         workOrderId: task.workOrderId,
         projectId: task.projectId,
+        ...authority,
         hasCanonicalChildTasks: true,
         task,
       }),
@@ -66,6 +83,7 @@ describe("Task Attempt selection", () => {
       validateTaskAttemptSelection({
         workOrderId: task.workOrderId,
         projectId: task.projectId,
+        ...authority,
         hasCanonicalChildTasks: true,
         task: { ...task, status: "ASSIGNED" },
       }),
@@ -84,10 +102,34 @@ describe("Task Attempt selection", () => {
       validateTaskAttemptSelection({
         workOrderId: task.workOrderId,
         projectId: task.projectId,
+        ...authority,
         hasCanonicalChildTasks: true,
         task: candidate,
       }),
     ).toEqual({ ok: false, reason });
+  });
+
+  it("fails closed when Task authority is missing or stale", () => {
+    for (const [candidate, reason] of [
+      [{ ...task, metadata: {} }, "task-authority-missing"],
+      [{
+        ...task,
+        metadata: {
+          authorityScope: {
+            ...task.metadata.authorityScope,
+            objective: "Audit accessibility.",
+          },
+        },
+      }, "task-authority-mismatch"],
+    ] as const) {
+      expect(validateTaskAttemptSelection({
+        workOrderId: task.workOrderId,
+        projectId: task.projectId,
+        ...authority,
+        hasCanonicalChildTasks: true,
+        task: candidate,
+      })).toEqual({ ok: false, reason });
+    }
   });
 });
 

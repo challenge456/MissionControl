@@ -15,6 +15,7 @@ export const ConvexQueries = {
     get: "gatewayConnection:get",
   },
   workflowRuns: {
+    list: "workflowRuns:list",
     get: "workflowRuns:get",
     getInspector: "workflowRuns:getInspector",
     listEvents: "workflowRuns:listEvents",
@@ -38,6 +39,9 @@ export const ConvexActions = {
   serviceCommands: {
     dispatchWorkOrder: "serviceCommands:dispatchWorkOrder",
     ingestReceiptPacket: "serviceCommands:ingestReceiptPacket",
+    claimFactoryAttempt: "serviceCommands:claimFactoryAttempt",
+    renewFactoryAttempt: "serviceCommands:renewFactoryAttempt",
+    reportFactoryAttempt: "serviceCommands:reportFactoryAttempt",
   },
 } as const;
 
@@ -68,10 +72,14 @@ export const ConvexMutations = {
     accept: "missions:accept",
   },
   workflowRuns: {
-    recordEvent: "workflowRuns:recordEvent",
-    createArtifact: "workflowRuns:createArtifact",
     linkArtifactToVerificationReceipt: "workflowRuns:linkArtifactToVerificationReceipt",
     updateStatus: "workflowRuns:updateStatus",
+  },
+  automationExecutions: {
+    claim: "automationExecutions:claim",
+    renew: "automationExecutions:renew",
+    requestCancellation: "automationExecutions:requestCancellation",
+    finish: "automationExecutions:finish",
   },
   skillAutomations: {
     recordExecutionResult: "skillAutomations:recordExecutionResult",

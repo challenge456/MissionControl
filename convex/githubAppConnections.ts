@@ -169,7 +169,7 @@ export const getRepositoryReadiness = query({
         label: "Webhook subscriptions",
         detail: capability.missingEvents.length
           ? `Missing ${capability.missingEvents.join(", ")}`
-          : "Required PR, review, check, and installation events are subscribed.",
+          : "Required PR, review, and check events are subscribed; installation lifecycle events are automatic.",
         remediation: capability.missingEvents.length
           ? "Subscribe the GitHub App webhook to every required V1 event."
           : undefined,

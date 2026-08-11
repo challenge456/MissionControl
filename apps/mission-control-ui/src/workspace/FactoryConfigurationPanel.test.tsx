@@ -5,9 +5,13 @@ import { FactoryConfigurationPanel } from "./FactoryConfigurationPanel";
 const mocks = vi.hoisted(() => ({
   definitions: [] as any[],
   detail: undefined as any,
-  workflows: [{ _id: "workflow-1", name: "Mission delivery", version: 1 }],
+  workflows: [{ _id: "workflow-1", name: "Mission delivery", version: 1, agents: [{ id: "implementer", persona: "Implementer" }] }],
   policies: [{ _id: "policy-1", name: "Default governance" }],
   verifiers: [{ _id: "verifier-1", label: "Independent review" }],
+  versionOptions: {
+    codeScopes: [{ _id: "scope-1", name: "Application" }],
+    agentVersions: [{ _id: "agent-version-1", version: 2, template: { name: "Implementer" }, modelConfig: { modelId: "gpt-5" } }],
+  },
   createFactory: vi.fn(),
   createVersion: vi.fn(),
   assess: vi.fn(),
@@ -19,6 +23,7 @@ vi.mock("../../../../convex/_generated/api", () => ({
     "factory/configuration": {
       list: "factory.list",
       getDetail: "factory.getDetail",
+      getVersionOptions: "factory.getVersionOptions",
       create: "factory.create",
       createVersion: "factory.createVersion",
       assessReadiness: "factory.assessReadiness",
@@ -34,6 +39,7 @@ vi.mock("convex/react", () => ({
   useQuery: (query: string) => {
     if (query === "factory.list") return mocks.definitions;
     if (query === "factory.getDetail") return mocks.detail;
+    if (query === "factory.getVersionOptions") return mocks.versionOptions;
     if (query === "workflows.list") return mocks.workflows;
     if (query === "policies.list") return mocks.policies;
     if (query === "verifiers.list") return mocks.verifiers;
@@ -114,5 +120,24 @@ describe("FactoryConfigurationPanel", () => {
       factoryDefinitionVersionId: "version-1",
     }));
     expect(await screen.findByRole("status")).toHaveTextContent("Factory version 1 activated.");
+  });
+
+  it("freezes code scope and approved agent bindings in a new version", async () => {
+    mocks.definitions = [{ _id: "factory-1", repositoryId: "repository-1", status: "DRAFT" }];
+    mocks.detail = { definition: { _id: "factory-1", status: "DRAFT" }, versions: [], assessments: [] };
+    renderPanel();
+
+    fireEvent.change(screen.getByLabelText("Workflow"), { target: { value: "workflow-1" } });
+    fireEvent.change(screen.getByLabelText("Governance policy"), { target: { value: "policy-1" } });
+    fireEvent.click(screen.getByLabelText("Independent review"));
+    fireEvent.click(screen.getByLabelText("Application"));
+    fireEvent.change(screen.getByLabelText(/Implementer · implementer/), { target: { value: "agent-version-1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create configuration version" }));
+
+    await waitFor(() => expect(mocks.createVersion).toHaveBeenCalledWith(expect.objectContaining({
+      codeScopeIds: ["scope-1"],
+      agentBindings: [{ workflowAgentId: "implementer", agentVersionId: "agent-version-1" }],
+      recovery: { pause: false, cancel: true, retry: true, resume: false },
+    })));
   });
 });

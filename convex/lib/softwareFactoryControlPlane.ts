@@ -95,7 +95,7 @@ export interface ScopeValidationInput {
   }>;
   team?: { id: string; projectId: string; status: string } | null;
   owner?: { id: string; projectId?: string; active: boolean } | null;
-  executionEnvironment?: "LOCAL" | "CLOUD" | "POLICY_SELECTED";
+  executionEnvironment?: "LOCAL" | "CLOUD" | "REMOTE" | "POLICY_SELECTED";
   host?: { status: string; repository: string } | null;
 }
 
@@ -238,7 +238,7 @@ export function combineCodeScopePolicies(scopes: Array<{
 }
 
 export function validateExecutorBindingPolicy(input: {
-  expectedEnvironment?: "LOCAL" | "CLOUD" | "POLICY_SELECTED";
+  expectedEnvironment?: "LOCAL" | "CLOUD" | "REMOTE" | "POLICY_SELECTED";
   requestedEnvironment: "LOCAL" | "CLOUD";
   runtime?: string;
   runModel?: string;

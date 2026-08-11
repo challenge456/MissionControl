@@ -9,7 +9,10 @@ export interface FactoryDispatchPreflightInput {
   repositoryReady: boolean;
   githubReady: boolean;
   workflowMatches: boolean;
+  workflowContractReady: boolean;
   executorReady: boolean;
+  codeScopesReady: boolean;
+  agentManifestsReady: boolean;
   policyReady: boolean;
   verifiersReady: boolean;
   hostReady: boolean;
@@ -26,6 +29,15 @@ export interface FactoryDispatchPreflightResult {
   remediation?: string;
 }
 
+export function codexV1RecoveryReady(input: {
+  pause: boolean;
+  cancel: boolean;
+  retry: boolean;
+  resume: boolean;
+}): boolean {
+  return !input.pause && input.cancel && input.retry && !input.resume;
+}
+
 const checks: Array<{
   key: keyof FactoryDispatchPreflightInput;
   blocker: string;
@@ -40,12 +52,15 @@ const checks: Array<{
   { key: "repositoryReady", blocker: "repository-not-ready", remediation: "Repair repository access before dispatch." },
   { key: "githubReady", blocker: "github-app-not-ready", remediation: "Repair and reverify the GitHub App installation." },
   { key: "workflowMatches", blocker: "workflow-version-mismatch", remediation: "Use the workflow frozen in the Factory version." },
+  { key: "workflowContractReady", blocker: "workflow-contract-unsafe", remediation: "Replace heuristic completion and provider authority with structured handoffs." },
   { key: "executorReady", blocker: "executor-not-ready", remediation: "Use the approved codex/v1 executor." },
+  { key: "codeScopesReady", blocker: "code-scopes-not-ready", remediation: "Create a Factory version with active repository code scopes." },
+  { key: "agentManifestsReady", blocker: "agent-manifests-not-ready", remediation: "Bind every workflow agent to an approved agent version." },
   { key: "policyReady", blocker: "policy-not-ready", remediation: "Activate the Factory policy envelope." },
   { key: "verifiersReady", blocker: "verifiers-not-ready", remediation: "Restore every independent verifier frozen in the Factory version." },
   { key: "hostReady", blocker: "host-not-ready", remediation: "Report a clean, current READY repository host binding." },
   { key: "budgetReady", blocker: "budget-not-ready", remediation: "Use bounded positive V1 cost, runtime, and attempt limits." },
-  { key: "recoveryReady", blocker: "recovery-not-ready", remediation: "Enable pause, resume, cancel, and bounded retry." },
+  { key: "recoveryReady", blocker: "recovery-not-ready", remediation: "Use only the recovery controls supported by codex/v1: cancel and bounded retry." },
   { key: "worktreeProvided", blocker: "worktree-required", remediation: "Allocate an attempt-specific repository worktree." },
 ];
 
