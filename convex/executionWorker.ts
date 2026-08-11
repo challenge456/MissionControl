@@ -4,6 +4,7 @@ import { internal } from "./_generated/api";
 import { reconcileTerminalWorkflowSteps } from "./lib/workflowRunState";
 import { evaluateGithubAppCapabilities, githubInstallationIsStale } from "./lib/githubAppReadiness";
 import { resolveApprovedVerificationCommands } from "./lib/executionPolicy";
+import { staleExecutionRecovery } from "./lib/executionRecovery";
 
 const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED", "CANCELED"]);
 const MIN_EXECUTION_LEASE_MS = 10_000;
@@ -33,6 +34,8 @@ async function recordEvent(ctx: any, run: any, input: {
   toolName?: string;
   startedAt?: number;
   endedAt?: number;
+  retryNumber?: number;
+  evidenceArtifactIds?: any[];
   errorCategory?: string;
   errorSummary?: string;
   metadata?: any;
@@ -58,6 +61,8 @@ async function recordEvent(ctx: any, run: any, input: {
     startedAt: input.startedAt,
     endedAt: input.endedAt,
     durationMs: input.startedAt && input.endedAt ? Math.max(0, input.endedAt - input.startedAt) : undefined,
+    retryNumber: input.retryNumber,
+    evidenceArtifactIds: input.evidenceArtifactIds,
     errorCategory: input.errorCategory,
     errorSummary: input.errorSummary,
     metadata: input.metadata,
@@ -238,6 +243,11 @@ export const claimInternal = internalMutation({
 
     const leaseExpiresAt = now + args.leaseDurationMs;
     const executionAttemptNumber = (run.executionAttemptNumber ?? 0) + 1;
+    const recovery = staleExecutionRecovery({
+      run,
+      newClaimId: args.claimId,
+      now,
+    });
     const steps = run.steps.map((step, index) => index === run.currentStepIndex && step.status === "PENDING"
       ? { ...step, status: "RUNNING" as const, startedAt: now }
       : step);
@@ -250,9 +260,12 @@ export const claimInternal = internalMutation({
       executionLeaseExpiresAt: leaseExpiresAt,
       executionHeartbeatAt: now,
       executionAttemptNumber,
+      executionStaleRecoveryCount: recovery.staleRecoveryCount,
+      executionRetryOfClaimId: recovery.recovered ? recovery.previousClaimId : run.executionRetryOfClaimId,
+      executionRetryReason: recovery.retryReason ?? run.executionRetryReason,
       executionPhase: "CLAIMED",
-      checkpointSummary: run.status === "RUNNING"
-        ? "Expired execution lease reclaimed; resuming from the durable worktree."
+      checkpointSummary: recovery.recovered
+        ? `Expired execution lease reclaimed; ${run.checkpointSummary ?? "resuming from the durable worktree."}`
         : "Execution lease claimed; preparing the approved worktree.",
       checkpointAt: now,
     });
@@ -265,8 +278,48 @@ export const claimInternal = internalMutation({
       status: "RUNNING",
       startedAt: now,
       commandSummary: run.status === "RUNNING" ? "Expired lease reclaimed." : "Pending execution claimed.",
-      metadata: { workerId: args.workerId, executionAttemptNumber, leaseExpiresAt, recovered: run.status === "RUNNING" },
+      metadata: {
+        workerId: args.workerId,
+        executionAttemptNumber,
+        leaseExpiresAt,
+        recovered: recovery.recovered,
+        staleRecoveryCount: recovery.staleRecoveryCount,
+        retryOfClaimId: recovery.previousClaimId,
+      },
     });
+    if (recovery.recovered) {
+      const checkpointArtifact = await createArtifact(ctx, run, {
+        artifactType: "CHECKPOINT",
+        idempotencyKey: `execution-recovery:${run._id}:${executionAttemptNumber}:checkpoint`,
+        name: `Recovered execution checkpoint ${executionAttemptNumber}`,
+        description: recovery.retryReason,
+        metadata: {
+          previousClaimId: recovery.previousClaimId,
+          replacementClaimId: args.claimId,
+          previousPhase: run.executionPhase,
+          previousCheckpointAt: run.checkpointAt,
+          previousCheckpointSummary: run.checkpointSummary,
+          staleRecoveryCount: recovery.staleRecoveryCount,
+          executionAttemptNumber,
+        },
+      });
+      await recordEvent(ctx, run, {
+        eventType: "RETRY_STARTED",
+        idempotencyKey: `execution-recovery:${run._id}:${executionAttemptNumber}:event`,
+        status: "RUNNING",
+        retryNumber: executionAttemptNumber,
+        commandSummary: "Recovered an expired execution lease from the durable checkpoint.",
+        errorCategory: "STALE_EXECUTION_LEASE",
+        errorSummary: recovery.retryReason,
+        evidenceArtifactIds: checkpointArtifact?._id ? [checkpointArtifact._id] : undefined,
+        metadata: {
+          previousClaimId: recovery.previousClaimId,
+          replacementClaimId: args.claimId,
+          staleRecoveryCount: recovery.staleRecoveryCount,
+          leaseExpiresAt,
+        },
+      });
+    }
 
     return {
       workflowRunId: run._id,

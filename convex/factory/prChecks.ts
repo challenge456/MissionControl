@@ -872,6 +872,7 @@ async function ingestPullRequestEvidence(
       repoFullName: payload.repoFullName,
       branch: payload.branch,
       title: payload.title,
+      prState: payload.prState,
       ciStatus: payload.ciStatus,
       ciRunUrl: payload.ciRunUrl,
       headSha: payload.headSha,

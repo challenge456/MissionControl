@@ -90,9 +90,10 @@ describe("githubCiIngest", () => {
 `)).toThrow("duplicate workOrderId");
   });
 
-  it("accepts PR edits as a fresh evidence synchronization event", () => {
+  it("accepts PR edits and closure as fresh evidence synchronization events", () => {
     expect(isSupportedPullRequestWebhookAction("edited")).toBe(true);
-    expect(isSupportedPullRequestWebhookAction("closed")).toBe(false);
+    expect(isSupportedPullRequestWebhookAction("closed")).toBe(true);
+    expect(isSupportedPullRequestWebhookAction("labeled")).toBe(false);
   });
 });
 

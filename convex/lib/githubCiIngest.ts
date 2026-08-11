@@ -14,6 +14,7 @@ export interface GithubCiPayload {
   repoFullName: string;
   branch?: string;
   title?: string;
+  prState: "OPEN" | "CLOSED" | "MERGED";
   headSha?: string;
   ciStatus: "PASS" | "FAIL" | "PENDING" | "UNKNOWN";
   ciRunUrl?: string;
@@ -34,7 +35,7 @@ export function canonicalGithubPullRequestUrl(owner: string, repo: string, prNum
 }
 
 export function isSupportedPullRequestWebhookAction(action: unknown): boolean {
-  return ["opened", "synchronize", "reopened", "edited"].includes(String(action ?? ""));
+  return ["opened", "synchronize", "reopened", "edited", "closed"].includes(String(action ?? ""));
 }
 
 export function parseMissionControlPullRequestLineage(
@@ -160,6 +161,8 @@ export async function fetchPullRequestCi(
   const pr = (await prRes.json()) as {
     title?: string;
     body?: string | null;
+    state?: "open" | "closed";
+    merged?: boolean;
     head?: { ref?: string; sha?: string };
     html_url?: string;
   };
@@ -214,6 +217,7 @@ export async function fetchPullRequestCi(
     repoFullName: `${owner}/${repo}`,
     branch: pr.head?.ref,
     title: pr.title,
+    prState: pr.merged ? "MERGED" : pr.state === "open" ? "OPEN" : "CLOSED",
     headSha,
     ciStatus: mapped.ciStatus ?? "UNKNOWN",
     ciRunUrl,
