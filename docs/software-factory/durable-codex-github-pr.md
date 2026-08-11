@@ -110,6 +110,10 @@ GITHUB_APP_ID=<bound GitHub App ID>
 GITHUB_APP_PRIVATE_KEY=<server-only PEM>
 ```
 
+Keep the compatibility worker disabled (`FACTORY_EXECUTION_ENABLED=0`). The
+orchestration server refuses to start when both worker modes are enabled, so
+two lease models cannot execute the same Attempt concurrently.
+
 Configure the same service ID and HMAC secret on the Convex deployment. Keep
 all credentials out of `VITE_*` variables. The worker intentionally handles one
 repository in V1; repository scheduling and hundred-agent fan-out wait until

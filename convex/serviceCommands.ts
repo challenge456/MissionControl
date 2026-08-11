@@ -51,6 +51,41 @@ export const resolveWorkOrderScope = internalQuery({
   },
 });
 
+export const resolveExecutionScope = internalQuery({
+  args: { workflowRunId: v.id("workflowRuns") },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.workflowRunId);
+    if (!run?.projectId || !run.repositoryId) {
+      throw new Error("Execution run is unavailable or unscoped.");
+    }
+    return {
+      projectId: String(run.projectId),
+      repositoryId: String(run.repositoryId),
+    };
+  },
+});
+
+export const resolveRepositoryScope = internalQuery({
+  args: {
+    projectId: v.id("projects"),
+    repositoryId: v.id("workspaceRepositories"),
+  },
+  handler: async (ctx, args) => {
+    const repository = await ctx.db.get(args.repositoryId);
+    if (
+      !repository ||
+      repository.projectId !== args.projectId ||
+      repository.status !== "READY"
+    ) {
+      throw new Error("Execution repository is unavailable or not ready.");
+    }
+    return {
+      projectId: String(args.projectId),
+      repositoryId: String(args.repositoryId),
+    };
+  },
+});
+
 export const claim = internalMutation({
   args: { envelope },
   handler: async (ctx, args) => {

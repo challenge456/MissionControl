@@ -59,12 +59,22 @@ credentials independently.
 | `attempts.claim` | None | `serviceCommands.claimFactoryAttempt` | `factory/attempts.claimInternal` |
 | `attempts.renew` | None | `serviceCommands.renewFactoryAttempt` | `factory/attempts.renewInternal` |
 | `attempts.report` | None | `serviceCommands.reportFactoryAttempt` | `factory/attempts.reportInternal` |
+| `executions.claim` | None | `serviceCommands.claimExecution` | `executionWorker.claimInternal` |
+| `executions.heartbeat` | None | `serviceCommands.heartbeatExecution` | `executionWorker.heartbeatInternal` |
+| `executions.report` | None | `serviceCommands.reportExecution` | `executionWorker.reportInternal` |
+| `executions.finalize` | None | `serviceCommands.finalizeExecution` | `executionWorker.finalizeInternal` |
 
 Attempt claims are atomic and bounded to 15–120 seconds. Renewal and report
 commands must present the exact active lease. `attempts.report` is the only
 orchestration-server path for ordered Factory execution events, artifacts, and
 terminal status; the former generic HTTP event/artifact write routes return
 `410 Gone`.
+
+The `attempts.*` capability set is retained for the disabled legacy manifest
+worker. The documented V1 golden path uses `executions.*`. Runtime startup fails
+if both `FACTORY_EXECUTION_ENABLED=1` and
+`CODEX_FACTORY_WORKER_ENABLED=true` are configured, preventing competing claims
+against the same Attempt.
 
 Additional scheduler, task-transition, approval-request, and handoff
 commands must be added as named capabilities before those callers can be treated

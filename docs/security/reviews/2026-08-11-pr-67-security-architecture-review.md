@@ -71,6 +71,18 @@ minting, webhook ingestion, and Mission-to-PR lineage.
   expired tokens are rejected, GitHub requests have a 30-second timeout, and
   worker cancellation propagates through token minting, push, and PR creation.
 
+### ARCH-67-06 — High — Rebase introduced two competing Attempt workers
+
+- **Evidence:** PR #64 landed first and added a manifest worker using
+  `attempts.*`; PR #67 added the reviewed durable worker using `executions.*`.
+  Both select the same pending/running `codex/v1` Attempt population.
+- **Impact:** Enabling both could create independent leases and duplicate local
+  execution or publication for one Attempt.
+- **Resolution:** Both signed capability sets remain available for compatibility,
+  but orchestration startup now rejects simultaneous enablement. The documented
+  V1 production path is `CODEX_FACTORY_WORKER_ENABLED=true`; the legacy
+  `FACTORY_EXECUTION_ENABLED` path remains disabled pending retirement.
+
 ## Architecture assessment
 
 - **Authority separation:** Human plan approval, the orchestration bearer

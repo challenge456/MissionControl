@@ -3745,31 +3745,6 @@ export default defineSchema({
     failureReason: v.optional(v.string()),
     humanInterventions: v.optional(v.number()),
 
-    // Durable executor lease and publication lineage. Installation tokens are
-    // intentionally never stored; only the resulting Git/GitHub identities are.
-    executionClaimId: v.optional(v.string()),
-    executionClaimedBy: v.optional(v.string()),
-    executionClaimedAt: v.optional(v.number()),
-    executionLeaseExpiresAt: v.optional(v.number()),
-    executionHeartbeatAt: v.optional(v.number()),
-    executionAttemptNumber: v.optional(v.number()),
-    executionPhase: v.optional(v.union(
-      v.literal("CLAIMED"),
-      v.literal("PREPARING"),
-      v.literal("EXECUTING"),
-      v.literal("VALIDATING"),
-      v.literal("PUBLISHING"),
-      v.literal("TERMINAL")
-    )),
-    cancellationRequestedAt: v.optional(v.number()),
-    cancellationRequestedBy: v.optional(v.string()),
-    executionBaseSha: v.optional(v.string()),
-    headSha: v.optional(v.string()),
-    pullRequestNumber: v.optional(v.number()),
-    pullRequestId: v.optional(v.string()),
-    pullRequestUrl: v.optional(v.string()),
-    publishedAt: v.optional(v.number()),
-    
     // Timing
     startedAt: v.number(),
     completedAt: v.optional(v.number()),

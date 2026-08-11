@@ -1047,7 +1047,7 @@ export const list = query({
     codeScopeIds: v.optional(v.array(v.id("repositoryCodeScopes"))),
     owningTeamId: v.optional(v.id("scrumTeams")),
     ownerMemberId: v.optional(v.id("orgMembers")),
-    executionEnvironment: v.optional(v.union(v.literal("LOCAL"), v.literal("CLOUD"), v.literal("POLICY_SELECTED"))),
+    executionEnvironment: v.optional(v.union(v.literal("LOCAL"), v.literal("CLOUD"), v.literal("REMOTE"), v.literal("POLICY_SELECTED"))),
     assignedAgent: v.optional(v.string()),
     requestedBy: v.optional(v.string()),
     verificationStatus: v.optional(verificationStatus),
@@ -1350,7 +1350,7 @@ export const create = mutation({
     codeScopeIds: v.optional(v.array(v.id("repositoryCodeScopes"))),
     owningTeamId: v.optional(v.id("scrumTeams")),
     ownerMemberId: v.optional(v.id("orgMembers")),
-    executionEnvironment: v.optional(v.union(v.literal("LOCAL"), v.literal("CLOUD"), v.literal("POLICY_SELECTED"))),
+    executionEnvironment: v.optional(v.union(v.literal("LOCAL"), v.literal("CLOUD"), v.literal("REMOTE"), v.literal("POLICY_SELECTED"))),
     branchStrategy: v.optional(v.string()),
     priority: v.optional(v.union(v.literal(1), v.literal(2), v.literal(3), v.literal(4))),
     riskLevel: v.optional(workOrderRisk),
@@ -1399,7 +1399,7 @@ const dispatchArgs = {
     codeScopeIds: v.optional(v.array(v.id("repositoryCodeScopes"))),
     owningTeamId: v.optional(v.id("scrumTeams")),
     ownerMemberId: v.optional(v.id("orgMembers")),
-    executionEnvironment: v.optional(v.union(v.literal("LOCAL"), v.literal("CLOUD"), v.literal("POLICY_SELECTED"))),
+    executionEnvironment: v.optional(v.union(v.literal("LOCAL"), v.literal("CLOUD"), v.literal("REMOTE"), v.literal("POLICY_SELECTED"))),
     executorHostId: v.optional(v.string()),
     /** Explicit operator-approved exception; normal runtime model metadata must not bypass policy. */
     authorizedModelOverride: v.optional(v.string()),
@@ -1423,7 +1423,7 @@ type DispatchArgs = {
   codeScopeIds?: Id<"repositoryCodeScopes">[];
   owningTeamId?: Id<"scrumTeams">;
   ownerMemberId?: Id<"orgMembers">;
-  executionEnvironment?: "LOCAL" | "CLOUD" | "POLICY_SELECTED";
+  executionEnvironment?: "LOCAL" | "CLOUD" | "REMOTE" | "POLICY_SELECTED";
   executorHostId?: string;
   authorizedModelOverride?: string;
   model?: string;

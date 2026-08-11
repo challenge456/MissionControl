@@ -311,7 +311,7 @@ export const createDraft = mutation({
     owner: v.optional(v.string()), budgetUsd: v.optional(v.number()), stopCondition: v.string(),
     ownerMemberId: v.optional(v.id("orgMembers")), owningTeamId: v.optional(v.id("scrumTeams")),
     repositoryId: v.optional(v.id("workspaceRepositories")), codeScopeIds: v.optional(v.array(v.id("repositoryCodeScopes"))),
-    executionEnvironment: v.optional(v.union(v.literal("LOCAL"), v.literal("CLOUD"), v.literal("POLICY_SELECTED"))),
+    executionEnvironment: v.optional(v.union(v.literal("LOCAL"), v.literal("CLOUD"), v.literal("REMOTE"), v.literal("POLICY_SELECTED"))),
     maxReadOnlyConcurrency: v.optional(v.number()), maxCorrectiveIterations: v.optional(v.number()), metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {

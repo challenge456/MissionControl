@@ -69,7 +69,7 @@ type ParentDelivery = {
   repository: string | null;
   repositoryId: Id<"workspaceRepositories"> | null;
   codeScopeIds: Id<"repositoryCodeScopes">[];
-  executionEnvironment: "LOCAL" | "CLOUD" | "POLICY_SELECTED" | null;
+  executionEnvironment: "LOCAL" | "CLOUD" | "REMOTE" | "POLICY_SELECTED" | null;
   riskLevel: string | null;
   missionId: Id<"missions"> | null;
   missionTitle: string | null;

@@ -95,6 +95,7 @@ describe("Task Attempt selection", () => {
       validateTaskAttemptSelection({
         workOrderId: task.workOrderId,
         projectId: task.projectId,
+        ...authority,
         hasCanonicalChildTasks: true,
         allowFailedRecovery: true,
         task: { ...task, status: "FAILED" },
