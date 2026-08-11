@@ -40,6 +40,12 @@ function validPlan(): MissionPlanInput {
         branchStrategy: "isolated-worktree",
         constraints: [],
         requiredApprovals: [],
+        implementationPolicy: {
+          allowedCommands: ["pnpm test"],
+          maxAttempts: 2,
+          timeoutMinutes: 30,
+          stopCondition: "Stop after tests pass and the pull request is persisted.",
+        },
         dependsOnBlueprintIds: [],
         assertionIds: ["tests-pass"],
       },
@@ -126,6 +132,18 @@ describe("Mission plan contract", () => {
       "blueprint-sequence-duplicate",
       "blueprint-assertion-required",
       "assertion-uncovered",
+    ]));
+  });
+
+  it("fails closed when mutating work lacks an explicit implementation policy", () => {
+    const plan = validPlan();
+    plan.workOrderBlueprints[0].implementationPolicy = undefined;
+    const codes = validateMissionPlan(plan).map((error) => error.code);
+    expect(codes).toEqual(expect.arrayContaining([
+      "implementation-verifier-required",
+      "implementation-attempts-invalid",
+      "implementation-timeout-invalid",
+      "implementation-stop-condition-required",
     ]));
   });
 });

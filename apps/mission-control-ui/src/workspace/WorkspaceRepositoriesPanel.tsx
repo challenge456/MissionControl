@@ -252,7 +252,21 @@ function GitHubAppReadinessPanel({
   const readiness = useQuery(api.githubAppConnections.getRepositoryReadiness, {
     repositoryId,
   });
+  const deliveries = useQuery(api.githubAppConnections.listDeliveries, {
+    repositoryId,
+    limit: 50,
+  });
+  const visibleDeliveries = useMemo(() => {
+    if (!deliveries) return deliveries;
+    const selected = deliveries.slice(0, 8);
+    for (const event of ["pull_request", "pull_request_review"]) {
+      const representative = deliveries.find((delivery) => delivery.event === event);
+      if (representative && !selected.some((delivery) => delivery._id === representative._id)) selected.push(representative);
+    }
+    return selected;
+  }, [deliveries]);
   const beginInstallation = useAction(api.githubAppConnections.beginInstallation);
+  const verifyInstallation = useAction(api.githubAppConnections.verifyInstallation);
   const [installPending, setInstallPending] = useState(false);
   const [installError, setInstallError] = useState("");
 
@@ -274,6 +288,18 @@ function GitHubAppReadinessPanel({
     setInstallPending(true);
     setInstallError("");
     try {
+      if (readiness.installation) {
+        const verification = await verifyInstallation({ repositoryId });
+        if (!verification.ok) {
+          setInstallError(
+            "code" in verification && verification.code === "NOT_CONFIGURED"
+              ? "GitHub App verification is not configured for this environment. Add the required server credentials, then try again."
+              : "GitHub App verification failed. Confirm that this installation grants access to the exact repository, then try again."
+          );
+        }
+        setInstallPending(false);
+        return;
+      }
       const result = await beginInstallation({ repositoryId });
       if (!result.ok) {
         setInstallError(
@@ -305,7 +331,9 @@ function GitHubAppReadinessPanel({
           {readiness.overall !== "VERIFIED" ? (
             <Button variant="outline" size="sm" disabled={installPending} onClick={install}>
               <Github className="h-3.5 w-3.5" aria-hidden />
-              {installPending ? "Opening GitHub…" : readiness.installation ? "Repair installation" : "Install GitHub App"}
+              {installPending
+                ? readiness.installation ? "Verifying…" : "Opening GitHub…"
+                : readiness.installation ? "Verify installation" : "Install GitHub App"}
             </Button>
           ) : null}
         </div>
@@ -340,6 +368,46 @@ function GitHubAppReadinessPanel({
           Installation {readiness.installation.installationId} · {readiness.installation.accountLogin} · tokens are not stored
         </div>
       ) : null}
+      <div className="mt-4 border-t border-line pt-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-[12.5px] font-medium text-ink-secondary">Recent webhook deliveries</div>
+            <div className="mt-1 text-[11.5px] text-ink-muted">Authenticated GitHub events for this exact repository connection.</div>
+          </div>
+          <StatusBadge tone={visibleDeliveries?.some((delivery) => delivery.status === "FAILED") ? "error" : "success"}>
+            {visibleDeliveries === undefined ? "loading" : `${visibleDeliveries.length} shown`}
+          </StatusBadge>
+        </div>
+        {deliveries === undefined ? (
+          <div className="mt-3 h-16 animate-pulse rounded-lg bg-surface-2" aria-label="Loading recent webhook deliveries" />
+        ) : visibleDeliveries!.length === 0 ? (
+          <div className="mt-3 rounded-lg border border-line bg-surface-2 px-3 py-3 text-[12px] text-ink-muted">No webhook deliveries recorded for this repository yet.</div>
+        ) : (
+          <ul className="mt-3 space-y-2" aria-label="Recent webhook deliveries">
+            {visibleDeliveries!.map((delivery) => {
+              const passing = delivery.status === "PROCESSED" || delivery.status === "IGNORED";
+              return (
+                <li key={delivery._id} className="rounded-lg border border-line bg-surface-2 px-3 py-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <div className="text-[12.5px] font-medium text-ink">{delivery.event}{delivery.action ? ` · ${delivery.action}` : ""}</div>
+                      <div className="mt-1 font-mono text-[10.5px] text-ink-muted">{delivery.deliveryId}</div>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <StatusBadge tone={delivery.signatureStatus === "VALID" ? "success" : "error"}>signature {delivery.signatureStatus.toLowerCase()}</StatusBadge>
+                      <StatusBadge tone={passing ? "success" : delivery.status === "FAILED" ? "error" : "warning"}>{delivery.status.toLowerCase()}</StatusBadge>
+                    </div>
+                  </div>
+                  <div className="mt-2 flex flex-wrap justify-between gap-2 text-[11px] text-ink-muted">
+                    <span>{delivery.result ?? delivery.error ?? "Processing result not recorded."}</span>
+                    <time dateTime={new Date(delivery.receivedAt).toISOString()}>{new Date(delivery.receivedAt).toLocaleString()}</time>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
       {installError ? <ErrorNotice message={installError} /> : null}
     </section>
   );

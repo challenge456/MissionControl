@@ -1313,6 +1313,13 @@ export default defineSchema({
       constraints: v.optional(v.array(v.string())),
       requiredApprovals: v.optional(v.array(v.string())),
       estimatedCostUsd: v.optional(v.number()),
+      implementationPolicy: v.optional(v.object({
+        allowedCommands: v.array(v.string()),
+        maxCostUsd: v.optional(v.number()),
+        maxAttempts: v.number(),
+        timeoutMinutes: v.number(),
+        stopCondition: v.string(),
+      })),
       dependsOnBlueprintIds: v.array(v.string()),
       assertionIds: v.array(v.string()),
     })),

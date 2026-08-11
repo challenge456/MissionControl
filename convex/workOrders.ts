@@ -34,6 +34,7 @@ import { validFactoryBudget } from "./lib/factoryConfiguration";
 import { evaluateGithubAppCapabilities, githubInstallationIsStale } from "./lib/githubAppReadiness";
 import { canonicalRepositoryKey } from "./lib/workspaceRepositories";
 import {
+  assertionEvidenceCanSatisfy,
   startMissionForWorkOrderDispatch,
   syncMissionValidationReceipt,
 } from "./lib/missionExecution";
@@ -2833,7 +2834,17 @@ export const recordVerificationReceipt = mutation({
         .first();
       if (existing) {
         if (existing.workOrderId !== workOrder._id) throw new Error("Idempotency key is already bound to another WorkOrder");
-        return { verificationReceipt: existing, created: false };
+        if (!run || existing.workflowRunId !== run._id || existing.acceptanceCriterionId !== args.acceptanceCriterionId) {
+          throw new Error("Idempotency key is already bound to different verification evidence");
+        }
+        const missionSync = existing.validationAssertionId
+          ? await syncMissionValidationReceipt(ctx, {
+              workOrder,
+              workflowRun: run,
+              verificationReceipt: existing,
+            })
+          : { synced: false };
+        return { verificationReceipt: existing, missionSync, created: false };
       }
     }
     const policy = await resolveGovernancePolicy(ctx, workOrder);
@@ -2865,7 +2876,7 @@ export const recordVerificationReceipt = mutation({
       .withIndex("by_work_order_criterion", (q) => q.eq("workOrderId", workOrder._id).eq("acceptanceCriterionId", args.acceptanceCriterionId))
       .collect();
 
-    const validationAssertion = workOrder.missionId && workOrder.missionRole === "VALIDATOR"
+    const missionAssertion = workOrder.missionId
       ? await ctx.db
           .query("validationAssertions")
           .withIndex("by_mission_assertion", (q) => q
@@ -2873,9 +2884,15 @@ export const recordVerificationReceipt = mutation({
             .eq("assertionId", args.acceptanceCriterionId))
           .first()
       : null;
-    if (workOrder.missionRole === "VALIDATOR" && workOrder.missionId && !validationAssertion) {
+    if (workOrder.missionRole === "VALIDATOR" && workOrder.missionId && !missionAssertion) {
       throw new Error("Validator evidence must map to a Mission assertion");
     }
+    const validationAssertion = missionAssertion && assertionEvidenceCanSatisfy({
+      missionRole: workOrder.missionRole,
+      requiresIndependentValidation: missionAssertion.requiresIndependentValidation,
+    })
+      ? missionAssertion
+      : null;
 
     for (const receipt of priorReceipts.filter((item: any) => item.status !== "STALE")) {
       await staleVerificationReceipt(ctx, {

@@ -11,9 +11,11 @@ const mocks = vi.hoisted(() => ({
   scopes: [] as any[],
   structure: { teams: [{ _id: "team-1", name: "Checkout", status: "ACTIVE" }], memberships: [], members: [], repositories: [], assignmentCount: 0, canManageTeams: true },
   readiness: undefined as any,
+  deliveries: [] as any[],
   setDefault: vi.fn(),
   backfill: vi.fn(),
   beginInstallation: vi.fn(),
+  verifyInstallation: vi.fn(),
 }));
 
 vi.mock("../../../../convex/_generated/api", () => ({
@@ -29,7 +31,9 @@ vi.mock("../../../../convex/_generated/api", () => ({
     },
     githubAppConnections: {
       getRepositoryReadiness: "githubAppConnections.getRepositoryReadiness",
+      listDeliveries: "githubAppConnections.listDeliveries",
       beginInstallation: "githubAppConnections.beginInstallation",
+      verifyInstallation: "githubAppConnections.verifyInstallation",
     },
     softwareFactoryControlPlane: {
       listWorkspaceStructure: "control-plane.listWorkspaceStructure",
@@ -43,6 +47,7 @@ vi.mock("convex/react", () => ({
     if (query === "projects.listCodeScopes") return mocks.scopes;
     if (query === "control-plane.listWorkspaceStructure") return mocks.structure;
     if (query === "githubAppConnections.getRepositoryReadiness") return mocks.readiness;
+    if (query === "githubAppConnections.listDeliveries") return mocks.deliveries;
     return undefined;
   },
   useMutation: (mutation: string) => {
@@ -52,6 +57,7 @@ vi.mock("convex/react", () => ({
   },
   useAction: (action: string) => {
     if (action === "githubAppConnections.beginInstallation") return mocks.beginInstallation;
+    if (action === "githubAppConnections.verifyInstallation") return mocks.verifyInstallation;
     return vi.fn();
   },
 }));
@@ -70,12 +76,14 @@ describe("WorkspaceRepositoriesPanel", () => {
     mocks.repositories = [];
     mocks.scopes = [];
     mocks.readiness = undefined;
+    mocks.deliveries = [];
     mocks.setDefault.mockResolvedValue({ success: true });
     mocks.backfill.mockResolvedValue({ created: 1, existing: 0, skipped: 0, failed: 0 });
     mocks.beginInstallation.mockResolvedValue({
       ok: true,
       installUrl: "https://github.com/apps/mission-control/installations/new?state=opaque",
     });
+    mocks.verifyInstallation.mockResolvedValue({ ok: true });
   });
 
   it("shows a truthful setup state when the workspace has no repository", () => {
@@ -192,8 +200,65 @@ describe("WorkspaceRepositoriesPanel", () => {
     expect(screen.getByText("GitHub App readiness")).toBeInTheDocument();
     expect(screen.getByText(/Missing checks:read/)).toBeInTheDocument();
     expect(screen.getByText(/tokens are not stored/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Repair installation" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Verify installation" })).toBeInTheDocument();
     expect(screen.queryByText(/ghs_/i)).not.toBeInTheDocument();
+  });
+
+  it("shows authenticated webhook processing outcomes for the selected repository", () => {
+    mocks.repositories = [{
+      repositoryId: "repository-1",
+      source: "CONNECTION",
+      repository: "sellerfi/marketplace",
+      displayName: "marketplace",
+      defaultBranch: "main",
+      isDefault: true,
+      status: "READY",
+      webhookStatus: "READY",
+      scopeCount: 0,
+    }];
+    mocks.readiness = { overall: "VERIFIED", installation: { installationId: "12345", accountLogin: "sellerfi" }, checks: [] };
+    mocks.deliveries = [{
+      _id: "delivery-record-1",
+      deliveryId: "github-delivery-1",
+      event: "check_run",
+      action: "completed",
+      signatureStatus: "VALID",
+      status: "PROCESSED",
+      result: "Harness PR check updated.",
+      receivedAt: 1_786_000_000_000,
+    }];
+
+    render(<WorkspaceRepositoriesPanel project={project} />);
+
+    expect(screen.getByText("Recent webhook deliveries")).toBeInTheDocument();
+    expect(screen.getByText("check_run · completed")).toBeInTheDocument();
+    expect(screen.getByText("signature valid")).toBeInTheDocument();
+    expect(screen.getByText("processed")).toBeInTheDocument();
+  });
+
+  it("re-verifies an existing installation without reopening GitHub", async () => {
+    mocks.repositories = [{
+      repositoryId: "repository-1",
+      source: "CONNECTION",
+      repository: "sellerfi/marketplace",
+      displayName: "marketplace",
+      defaultBranch: "main",
+      isDefault: true,
+      status: "DEGRADED",
+      webhookStatus: "ERROR",
+      scopeCount: 0,
+    }];
+    mocks.readiness = {
+      overall: "STALE",
+      installation: { installationId: "12345", accountLogin: "sellerfi" },
+      checks: [],
+    };
+
+    render(<WorkspaceRepositoriesPanel project={project} />);
+    fireEvent.click(screen.getByRole("button", { name: "Verify installation" }));
+
+    await waitFor(() => expect(mocks.verifyInstallation).toHaveBeenCalledWith({ repositoryId: "repository-1" }));
+    expect(mocks.beginInstallation).not.toHaveBeenCalled();
   });
 
   it("sanitizes GitHub App setup failures", async () => {

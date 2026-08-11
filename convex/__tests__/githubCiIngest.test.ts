@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { extractPrFromWebhookEvent, mapCheckRunsToSignals, verifyGithubWebhookSignature } from "../lib/githubCiIngest";
+import {
+  canonicalGithubPullRequestUrl,
+  extractPrFromWebhookEvent,
+  isSupportedPullRequestWebhookAction,
+  mapCheckRunsToSignals,
+  parseMissionControlPullRequestLineage,
+  verifyGithubWebhookSignature,
+} from "../lib/githubCiIngest";
 import { buildFileTreeFromPaths } from "../lib/fileTree";
 
 describe("githubCiIngest", () => {
@@ -37,12 +44,55 @@ describe("githubCiIngest", () => {
     })).toMatchObject({ owner: "owner", repo: "repo", prNumber: 42 });
     expect(extractPrFromWebhookEvent("check_run", {
       repository,
-      check_run: { pull_requests: [{ number: 42 }] },
-    })).toMatchObject({ owner: "owner", repo: "repo", prNumber: 42 });
+      check_run: { pull_requests: [{ number: 42, url: "https://api.github.com/repos/owner/repo/pulls/42" }] },
+    })).toEqual({ owner: "owner", repo: "repo", prNumber: 42, prUrl: "https://github.com/owner/repo/pull/42" });
     expect(extractPrFromWebhookEvent("pull_request_review", {
       repository,
       pull_request: { number: 42 },
     })).toMatchObject({ owner: "owner", repo: "repo", prNumber: 42 });
+  });
+
+  it("builds one canonical browser URL for every webhook source", () => {
+    expect(canonicalGithubPullRequestUrl("owner", "repo", 42)).toBe("https://github.com/owner/repo/pull/42");
+  });
+
+  it("extracts complete factory lineage from the exact PR body section", () => {
+    expect(parseMissionControlPullRequestLineage(`
+## Mission Control governed execution
+
+### Lineage
+- missionId: \`mission123\`
+- taskId: \`task123\`
+- workOrderId: \`workorder123\`
+- workflowRunId: \`run123\`
+
+### Approved file scopes
+- Docs: \`docs/**\`
+`)).toEqual({
+      workOrderId: "workorder123",
+      workflowRunId: "run123",
+      taskId: "task123",
+    });
+  });
+
+  it("fails closed for partial or duplicate factory lineage", () => {
+    expect(() => parseMissionControlPullRequestLineage(`
+### Lineage
+- workOrderId: \`workorder123\`
+- workflowRunId: \`run123\`
+`)).toThrow("lineage is incomplete");
+    expect(() => parseMissionControlPullRequestLineage(`
+### Lineage
+- workOrderId: \`workorder123\`
+- workOrderId: \`workorder456\`
+- workflowRunId: \`run123\`
+- taskId: \`task123\`
+`)).toThrow("duplicate workOrderId");
+  });
+
+  it("accepts PR edits as a fresh evidence synchronization event", () => {
+    expect(isSupportedPullRequestWebhookAction("edited")).toBe(true);
+    expect(isSupportedPullRequestWebhookAction("closed")).toBe(false);
   });
 });
 

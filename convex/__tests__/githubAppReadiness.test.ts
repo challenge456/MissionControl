@@ -1,10 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createPrivateKey } from "node:crypto";
 import {
   evaluateGithubAppCapabilities,
   githubInstallationIsStale,
 } from "../lib/githubAppReadiness";
-import { createGithubAppJwt, sha256Hex } from "../lib/githubAppAuth";
+import { createGithubAppJwt, mintGithubInstallationToken, sha256Hex } from "../lib/githubAppAuth";
 
 const minimumPermissions = [
   { name: "metadata", access: "read" as const },
@@ -20,6 +20,7 @@ const requiredEvents = [
 ];
 
 describe("GitHub App readiness", () => {
+  afterEach(() => vi.unstubAllGlobals());
   it("accepts only the complete least-privilege V1 envelope", () => {
     expect(evaluateGithubAppCapabilities({
       permissions: minimumPermissions,
@@ -30,6 +31,16 @@ describe("GitHub App readiness", () => {
       excessivePermissions: [],
       missingEvents: [],
     });
+  });
+
+  it("does not require lifecycle events that GitHub delivers automatically", () => {
+    const result = evaluateGithubAppCapabilities({
+      permissions: minimumPermissions,
+      subscribedEvents: ["check_run", "pull_request", "pull_request_review"],
+    });
+
+    expect(result.ready).toBe(true);
+    expect(result.missingEvents).toEqual([]);
   });
 
   it("reports missing and excessive authority separately", () => {
@@ -107,5 +118,39 @@ describe("GitHub App readiness", () => {
       now,
     });
     expect(pkcs1Token.split(".")).toHaveLength(3);
+  });
+
+  it("mints a short-lived token scoped to the exact provider repository", async () => {
+    const keyPair = await crypto.subtle.generateKey(
+      {
+        name: "RSASSA-PKCS1-v1_5",
+        modulusLength: 2048,
+        publicExponent: new Uint8Array([1, 0, 1]),
+        hash: "SHA-256",
+      },
+      true,
+      ["sign", "verify"]
+    );
+    const pkcs8 = await crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
+    const base64 = Buffer.from(pkcs8).toString("base64").match(/.{1,64}/g)?.join("\n");
+    const privateKey = `-----BEGIN PRIVATE KEY-----\n${base64}\n-----END PRIVATE KEY-----`;
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      token: "ephemeral-test-token",
+      expires_at: "2026-08-10T09:00:00Z",
+    }), { status: 201, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await mintGithubInstallationToken({
+      installationId: "456",
+      providerRepositoryId: "123",
+      appId: "789",
+      privateKey,
+    });
+
+    expect(result).toMatchObject({ token: "ephemeral-test-token" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://api.github.com/app/installations/456/access_tokens");
+    expect(JSON.parse(String(init?.body))).toEqual({ repository_ids: [123] });
   });
 });

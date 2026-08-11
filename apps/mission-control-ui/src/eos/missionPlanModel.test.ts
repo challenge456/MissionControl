@@ -5,6 +5,7 @@ import {
   missionPlanPayload,
   nextPlanItemId,
   summarizePlanDiff,
+  updateMissionPlanAssertion,
   validateMissionPlanValues,
 } from "./missionPlanModel";
 
@@ -16,6 +17,11 @@ describe("Mission plan model", () => {
       workflowId: "delivery",
       workflowVersion: 3,
       assertionIds: ["assertion-1"],
+      implementationPolicy: {
+        allowedCommands: ["git diff --check"],
+        maxAttempts: 2,
+        timeoutMinutes: 30,
+      },
     });
     expect(values.assertions[0].assertionId).toBe("assertion-1");
   });
@@ -26,11 +32,12 @@ describe("Mission plan model", () => {
     values.rollbackApproach = " Roll back ";
     values.workOrderBlueprints[0].id = " work-order-1 ";
     values.workOrderBlueprints[0].assertionIds = ["assertion-1", "assertion-1"];
+    values.workOrderBlueprints[0].implementationPolicy!.allowedCommands = [" git diff --check ", ""];
     values.assertions[0] = { ...emptyAssertion("assertion-1"), title: " Proof ", outcome: " Outcome ", passCondition: " Pass ", requiredEvidence: " Output " };
     expect(missionPlanPayload(values)).toMatchObject({
       summary: "Summary",
       rollbackApproach: "Roll back",
-      workOrderBlueprints: [{ id: "work-order-1", assertionIds: ["assertion-1"] }],
+      workOrderBlueprints: [{ id: "work-order-1", assertionIds: ["assertion-1"], implementationPolicy: { allowedCommands: ["git diff --check"] } }],
       assertions: [{ title: "Proof", outcome: "Outcome", passCondition: "Pass", requiredEvidence: "Output" }],
     });
   });
@@ -52,5 +59,12 @@ describe("Mission plan model", () => {
       "Plan summary changed",
       "Assertion added: assertion-2",
     ]));
+  });
+
+  it("keeps WorkOrder coverage linked when an assertion ID is renamed", () => {
+    const values = emptyMissionPlan();
+    const renamed = updateMissionPlanAssertion(values, 0, { assertionId: "exact-scope-proof" });
+    expect(renamed.assertions[0].assertionId).toBe("exact-scope-proof");
+    expect(renamed.workOrderBlueprints[0].assertionIds).toEqual(["exact-scope-proof"]);
   });
 });
