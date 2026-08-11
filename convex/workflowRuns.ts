@@ -185,6 +185,17 @@ async function appendReceiptArtifactLink(ctx: any, verificationReceiptId: any, a
   await ctx.db.patch(verificationReceiptId, { linkedRunArtifactIds: linked });
 }
 
+function redactExecutionPrompt<T extends Record<string, any> | null>(run: T): T {
+  if (!run?.executionManifest) return run;
+  return {
+    ...run,
+    executionManifest: {
+      ...run.executionManifest,
+      compiledPrompt: undefined,
+    },
+  } as T;
+}
+
 // ============================================================================
 // QUERIES
 // ============================================================================
@@ -202,43 +213,43 @@ export const list = query({
   handler: async (ctx, args) => {
     // Build query based on filters
     if (args.projectId && args.status) {
-      return await ctx.db
+      return (await ctx.db
         .query("workflowRuns")
         .withIndex("by_project_status", (q) => 
           q.eq("projectId", args.projectId).eq("status", args.status as any)
         )
         .order("desc")
-        .take(args.limit ?? 100);
+        .take(args.limit ?? 100)).map(redactExecutionPrompt);
     }
     
     if (args.projectId) {
-      return await ctx.db
+      return (await ctx.db
         .query("workflowRuns")
         .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
         .order("desc")
-        .take(args.limit ?? 100);
+        .take(args.limit ?? 100)).map(redactExecutionPrompt);
     }
     
     if (args.workflowId) {
-      return await ctx.db
+      return (await ctx.db
         .query("workflowRuns")
         .withIndex("by_workflow_id", (q) => q.eq("workflowId", args.workflowId!))
         .order("desc")
-        .take(args.limit ?? 100);
+        .take(args.limit ?? 100)).map(redactExecutionPrompt);
     }
     
     if (args.status) {
-      return await ctx.db
+      return (await ctx.db
         .query("workflowRuns")
         .withIndex("by_status", (q) => q.eq("status", args.status as any))
         .order("desc")
-        .take(args.limit ?? 100);
+        .take(args.limit ?? 100)).map(redactExecutionPrompt);
     }
     
-    return await ctx.db
+    return (await ctx.db
       .query("workflowRuns")
       .order("desc")
-      .take(args.limit ?? 100);
+      .take(args.limit ?? 100)).map(redactExecutionPrompt);
   },
 });
 
@@ -248,10 +259,10 @@ export const list = query({
 export const get = query({
   args: { runId: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.db
+    return redactExecutionPrompt(await ctx.db
       .query("workflowRuns")
       .withIndex("by_run_id", (q) => q.eq("runId", args.runId))
-      .first();
+      .first());
   },
 });
 
@@ -261,7 +272,7 @@ export const get = query({
 export const getById = query({
   args: { id: v.id("workflowRuns") },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.id);
+    return redactExecutionPrompt(await ctx.db.get(args.id));
   },
 });
 
@@ -334,9 +345,18 @@ export const getInspector = query({
       artifacts: artifacts as any,
       receipts: receipts as any,
     });
+    const inspectorRun = run.executionManifest
+      ? {
+          ...run,
+          executionManifest: {
+            ...(run.executionManifest as Record<string, unknown>),
+            compiledPrompt: undefined,
+          },
+        }
+      : run;
 
     return {
-      run,
+      run: inspectorRun,
       workflow: run.workflowSnapshot ?? installedWorkflow,
       workOrder,
       events: orderedEvents,

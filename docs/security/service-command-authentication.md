@@ -3,8 +3,8 @@
 ## Decision
 
 Mission Control V1 uses one authenticated service identity,
-`orchestration-server`, for service-side WorkOrder dispatch and executor receipt
-ingestion. Public browser mutations cannot claim `SYSTEM` or `AGENT` authority.
+`orchestration-server`, for service-side WorkOrder dispatch, executor receipt
+ingestion, and leased Factory-attempt execution. Public browser mutations cannot claim `SYSTEM` or `AGENT` authority.
 The orchestration server authenticates inbound callers with a bearer credential,
 then signs each outbound Convex command with a separate HMAC credential.
 
@@ -53,7 +53,16 @@ is absent. Rotate the bearer and signing credentials independently.
 |---|---|---|---|
 | `workorders.dispatch` | `workOrders.dispatch` (`HUMAN` only) | `serviceCommands.dispatchWorkOrder` | `workOrders.dispatchServiceInternal` |
 | `receipts.ingest` | None | `serviceCommands.ingestReceiptPacket` | `factory/piBridge.ingestReceiptPacketInternal` |
+| `attempts.claim` | None | `serviceCommands.claimFactoryAttempt` | `factory/attempts.claimInternal` |
+| `attempts.renew` | None | `serviceCommands.renewFactoryAttempt` | `factory/attempts.renewInternal` |
+| `attempts.report` | None | `serviceCommands.reportFactoryAttempt` | `factory/attempts.reportInternal` |
 
-Additional scheduler, task-transition, artifact, approval-request, and handoff
+Attempt claims are atomic and bounded to 15–120 seconds. Renewal and report
+commands must present the exact active lease. `attempts.report` is the only
+orchestration-server path for ordered Factory execution events, artifacts, and
+terminal status; the former generic HTTP event/artifact write routes return
+`410 Gone`.
+
+Additional scheduler, task-transition, approval-request, and handoff
 commands must be added as named capabilities before those callers can be treated
 as production service identities. Do not reuse one generic “system” capability.

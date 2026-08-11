@@ -8,6 +8,13 @@ Exact commands to run Mission Control locally.
 > This command starts Convex, the workflow graph executor, and the UI together.
 > Legacy worktree flow (`sf-19-ui-migration` + `sf-90-demo`) still works but is optional.
 
+> **Software Factory Research Lab (preserved original workspace):** run
+> `pnpm run dev:research-lab` from the main repo. This explicit local profile
+> starts the preserved Research Lab backend on port **3210** and the UI on
+> **http://localhost:5199**. It does not seed data or start autonomous executors.
+> Do not use `dev:demo` when you intend to open the Research Lab; `dev:demo`
+> intentionally uses the separate Software Factory Demo database.
+
 ## Prerequisites
 
 - Node 18+
@@ -79,6 +86,21 @@ starts `pnpm run dev:workflow-executor`, which claims queued workflow runs and
 idempotently installs the built-in workflow definitions, then materializes
 dependency-ready node Tasks. If the executor is not running, a
 dispatched graph remains queued rather than reporting false progress.
+
+For the original **Software Factory Research Lab**, use:
+
+```bash
+pnpm run dev:research-lab
+```
+
+The Research Lab and Software Factory Demo are intentionally separate local
+runtime profiles. Stop one before starting the other because both use port
+5199. The Research Lab profile reads the preserved Convex state from the local
+deployment configured in `.env.local`; it never copies credentials into the
+repository and never rewrites the Research Lab task inventory. When the
+preserved backend was deployed from a newer compatible checkout, set
+`MISSION_CONTROL_RESEARCH_LAB_UI_ROOT` in `.env.local` to that checkout so the
+runtime compatibility gate remains enforced.
 
 ## Expected URLs
 

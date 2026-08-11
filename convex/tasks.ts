@@ -34,6 +34,10 @@ import {
   buildWorkflowStateCompatibilityReport,
   validateWorkflowTransitionContext,
 } from "./lib/taskWorkflowState";
+import {
+  buildWorkOrderTaskAuthority,
+  workOrderTaskAuthorityIssue,
+} from "./lib/taskAuthority";
 
 // ============================================================================
 // TYPES
@@ -1159,6 +1163,26 @@ export const create = mutation({
         ? await resolveAssigneeInstanceIds(ctx, assigneeIds)
         : undefined;
 
+    const suppliedMetadata =
+      typeof args.metadata === "object" && args.metadata !== null
+        ? args.metadata as Record<string, unknown>
+        : {};
+    const authorityScope = workOrder
+      ? buildWorkOrderTaskAuthority(workOrder)
+      : undefined;
+    if (
+      workOrder
+      && suppliedMetadata.authorityScope !== undefined
+      && workOrderTaskAuthorityIssue({
+        scope: suppliedMetadata.authorityScope,
+        workOrder,
+      })
+    ) {
+      throw new Error(
+        "Task authority scope does not match the current Work Order objective.",
+      );
+    }
+
     // ── Generate human-readable identifier (e.g., "MC-042") ──
     let identifier: string | undefined;
     if (project && args.projectId) {
@@ -1198,9 +1222,8 @@ export const create = mutation({
       createdBy: (args.createdBy as any) ?? undefined,
       createdByRef: args.createdByRef,
       metadata: {
-        ...(typeof args.metadata === "object" && args.metadata !== null
-          ? args.metadata
-          : {}),
+        ...suppliedMetadata,
+        ...(authorityScope ? { authorityScope } : {}),
         governanceOrigin: args.workOrderId
           ? "GOVERNED_WORK_ORDER"
           : "UNGOVERNED_INTAKE",
@@ -1305,6 +1328,7 @@ export const linkToWorkOrder = mutation({
     }
 
     const linkedAt = Date.now();
+    const authorityScope = buildWorkOrderTaskAuthority(workOrder);
     const beforeState = {
       workOrderId: null,
       governanceStatus: deriveTaskGovernanceStatus(task, null),
@@ -1315,6 +1339,7 @@ export const linkToWorkOrder = mutation({
         ...(typeof task.metadata === "object" && task.metadata !== null
           ? task.metadata
           : {}),
+        authorityScope,
         governanceOrigin: "GOVERNED_WORK_ORDER",
         relationshipCreatedAt: linkedAt,
         relationshipActorType: args.actorType,

@@ -14,6 +14,7 @@
 export {
   WorkflowExecutor,
   createExecutor,
+  legacyExecutorOwnsRun,
   workflowDefinitionForRun,
   workflowEvidenceDigest,
   type WorkflowExecutorConfig,
@@ -26,6 +27,11 @@ export {
   validateContext,
   type RenderContext,
 } from "./renderer";
+
+export {
+  buildBoundedContextUpdate,
+  validateCompletionOutput,
+} from "./handoff";
 
 export {
   parse,

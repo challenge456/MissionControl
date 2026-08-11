@@ -29,7 +29,7 @@ import {
 } from "./lib/workOrderRevision";
 import { planAcceptedWorkOrderParentSync } from "./lib/workOrderParentSync";
 import { validateMissionWorkOrderDispatch } from "./lib/missionGovernance";
-import { evaluateFactoryDispatchPreflight } from "./lib/factoryDispatch";
+import { codexV1RecoveryReady, evaluateFactoryDispatchPreflight } from "./lib/factoryDispatch";
 import { validFactoryBudget } from "./lib/factoryConfiguration";
 import { evaluateGithubAppCapabilities, githubInstallationIsStale } from "./lib/githubAppReadiness";
 import { canonicalRepositoryKey } from "./lib/workspaceRepositories";
@@ -50,6 +50,9 @@ import {
 import { isAutomationSelfApproval } from "./lib/automationGovernance";
 import { loadTaskProjections } from "./lib/taskProjection";
 import { snapshotWorkflowDefinition } from "./lib/workflowSnapshot";
+import { buildWorkOrderTaskAuthority } from "./lib/taskAuthority";
+import { buildFactoryExecutionManifest } from "./lib/executionManifest";
+import { factoryWorkflowContractIssues } from "./lib/factoryWorkflowContract";
 import { createWorkOrderRecord } from "./lib/workOrderCreate";
 import {
   nextTaskAttemptNumbers,
@@ -1412,6 +1415,8 @@ async function dispatchWorkOrder(ctx: MutationCtx, args: DispatchArgs) {
     const taskSelection = validateTaskAttemptSelection({
       workOrderId: workOrder._id,
       projectId: workOrder.projectId,
+      workOrderRevisionNumber: workOrder.currentRevisionNumber,
+      workOrderDesiredOutcome: workOrder.desiredOutcome,
       // Historical runs used legacy project Tasks that were not canonical
       // WorkOrder children. Keep their existing recovery route available.
       hasCanonicalChildTasks:
@@ -1481,12 +1486,14 @@ async function dispatchWorkOrder(ctx: MutationCtx, args: DispatchArgs) {
     }
 
     let missionForDispatch: any = null;
+    let missionPlanForDispatch: any = null;
     if (refreshedWorkOrder.missionId) {
       const mission = await ctx.db.get(refreshedWorkOrder.missionId);
       const missionPlan = refreshedWorkOrder.missionPlanId
         ? await ctx.db.get(refreshedWorkOrder.missionPlanId)
         : null;
       if (!mission || !missionPlan) throw new Error("Mission WorkOrder is missing its Mission plan");
+      missionPlanForDispatch = missionPlan;
       const blueprintId = (refreshedWorkOrder.metadata as { missionBlueprintId?: string } | undefined)?.missionBlueprintId;
       const blueprint = missionPlan.workOrderBlueprints.find((candidate: any) => candidate.id === blueprintId);
       if (!blueprint) throw new Error("Mission WorkOrder blueprint not found");
@@ -1626,10 +1633,63 @@ async function dispatchWorkOrder(ctx: MutationCtx, args: DispatchArgs) {
     const attemptNumbers = selectedTask
       ? nextTaskAttemptNumbers(taskAttempts, !!retryOfRun)
       : null;
+    const authorityScope = buildWorkOrderTaskAuthority(refreshedWorkOrder);
     const taskInput =
       selectedTask?.description?.trim() ||
       selectedTask?.title ||
       refreshedWorkOrder.desiredOutcome;
+    const executionManifest = factoryBinding
+      ? buildFactoryExecutionManifest({
+          runId,
+          missionId: refreshedWorkOrder.missionId ? String(refreshedWorkOrder.missionId) : undefined,
+          missionPlanId: refreshedWorkOrder.missionPlanId ? String(refreshedWorkOrder.missionPlanId) : undefined,
+          missionPlanVersion: missionPlanForDispatch?.version,
+          workOrderId: String(refreshedWorkOrder._id),
+          workOrderRevisionNumber: refreshedWorkOrder.currentRevisionNumber ?? 1,
+          workOrderRevisionId: refreshedWorkOrder.currentRevisionId ? String(refreshedWorkOrder.currentRevisionId) : undefined,
+          taskId: selectedTask ? String(selectedTask._id) : undefined,
+          factoryDefinitionVersionId: String(factoryBinding.version._id),
+          factoryConfigurationDigest: factoryBinding.version.configurationDigest,
+          repositoryId: String(factoryBinding.repository._id),
+          repository: factoryBinding.repository.repository,
+          defaultBranch: factoryBinding.repository.defaultBranch,
+          branch: factoryBinding.branch,
+          worktree: factoryBinding.worktree,
+          workflow: workflowSnapshot as any,
+          workOrder: {
+            title: refreshedWorkOrder.title,
+            desiredOutcome: refreshedWorkOrder.desiredOutcome,
+            context: refreshedWorkOrder.context,
+            acceptanceCriteria: refreshedWorkOrder.acceptanceCriteria,
+            constraints: refreshedWorkOrder.constraints,
+            sourceOfTruthRefs: refreshedWorkOrder.sourceOfTruthRefs,
+          },
+          agentBindings: factoryBinding.agentBindings.map((binding: any) => ({
+            workflowAgentId: binding.workflowAgentId,
+            agentVersionId: String(binding.agentVersion._id),
+            agentVersion: binding.agentVersion.version,
+            genomeHash: binding.agentVersion.genomeHash,
+            promptBundleHash: binding.agentVersion.genome.promptBundleHash,
+            toolManifestHash: binding.agentVersion.genome.toolManifestHash,
+            model: binding.agentVersion.genome.modelConfig,
+          })),
+          codeScopes: factoryBinding.codeScopes.map((scope: any) => ({
+            id: String(scope._id),
+            slug: scope.slug,
+            includePaths: scope.includePaths,
+            excludePaths: scope.excludePaths,
+          })),
+          allowedTools: factoryBinding.allowedTools,
+          routedModel,
+          maxRuntimeMinutes: factoryBinding.version.budget.maxRuntimeMinutes,
+          initialContext: {
+            task: taskInput,
+            workOrderDesiredOutcome: refreshedWorkOrder.desiredOutcome,
+            authorityScope,
+            revisionNumber: refreshedWorkOrder.currentRevisionNumber ?? 1,
+          },
+        })
+      : null;
     const runDocId = await ctx.db.insert("workflowRuns", {
       tenantId: refreshedWorkOrder.tenantId,
       runId,
@@ -1652,7 +1712,10 @@ async function dispatchWorkOrder(ctx: MutationCtx, args: DispatchArgs) {
       executorVersion: factoryBinding?.version.executor.version,
       branch: factoryBinding?.branch,
       allowedTools: factoryBinding?.allowedTools,
+      approvedCodeScopeIds: factoryBinding?.version.codeScopeIds,
       isMutating: refreshedWorkOrder.isMutating ?? true,
+      executionManifest: executionManifest?.manifest,
+      executionManifestDigest: executionManifest?.digest,
       parentTaskId: selectedTask?._id ?? refreshedWorkOrder.legacyTaskId,
       status: "PENDING",
       currentStepIndex: 0,
@@ -1661,6 +1724,7 @@ async function dispatchWorkOrder(ctx: MutationCtx, args: DispatchArgs) {
       context: {
         task: taskInput,
         workOrderDesiredOutcome: refreshedWorkOrder.desiredOutcome,
+        authorityScope,
         workOrderId: refreshedWorkOrder._id,
         taskId: selectedTask?._id,
         taskAttemptNumber: attemptNumbers?.attemptNumber,
@@ -1699,6 +1763,8 @@ async function dispatchWorkOrder(ctx: MutationCtx, args: DispatchArgs) {
         hostBindingId: factoryBinding?.host._id,
         branch: factoryBinding?.branch,
         allowedTools: factoryBinding?.allowedTools,
+        approvedCodeScopeIds: factoryBinding?.version.codeScopeIds,
+        executionManifestDigest: executionManifest?.digest,
       },
     });
     if (routing) {
@@ -1885,6 +1951,8 @@ async function resolveFactoryDispatchBinding(
       definitionActive: false, versionIsActive: false, assessmentPasses: false,
       assessmentCurrent: false, digestMatches: false, repositoryReady: false,
       githubReady: false, workflowMatches: false, executorReady: false,
+      workflowContractReady: false,
+      codeScopesReady: false, agentManifestsReady: false,
       policyReady: false, verifiersReady: false, hostReady: false,
       budgetReady: false, recoveryReady: false, worktreeProvided: false,
       mutating: workOrder.isMutating !== false, activeRepositoryMutation: false,
@@ -1896,7 +1964,7 @@ async function resolveFactoryDispatchBinding(
   const now = Date.now();
   const version = await ctx.db.get(args.factoryDefinitionVersionId);
   if (!version) throw new Error("Factory dispatch blocked (factory-version-not-found): Select an available Factory version.");
-  const [definition, repository, policy, installation, assessments, bindings, verifiers] = await Promise.all([
+  const [definition, repository, policy, installation, assessments, bindings, verifiers, codeScopes, agentVersions] = await Promise.all([
     ctx.db.get(version.factoryDefinitionId),
     ctx.db.get(version.repositoryId),
     version.policyEnvelopeId ? ctx.db.get(version.policyEnvelopeId) : null,
@@ -1904,9 +1972,14 @@ async function resolveFactoryDispatchBinding(
     ctx.db.query("factoryReadinessAssessments").withIndex("by_version", (q) => q.eq("factoryDefinitionVersionId", version._id)).collect(),
     ctx.db.query("workspaceHostBindings").withIndex("by_project", (q) => q.eq("projectId", version.projectId)).collect(),
     Promise.all(version.verifierIds.map((id) => ctx.db.get(id))),
+    Promise.all((version.codeScopeIds ?? []).map((id) => ctx.db.get(id))),
+    Promise.all((version.agentBindings ?? []).map((binding) => ctx.db.get(binding.agentVersionId))),
   ]);
   const latestAssessment = assessments.sort((left, right) => right.assessedAt - left.assessedAt)[0];
   const github = installation ? evaluateGithubAppCapabilities(installation) : null;
+  const agentTemplates = await Promise.all(agentVersions.map((agentVersion) =>
+    agentVersion ? ctx.db.get(agentVersion.templateId) : null
+  ));
   const host = bindings.find((candidate) => repository && canonicalRepositoryKey(candidate.repository) === canonicalRepositoryKey(repository.repository));
   const activeStatuses = ["PENDING", "RUNNING", "PAUSED"] as const;
   const activeRuns = repository
@@ -1925,12 +1998,29 @@ async function resolveFactoryDispatchBinding(
     repositoryReady: Boolean(repository && repository.projectId === workOrder.projectId && repository.status === "READY"),
     githubReady: Boolean(installation?.status === "CONNECTED" && github?.ready && !githubInstallationIsStale(installation.verifiedAt, now)),
     workflowMatches: version.workflowId === workflow._id,
+    workflowContractReady: factoryWorkflowContractIssues(workflow).length === 0,
     executorReady: version.executor.adapter === "codex" && version.executor.version === "v1",
+    codeScopesReady: Boolean(
+      version.codeScopeIds?.length
+      && repository
+      && codeScopes.every((scope) => scope?.active && scope.repositoryId === repository._id)
+    ),
+    agentManifestsReady: Boolean(
+      version.agentBindings?.length === workflow.agents.length
+      && new Set(version.agentBindings?.map((binding) => binding.workflowAgentId)).size === workflow.agents.length
+      && agentVersions.every((agentVersion) =>
+        agentVersion?.status === "APPROVED"
+        && Boolean(agentVersion.genome.promptBundleHash.trim())
+        && Boolean(agentVersion.genome.toolManifestHash.trim())
+        && Boolean(agentVersion.genome.modelConfig.modelId.trim())
+      )
+      && agentTemplates.every((template) => template?.active)
+    ),
     policyReady: Boolean(policy?.active && (!policy.projectId || policy.projectId === workOrder.projectId)),
     verifiersReady: verifiers.length > 0 && verifiers.every((item) => item?.active && item.projectId === workOrder.projectId),
     hostReady: Boolean(host && host.status === "READY" && !host.dirty && now - host.checkedAt <= 24 * 60 * 60 * 1_000),
     budgetReady: validFactoryBudget(version.budget),
-    recoveryReady: Object.values(version.recovery).every(Boolean),
+    recoveryReady: codexV1RecoveryReady(version.recovery),
     worktreeProvided: Boolean(args.worktree?.trim() || host?.checkoutRoot?.trim()),
     mutating: workOrder.isMutating !== false,
     activeRepositoryMutation: activeRuns.some((run) => run.isMutating !== false),
@@ -1944,6 +2034,11 @@ async function resolveFactoryDispatchBinding(
     branch: args.branch?.trim() || `mc/${String(workOrder._id).slice(-12)}`,
     worktree: args.worktree?.trim() || `${host.checkoutRoot.replace(/\/+$/, "")}/.mission-control/worktrees/${String(workOrder._id).slice(-12)}`,
     allowedTools: Array.isArray(workflow.metadata?.allowedTools) ? workflow.metadata.allowedTools.filter((item: unknown): item is string => typeof item === "string") : [],
+    codeScopes,
+    agentBindings: (version.agentBindings ?? []).map((binding, index) => ({
+      workflowAgentId: binding.workflowAgentId,
+      agentVersion: agentVersions[index],
+    })),
   };
 }
 

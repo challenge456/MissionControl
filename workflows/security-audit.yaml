@@ -1,12 +1,12 @@
 # Security Audit Workflow
-# 7-agent workflow: scan → prioritize → setup → fix → verify → test → PR
+# 7-agent workflow: scan → prioritize → setup → fix → verify → test → PR handoff
 # 
 # Inspired by Antfarm's proven security-audit pattern.
 # Point it at a repo, get back a security fix PR with regression tests.
 #
 # AGENT CONTRACT:
 #   Inputs:  {{repo_url}} or {{workspace}} - Repository to audit
-#   Outputs: PR URL with security fixes + regression tests
+#   Outputs: Structured security evidence and pull-request handoff
 #   Steps:   7 sequential steps with severity prioritization
 #
 # STEP REFERENCE:
@@ -16,7 +16,7 @@
 #   4. fixer:        Implement fixes → outputs code changes
 #   5. verifier:     Verify fixes → outputs verification report
 #   6. tester:       Add regression tests → outputs test results
-#   7. pr-creator:   Create PR → outputs PR URL
+#   7. pr-creator:   Prepare PR handoff → outputs evidence packet
 #
 # ERROR HANDLING:
 #   - Step failure triggers retry (max 3)
@@ -79,7 +79,8 @@ steps:
       Scan the codebase for security vulnerabilities:
       {{task}}
       
-      Reply with STATUS: done and VULNERABILITIES: ...
+      Return JSON with status: "COMPLETED", vulnerabilities, commands,
+      limitations, and a compact handoff.
       
       Check for:
       - Dependency vulnerabilities (npm audit, pnpm audit)
@@ -93,9 +94,18 @@ steps:
       - Type and description
       - Location (file:line or package)
       - Severity assessment
-    expects: "STATUS: done"
+    expects: "vulnerabilities"
+    outputSchema:
+      type: object
+      required: [status, vulnerabilities, commands, limitations]
+      properties:
+        status: { type: string }
+        vulnerabilities: { type: array }
+        commands: { type: array }
+        limitations: { type: array }
     retryLimit: 1
     timeoutMinutes: 20
+    isolation: READ_ONLY
 
   - id: prioritize
     agent: prioritizer
@@ -103,7 +113,8 @@ steps:
       Rank vulnerabilities by severity and fix priority:
       {{scanOutput}}
       
-      Reply with STATUS: done and PRIORITY_LIST: ...
+      Return JSON with status: "COMPLETED", priorityList, rationale,
+      and a compact handoff.
       
       For each vulnerability:
       - Severity: critical/high/medium/low
@@ -117,9 +128,17 @@ steps:
       3. Medium/low based on impact
       
       List top 5-10 vulnerabilities to fix in this run.
-    expects: "STATUS: done"
+    expects: "priorityList"
+    outputSchema:
+      type: object
+      required: [status, priorityList, rationale]
+      properties:
+        status: { type: string }
+        priorityList: { type: array }
+        rationale: { type: string }
     retryLimit: 1
     timeoutMinutes: 10
+    isolation: READ_ONLY
 
   - id: setup
     agent: setup
@@ -127,15 +146,23 @@ steps:
       Set up environment for security fixes:
       {{prioritizeOutput}}
       
-      Reply with STATUS: done and SETUP: ...
+      Return JSON with status: "COMPLETED", setupSummary, and a compact handoff.
       
       Tasks:
-      - Create security-fix branch
+      - Inspect the allocated worktree and server-owned branch
       - Prepare test environment
-      - Backup current state
-    expects: "STATUS: done"
+      - Confirm the base revision
+      Do not create or push branches.
+    expects: "setupSummary"
+    outputSchema:
+      type: object
+      required: [status, setupSummary]
+      properties:
+        status: { type: string }
+        setupSummary: { type: string }
     retryLimit: 2
     timeoutMinutes: 5
+    isolation: WORKTREE
 
   - id: fix
     agent: fixer
@@ -145,7 +172,8 @@ steps:
       
       Environment: {{setupOutput}}
       
-      Reply with STATUS: done and FIXES: ...
+      Return JSON with status: "COMPLETED", fixes, changedFiles,
+      regressionTests, and a compact handoff.
       
       For each vulnerability:
       - Apply security patch
@@ -157,10 +185,19 @@ steps:
       - Fix root cause, not just symptoms
       - Follow security best practices
       - Test thoroughly
-      - Commit each fix separately with clear messages
-    expects: "STATUS: done"
+      - Leave changes reviewable; the control plane owns commit and publication
+    expects: "fixes"
+    outputSchema:
+      type: object
+      required: [status, fixes, changedFiles, regressionTests]
+      properties:
+        status: { type: string }
+        fixes: { type: array }
+        changedFiles: { type: array }
+        regressionTests: { type: array }
     retryLimit: 2
     timeoutMinutes: 45
+    isolation: WORKTREE
 
   - id: verify
     agent: verifier
@@ -170,7 +207,8 @@ steps:
       Original scan: {{scanOutput}}
       Fixes applied: {{fixOutput}}
       
-      Reply with STATUS: done and VERIFICATION: ...
+      Return JSON with status: "COMPLETED", resolvedVulnerabilities,
+      remainingVulnerabilities, commands, and a compact handoff.
       
       Confirm:
       - All targeted vulnerabilities resolved
@@ -182,9 +220,18 @@ steps:
       - npm audit / pnpm audit
       - Code analysis tools
       - Manual review of changes
-    expects: "STATUS: done"
+    expects: "resolvedVulnerabilities"
+    outputSchema:
+      type: object
+      required: [status, resolvedVulnerabilities, remainingVulnerabilities, commands]
+      properties:
+        status: { type: string }
+        resolvedVulnerabilities: { type: array }
+        remainingVulnerabilities: { type: array }
+        commands: { type: array }
     retryLimit: 1
     timeoutMinutes: 15
+    isolation: READ_ONLY
 
   - id: test
     agent: tester
@@ -192,7 +239,8 @@ steps:
       Run regression tests on security fixes:
       {{fixOutput}}
       
-      Reply with STATUS: done and TEST_RESULTS: ...
+      Return JSON with status: "COMPLETED", passed, commands, failures,
+      and a compact handoff.
       
       Verify:
       - All existing tests still pass
@@ -201,20 +249,30 @@ steps:
       - Performance not degraded
       
       Run full test suite and report results.
-    expects: "STATUS: done"
+    expects: "passed"
+    outputSchema:
+      type: object
+      required: [status, passed, commands, failures]
+      properties:
+        status: { type: string }
+        passed: { type: boolean }
+        commands: { type: array }
+        failures: { type: array }
     retryLimit: 2
     timeoutMinutes: 20
+    isolation: WORKTREE
 
   - id: pr
     agent: pr-creator
     input: |
-      Create PR for security fixes:
+      Prepare the pull-request handoff for the security fixes:
       
       Fixes: {{fixOutput}}
       Verification: {{verifyOutput}}
       Tests: {{testOutput}}
       
-      Reply with STATUS: done and PR_URL: ...
+      Return JSON with status: "COMPLETED", title, body, evidenceReferences,
+      and a compact handoff for the control plane.
       
       PR should include:
       - Title: "Security: Fix [N] vulnerabilities"
@@ -225,7 +283,16 @@ steps:
       
       Mark as security-related for priority review.
       
-      Use: gh pr create --title "..." --body "..."
-    expects: "STATUS: done"
+      Do not push, create, update, approve, or merge a pull request.
+    expects: "evidenceReferences"
+    outputSchema:
+      type: object
+      required: [status, title, body, evidenceReferences]
+      properties:
+        status: { type: string }
+        title: { type: string }
+        body: { type: string }
+        evidenceReferences: { type: array }
     retryLimit: 2
     timeoutMinutes: 5
+    isolation: WORKTREE

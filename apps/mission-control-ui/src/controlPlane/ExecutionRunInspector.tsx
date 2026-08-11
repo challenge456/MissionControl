@@ -108,6 +108,42 @@ export function ExecutionRunInspector({
                 </div>
               </Card>
 
+              {inspector.run.executionManifest ? (
+                <Card className="p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-medium text-foreground">Frozen agent execution manifest</div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        Reproducible prompt, agent, tool, model, harness, context, and causation authority. Prompt content stays collapsed from the operator view.
+                      </div>
+                    </div>
+                    <Badge variant="outline">{inspector.run.executionManifest.version}</Badge>
+                  </div>
+                  <div className="mt-4 grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
+                    <Meta label="Manifest digest" value={inspector.run.executionManifestDigest ?? "—"} />
+                    <Meta label="Compiled prompt hash" value={inspector.run.executionManifest.compiledPromptHash ?? "—"} />
+                    <Meta label="Context hash" value={inspector.run.executionManifest.workflow?.contextHash ?? "—"} />
+                    <Meta label="Completion contract" value={inspector.run.executionManifest.harness?.completionContract ?? "—"} />
+                    <Meta label="PR authority" value={inspector.run.executionManifest.harness?.pullRequestAuthority ?? "—"} />
+                    <Meta label="Allowed paths" value={inspector.run.executionManifest.repository?.allowedPaths?.join(", ") || "—"} />
+                    <Meta label="Excluded paths" value={inspector.run.executionManifest.repository?.excludedPaths?.join(", ") || "None"} />
+                    <Meta label="Lease owner" value={inspector.run.lease?.ownerId ?? "Not currently leased"} />
+                    <Meta label="Lease expiry" value={inspector.run.lease?.expiresAt ? new Date(inspector.run.lease.expiresAt).toLocaleString() : "—"} />
+                  </div>
+                  <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                    {(inspector.run.executionManifest.workflow?.steps ?? []).map((step: any) => (
+                      <div key={step.stepId} className="rounded-lg border border-[var(--panel-line)] bg-background/30 p-3 text-xs">
+                        <div className="font-mono text-foreground">{step.stepId}</div>
+                        <div className="mt-2 text-muted-foreground">Agent v{step.agentVersion} · {step.agentVersionId}</div>
+                        <div className="mt-1 text-muted-foreground">Model: {step.modelRoute}</div>
+                        <div className="mt-1 text-muted-foreground">Prompt: {step.promptBundleHash}</div>
+                        <div className="mt-1 text-muted-foreground">Tools: {step.toolManifestHash}</div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              ) : null}
+
               <Card className="p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>

@@ -32,7 +32,12 @@ describe("validateWorkflow", () => {
           id: "step1",
           agent: "agent1",
           input: "Do something",
-          expects: "STATUS: done",
+          expects: "result",
+          outputSchema: {
+            type: "object",
+            required: ["status", "result"],
+            properties: { status: { type: "string" }, result: { type: "string" } },
+          },
           retryLimit: 2,
           timeoutMinutes: 10,
         },
@@ -64,6 +69,7 @@ describe("validateWorkflow", () => {
           agent: "researcher",
           input: "Research A",
           expects: "source ledger",
+          outputSchema: { type: "object", required: ["status"], properties: { status: { type: "string" } } },
           retryLimit: 2,
           timeoutMinutes: 20,
           kind: "AGENT",
@@ -76,6 +82,7 @@ describe("validateWorkflow", () => {
           agent: "researcher",
           input: "Research B",
           expects: "source ledger",
+          outputSchema: { type: "object", required: ["status"], properties: { status: { type: "string" } } },
           retryLimit: 2,
           timeoutMinutes: 20,
           kind: "AGENT",
@@ -88,6 +95,7 @@ describe("validateWorkflow", () => {
           agent: "verifier",
           input: "Verify both ledgers",
           expects: "verified evidence",
+          outputSchema: { type: "object", required: ["status"], properties: { status: { type: "string" } } },
           retryLimit: 1,
           timeoutMinutes: 20,
           dependsOn: ["research-a", "research-b"],
@@ -100,6 +108,28 @@ describe("validateWorkflow", () => {
     };
 
     expect(validateWorkflow(workflow)).toEqual([]);
+  });
+
+  it("rejects heuristic completion and agent-owned pull-request authority", () => {
+    const errors = validateWorkflow({
+      id: "unsafe",
+      name: "Unsafe",
+      description: "Legacy authority",
+      agents: [{ id: "agent1", persona: "Coder" }],
+      steps: [{
+        id: "pr",
+        agent: "agent1",
+        input: "Use gh pr create and approve for merge",
+        expects: "STATUS: done",
+        retryLimit: 0,
+        timeoutMinutes: 5,
+      }],
+    });
+    expect(errors).toEqual(expect.arrayContaining([
+      expect.objectContaining({ field: "steps[0].expects" }),
+      expect.objectContaining({ field: "steps[0].input" }),
+      expect.objectContaining({ field: "steps[0].outputSchema" }),
+    ]));
   });
 
   it("rejects cyclic graph dependencies", () => {

@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   WorkflowExecutor,
+  compileAuthorizedTaskInput,
+  legacyExecutorOwnsRun,
+  validateRunTaskAuthority,
   workflowDefinitionForRun,
   workflowEvidenceDigest,
 } from "../executor";
@@ -46,7 +49,18 @@ const gateRun = {
   runId: "run-123",
   projectId: "project-1",
   workOrderId: "work-order-1",
-  context: { packet: "verified evidence" },
+  workOrderRevisionNumber: 1,
+  context: {
+    packet: "verified evidence",
+    workOrderDesiredOutcome: "Research retry scheduling.",
+    authorityScope: {
+      kind: "WORK_ORDER_DESIRED_OUTCOME" as const,
+      workOrderId: "work-order-1",
+      workOrderRevisionNumber: 1,
+      authorityRef: "work-order:work-order-1:revision:1:desired-outcome",
+      objective: "Research retry scheduling.",
+    },
+  },
   steps: [
     {
       stepId: "approval",
@@ -58,6 +72,72 @@ const gateRun = {
 };
 
 describe("WorkflowExecutor reliability", () => {
+  it("does not race the leased Factory attempt worker", () => {
+    expect(legacyExecutorOwnsRun({})).toBe(true);
+    expect(legacyExecutorOwnsRun({ factoryDefinitionVersionId: "factory-version-1" })).toBe(false);
+    expect(legacyExecutorOwnsRun({ executionManifestDigest: "sha256:manifest" })).toBe(false);
+  });
+
+  it("validates the frozen Work Order objective before creating a Task", () => {
+    expect(validateRunTaskAuthority(gateRun)).toEqual({
+      ok: true,
+      scope: gateRun.context.authorityScope,
+    });
+    expect(validateRunTaskAuthority({
+      ...gateRun,
+      context: { workOrderDesiredOutcome: "Research retry scheduling." },
+    })).toEqual({ ok: false, reason: "missing" });
+    expect(validateRunTaskAuthority({
+      ...gateRun,
+      context: {
+        ...gateRun.context,
+        authorityScope: {
+          ...gateRun.context.authorityScope,
+          objective: "Audit accessibility.",
+        },
+      },
+    })).toEqual({ ok: false, reason: "mismatched" });
+  });
+
+  it("makes the authoritative objective visible in generated Task input", () => {
+    expect(compileAuthorizedTaskInput(
+      gateRun.context.authorityScope,
+      "Inspect the current scheduler.",
+    )).toContain("Research retry scheduling.\n\nWorkflow step input:");
+  });
+
+  it.each([
+    [
+      "missing",
+      { workOrderDesiredOutcome: "Research retry scheduling." },
+    ],
+    [
+      "mismatched",
+      {
+        ...gateRun.context,
+        authorityScope: {
+          ...gateRun.context.authorityScope,
+          objective: "Audit accessibility.",
+        },
+      },
+    ],
+  ])("fails a step before Task creation when authority is %s", async (reason, context) => {
+    const query = vi.fn();
+    const mutation = vi.fn().mockResolvedValue({ success: true });
+    const executor = executorWithClient({ query, mutation });
+
+    await executor.executeStep({ ...gateRun, context }, gateWorkflow, 0);
+
+    expect(query).not.toHaveBeenCalled();
+    expect(mutation).toHaveBeenCalledTimes(1);
+    expect(mutation.mock.calls[0][1]).toMatchObject({
+      runId: "run-123",
+      stepIndex: 0,
+      status: "FAILED",
+      error: `Workflow Task authority scope is ${reason}.`,
+    });
+  });
+
   it("executes a run from its pinned workflow definition", () => {
     const installedWorkflow = { ...gateWorkflow, version: 5 };
     const pinnedWorkflow = { ...gateWorkflow, version: 4 };
@@ -111,6 +191,12 @@ describe("WorkflowExecutor reliability", () => {
       attemptNumber: 1,
       retryNumber: 0,
     });
+    expect(mutation.mock.calls[0][1].metadata.authorityScope).toEqual(
+      gateRun.context.authorityScope,
+    );
+    expect(mutation.mock.calls[0][1].description).toContain(
+      "Authorized Work Order objective",
+    );
     expect(mutation.mock.calls[0][1].workOrderId).toBe("work-order-1");
   });
 

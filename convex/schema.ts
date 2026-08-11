@@ -181,6 +181,8 @@ const runEventType = v.union(
   v.literal("HUMAN_INTERVENTION_REQUESTED"),
   v.literal("RUN_PAUSED"),
   v.literal("RUN_RESUMED"),
+  v.literal("CANCELLATION_REQUESTED"),
+  v.literal("RUN_CANCELED"),
   v.literal("RUN_FAILED"),
   v.literal("RUN_COMPLETED")
 );
@@ -713,6 +715,8 @@ export default defineSchema({
     
     // Metadata
     metadata: v.optional(v.any()),
+    createdAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
   })
     .index("by_tenant", ["tenantId"])
     .index("by_slug", ["slug"])
@@ -746,6 +750,8 @@ export default defineSchema({
       v.literal("ERROR")
     ),
     policyOverrides: v.optional(v.any()),
+    fixtureKey: v.optional(v.string()),
+    migrationVersion: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -874,6 +880,11 @@ export default defineSchema({
     repositoryId: v.id("workspaceRepositories"),
     workflowId: v.id("workflows"),
     executor: v.object({ adapter: v.string(), version: v.string() }),
+    codeScopeIds: v.optional(v.array(v.id("repositoryCodeScopes"))),
+    agentBindings: v.optional(v.array(v.object({
+      workflowAgentId: v.string(),
+      agentVersionId: v.id("agentVersions"),
+    }))),
     policyEnvelopeId: v.optional(v.id("policyEnvelopes")),
     environmentId: v.optional(v.id("environments")),
     budget: v.object({ maxCostUsd: v.number(), maxRuntimeMinutes: v.number(), maxAttempts: v.number() }),
@@ -964,11 +975,15 @@ export default defineSchema({
     includePaths: v.array(v.string()),
     excludePaths: v.array(v.string()),
     owningTeam: v.optional(v.string()),
+    owningTeamId: v.optional(v.id("scrumTeams")),
     requiredReviewers: v.array(v.string()),
     allowedEnvironments: v.array(
       v.union(v.literal("LOCAL"), v.literal("CLOUD"))
     ),
     verificationPolicy: v.optional(v.string()),
+    approvalPolicy: v.optional(v.string()),
+    fixtureKey: v.optional(v.string()),
+    migrationVersion: v.optional(v.number()),
     active: v.boolean(),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -987,6 +1002,15 @@ export default defineSchema({
     observedBranch: v.optional(v.string()),
     observedCommit: v.optional(v.string()),
     dirty: v.boolean(),
+    approvedModelIds: v.optional(v.array(v.string())),
+    attestedAt: v.optional(v.number()),
+    capacity: v.optional(v.object({
+      currentRuns: v.number(),
+      maxConcurrentRuns: v.number(),
+    })),
+    networkPolicyStatus: v.optional(v.string()),
+    runtime: v.optional(v.string()),
+    secretPolicyStatus: v.optional(v.string()),
     status: v.union(
       v.literal("READY"),
       v.literal("MISSING"),
@@ -1180,6 +1204,21 @@ export default defineSchema({
       location: v.string(),
     }))),
     owner: v.optional(v.string()),
+    // Compatibility fields already present on governed factory Mission records.
+    // Keep them optional until the Mission editor adopts the repository registry
+    // and organization membership records as canonical inputs.
+    ownerMemberId: v.optional(v.id("orgMembers")),
+    owningTeamId: v.optional(v.id("scrumTeams")),
+    repositoryId: v.optional(v.id("workspaceRepositories")),
+    codeScopeIds: v.optional(v.array(v.id("repositoryCodeScopes"))),
+    requestedByOperatorId: v.optional(v.id("operators")),
+    executionEnvironment: v.optional(v.union(
+      v.literal("LOCAL"),
+      v.literal("CLOUD"),
+      v.literal("REMOTE"),
+      v.literal("POLICY_SELECTED"),
+    )),
+    modelRoutingDecisionId: v.optional(v.id("modelRoutingDecisions")),
     state: v.union(
       v.literal("DRAFT"), v.literal("PLANNING"), v.literal("AWAITING_PLAN_APPROVAL"),
       v.literal("READY"), v.literal("IN_PROGRESS"), v.literal("BLOCKED"),
@@ -1205,6 +1244,9 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_project_state", ["projectId", "state"])
     .index("by_owner_state", ["owner", "state"])
+    .index("by_owner_member", ["ownerMemberId"])
+    .index("by_team_state", ["owningTeamId", "state"])
+    .index("by_repository", ["repositoryId"])
     .index("by_idempotency", ["idempotencyKey"]),
 
   missionPlans: defineTable({
@@ -1357,6 +1399,18 @@ export default defineSchema({
     context: v.optional(v.string()),
     workflowId: v.optional(v.string()),
     repository: v.optional(v.string()),
+    repositoryId: v.optional(v.id("workspaceRepositories")),
+    codeScopeIds: v.optional(v.array(v.id("repositoryCodeScopes"))),
+    requestingOperatorId: v.optional(v.id("operators")),
+    ownerMemberId: v.optional(v.id("orgMembers")),
+    owningTeamId: v.optional(v.id("scrumTeams")),
+    executionEnvironment: v.optional(v.union(
+      v.literal("LOCAL"),
+      v.literal("CLOUD"),
+      v.literal("REMOTE"),
+      v.literal("POLICY_SELECTED"),
+    )),
+    scopeEnforcementVersion: v.optional(v.number()),
     branchStrategy: v.optional(v.string()),
     priority: taskPriority,
     riskLevel: workOrderRiskLevel,
@@ -1368,6 +1422,7 @@ export default defineSchema({
     authorizedModelOverride: v.optional(v.string()),
     authorizedModelOverrideReason: v.optional(v.string()),
     authorizedModelOverrideUpdatedAt: v.optional(v.number()),
+    modelRoutingDecisionId: v.optional(v.id("modelRoutingDecisions")),
     requestedBy: v.optional(v.string()),
     assignedAgent: v.optional(v.string()),
     assignedSquad: v.optional(v.string()),
@@ -1422,6 +1477,9 @@ export default defineSchema({
     .index("by_mission", ["missionId"])
     .index("by_project_state", ["projectId", "state"])
     .index("by_project_risk", ["projectId", "riskLevel"])
+    .index("by_owner_member", ["ownerMemberId"])
+    .index("by_team_state", ["owningTeamId", "state"])
+    .index("by_repository", ["repositoryId"])
     .index("by_idempotency", ["idempotencyKey"]),
 
   workOrderEvents: defineTable({
@@ -2898,6 +2956,7 @@ export default defineSchema({
   orgMembers: defineTable({
     tenantId: v.optional(v.id("tenants")),
     projectId: v.optional(v.id("projects")),
+    operatorId: v.optional(v.id("operators")),
     
     // Identity
     name: v.string(),
@@ -2962,10 +3021,149 @@ export default defineSchema({
     .index("by_parent", ["parentMemberId"])
     .index("by_level", ["level"])
     .index("by_email", ["email"])
+    .index("by_operator", ["operatorId"])
+    .index("by_tenant_operator", ["tenantId", "operatorId"])
     // NOTE: systemRole is optional — queries using this index should filter
     // for defined values (e.g., .filter(q => q.neq(q.field("systemRole"), undefined)))
     // to exclude records where systemRole is not set.
     .index("by_system_role", ["systemRole"]),
+
+  // -------------------------------------------------------------------------
+  // SOFTWARE FACTORY OPERATING STRUCTURE
+  // -------------------------------------------------------------------------
+  scrumTeams: defineTable({
+    tenantId: v.id("tenants"),
+    projectId: v.id("projects"),
+    name: v.string(),
+    slug: v.string(),
+    purpose: v.optional(v.string()),
+    leadMemberId: v.optional(v.id("orgMembers")),
+    capacityPolicy: v.optional(v.object({
+      maxActiveMissionsPerMember: v.number(),
+      maxConcurrentRuns: v.number(),
+      reviewReservePct: v.number(),
+    })),
+    status: v.union(v.literal("ACTIVE"), v.literal("PAUSED"), v.literal("ARCHIVED")),
+    fixtureKey: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    createdBy: v.optional(v.id("operators")),
+    updatedBy: v.optional(v.id("operators")),
+  })
+    .index("by_tenant", ["tenantId"])
+    .index("by_project", ["projectId"])
+    .index("by_project_slug", ["projectId", "slug"])
+    .index("by_project_status", ["projectId", "status"])
+    .index("by_fixture", ["fixtureKey"]),
+
+  teamMemberships: defineTable({
+    tenantId: v.id("tenants"),
+    projectId: v.id("projects"),
+    teamId: v.id("scrumTeams"),
+    memberId: v.id("orgMembers"),
+    operatorId: v.optional(v.id("operators")),
+    role: v.union(
+      v.literal("LEAD"),
+      v.literal("DEVELOPER"),
+      v.literal("QA"),
+      v.literal("PM"),
+      v.literal("VIEWER"),
+    ),
+    activeFrom: v.number(),
+    activeUntil: v.optional(v.number()),
+    capacityAllocationPct: v.optional(v.number()),
+    active: v.boolean(),
+    fixtureKey: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    createdBy: v.optional(v.id("operators")),
+    updatedBy: v.optional(v.id("operators")),
+  })
+    .index("by_team", ["teamId"])
+    .index("by_member", ["memberId"])
+    .index("by_operator", ["operatorId"])
+    .index("by_project", ["projectId"])
+    .index("by_team_member", ["teamId", "memberId"])
+    .index("by_fixture", ["fixtureKey"]),
+
+  missionAssignments: defineTable({
+    tenantId: v.id("tenants"),
+    projectId: v.id("projects"),
+    missionId: v.id("missions"),
+    memberId: v.id("orgMembers"),
+    teamId: v.id("scrumTeams"),
+    role: v.union(
+      v.literal("OWNER"),
+      v.literal("CONTRIBUTOR"),
+      v.literal("REVIEWER"),
+      v.literal("STAKEHOLDER"),
+    ),
+    capacityAllocationPct: v.optional(v.number()),
+    activeFrom: v.number(),
+    activeUntil: v.optional(v.number()),
+    active: v.boolean(),
+    fixtureKey: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    createdBy: v.optional(v.id("operators")),
+    updatedBy: v.optional(v.id("operators")),
+  })
+    .index("by_mission", ["missionId"])
+    .index("by_member", ["memberId"])
+    .index("by_team", ["teamId"])
+    .index("by_project", ["projectId"])
+    .index("by_mission_role", ["missionId", "role"])
+    .index("by_member_active", ["memberId", "active"])
+    .index("by_fixture", ["fixtureKey"]),
+
+  attentionStates: defineTable({
+    tenantId: v.id("tenants"),
+    projectId: v.id("projects"),
+    correlationKey: v.string(),
+    state: v.union(v.literal("OPEN"), v.literal("SNOOZED"), v.literal("RESOLVED")),
+    snoozedUntil: v.optional(v.number()),
+    resolutionNote: v.optional(v.string()),
+    updatedAt: v.number(),
+    updatedBy: v.optional(v.id("operators")),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_key", ["projectId", "correlationKey"])
+    .index("by_project_state", ["projectId", "state"]),
+
+  scopeEnforcementReceipts: defineTable({
+    tenantId: v.id("tenants"),
+    projectId: v.id("projects"),
+    workOrderId: v.optional(v.id("workOrders")),
+    workflowRunId: v.optional(v.id("workflowRuns")),
+    stage: v.union(v.literal("DISPATCH"), v.literal("EXECUTOR_BINDING")),
+    mode: v.union(v.literal("SHADOW"), v.literal("ENFORCED"), v.literal("LEGACY")),
+    outcome: v.union(v.literal("ALLOWED"), v.literal("DENIED"), v.literal("MISMATCH")),
+    repositoryId: v.optional(v.id("workspaceRepositories")),
+    codeScopeIds: v.array(v.id("repositoryCodeScopes")),
+    teamId: v.optional(v.id("scrumTeams")),
+    ownerMemberId: v.optional(v.id("orgMembers")),
+    executionEnvironment: v.optional(v.union(
+      v.literal("LOCAL"),
+      v.literal("CLOUD"),
+      v.literal("POLICY_SELECTED"),
+    )),
+    policyRequirements: v.optional(v.object({
+      owningTeamIds: v.array(v.id("scrumTeams")),
+      requiredReviewers: v.array(v.string()),
+      verificationPolicies: v.array(v.string()),
+      approvalPolicies: v.array(v.string()),
+      requiresCrossTeamReview: v.boolean(),
+    })),
+    reasonCodes: v.array(v.string()),
+    summary: v.string(),
+    policyVersion: v.number(),
+    createdAt: v.number(),
+    actorId: v.optional(v.id("operators")),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_work_order", ["workOrderId"])
+    .index("by_run", ["workflowRunId"])
+    .index("by_project_outcome", ["projectId", "outcome"]),
 
   // -------------------------------------------------------------------------
   // CAPTURES (Visual Artifacts Gallery)
@@ -3381,7 +3579,17 @@ export default defineSchema({
     executorVersion: v.optional(v.string()),
     branch: v.optional(v.string()),
     allowedTools: v.optional(v.array(v.string())),
+    approvedCodeScopeIds: v.optional(v.array(v.id("repositoryCodeScopes"))),
     isMutating: v.optional(v.boolean()),
+    executionManifest: v.optional(v.any()),
+    executionManifestDigest: v.optional(v.string()),
+    lease: v.optional(v.object({
+      leaseId: v.string(),
+      ownerId: v.string(),
+      claimedAt: v.number(),
+      heartbeatAt: v.number(),
+      expiresAt: v.number(),
+    })),
     
     // Parent task
     parentTaskId: v.optional(v.id("tasks")),
@@ -3456,6 +3664,52 @@ export default defineSchema({
     // Execution environment
     runtime: v.optional(v.string()),
     model: v.optional(v.string()),
+    executionEnvironment: v.optional(v.union(
+      v.literal("LOCAL"),
+      v.literal("CLOUD"),
+      v.literal("REMOTE"),
+      v.literal("POLICY_SELECTED"),
+    )),
+    executorHostId: v.optional(v.string()),
+    budgetUsd: v.optional(v.number()),
+    spentUsd: v.optional(v.number()),
+    stopCondition: v.optional(v.string()),
+    scheduledWindow: v.optional(v.object({
+      startsAt: v.number(),
+      endsAt: v.number(),
+      timezone: v.string(),
+    })),
+    checkpointAt: v.optional(v.number()),
+    checkpointSummary: v.optional(v.string()),
+    cancellationRequestedAt: v.optional(v.number()),
+    cancellationRequestedBy: v.optional(v.string()),
+    executionClaimId: v.optional(v.string()),
+    executionClaimedBy: v.optional(v.string()),
+    executionClaimedAt: v.optional(v.number()),
+    executionLeaseExpiresAt: v.optional(v.number()),
+    executionHeartbeatAt: v.optional(v.number()),
+    executionAttemptNumber: v.optional(v.number()),
+    executionStaleRecoveryCount: v.optional(v.number()),
+    executionRetryOfClaimId: v.optional(v.string()),
+    executionRetryReason: v.optional(v.string()),
+    executionBindingDigest: v.optional(v.string()),
+    executionPhase: v.optional(v.union(
+      v.literal("CLAIMED"),
+      v.literal("PREPARING"),
+      v.literal("EXECUTING"),
+      v.literal("VALIDATING"),
+      v.literal("PUBLISHING"),
+      v.literal("TERMINAL"),
+    )),
+    executionBaseSha: v.optional(v.string()),
+    headSha: v.optional(v.string()),
+    pullRequestNumber: v.optional(v.number()),
+    pullRequestId: v.optional(v.string()),
+    pullRequestUrl: v.optional(v.string()),
+    publishedAt: v.optional(v.number()),
+    escalationOwner: v.optional(v.string()),
+    evidenceState: v.optional(v.string()),
+    returnHandoff: v.optional(v.any()),
     routingDecisionId: v.optional(v.id("modelRoutingDecisions")),
     worktree: v.optional(v.string()),
     failureReason: v.optional(v.string()),
@@ -3474,6 +3728,7 @@ export default defineSchema({
     .index("by_mission", ["missionId"])
     .index("by_work_order", ["workOrderId"])
     .index("by_repository_status", ["repositoryId", "status"])
+    .index("by_repository_lease", ["repositoryId", "executionLeaseExpiresAt"])
     .index("by_status", ["status"])
     .index("by_parent_task", ["parentTaskId"])
     .index("by_project_status", ["projectId", "status"]),
@@ -5035,6 +5290,33 @@ export default defineSchema({
     .index("by_source_event", ["sourceEventId"])
     .index("by_work_order", ["workOrderId"])
     .index("by_repo", ["repoFullName"]),
+
+  // Immutable operator decisions for PR/CI evidence that cannot be correlated
+  // automatically to one exact WorkOrder and Attempt.
+  prEvidenceReconciliations: defineTable({
+    projectId: v.id("projects"),
+    evaluationId: v.id("harnessPrChecks"),
+    decision: v.union(v.literal("LINKED"), v.literal("DISMISSED")),
+    workOrderId: v.optional(v.id("workOrders")),
+    workflowRunId: v.optional(v.id("workflowRuns")),
+    taskId: v.optional(v.id("tasks")),
+    loopEngineeringCycleId: v.optional(v.id("loopEngineeringCycles")),
+    reason: v.string(),
+    actorId: v.string(),
+    idempotencyKey: v.string(),
+    evidenceSnapshot: v.object({
+      prUrl: v.string(),
+      repoFullName: v.string(),
+      branch: v.optional(v.string()),
+      headSha: v.optional(v.string()),
+      ciStatus: v.optional(v.string()),
+    }),
+    candidateSnapshot: v.optional(v.any()),
+    decidedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_evaluation", ["evaluationId"])
+    .index("by_idempotency", ["idempotencyKey"]),
 
   // -------------------------------------------------------------------------
   // HARNESS ENGINEERING: META LOOP SUGGESTIONS

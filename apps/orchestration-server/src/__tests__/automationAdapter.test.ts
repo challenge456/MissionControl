@@ -57,6 +57,41 @@ describe("Automation adapter safety", () => {
     expect(await readFile(path.join(root, "automations/health.sh"), "utf8")).toBe(content);
   });
 
+  it("terminates a read-only adapter at the frozen timeout", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "mc-automation-"));
+    const content = "#!/usr/bin/env bash\nsleep 1\n";
+    try {
+      const result = await executeAutomation({
+        adapterType: "SHELL", repository: "test/repo", repositoryRoot: root, workingDirectory: ".",
+        artifactPath: "automations/timeout.sh", artifactContent: content, artifactContentHash: hash(content),
+        timeoutMs: 25, secretReferences: [], configuration: {},
+      });
+      expect(result.status).toBe("timed_out");
+      expect(result.durationMs).toBeLessThan(1_000);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("cancels a running read-only adapter through its abort signal", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "mc-automation-"));
+    const content = "#!/usr/bin/env bash\nsleep 5\n";
+    const controller = new AbortController();
+    const cancel = setTimeout(() => controller.abort(), 25);
+    try {
+      const result = await executeAutomation({
+        adapterType: "SHELL", repository: "test/repo", repositoryRoot: root, workingDirectory: ".",
+        artifactPath: "automations/cancel.sh", artifactContent: content, artifactContentHash: hash(content),
+        timeoutMs: 5_000, secretReferences: [], configuration: {},
+      }, controller.signal);
+      expect(result.status).toBe("cancelled");
+      expect(result.durationMs).toBeLessThan(1_000);
+    } finally {
+      clearTimeout(cancel);
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("rejects a repository artifact that differs from the approved hash", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "mc-automation-"));
     const first = "#!/usr/bin/env bash\nprintf first\n";

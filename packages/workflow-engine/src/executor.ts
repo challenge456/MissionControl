@@ -16,8 +16,8 @@ import {
   validateStructuredOutput,
   type WorkflowNodeStatus,
 } from "./graph";
-import { parse, meetsExpectations } from "./parser";
 import { render, validateContext } from "./renderer";
+import { buildBoundedContextUpdate, validateCompletionOutput } from "./handoff";
 
 export interface WorkflowExecutorConfig {
   convexUrl: string;
@@ -62,6 +62,70 @@ export function workflowDefinitionForRun(
   return installedWorkflow ?? null;
 }
 
+export function legacyExecutorOwnsRun(run: {
+  factoryDefinitionVersionId?: unknown;
+  executionManifestDigest?: unknown;
+}): boolean {
+  return !run.factoryDefinitionVersionId && !run.executionManifestDigest;
+}
+
+export type WorkflowTaskAuthorityScope = {
+  kind: "WORK_ORDER_DESIRED_OUTCOME";
+  workOrderId: string;
+  workOrderRevisionNumber: number;
+  authorityRef: string;
+  objective: string;
+};
+
+export function validateRunTaskAuthority(run: {
+  workOrderId?: unknown;
+  workOrderRevisionNumber?: unknown;
+  context?: unknown;
+}):
+  | { ok: true; scope: WorkflowTaskAuthorityScope }
+  | { ok: false; reason: "missing" | "mismatched" } {
+  const context = run.context && typeof run.context === "object"
+    ? run.context as Record<string, unknown>
+    : null;
+  const scope = context?.authorityScope && typeof context.authorityScope === "object"
+    ? context.authorityScope as Partial<WorkflowTaskAuthorityScope>
+    : null;
+  if (!context || !scope || typeof context.workOrderDesiredOutcome !== "string") {
+    return { ok: false, reason: "missing" };
+  }
+
+  const workOrderId = typeof run.workOrderId === "string" ? run.workOrderId : "";
+  const revisionNumber = typeof run.workOrderRevisionNumber === "number"
+    ? run.workOrderRevisionNumber
+    : 0;
+  const expectedRef = `work-order:${workOrderId}:revision:${revisionNumber}:desired-outcome`;
+  if (
+    !workOrderId
+    || revisionNumber < 1
+    || scope.kind !== "WORK_ORDER_DESIRED_OUTCOME"
+    || scope.workOrderId !== workOrderId
+    || scope.workOrderRevisionNumber !== revisionNumber
+    || scope.authorityRef !== expectedRef
+    || scope.objective?.trim() !== context.workOrderDesiredOutcome.trim()
+  ) {
+    return { ok: false, reason: "mismatched" };
+  }
+  return { ok: true, scope: scope as WorkflowTaskAuthorityScope };
+}
+
+export function compileAuthorizedTaskInput(
+  scope: WorkflowTaskAuthorityScope,
+  renderedInput: string,
+): string {
+  return [
+    `Authorized Work Order objective (${scope.authorityRef}):`,
+    scope.objective,
+    "",
+    "Workflow step input:",
+    renderedInput,
+  ].join("\n");
+}
+
 export class WorkflowExecutor {
   private client: ConvexHttpClient;
   private pollIntervalMs: number;
@@ -100,6 +164,7 @@ export class WorkflowExecutor {
       limit: 10,
     });
     for (const run of pendingRuns) {
+      if (!legacyExecutorOwnsRun(run)) continue;
       await this.client.mutation(api.workflowRuns.updateStatus, {
         runId: run.runId,
         status: "RUNNING",
@@ -111,6 +176,7 @@ export class WorkflowExecutor {
       limit: 10,
     });
     for (const run of runningRuns) {
+      if (!legacyExecutorOwnsRun(run)) continue;
       await this.processRun(run);
     }
   }
@@ -193,6 +259,16 @@ export class WorkflowExecutor {
 
   private async executeStep(run: any, workflow: any, stepIndex: number): Promise<void> {
     const stepDefinition = workflow.steps[stepIndex];
+    const authority = validateRunTaskAuthority(run);
+    if (!authority.ok) {
+      await this.client.mutation(api.workflowRuns.updateStep, {
+        runId: run.runId,
+        stepIndex,
+        status: "FAILED",
+        error: `Workflow Task authority scope is ${authority.reason}.`,
+      });
+      return;
+    }
     const missingVariables = validateContext(stepDefinition.input, run.context);
     if (missingVariables.length > 0) {
       await this.client.mutation(api.workflowRuns.updateStep, {
@@ -232,16 +308,20 @@ export class WorkflowExecutor {
     }
 
     const renderedInput = render(stepDefinition.input, run.context);
+    const authorizedInput = compileAuthorizedTaskInput(
+      authority.scope,
+      renderedInput,
+    );
     const targetVersion = `${workflow.workflowId}:v${workflow.version}`;
     const evidenceDigest =
       stepDefinition.kind === "GATE"
-        ? await workflowEvidenceDigest(renderedInput)
+        ? await workflowEvidenceDigest(authorizedInput)
         : undefined;
     const taskResult = await this.client.mutation(api.tasks.create, {
       projectId: run.projectId,
       workOrderId: run.workOrderId,
       title: `[${workflow.name}] ${stepDefinition.id}`,
-      description: renderedInput,
+      description: authorizedInput,
       type: agent.allowedTaskTypes[0] ?? "OPS",
       priority: stepDefinition.kind === "VERIFY" || stepDefinition.kind === "GATE" ? 2 : 3,
       assigneeIds: [agent._id],
@@ -251,6 +331,7 @@ export class WorkflowExecutor {
       createdBy: "SYSTEM",
       createdByRef: "workflow-executor",
       metadata: {
+        authorityScope: authority.scope,
         workflowRunId: run._id,
         workflowStepId: stepDefinition.id,
         workflowStepIndex: stepIndex,
@@ -387,11 +468,7 @@ export class WorkflowExecutor {
     if (task.status === "DONE" || verifiedSubmission) {
       const output = task.deliverable?.content ?? task.deliverable?.summary ?? "";
       const contractResult = validateStructuredOutput(output, stepDefinition.outputSchema);
-      const expectationMet = stepDefinition.outputSchema
-        ? contractResult.ok
-        : meetsExpectations(output, stepDefinition.expects);
-
-      if (!expectationMet) {
+      if (!contractResult.ok) {
         const contractErrors =
           "errors" in contractResult ? contractResult.errors.join("; ") : stepDefinition.expects;
         await this.client.mutation(api.workflowRuns.updateStep, {
@@ -403,9 +480,31 @@ export class WorkflowExecutor {
         });
         return;
       }
-
-      const parsed = parse(output);
-      const structuredOutput = contractResult.ok ? contractResult.value : undefined;
+      const structuredOutput = contractResult.value;
+      const completion = validateCompletionOutput(structuredOutput);
+      if (!completion.ok) {
+        await this.client.mutation(api.workflowRuns.updateStep, {
+          runId: run.runId,
+          stepIndex,
+          status: "FAILED",
+          error: completion.error,
+        });
+        return;
+      }
+      const contextUpdate = buildBoundedContextUpdate({
+        existingContext: run.context,
+        stepId: step.stepId,
+        structuredOutput,
+      });
+      if (!contextUpdate.ok) {
+        await this.client.mutation(api.workflowRuns.updateStep, {
+          runId: run.runId,
+          stepIndex,
+          status: "FAILED",
+          error: contextUpdate.error,
+        });
+        return;
+      }
       await this.client.mutation(api.workflowRuns.updateStep, {
         runId: run.runId,
         stepIndex,
@@ -415,10 +514,7 @@ export class WorkflowExecutor {
       });
       await this.client.mutation(api.workflowRuns.updateContext, {
         runId: run.runId,
-        context: {
-          [`${step.stepId}Output`]: structuredOutput ?? output,
-          ...parsed.data,
-        },
+        context: contextUpdate.update,
       });
       return;
     }

@@ -45,7 +45,7 @@ steps:
       
       Required docs: {{requiredDocs}}
       
-      Reply with STATUS: done and TRACEABILITY: ...
+      Return JSON with status: "COMPLETED", requirements, gaps, and a compact handoff.
       
       For each requirement in PRD/docs:
       1. Identify requirement ID and text
@@ -57,6 +57,7 @@ steps:
       Output format:
       ```json
       {
+        "status": "COMPLETED",
         "requirements": [
           {
             "id": "REQ-001",
@@ -77,7 +78,14 @@ steps:
         ]
       }
       ```
-    expects: "STATUS: done"
+    expects: "requirements"
+    outputSchema:
+      type: object
+      required: [status, requirements, gaps]
+      properties:
+        status: { type: string }
+        requirements: { type: array }
+        gaps: { type: array }
     retryLimit: 1
     timeoutMinutes: 20
 
@@ -97,7 +105,8 @@ steps:
       
       Security paths: {{securityPaths}}
       
-      Reply with STATUS: done and COVERAGE: ...
+      Return JSON with status: "COMPLETED", summary, securityCoverage,
+      missingAreas, findings, and a compact handoff.
       
       Analyze:
       1. Unit test coverage (% of functions/lines)
@@ -109,6 +118,7 @@ steps:
       Output format:
       ```json
       {
+        "status": "COMPLETED",
         "summary": {
           "unit": {"covered": 150, "total": 200, "percentage": 75},
           "integration": {"covered": 30, "total": 50, "percentage": 60},
@@ -133,7 +143,16 @@ steps:
         ]
       }
       ```
-    expects: "STATUS: done"
+    expects: "summary"
+    outputSchema:
+      type: object
+      required: [status, summary, securityCoverage, missingAreas, findings]
+      properties:
+        status: { type: string }
+        summary: { type: object }
+        securityCoverage: { type: object }
+        missingAreas: { type: array }
+        findings: { type: array }
     retryLimit: 1
     timeoutMinutes: 20
 
@@ -150,7 +169,8 @@ steps:
       
       Traceability context: {{traceRequirementsOutput}}
       
-      Reply with STATUS: done and DOCS: ...
+      Return JSON with status: "COMPLETED", docsIndex, findings, missingDocs,
+      and a compact handoff.
       
       Check:
       1. Required docs exist (README, PRD, CHANGELOG, etc.)
@@ -162,6 +182,7 @@ steps:
       Output format:
       ```json
       {
+        "status": "COMPLETED",
         "docsIndex": [
           {"path": "README.md", "type": "README", "lastModified": "2026-02-15T10:00:00Z"},
           {"path": "docs/PRD_V2.md", "type": "PRD", "lastModified": "2026-02-10T14:30:00Z"}
@@ -179,7 +200,15 @@ steps:
         "missingDocs": ["CHANGELOG.md"]
       }
       ```
-    expects: "STATUS: done"
+    expects: "docsIndex"
+    outputSchema:
+      type: object
+      required: [status, docsIndex, findings, missingDocs]
+      properties:
+        status: { type: string }
+        docsIndex: { type: array }
+        findings: { type: array }
+        missingDocs: { type: array }
     retryLimit: 1
     timeoutMinutes: 15
 
@@ -194,7 +223,8 @@ steps:
       Coverage: {{analyzeCoverageOutput}}
       Docs: {{validateDocsOutput}}
       
-      Reply with STATUS: done and GATES: ...
+      Return JSON with status: "COMPLETED", gates, riskGrade, qualityScore,
+      policyNotes, summary, and a compact handoff.
       
       For each gate:
       1. Evaluate condition (passed/failed)
@@ -215,6 +245,7 @@ steps:
       Output format:
       ```json
       {
+        "status": "COMPLETED",
         "gates": [
           {
             "name": "PRD exists",
@@ -251,6 +282,16 @@ steps:
       If riskGrade is GREEN:
         - All gates passed
         - Safe to proceed
-    expects: "STATUS: done"
+    expects: "gates"
+    outputSchema:
+      type: object
+      required: [status, gates, riskGrade, qualityScore, policyNotes, summary]
+      properties:
+        status: { type: string }
+        gates: { type: array }
+        riskGrade: { type: string }
+        qualityScore: { type: number }
+        policyNotes: { type: array }
+        summary: { type: string }
     retryLimit: 1
     timeoutMinutes: 15

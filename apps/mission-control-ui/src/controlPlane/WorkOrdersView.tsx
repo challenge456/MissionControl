@@ -490,7 +490,12 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                       <MetaRow label="Definition ID" value={selected.workOrder.metadata.automationDefinitionId} />
                       <MetaRow label="Workflow version" value={selected.workOrder.metadata.automationWorkflowVersion} />
                       <MetaRow label="Cadence window" value={selected.workOrder.metadata.automationCadenceWindow} />
-                      <MetaRow label="Trigger" value={`${selected.workOrder.metadata.automationTrigger ?? "SCHEDULE"} · ${selected.workOrder.metadata.automationCadence?.cron ?? "Not recorded"}`} />
+                      <MetaRow
+                        label="Trigger"
+                        value={selected.workOrder.metadata.automationTrigger
+                          ? `${selected.workOrder.metadata.automationTrigger}${selected.workOrder.metadata.automationCadence?.cron ? ` · ${selected.workOrder.metadata.automationCadence.cron}` : ""}`
+                          : "Not recorded"}
+                      />
                       <MetaRow label="Scope" value={selected.workOrder.metadata.automationScope} />
                       <MetaRow label="Autonomy" value={selected.workOrder.metadata.automationPolicy?.autonomyLevel ?? "LEVEL_1"} />
                       <MetaRow label="Mutation policy" value={selected.workOrder.metadata.automationPolicy?.isMutating ? "Mutating" : "Read-only"} />
