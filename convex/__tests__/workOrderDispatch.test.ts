@@ -5,6 +5,7 @@ import {
   nextStateForRunStatus,
   publicDispatchActorAllowed,
   validateDispatchable,
+  resolveRetryExecutionBinding,
   validateRetryRequest,
 } from "../lib/workOrderDispatch";
 
@@ -103,6 +104,41 @@ describe("work order dispatch policy", () => {
 });
 
 describe("work order recovery dispatch", () => {
+  it("preserves the prior branch and worktree as one retry binding", () => {
+    expect(resolveRetryExecutionBinding({
+      priorRun: {
+        _id: "run-1",
+        branch: "codex/governed-proof",
+        worktree: "/tmp/governed-proof",
+      },
+    })).toEqual({
+      branch: "codex/governed-proof",
+      worktree: "/tmp/governed-proof",
+    });
+  });
+
+  it("preserves the root binding across a failed recovery chain", () => {
+    const root = {
+      _id: "run-1",
+      branch: "codex/governed-proof",
+      worktree: "/tmp/governed-proof",
+    };
+    const failedRetry = {
+      _id: "run-2",
+      branch: "mc/generated-branch",
+      worktree: "/tmp/governed-proof",
+      metadata: { retryOfWorkflowRunId: root._id },
+    };
+
+    expect(resolveRetryExecutionBinding({
+      priorRun: failedRetry,
+      lineage: [root, failedRetry],
+    })).toEqual({
+      branch: "codex/governed-proof",
+      worktree: "/tmp/governed-proof",
+    });
+  });
+
   it("allows a reasoned retry of a failed run from the same WorkOrder", () => {
     expect(
       validateRetryRequest({
@@ -113,14 +149,24 @@ describe("work order recovery dispatch", () => {
     ).toEqual({ ok: true, reason: "Environment bootstrap was corrected." });
   });
 
-  it("rejects retrying a non-failed run", () => {
+  it("allows a reasoned retry of a canceled run after operator recovery", () => {
+    expect(
+      validateRetryRequest({
+        workOrderId: "wo-1",
+        retryReason: "The canceled work order was explicitly reopened.",
+        priorRun: { workOrderId: "wo-1", status: "CANCELED" },
+      })
+    ).toEqual({ ok: true, reason: "The canceled work order was explicitly reopened." });
+  });
+
+  it("rejects retrying a non-recoverable run", () => {
     expect(
       validateRetryRequest({
         workOrderId: "wo-1",
         retryReason: "Try the run again after review.",
         priorRun: { workOrderId: "wo-1", status: "COMPLETED" },
       })
-    ).toEqual({ ok: false, reason: "retry-run-not-failed:COMPLETED" });
+    ).toEqual({ ok: false, reason: "retry-run-not-recoverable:COMPLETED" });
   });
 
   it("rejects a retry across WorkOrders", () => {

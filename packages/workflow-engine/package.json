@@ -2,9 +2,17 @@
   "name": "@mission-control/workflow-engine",
   "version": "0.9.0",
   "private": true,
+  "type": "module",
   "description": "Multi-agent workflow execution engine inspired by Antfarm",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",

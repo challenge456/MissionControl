@@ -13,6 +13,8 @@ import { buildContinuousEvidenceLineage, buildEvidenceLineage, buildFileChanges,
 import { summarizeWorkflowObservability } from "./lib/workflowObservability";
 import { reconcileTerminalWorkflowSteps } from "./lib/workflowRunState";
 import { snapshotWorkflowDefinition } from "./lib/workflowSnapshot";
+import { assertAuthorizedDeliveryRecord, requireAuthorizedDeliveryScope } from "./lib/deliveryAuthorization";
+import { COMPANY_PERMISSIONS } from "./lib/companyAccess";
 
 // ============================================================================
 // HELPERS
@@ -25,6 +27,10 @@ function generateRunId(): string {
 
 const runEventType = v.union(
   v.literal("RUN_STARTED"),
+  v.literal("EXECUTION_CLAIMED"),
+  v.literal("CANCELLATION_REQUESTED"),
+  v.literal("POLICY_DEVIATION"),
+  v.literal("PULL_REQUEST_CREATED"),
   v.literal("STEP_STARTED"),
   v.literal("STEP_COMPLETED"),
   v.literal("TOOL_CALLED"),
@@ -38,6 +44,7 @@ const runEventType = v.union(
   v.literal("RUN_PAUSED"),
   v.literal("RUN_RESUMED"),
   v.literal("RUN_FAILED"),
+  v.literal("RUN_CANCELED"),
   v.literal("RUN_COMPLETED")
 );
 
@@ -935,6 +942,84 @@ export const advance = mutation({
     });
     
     return { complete: false, nextIndex };
+  },
+});
+
+/**
+ * Durable operator cancellation. Active workers observe this through their
+ * signed heartbeat; unclaimed/expired work is canceled immediately.
+ */
+export const requestCancellation = mutation({
+  args: {
+    workflowRunId: v.id("workflowRuns"),
+    reason: v.string(),
+    actorId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.workflowRunId);
+    if (!run) throw new Error("Workflow run not found");
+    if (!run.workOrderId) throw new Error("Only WorkOrder execution runs can be canceled here.");
+    const workOrder = await ctx.db.get(run.workOrderId);
+    if (!workOrder) throw new Error("Linked WorkOrder not found");
+    const access = await requireAuthorizedDeliveryScope(ctx, workOrder.projectId, COMPANY_PERMISSIONS.UPDATE_DELIVERY);
+    assertAuthorizedDeliveryRecord(access, workOrder);
+    if (["COMPLETED", "FAILED", "CANCELED"].includes(run.status)) {
+      return { requested: false, status: run.status };
+    }
+    const now = Date.now();
+    const reason = args.reason.trim();
+    if (!reason) throw new Error("A cancellation reason is required.");
+    await ctx.db.patch(run._id, {
+      cancellationRequestedAt: run.cancellationRequestedAt ?? now,
+      cancellationRequestedBy: args.actorId ?? "operator",
+      checkpointSummary: `Cancellation requested: ${reason}`,
+      checkpointAt: now,
+    });
+    await insertRunEvent(ctx, {
+      workflowRunId: run._id,
+      workOrderId: run.workOrderId,
+      projectId: run.projectId,
+      tenantId: run.tenantId,
+      eventType: "CANCELLATION_REQUESTED",
+      workflowStep: run.steps[run.currentStepIndex]?.stepId,
+      actor: args.actorId ?? "operator",
+      status: "PENDING",
+      startedAt: now,
+      commandSummary: reason,
+      idempotencyKey: `cancellation-request:${run._id}`,
+    });
+    const hasActiveLease = Boolean(run.executionClaimId && (run.executionLeaseExpiresAt ?? 0) > now);
+    if (hasActiveLease) return { requested: true, status: run.status };
+
+    const steps = reconcileTerminalWorkflowSteps(run.steps, "CANCELED", reason, now);
+    await ctx.db.patch(run._id, {
+      status: "CANCELED",
+      steps,
+      completedAt: now,
+      failureReason: reason,
+      executionPhase: "TERMINAL",
+      executionLeaseExpiresAt: now,
+    });
+    await insertRunEvent(ctx, {
+      workflowRunId: run._id,
+      workOrderId: run.workOrderId,
+      projectId: run.projectId,
+      tenantId: run.tenantId,
+      eventType: "RUN_CANCELED",
+      workflowStep: run.steps[run.currentStepIndex]?.stepId,
+      actor: args.actorId ?? "operator",
+      status: "CANCELED",
+      startedAt: run.startedAt,
+      endedAt: now,
+      errorSummary: reason,
+      idempotencyKey: `run-canceled:${run._id}`,
+    });
+    await ctx.runMutation(internal.workOrders.syncExecutionOutcome, {
+      workflowRunId: run._id,
+      eventType: "RUN_CANCELED",
+      summary: `Workflow run ${run.runId} canceled before execution claim.`,
+    });
+    return { requested: true, status: "CANCELED" as const };
   },
 });
 

@@ -54,8 +54,9 @@ headers](https://docs.github.com/en/webhooks/webhook-events-and-payloads#deliver
 
 Configure these Convex environment variables. The orchestration server also
 requires `GITHUB_APP_ID` and `GITHUB_APP_PRIVATE_KEY` when real Factory execution
-is enabled so it can mint the just-in-time repository token at the provider
-boundary.
+is enabled. Those values must identify the same App recorded in the repository
+installation binding so the worker can mint the just-in-time repository token
+at the provider boundary.
 
 | Variable | Purpose |
 | --- | --- |
@@ -80,12 +81,14 @@ GitHub user can access the selected repository through that installation:
 
 Mission Control mints an installation access token only after GitHub user and
 App identity validation. During Factory execution, it mints a fresh token only
-after Codex finishes, changed-file scope passes, and the exact installation and
-provider repository IDs match the leased attempt. The token is restricted to
-that repository, held only in process memory, passed to Git through a temporary
-askpass helper that reads an environment variable, used for branch push and PR
-creation, and discarded. It never appears in a remote URL, command argument,
-record, artifact, or log. GitHub installation tokens expire after one hour:
+App identity validation. During governed execution, publication happens only
+after the durable Attempt owns a valid lease, the complete Git change set fits
+the approved repository scopes, and every approved verification command
+passes. The token is restricted to the selected repository, retained only in
+worker memory for the push and idempotent PR lookup/create calls, and then
+discarded. It never appears in a remote URL, command argument, record, artifact,
+or log. Only Git and pull-request identities are retained. GitHub installation
+tokens expire after one hour:
 [Generating an installation access token](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-an-installation-access-token-for-a-github-app).
 
 Never store or return:
@@ -130,3 +133,11 @@ freshness. The aggregate state is:
 
 Factory activation, dispatch, and attempt claim consume this evidence and fail
 closed when it is missing, stale, or mismatched.
+The production durable worker is enabled only with all of the following
+server-side settings: `CODEX_FACTORY_WORKER_ENABLED=true`,
+`CODEX_WORKER_PROJECT_ID`, `CODEX_WORKER_REPOSITORY_ID`,
+`CODEX_WORKER_REPOSITORY_ROOT`, `MISSION_CONTROL_SERVICE_ID`,
+`MISSION_CONTROL_SERVICE_COMMAND_SECRET`, `GITHUB_APP_ID`, and
+`GITHUB_APP_PRIVATE_KEY`. One worker is pinned to one governed repository in
+V1; additional repository schedulers wait until the single golden path is
+proven durable.

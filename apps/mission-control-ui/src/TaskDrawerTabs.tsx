@@ -67,6 +67,9 @@ type ParentDelivery = {
   workOrderState: string | null;
   workflowId: string | null;
   repository: string | null;
+  repositoryId: Id<"workspaceRepositories"> | null;
+  codeScopeIds: Id<"repositoryCodeScopes">[];
+  executionEnvironment: "LOCAL" | "CLOUD" | "POLICY_SELECTED" | null;
   riskLevel: string | null;
   missionId: Id<"missions"> | null;
   missionTitle: string | null;
@@ -568,6 +571,7 @@ function TaskAttemptSection({
   const current =
     attempts.length > 0 ? attempts[attempts.length - 1] : null;
   const factoryReadyForDispatch = !parentDelivery.missionId || Boolean(activeFactoryVersionId);
+  const scopeReadyForDispatch = !parentDelivery.missionId || parentDelivery.codeScopeIds.length > 0;
   const workOrderCanDispatch = [
     "READY",
     "BLOCKED",
@@ -582,15 +586,17 @@ function TaskAttemptSection({
     !!parentDelivery.workOrderId &&
     workOrderCanDispatch &&
     factoryReadyForDispatch &&
-    ["READY", "ASSIGNED", "IN_PROGRESS"].includes(taskStatus) &&
+    scopeReadyForDispatch &&
+    ["READY", "ASSIGNED", "IN_PROGRESS", "FAILED"].includes(taskStatus) &&
     attempts.length === 0;
   const canRetry =
     parentDelivery.governanceStatus === "GOVERNED" &&
     !!parentDelivery.workOrderId &&
     workOrderCanDispatch &&
     factoryReadyForDispatch &&
+    scopeReadyForDispatch &&
     ["READY", "ASSIGNED", "IN_PROGRESS"].includes(taskStatus) &&
-    current?.status === "FAILED";
+    ["FAILED", "CANCELED"].includes(current?.status ?? "");
 
   const schedule = async (retry: boolean) => {
     if (!parentDelivery.workOrderId || scheduling) return;
@@ -607,6 +613,9 @@ function TaskAttemptSection({
           ? `ui-task-attempt:${taskId}:retry:${current?._id ?? "missing"}`
           : `ui-task-attempt:${taskId}:start`,
         runtime: "Mission Control UI",
+        repositoryId: parentDelivery.repositoryId ?? undefined,
+        codeScopeIds: parentDelivery.codeScopeIds,
+        executionEnvironment: parentDelivery.executionEnvironment ?? "LOCAL",
         retryOfWorkflowRunId: retry ? current?._id : undefined,
         retryReason: retry ? retryReason.trim() : undefined,
         factoryDefinitionVersionId: parentDelivery.missionId
@@ -667,6 +676,12 @@ function TaskAttemptSection({
           </p>
         ) : null}
 
+        {parentDelivery.missionId && parentDelivery.codeScopeIds.length === 0 ? (
+          <p className="mt-3 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+            Open the Work Order, select the approved code scope, and dispatch from that governed gate.
+          </p>
+        ) : null}
+
         {workOrderCanDispatch &&
         parentDelivery.governanceStatus === "GOVERNED" &&
         !["READY", "ASSIGNED", "IN_PROGRESS"].includes(taskStatus) ? (
@@ -715,7 +730,7 @@ function TaskAttemptSection({
               placeholder="Explain what changed before retrying."
             />
             <p id={`retry-help-${taskId}`} className="mt-1 text-xs text-ink-muted">
-              At least 10 characters. The failed Attempt remains in history.
+              At least 10 characters. The prior Attempt remains in history.
             </p>
             <Button
               className="mt-3"

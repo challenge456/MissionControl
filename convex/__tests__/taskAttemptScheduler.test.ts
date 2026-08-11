@@ -90,6 +90,18 @@ describe("Task Attempt selection", () => {
     ).toEqual({ ok: true, taskId: task._id });
   });
 
+  it("allows a failed Child Task only for an explicit recovery dispatch", () => {
+    expect(
+      validateTaskAttemptSelection({
+        workOrderId: task.workOrderId,
+        projectId: task.projectId,
+        hasCanonicalChildTasks: true,
+        allowFailedRecovery: true,
+        task: { ...task, status: "FAILED" },
+      }),
+    ).toEqual({ ok: true, taskId: task._id });
+  });
+
   it.each([
     [{ ...task, workOrderId: "other" }, "task-work-order-mismatch"],
     [{ ...task, projectId: "other" }, "task-workspace-mismatch"],
@@ -173,6 +185,18 @@ describe("Task Attempt start and retry", () => {
     ).toEqual({ ok: true });
   });
 
+  it("allows a reasoned retry of the latest canceled Attempt", () => {
+    const canceled = attempt("run-1", "CANCELED", 1);
+    expect(
+      validateTaskAttemptStart({
+        taskId: task._id,
+        attempts: [canceled],
+        retryOfRun: canceled,
+        retryReason: "The operator reopened the canceled work order.",
+      }),
+    ).toEqual({ ok: true });
+  });
+
   it("rejects retry of another Task or an older Attempt", () => {
     const older = attempt("run-1", "FAILED", 1);
     const latest = attempt("run-2", "FAILED", 2);
@@ -194,7 +218,7 @@ describe("Task Attempt start and retry", () => {
     ).toEqual({ ok: false, reason: "retry-run-task-mismatch" });
   });
 
-  it("requires a failed run and an actionable reason", () => {
+  it("requires a recoverable run and an actionable reason", () => {
     const completed = attempt("run-1", "COMPLETED", 1);
     expect(
       validateTaskAttemptStart({
@@ -205,7 +229,7 @@ describe("Task Attempt start and retry", () => {
       }),
     ).toEqual({
       ok: false,
-      reason: "retry-run-not-failed:COMPLETED",
+      reason: "retry-run-not-recoverable:COMPLETED",
     });
 
     const failed = attempt("run-2", "FAILED", 2);
@@ -237,7 +261,7 @@ describe("Task Attempt start and retry", () => {
       "Select a Child Task before dispatch.",
     );
     expect(taskAttemptErrorMessage("retry-run-not-latest")).toBe(
-      "Only the latest failed Attempt can be retried.",
+      "Only the latest failed or canceled Attempt can be retried.",
     );
   });
 });

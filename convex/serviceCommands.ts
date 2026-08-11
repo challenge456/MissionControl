@@ -291,6 +291,93 @@ export const reportFactoryAttempt = action({
   },
 });
 
+export const claimExecution = action({
+  args: { envelope, payloadJson: v.string() },
+  handler: async (ctx, args): Promise<any> => {
+    const payload = await authorize(ctx, args.envelope, args.payloadJson, "executions.claim");
+    const scope = await ctx.runQuery(internal.serviceCommands.resolveRepositoryScope, {
+      projectId: payload.projectId,
+      repositoryId: payload.repositoryId,
+    });
+    const receipt = await claimScoped(ctx, args.envelope, scope);
+    try {
+      const result = await ctx.runMutation(internal.executionWorker.claimInternal, {
+        projectId: payload.projectId,
+        repositoryId: payload.repositoryId,
+        workerId: payload.workerId,
+        claimId: payload.claimId,
+        leaseDurationMs: payload.leaseDurationMs,
+      });
+      await ctx.runMutation(internal.serviceCommands.complete, {
+        receiptId: receipt.receiptId,
+        status: "SUCCEEDED",
+        resultReference: result?.workflowRunId ? String(result.workflowRunId) : "no-claimable-execution",
+      });
+      return result;
+    } catch (error) {
+      await fail(ctx, receipt.receiptId, error);
+      throw error;
+    }
+  },
+});
+
+export const heartbeatExecution = action({
+  args: { envelope, payloadJson: v.string() },
+  handler: async (ctx, args): Promise<any> => {
+    const payload = await authorize(ctx, args.envelope, args.payloadJson, "executions.heartbeat");
+    const scope = await ctx.runQuery(internal.serviceCommands.resolveExecutionScope, { workflowRunId: payload.workflowRunId });
+    const receipt = await claimScoped(ctx, args.envelope, scope);
+    try {
+      const result = await ctx.runMutation(internal.executionWorker.heartbeatInternal, payload);
+      await ctx.runMutation(internal.serviceCommands.complete, {
+        receiptId: receipt.receiptId, status: "SUCCEEDED", resultReference: String(payload.workflowRunId),
+      });
+      return result;
+    } catch (error) {
+      await fail(ctx, receipt.receiptId, error);
+      throw error;
+    }
+  },
+});
+
+export const reportExecution = action({
+  args: { envelope, payloadJson: v.string() },
+  handler: async (ctx, args): Promise<any> => {
+    const payload = await authorize(ctx, args.envelope, args.payloadJson, "executions.report");
+    const scope = await ctx.runQuery(internal.serviceCommands.resolveExecutionScope, { workflowRunId: payload.workflowRunId });
+    const receipt = await claimScoped(ctx, args.envelope, scope);
+    try {
+      const result = await ctx.runMutation(internal.executionWorker.reportInternal, payload);
+      await ctx.runMutation(internal.serviceCommands.complete, {
+        receiptId: receipt.receiptId, status: "SUCCEEDED", resultReference: String(payload.workflowRunId),
+      });
+      return result;
+    } catch (error) {
+      await fail(ctx, receipt.receiptId, error);
+      throw error;
+    }
+  },
+});
+
+export const finalizeExecution = action({
+  args: { envelope, payloadJson: v.string() },
+  handler: async (ctx, args): Promise<any> => {
+    const payload = await authorize(ctx, args.envelope, args.payloadJson, "executions.finalize");
+    const scope = await ctx.runQuery(internal.serviceCommands.resolveExecutionScope, { workflowRunId: payload.workflowRunId });
+    const receipt = await claimScoped(ctx, args.envelope, scope);
+    try {
+      const result = await ctx.runMutation(internal.executionWorker.finalizeInternal, payload);
+      await ctx.runMutation(internal.serviceCommands.complete, {
+        receiptId: receipt.receiptId, status: "SUCCEEDED", resultReference: result?.pullRequestUrl ?? String(payload.workflowRunId),
+      });
+      return result;
+    } catch (error) {
+      await fail(ctx, receipt.receiptId, error);
+      throw error;
+    }
+  },
+});
+
 async function authorize(ctx: any, candidate: ServiceCommandEnvelope, payloadJson: string, capability: string): Promise<any> {
   const expectedServiceId = process.env.MISSION_CONTROL_SERVICE_ID?.trim() || "orchestration-server";
   const secret = process.env.MISSION_CONTROL_SERVICE_COMMAND_SECRET?.trim();

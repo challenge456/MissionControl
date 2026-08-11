@@ -44,4 +44,17 @@ describe("service command client", () => {
     expect(result.envelope.signature).toBe(expected);
     expect(result.payloadJson).not.toContain("test-secret");
   });
+
+  it("signs durable execution reports with the same scoped service identity", () => {
+    process.env.MISSION_CONTROL_SERVICE_COMMAND_SECRET = "test-secret";
+    const result = createSignedServiceCommand({
+      capability: "executions.report",
+      projectId: "project-1",
+      repositoryId: "repository-1",
+      payload: { workflowRunId: "run-1", packetId: "packet-1", events: [] },
+    });
+    expect(result.envelope.capability).toBe("executions.report");
+    expect(result.envelope.projectId).toBe("project-1");
+    expect(result.envelope.repositoryId).toBe("repository-1");
+  });
 });
