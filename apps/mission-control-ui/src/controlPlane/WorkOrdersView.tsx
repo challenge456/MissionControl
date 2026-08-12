@@ -1714,12 +1714,15 @@ function RequestApprovalDialog({
 }) {
   const defaultType = workOrder?.requiredApprovals?.[0] ?? (["HIGH", "CRITICAL"].includes(workOrder?.riskLevel) ? "RISK_REVIEW" : "OPERATOR_REVIEW");
   const [approvalType, setApprovalType] = useState(defaultType);
-  const [requestedAction, setRequestedAction] = useState("Approve protected dispatch or acceptance action");
+  const [requestedAction, setRequestedAction] = useState("Approve protected implementation dispatch");
   const [requestedBy, setRequestedBy] = useState("operator");
   const [workflowRunId, setWorkflowRunId] = useState("");
 
   useEffect(() => {
     setApprovalType(defaultType);
+    setRequestedAction("Approve protected implementation dispatch");
+    setRequestedBy("operator");
+    setWorkflowRunId("");
   }, [defaultType, open]);
 
   return (
