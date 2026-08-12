@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   factoryHumanReviewOutcome,
+  isFactoryHumanReviewCheckpoint,
+  isSourceVerificationFreshForPublication,
   validateHumanReviewApprovalContext,
+  validatePublicationPermit,
   validatePublishContinuation,
 } from "../lib/factoryHumanReview.js";
 
@@ -13,12 +16,23 @@ describe("factory human-review continuation", () => {
     expect(factoryHumanReviewOutcome("REQUEST_REVISION")).toBe("FAIL_ATTEMPT");
   });
 
+  it("does not treat an ordinary pre-dispatch HUMAN_REVIEW as a Factory checkpoint", () => {
+    expect(isFactoryHumanReviewCheckpoint(
+      { _id: "approval-generic", approvalType: "HUMAN_REVIEW" },
+      null,
+    )).toBe(false);
+    expect(isFactoryHumanReviewCheckpoint(
+      { _id: "approval-generic", approvalType: "HUMAN_REVIEW" },
+      { factoryContinuation: { approvalDecisionId: "approval-factory", status: "AWAITING_HUMAN_REVIEW" } },
+    )).toBe(false);
+  });
+
   it("accepts a current approval for the exact paused attempt", () => {
     expect(validateHumanReviewApprovalContext({
-      approval: { approvalType: "HUMAN_REVIEW", workflowRunId: "run-1", workOrderRevisionNumber: 2, status: "PENDING" },
+      approval: { _id: "approval-1", approvalType: "HUMAN_REVIEW", workflowRunId: "run-1", workOrderRevisionNumber: 2, status: "PENDING" },
       run: {
         _id: "run-1", status: "PAUSED", workOrderRevisionNumber: 2,
-        factoryContinuation: { status: "AWAITING_HUMAN_REVIEW", workOrderRevisionNumber: 2 },
+        factoryContinuation: { status: "AWAITING_HUMAN_REVIEW", workOrderRevisionNumber: 2, approvalDecisionId: "approval-1" },
       },
       workOrderRevisionNumber: 2,
     })).toEqual({ ok: true });
@@ -26,14 +40,58 @@ describe("factory human-review continuation", () => {
 
   it("rejects a stale or cross-attempt approval", () => {
     const result = validateHumanReviewApprovalContext({
-      approval: { approvalType: "HUMAN_REVIEW", workflowRunId: "run-old", workOrderRevisionNumber: 1, status: "PENDING" },
+      approval: { _id: "approval-1", approvalType: "HUMAN_REVIEW", workflowRunId: "run-old", workOrderRevisionNumber: 1, status: "PENDING" },
       run: {
         _id: "run-1", status: "PAUSED", workOrderRevisionNumber: 2,
-        factoryContinuation: { status: "AWAITING_HUMAN_REVIEW", workOrderRevisionNumber: 2 },
+        factoryContinuation: { status: "AWAITING_HUMAN_REVIEW", workOrderRevisionNumber: 2, approvalDecisionId: "approval-1" },
       },
       workOrderRevisionNumber: 2,
     });
     expect(result).toEqual({ ok: false, reason: "attempt-mismatch" });
+  });
+
+  it("rejects expired and revision-invalidated review authority", () => {
+    const base = {
+      approval: {
+        _id: "approval-1", approvalType: "HUMAN_REVIEW", workflowRunId: "run-1",
+        workOrderRevisionNumber: 2, status: "PENDING", expiresAt: 2_000,
+      },
+      run: {
+        _id: "run-1", status: "PAUSED", workOrderRevisionNumber: 2,
+        factoryContinuation: {
+          status: "AWAITING_HUMAN_REVIEW", workOrderRevisionNumber: 2,
+          approvalDecisionId: "approval-1",
+        },
+      },
+      workOrderRevisionNumber: 2,
+    };
+    expect(validateHumanReviewApprovalContext({ ...base, now: 2_000 }))
+      .toEqual({ ok: false, reason: "approval-expired" });
+    expect(validateHumanReviewApprovalContext({
+      ...base,
+      workOrderRevisionNumber: 3,
+      now: 1_000,
+    })).toEqual({ ok: false, reason: "work-order-revision-mismatch" });
+  });
+
+  it("requires the exact Factory-owned approval checkpoint", () => {
+    const result = validateHumanReviewApprovalContext({
+      approval: { _id: "approval-other", approvalType: "HUMAN_REVIEW", workflowRunId: "run-1", workOrderRevisionNumber: 2, status: "PENDING" },
+      run: {
+        _id: "run-1", status: "PAUSED", workOrderRevisionNumber: 2,
+        factoryContinuation: { status: "AWAITING_HUMAN_REVIEW", workOrderRevisionNumber: 2, approvalDecisionId: "approval-factory" },
+      },
+      workOrderRevisionNumber: 2,
+    });
+    expect(result).toEqual({ ok: false, reason: "approval-mismatch" });
+  });
+
+  it("requires verification evidence to outlive the publication safety window", () => {
+    const now = 1_000_000;
+    expect(isSourceVerificationFreshForPublication({ validUntil: now + 60_001, now })).toBe(true);
+    expect(isSourceVerificationFreshForPublication({ validUntil: now + 60_000, now })).toBe(false);
+    expect(isSourceVerificationFreshForPublication({ validUntil: now - 1, now })).toBe(false);
+    expect(isSourceVerificationFreshForPublication({ now })).toBe(false);
   });
 
   it("requires an approval-linked VERIFIED receipt for the exact candidate", () => {
@@ -70,5 +128,48 @@ describe("factory human-review continuation", () => {
       resolvedReceipt: { ...resolvedReceipt, candidateRevision: "head-changed" },
       workOrderRevisionNumber: 2,
     })).toEqual({ ok: false, reason: "resolved-receipt-invalid" });
+  });
+
+  it("binds the publication permit to the exact lease and candidate", () => {
+    const run = {
+      _id: "run-1",
+      status: "RUNNING",
+      factoryContinuation: {
+        status: "PUBLICATION_AUTHORIZED",
+        candidateRevision: "head-1",
+        publicationPermitId: "permit-1",
+        publicationPermitLeaseId: "lease-1",
+        publicationValidUntil: 10_000,
+      },
+    };
+    expect(validatePublicationPermit({
+      run,
+      leaseId: "lease-1",
+      candidateRevision: "head-1",
+      publicationPermitId: "permit-1",
+      now: 1_000,
+    })).toEqual({ ok: true, validUntil: 10_000 });
+    expect(validatePublicationPermit({
+      run,
+      leaseId: "lease-other",
+      candidateRevision: "head-1",
+      publicationPermitId: "permit-1",
+      now: 1_000,
+    })).toEqual({ ok: false, reason: "publication-permit-mismatch" });
+    expect(validatePublicationPermit({
+      run,
+      leaseId: "lease-1",
+      candidateRevision: "head-1",
+      publicationPermitId: "permit-1",
+      now: 10_001,
+    })).toEqual({ ok: false, reason: "publication-permit-expired" });
+    expect(validatePublicationPermit({
+      run,
+      leaseId: "lease-1",
+      candidateRevision: "head-1",
+      publicationPermitId: "permit-1",
+      requireUnexpired: false,
+      now: 10_001,
+    })).toEqual({ ok: true, validUntil: 10_000 });
   });
 });

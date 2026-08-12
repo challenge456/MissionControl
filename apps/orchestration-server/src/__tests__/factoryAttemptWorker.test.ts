@@ -76,15 +76,21 @@ describe("FactoryAttemptWorker verification-first lifecycle", () => {
     expect(fixture.executeCodex).toHaveBeenCalledOnce();
     expect(fixture.executeVerification).toHaveBeenCalledOnce();
 
+    await fixture.worker.stop();
     fixture.resumeAfterApproval();
-    await fixture.worker.tick();
-    await vi.waitFor(() => expect(fixture.worker.status().completedCount).toBe(1));
+    const restartedWorker = fixture.createRestartedWorker();
+    await restartedWorker.tick();
+    await vi.waitFor(() => expect(restartedWorker.status().completedCount).toBe(1));
 
     expect(fixture.createPullRequest).toHaveBeenCalledOnce();
+    expect(fixture.authorizePublication).toHaveBeenCalledOnce();
+    expect(fixture.authorizePublication.mock.invocationCallOrder[0]).toBeLessThan(
+      fixture.pushFactoryBranch.mock.invocationCallOrder[0],
+    );
     expect(fixture.executeCodex).toHaveBeenCalledOnce();
     expect(fixture.executeVerification).toHaveBeenCalledOnce();
     expect(fixture.reports.at(-1)?.terminal).toEqual({ status: "COMPLETED" });
-    await fixture.worker.stop();
+    await restartedWorker.stop();
   });
 });
 
@@ -128,12 +134,21 @@ async function runFixture(serverVerdict: "VERIFIED" | "NOT_VERIFIED" | "REQUIRES
   };
   let lifecycle: "INITIAL" | "PAUSED" | "RESUME" | "COMPLETED" = "INITIAL";
   let verifiedCandidate: { sourceRevision: string; candidateRevision: string } | null = null;
+  const authorizePublication = vi.fn(async (payload: any) => ({
+    authorized: true,
+    publicationPermitId: `permit:${payload.leaseId}`,
+    candidateRevision: payload.candidateRevision,
+    validUntil: Date.now() + 10 * 60_000,
+  }));
   const client = {
     query: vi.fn(async (_query: unknown, args: any) => (
       args.status === "PENDING" && ["INITIAL", "RESUME"].includes(lifecycle) ? [run] : []
     )),
     action: vi.fn(async (_action: unknown, command: { payloadJson: string }) => {
       const payload = JSON.parse(command.payloadJson);
+      if (payload.candidateRevision && payload.leaseId && !payload.leaseDurationMs) {
+        return await authorizePublication(payload);
+      }
       if (!payload.packet) {
         if (lifecycle === "RESUME") {
           if (!verifiedCandidate) throw new Error("Missing verified candidate fixture state");
@@ -194,6 +209,9 @@ async function runFixture(serverVerdict: "VERIFIED" | "NOT_VERIFIED" | "REQUIRES
     reused: false,
   }));
   const executeVerification = vi.fn(executeIndependentVerification);
+  const pushFactoryBranchMock = vi.fn(async (input) => {
+    expect(input.branch).toBe("mc/verification-first-fixture");
+  });
   const dependencies: FactoryAttemptWorkerDependencies = {
     ensureFactoryWorktree,
     listChangedFiles,
@@ -204,12 +222,11 @@ async function runFixture(serverVerdict: "VERIFIED" | "NOT_VERIFIED" | "REQUIRES
     loadGithubAppPrivateKey: () => "test-private-key",
     getGithubAppId: () => "202",
     mintInstallationToken: async () => ({ token: "installation-token", expiresAt: Date.now() + 10 * 60_000 }),
-    pushFactoryBranch: vi.fn(async (input) => {
-      expect(input.branch).toBe("mc/verification-first-fixture");
-    }) as typeof pushFactoryBranch,
+    pushFactoryBranch: pushFactoryBranchMock as typeof pushFactoryBranch,
     createOrReusePullRequest: createPullRequest,
   };
-  const worker = new FactoryAttemptWorker(client, adapter, true, 60_000, dependencies);
+  const createRestartedWorker = () => new FactoryAttemptWorker(client, adapter, true, 60_000, dependencies);
+  const worker = createRestartedWorker();
 
   await worker.tick();
   return {
@@ -218,6 +235,9 @@ async function runFixture(serverVerdict: "VERIFIED" | "NOT_VERIFIED" | "REQUIRES
     createPullRequest,
     executeCodex,
     executeVerification,
+    authorizePublication,
+    pushFactoryBranch: pushFactoryBranchMock,
+    createRestartedWorker,
     resumeAfterApproval: () => { lifecycle = "RESUME"; },
   };
 }

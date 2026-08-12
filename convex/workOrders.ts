@@ -51,6 +51,8 @@ import {
 import { isAutomationSelfApproval } from "./lib/automationGovernance";
 import {
   factoryHumanReviewOutcome,
+  isFactoryHumanReviewCheckpoint,
+  isSourceVerificationFreshForPublication,
   validateHumanReviewApprovalContext,
 } from "./lib/factoryHumanReview";
 import { reconcileTerminalWorkflowSteps } from "./lib/workflowRunState";
@@ -475,6 +477,84 @@ function decisionToStatus(decision: "APPROVE" | "APPROVE_WITH_CONDITIONS" | "REJ
   }
 }
 
+async function closeFactoryHumanReviewCheckpoint(ctx: any, input: {
+  approvalDecision: any;
+  workOrder: any;
+  run: any;
+  reason: string;
+  actorId?: string;
+  approvalStatus: "EXPIRED" | "REVOKED" | "SUPERSEDED" | "REJECTED" | "REVISION_REQUESTED" | "CONDITIONAL";
+}) {
+  if (!isFactoryHumanReviewCheckpoint(input.approvalDecision, input.run)) return false;
+  const now = Date.now();
+  await ctx.db.patch(input.approvalDecision._id, {
+    status: input.approvalStatus,
+    decidedAt: now,
+    expiredAt: input.approvalStatus === "EXPIRED" ? now : input.approvalDecision.expiredAt,
+    revokedAt: input.approvalStatus === "REVOKED" ? now : input.approvalDecision.revokedAt,
+    reason: input.reason,
+  });
+  for (const receiptId of [
+    input.run.factoryContinuation.verificationReceiptId,
+    input.run.factoryContinuation.resolvedVerificationReceiptId,
+  ]) {
+    if (!receiptId) continue;
+    const receipt = await ctx.db.get(receiptId);
+    if (receipt && receipt.status !== "STALE") {
+      await ctx.db.patch(receipt._id, {
+        status: "STALE",
+        invalidatedAt: now,
+        invalidationReason: input.reason,
+      });
+    }
+  }
+  await ctx.db.patch(input.run._id, {
+    status: "FAILED",
+    completedAt: now,
+    failureReason: input.reason,
+    executionPhase: "TERMINAL",
+    lease: undefined,
+    steps: reconcileTerminalWorkflowSteps(input.run.steps, "FAILED", input.reason, now),
+    factoryContinuation: {
+      ...input.run.factoryContinuation,
+      status: "CLOSED",
+      closedAt: now,
+      closureReason: input.reason,
+    },
+  });
+  await insertFactoryReviewRunEvent(ctx, input.run, {
+    idempotencyKey: `factory-human-review:${input.run.runId}:${input.approvalDecision._id}:closed`,
+    eventType: "RUN_FAILED",
+    status: "FAILED",
+    actor: `human:${input.actorId ?? "operator"}`,
+    commandSummary: "Invalid human-review checkpoint closed",
+    errorSummary: input.reason,
+    verificationRunId: input.run.factoryContinuation.verificationRunId,
+    verificationReceiptId: input.run.factoryContinuation.verificationReceiptId,
+    metadata: { approvalDecisionId: input.approvalDecision._id, approvalStatus: input.approvalStatus },
+  });
+  await ctx.db.patch(input.workOrder._id, {
+    state: "BLOCKED",
+    currentExecutionRunId: undefined,
+    blockingIssue: input.reason,
+    requiredHumanAction: "The review checkpoint is closed. Reverify if needed, then create a governed retry.",
+    updatedAt: now,
+  });
+  await logWorkOrderEvent(ctx, {
+    tenantId: input.workOrder.tenantId,
+    projectId: input.workOrder.projectId,
+    workOrderId: input.workOrder._id,
+    workflowRunId: input.run._id,
+    eventType: input.approvalStatus === "EXPIRED" ? "APPROVAL_EXPIRED" : "APPROVAL_REVOKED",
+    actorType: "SYSTEM",
+    actorId: input.actorId,
+    summary: input.reason,
+    idempotencyKey: `factory-human-review:${input.run.runId}:${input.approvalDecision._id}:closed-work-order`,
+    metadata: { approvalDecisionId: input.approvalDecision._id, approvalStatus: input.approvalStatus },
+  });
+  return true;
+}
+
 async function applyFactoryHumanReviewDecision(ctx: any, input: {
   approvalDecision: any;
   decision: "APPROVE" | "APPROVE_WITH_CONDITIONS" | "REJECT" | "REQUEST_REVISION";
@@ -542,6 +622,7 @@ async function applyFactoryHumanReviewDecision(ctx: any, input: {
       idempotencyKey: `${idempotencyKey}:event`,
       eventType: "VERIFICATION_RECEIPT_CREATED",
       status: "VERIFIED",
+      actor: `human:${input.approver ?? "operator"}`,
       commandSummary: `Human review completed verification for ${input.sourceReceipt.candidateRevision.slice(0, 12)}`,
       verificationRunId: input.sourceReceipt.verificationRunId,
       verificationReceiptId: resolvedReceipt._id,
@@ -588,6 +669,7 @@ async function applyFactoryHumanReviewDecision(ctx: any, input: {
       idempotencyKey: `factory-human-review:${input.run.runId}:${input.approvalDecision._id}:resumed`,
       eventType: "RUN_RESUMED",
       status: "PENDING",
+      actor: `human:${input.approver ?? "operator"}`,
       commandSummary: `Human review approved candidate ${input.sourceReceipt.candidateRevision.slice(0, 12)} for publication`,
       verificationRunId: input.sourceReceipt.verificationRunId,
       verificationReceiptId: resolvedReceipt._id,
@@ -615,11 +697,25 @@ async function applyFactoryHumanReviewDecision(ctx: any, input: {
     executionPhase: "TERMINAL",
     lease: undefined,
     steps: reconcileTerminalWorkflowSteps(input.run.steps, "FAILED", failureReason, now),
+    factoryContinuation: {
+      ...input.run.factoryContinuation,
+      status: "CLOSED",
+      closedAt: now,
+      closureReason: failureReason,
+    },
   });
+  if (input.sourceReceipt.status !== "STALE") {
+    await ctx.db.patch(input.sourceReceipt._id, {
+      status: "STALE",
+      invalidatedAt: now,
+      invalidationReason: failureReason,
+    });
+  }
   await insertFactoryReviewRunEvent(ctx, input.run, {
     idempotencyKey: `factory-human-review:${input.run.runId}:${input.approvalDecision._id}:failed`,
     eventType: "RUN_FAILED",
     status: "FAILED",
+    actor: `human:${input.approver ?? "operator"}`,
     commandSummary: "Human review closed the paused publication checkpoint",
     errorSummary: failureReason,
     verificationRunId: input.sourceReceipt.verificationRunId,
@@ -641,9 +737,10 @@ async function insertFactoryReviewRunEvent(ctx: any, run: any, event: any) {
     .withIndex("by_idempotency", (q: any) => q.eq("idempotencyKey", event.idempotencyKey))
     .first();
   if (existing) return existing;
-  const events = await ctx.db.query("runEvents")
-    .withIndex("by_run", (q: any) => q.eq("workflowRunId", run._id))
-    .collect();
+  const latestEvent = await ctx.db.query("runEvents")
+    .withIndex("by_run_sequence", (q: any) => q.eq("workflowRunId", run._id))
+    .order("desc")
+    .first();
   return await ctx.db.insert("runEvents", {
     tenantId: run.tenantId,
     projectId: run.projectId,
@@ -652,8 +749,8 @@ async function insertFactoryReviewRunEvent(ctx: any, run: any, event: any) {
     idempotencyKey: event.idempotencyKey,
     eventType: event.eventType,
     workflowStep: "independent-verification",
-    sequenceNumber: events.reduce((max: number, row: any) => Math.max(max, row.sequenceNumber), 0) + 1,
-    actor: "human:operator",
+    sequenceNumber: (latestEvent?.sequenceNumber ?? 0) + 1,
+    actor: event.actor ?? "human:operator",
     commandSummary: event.commandSummary,
     status: event.status,
     startedAt: Date.now(),
@@ -803,22 +900,37 @@ async function expireGovernanceRecordsForWorkOrder(ctx: any, workOrder: any) {
   let staleReceipts = 0;
 
   for (const approval of approvals) {
-    if (["APPROVED", "CONDITIONAL"].includes(approval.status) && approval.expiresAt && approval.expiresAt <= now) {
-      await ctx.db.patch(approval._id, {
-        status: "EXPIRED",
-        expiredAt: now,
-      });
+    if (["PENDING", "APPROVED", "CONDITIONAL"].includes(approval.status) && approval.expiresAt && approval.expiresAt <= now) {
+      const linkedRun = approval.workflowRunId ? await ctx.db.get(approval.workflowRunId) : null;
+      const reason = `Approval ${approval.approvalType} expired`;
+      const closed = linkedRun
+        ? await closeFactoryHumanReviewCheckpoint(ctx, {
+            approvalDecision: approval,
+            workOrder,
+            run: linkedRun,
+            reason,
+            approvalStatus: "EXPIRED",
+          })
+        : false;
+      if (!closed) {
+        await ctx.db.patch(approval._id, {
+          status: "EXPIRED",
+          expiredAt: now,
+        });
+      }
       expiredApprovals += 1;
-      await logWorkOrderEvent(ctx, {
-        tenantId: workOrder.tenantId,
-        projectId: workOrder.projectId,
-        workOrderId: workOrder._id,
-        workflowRunId: approval.workflowRunId,
-        eventType: "APPROVAL_EXPIRED",
-        actorType: "SYSTEM",
-        summary: `Approval ${approval.approvalType} expired`,
-        metadata: { approvalDecisionId: approval._id },
-      });
+      if (!closed) {
+        await logWorkOrderEvent(ctx, {
+          tenantId: workOrder.tenantId,
+          projectId: workOrder.projectId,
+          workOrderId: workOrder._id,
+          workflowRunId: approval.workflowRunId,
+          eventType: "APPROVAL_EXPIRED",
+          actorType: "SYSTEM",
+          summary: reason,
+          metadata: { approvalDecisionId: approval._id },
+        });
+      }
     }
   }
 
@@ -1007,6 +1119,7 @@ function summarizeRun(run: any) {
     executionPhase: run.executionPhase,
     checkpointSummary: run.checkpointSummary,
     factoryContinuationStatus: run.factoryContinuation?.status,
+    factoryApprovalDecisionId: run.factoryContinuation?.approvalDecisionId,
     candidateRevision: run.factoryContinuation?.candidateRevision,
     startedAt: run.startedAt,
     completedAt: run.completedAt,
@@ -1144,7 +1257,27 @@ async function applyRevisionToWorkOrder(ctx: any, args: {
     resolveGovernancePolicy(ctx, workOrder),
   ]);
 
-  const activeRun = allRuns.find((run: any) => ACTIVE_RUN_STATUSES.includes(run.status));
+  let activeRun = allRuns.find((run: any) => ACTIVE_RUN_STATUSES.includes(run.status));
+  if (activeRun?.factoryContinuation?.status === "PUBLICATION_AUTHORIZED") {
+    throw new Error("WorkOrder revision cannot apply after publication authority is consumed; wait for the Attempt to reconcile");
+  }
+  if (["AWAITING_HUMAN_REVIEW", "READY_TO_PUBLISH"].includes(activeRun?.factoryContinuation?.status ?? "")
+    && activeRun.factoryContinuation.approvalDecisionId) {
+    const checkpointApproval = approvals.find(
+      (approval: any) => approval._id === activeRun.factoryContinuation.approvalDecisionId,
+    );
+    if (checkpointApproval) {
+      await closeFactoryHumanReviewCheckpoint(ctx, {
+        approvalDecision: checkpointApproval,
+        workOrder,
+        run: activeRun,
+        reason: `Revision ${args.revision.revisionNumber} invalidated the paused human-review checkpoint`,
+        actorId: args.approvedBy,
+        approvalStatus: "REVOKED",
+      });
+      activeRun = undefined;
+    }
+  }
 
   for (const receipt of receipts) {
     if (!args.revision.requiresReverification) continue;
@@ -2811,9 +2944,9 @@ export const approvalQueue = query({
       if (workOrder && deliveryAccess && !canAccessDeliveryRecord(deliveryAccess, workOrder)) return null;
 
       const evidenceAvailable = receipts.filter((receipt: any) => ["PASSED", "WAIVED"].includes(receipt.status)).length;
-      const [latestRun, approvalDecisions, revisions, policy] = workOrder
+      const [approvalRun, approvalDecisions, revisions, policy] = workOrder
         ? await Promise.all([
-            latestExecutionRunForWorkOrder(ctx, workOrder._id),
+            approval.workflowRunId ? ctx.db.get(approval.workflowRunId) : latestExecutionRunForWorkOrder(ctx, workOrder._id),
             listApprovalDecisionsForWorkOrder(ctx, workOrder._id),
             listRevisionsForWorkOrder(ctx, workOrder._id),
             resolveGovernancePolicy(ctx, workOrder),
@@ -2840,7 +2973,7 @@ export const approvalQueue = query({
       return {
         ...approval,
         workOrder,
-        latestRun: latestRun ? summarizeRun(latestRun) : null,
+        latestRun: approvalRun ? summarizeRun(approvalRun) : null,
         evidenceAvailable,
         verificationReceipts: receipts,
         governanceStatus,
@@ -2886,6 +3019,14 @@ export const requestApprovalDecision = mutation({
     }
 
     const existingApprovals = await listApprovalDecisionsForWorkOrder(ctx, workOrder._id);
+    if (args.approvalType === "HUMAN_REVIEW") {
+      for (const existingApproval of existingApprovals.filter((item: any) => item.approvalType === "HUMAN_REVIEW" && item.status === "PENDING")) {
+        const linkedRun: any = existingApproval.workflowRunId ? await ctx.db.get(existingApproval.workflowRunId) : null;
+        if (isFactoryHumanReviewCheckpoint(existingApproval, linkedRun)) {
+          throw new Error("The Factory owns the active human-review publication checkpoint; generic approval requests cannot replace it");
+        }
+      }
+    }
     const now = Date.now();
     const approvalDecisionId = await ctx.db.insert("approvalDecisions", {
       tenantId: workOrder.tenantId,
@@ -2954,10 +3095,6 @@ export const decideApprovalDecision = mutation({
     if (args.projectId && approvalDecision.projectId !== args.projectId) {
       throw new Error("ApprovalDecision does not belong to the selected workspace");
     }
-    if (approvalDecision.expiresAt && approvalDecision.expiresAt <= Date.now()) {
-      await ctx.db.patch(args.approvalDecisionId, { status: "EXPIRED", expiredAt: Date.now() });
-      throw new Error("ApprovalDecision has expired");
-    }
     if (approvalDecision.status !== "PENDING") {
       throw new Error(`ApprovalDecision cannot transition from ${approvalDecision.status}`);
     }
@@ -2965,30 +3102,56 @@ export const decideApprovalDecision = mutation({
     if (!workOrder) throw new Error("WorkOrder not found");
     const deliveryAccess = await requireAuthorizedDeliveryScope(ctx, workOrder.projectId, COMPANY_PERMISSIONS.APPROVE_DELIVERY);
     assertAuthorizedDeliveryRecord(deliveryAccess, workOrder);
+    const decisionActorId = deliveryAccess?.membership.operatorId
+      ? String(deliveryAccess.membership.operatorId)
+      : deliveryAccess?.membership.mode === "DEMO"
+        ? "demo:company-administrator"
+        : "operator";
     const reason = args.reason?.trim();
     if (!reason) throw new Error("A decision reason is required");
+    const linkedRun: any = approvalDecision.workflowRunId ? await ctx.db.get(approvalDecision.workflowRunId) : null;
+    if (approvalDecision.expiresAt && approvalDecision.expiresAt <= Date.now()) {
+      const expiryReason = "Human-review approval expired before a decision was recorded";
+      const closed = linkedRun
+        ? await closeFactoryHumanReviewCheckpoint(ctx, {
+            approvalDecision,
+            workOrder,
+            run: linkedRun,
+            reason: expiryReason,
+            actorId: decisionActorId,
+            approvalStatus: "EXPIRED",
+          })
+        : false;
+      if (!closed) {
+        await ctx.db.patch(args.approvalDecisionId, { status: "EXPIRED", expiredAt: Date.now(), reason: expiryReason });
+        await refreshWorkOrderGovernance(ctx, workOrder._id);
+      }
+      const expiredApproval = await ctx.db.get(args.approvalDecisionId);
+      return expiredApproval
+        ? { ...expiredApproval, factoryContinuationOutcome: closed ? "FAIL_ATTEMPT" as const : undefined, decisionRejectedReason: expiryReason }
+        : expiredApproval;
+    }
     if (args.decision === "APPROVE_WITH_CONDITIONS" && !(args.conditions ?? []).some((condition) => condition.trim())) {
       throw new Error("Conditional approval requires at least one condition");
     }
     if (isAutomationSelfApproval({
       automationDefinitionId: workOrder.metadata?.automationDefinitionId,
       requestedBy: workOrder.requestedBy,
-      approver: args.approver,
+      approver: decisionActorId,
     })) {
       throw new Error("An Automation cannot approve its own WorkOrder");
     }
 
     let humanReviewContext: { run: any; sourceReceipt: any } | null = null;
-    if (approvalDecision.approvalType === "HUMAN_REVIEW") {
-      const run = approvalDecision.workflowRunId ? await ctx.db.get(approvalDecision.workflowRunId) : null;
-      if (!run) throw new Error("Human-review approval is not linked to an available Factory attempt");
+    if (isFactoryHumanReviewCheckpoint(approvalDecision, linkedRun)) {
+      const run = linkedRun!;
       const validation = validateHumanReviewApprovalContext({
         approval: approvalDecision as any,
         run: run as any,
         workOrderRevisionNumber: workOrder.currentRevisionNumber ?? 1,
       });
       if (!validation.ok) throw new Error(`Human-review checkpoint is no longer valid (${validation.reason})`);
-      const sourceReceipt = run.factoryContinuation?.verificationReceiptId
+      const sourceReceipt: any = run.factoryContinuation?.verificationReceiptId
         ? await ctx.db.get(run.factoryContinuation.verificationReceiptId)
         : null;
       if (!sourceReceipt
@@ -2999,6 +3162,21 @@ export const decideApprovalDecision = mutation({
         || sourceReceipt.candidateRevision !== run.factoryContinuation?.candidateRevision) {
         throw new Error("Human-review checkpoint is missing its exact verification receipt");
       }
+      if (!isSourceVerificationFreshForPublication({ validUntil: sourceReceipt.validUntil })) {
+        const staleReason = "Human-review evidence expired before publication could be safely authorized";
+        await closeFactoryHumanReviewCheckpoint(ctx, {
+          approvalDecision,
+          workOrder,
+          run,
+          reason: staleReason,
+          actorId: decisionActorId,
+          approvalStatus: "EXPIRED",
+        });
+        const expiredApproval = await ctx.db.get(args.approvalDecisionId);
+        return expiredApproval
+          ? { ...expiredApproval, factoryContinuationOutcome: "FAIL_ATTEMPT" as const, decisionRejectedReason: staleReason }
+          : expiredApproval;
+      }
       humanReviewContext = { run, sourceReceipt };
     }
 
@@ -3006,7 +3184,7 @@ export const decideApprovalDecision = mutation({
     await ctx.db.patch(args.approvalDecisionId, {
       status,
       decision: args.decision,
-      approver: args.approver,
+      approver: decisionActorId,
       reason,
       conditions: args.conditions?.map((condition) => condition.trim()).filter(Boolean),
       decidedAt: Date.now(),
@@ -3017,7 +3195,7 @@ export const decideApprovalDecision = mutation({
       ? await applyFactoryHumanReviewDecision(ctx, {
           approvalDecision,
           decision: args.decision,
-          approver: args.approver,
+          approver: decisionActorId,
           reason,
           conditions: args.conditions?.map((condition) => condition.trim()).filter(Boolean),
           workOrder,
@@ -3056,7 +3234,7 @@ export const decideApprovalDecision = mutation({
               ? "APPROVAL_REJECTED"
               : "APPROVAL_REVISION_REQUESTED",
       actorType: "HUMAN",
-      actorId: args.approver,
+      actorId: decisionActorId,
       summary: `Approval ${approvalDecision.approvalType} ${status.toLowerCase()}`,
       metadata: { approvalDecisionId: approvalDecision._id, conditions: args.conditions, reason },
     });
@@ -3089,26 +3267,77 @@ export const expireApprovalDecision = mutation({
     if (approvalDecision.status !== "PENDING") {
       throw new Error(`ApprovalDecision cannot expire from ${approvalDecision.status}`);
     }
-    await ctx.db.patch(args.approvalDecisionId, {
-      status: "EXPIRED",
-      decidedAt: Date.now(),
-      reason: args.reason ?? approvalDecision.reason,
-    });
     const workOrder = await ctx.db.get(approvalDecision.workOrderId);
-    if (workOrder) {
-      await logWorkOrderEvent(ctx, {
-        tenantId: workOrder.tenantId,
-        projectId: workOrder.projectId,
-        workOrderId: workOrder._id,
-        workflowRunId: approvalDecision.workflowRunId,
-        eventType: "APPROVAL_EXPIRED",
-        actorType: "SYSTEM",
-        summary: `Approval ${approvalDecision.approvalType} expired`,
-        metadata: { approvalDecisionId: approvalDecision._id, reason: args.reason },
+    const actorId = deliveryAccess?.membership.operatorId
+      ? String(deliveryAccess.membership.operatorId)
+      : deliveryAccess?.membership.mode === "DEMO"
+        ? "demo:company-administrator"
+        : undefined;
+    const expiryReason = args.reason?.trim() || `Approval ${approvalDecision.approvalType} expired`;
+    const linkedRun: any = approvalDecision.workflowRunId ? await ctx.db.get(approvalDecision.workflowRunId) : null;
+    const closed = workOrder && linkedRun
+      ? await closeFactoryHumanReviewCheckpoint(ctx, {
+          approvalDecision,
+          workOrder,
+          run: linkedRun,
+          reason: expiryReason,
+          actorId,
+          approvalStatus: "EXPIRED",
+        })
+      : false;
+    if (!closed) {
+      await ctx.db.patch(args.approvalDecisionId, {
+        status: "EXPIRED",
+        decidedAt: Date.now(),
+        expiredAt: Date.now(),
+        reason: expiryReason,
       });
+    }
+    if (workOrder) {
+      if (!closed) {
+        await logWorkOrderEvent(ctx, {
+          tenantId: workOrder.tenantId,
+          projectId: workOrder.projectId,
+          workOrderId: workOrder._id,
+          workflowRunId: approvalDecision.workflowRunId,
+          eventType: "APPROVAL_EXPIRED",
+          actorType: "SYSTEM",
+          actorId,
+          summary: expiryReason,
+          metadata: { approvalDecisionId: approvalDecision._id, reason: expiryReason },
+        });
+      }
       await refreshWorkOrderGovernance(ctx, workOrder._id);
     }
     return await ctx.db.get(args.approvalDecisionId);
+  },
+});
+
+export const expireFactoryHumanReviewCheckpointInternal = internalMutation({
+  args: { approvalDecisionId: v.id("approvalDecisions") },
+  handler: async (ctx, args) => {
+    const approvalDecision = await ctx.db.get(args.approvalDecisionId);
+    if (!approvalDecision?.expiresAt || approvalDecision.expiresAt > Date.now()) {
+      return { expired: false as const, reason: "not-due" };
+    }
+    if (!["PENDING", "APPROVED"].includes(approvalDecision.status)) {
+      return { expired: false as const, reason: "already-closed" };
+    }
+    const [workOrder, run] = await Promise.all([
+      ctx.db.get(approvalDecision.workOrderId),
+      approvalDecision.workflowRunId ? ctx.db.get(approvalDecision.workflowRunId) : null,
+    ]);
+    if (!workOrder || !run || !isFactoryHumanReviewCheckpoint(approvalDecision, run as any)) {
+      return { expired: false as const, reason: "not-factory-checkpoint" };
+    }
+    await closeFactoryHumanReviewCheckpoint(ctx, {
+      approvalDecision,
+      workOrder,
+      run,
+      reason: "Human-review publication authority expired before publication completed",
+      approvalStatus: "EXPIRED",
+    });
+    return { expired: true as const };
   },
 });
 

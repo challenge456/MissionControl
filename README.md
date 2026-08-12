@@ -155,9 +155,13 @@ An enforced `REQUIRES_HUMAN_REVIEW` verdict now creates a durable publication
 checkpoint instead of failing the Attempt. Unconditional approval appends an
 approval-linked `VERIFIED` receipt and reclaims the same Attempt at
 `PUBLISHING`; the worker rechecks the exact candidate SHA and does not rerun
-`codex/v1` or independent verification. Conditional approval, rejection, or a
+`codex/v1` or independent verification. Immediately before the first GitHub
+write, the worker consumes a short-lived publication permit bound to the exact
+Attempt lease and candidate. Conditional approval, rejection, expiry, or a
 revision request closes the Attempt fail-closed so changed conditions require a
-new governed retry.
+new governed retry. Authenticated operators and tools can enumerate pending
+Factory review checkpoints with `GET /approval-decisions?projectId=...`; the
+executor still has no self-approval authority.
 
 This closes the single-path V1 proof; it does not make a broad production-scale
 claim. Remote sandbox enforcement, provider CI ingestion, learning-ledger CRUD,

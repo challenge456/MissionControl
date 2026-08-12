@@ -101,6 +101,7 @@ describe("WorkOrderApprovalsView", () => {
     render(<WorkOrderApprovalsView projectId={"project-1" as never} />);
 
     expect(screen.getByRole("button", { name: "Approve & resume publish" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Require retry with conditions" })).toBeEnabled();
     expect(screen.getByText(/Same Attempt · candidate/)).toHaveTextContent("abcdef123456");
     expect(screen.getByText(/no agent or verifier rerun/)).toBeInTheDocument();
   });

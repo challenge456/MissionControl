@@ -6,7 +6,7 @@ const configDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(configDir, "../..");
 
 export default defineConfig({
-  root: "apps/orchestration-server",
+  root: configDir,
   resolve: {
     alias: {
       "@mission-control/coordinator": path.resolve(repoRoot, "packages/coordinator/src/index.ts"),

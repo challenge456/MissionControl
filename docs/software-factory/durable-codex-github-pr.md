@@ -9,7 +9,7 @@ deploy code.
 
 ## Authoritative flow
 
-`Mission → approved plan → released WorkOrder → Task → workflowRun Attempt → Factory version → Git commit → pull-request artifact`
+`Mission → approved plan → released WorkOrder → Task → workflowRun Attempt → Factory version → Git commit → independent verification → optional human-review checkpoint → publication permit → pull-request artifact`
 
 Dispatch freezes the repository, code scopes, worktree, branch, executor,
 model, tool list, timeout, budget, Factory digest, and current WorkOrder
@@ -31,9 +31,15 @@ revision. The durable worker then:
    identity, branch, history, repository configuration, changed-file scope, and
    secret patterns before staging the final result. It fails closed when no
    command is bound.
-8. Commits with repository hooks disabled, mints a repository-scoped installation
+8. When verification requires human judgment, durably pauses the Attempt before
+   provider writes. Unconditional approval resumes the same Attempt at the exact
+   verified candidate; decisions requiring changes close it for governed retry.
+9. Revalidates current revision, approval, receipt, required approvals, lease,
+   and candidate immediately before publication, then consumes a bounded
+   publication permit as the auditable point of no return.
+10. Commits with repository hooks disabled, mints a repository-scoped installation
    token, pushes the exact branch, and finds or creates the pull request.
-9. Persists commit, pull request, changed files, installation identity, and the
+11. Persists commit, pull request, changed files, installation identity, and the
    complete Mission-to-Factory lineage before marking the Attempt complete.
 
 The GitHub installation token is held only in worker memory during push and PR
@@ -53,6 +59,10 @@ expires, another worker can reclaim the same Attempt and:
 - safely repeat a non-force push;
 - reuse the open PR for the exact head branch; and
 - finalize an already-published identity without creating a duplicate PR.
+
+A human-review pause is a control-plane continuation, not an in-process
+`codex/v1` resume. The implementation process and independent verifier have
+already stopped; only the frozen, verified candidate proceeds to publication.
 
 Graceful process shutdown aborts only the local child process. It does not mark
 the Attempt canceled; the run remains non-terminal until its lease expires and
@@ -142,3 +152,8 @@ verification command exists, a verification command fails, budget estimate is
 over limit, verification changes Git identity/history/configuration, a changed
 file exceeds the governed scan limit, cancellation is requested, or the lease
 is lost.
+
+For a human-review continuation, the control plane must issue a current,
+lease-bound publication permit immediately before GitHub mutation. After that
+permit is consumed, publication is non-revocable for its bounded validity
+window so restart recovery can reconcile an idempotent push or existing PR.

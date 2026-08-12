@@ -10,6 +10,7 @@ export type ServiceCapability =
   | "attempts.claim"
   | "attempts.renew"
   | "attempts.report"
+  | "attempts.authorize-publication"
   | "executions.claim"
   | "executions.heartbeat"
   | "executions.report"

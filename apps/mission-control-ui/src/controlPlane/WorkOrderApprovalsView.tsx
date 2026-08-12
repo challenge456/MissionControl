@@ -144,7 +144,6 @@ export function WorkOrderApprovalsView({ projectId }: { projectId: Id<"projects"
         approvalDecisionId: selected._id as Id<"approvalDecisions">,
         projectId: projectId ?? undefined,
         decision,
-        approver: "operator",
         reason,
         conditions: decision === "APPROVE_WITH_CONDITIONS" ? conditions : undefined,
         metadata: { surface: "operator-decision-workspace", packetVersion: "v1" },
@@ -152,6 +151,11 @@ export function WorkOrderApprovalsView({ projectId }: { projectId: Id<"projects"
       const resultLabel = decision === "REQUEST_REVISION" ? "Revision requested" : decision === "REJECT" ? "Decision rejected" : "Authorization recorded";
       const continuationOutcome = (result as { factoryContinuationOutcome?: "RESUME_PUBLISH" | "FAIL_ATTEMPT" } | null)
         ?.factoryContinuationOutcome;
+      const decisionRejectedReason = (result as { decisionRejectedReason?: string } | null)?.decisionRejectedReason;
+      if (decisionRejectedReason) {
+        setMessage({ type: "error", text: decisionRejectedReason });
+        return;
+      }
       const continuationMessage = continuationOutcome === "RESUME_PUBLISH"
         ? "The same verified Attempt is queued to resume at pull-request publication."
         : continuationOutcome === "FAIL_ATTEMPT"
@@ -326,7 +330,7 @@ export function WorkOrderApprovalsView({ projectId }: { projectId: Id<"projects"
                     {message ? <div role={message.type === "error" ? "alert" : "status"} className={cn("mt-3 rounded-lg border px-3 py-2 text-[12.5px]", message.type === "error" ? "border-red-500/30 bg-red-500/[0.08] text-red-200" : "border-emerald-500/30 bg-emerald-500/[0.08] text-emerald-200")}>{message.text}</div> : null}
                     <div className="mt-4 flex flex-wrap gap-2">
                       <Button size="sm" onClick={() => handleDecision("APPROVE")} disabled={savingId === selected._id || !packet.canDecide}>{savingId === selected._id ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}{resumesVerifiedAttempt ? "Approve & resume publish" : "Approve scope"}</Button>
-                      <Button size="sm" variant="outline" onClick={() => handleDecision("APPROVE_WITH_CONDITIONS")} disabled={savingId === selected._id || !packet.canDecide}>Approve with conditions</Button>
+                      <Button size="sm" variant="outline" onClick={() => handleDecision("APPROVE_WITH_CONDITIONS")} disabled={savingId === selected._id || !packet.canDecide}>{resumesVerifiedAttempt ? "Require retry with conditions" : "Approve with conditions"}</Button>
                       <Button size="sm" variant="secondary" onClick={() => handleDecision("REQUEST_REVISION")} disabled={savingId === selected._id}>Request revision</Button>
                       <Button size="sm" variant="destructive" onClick={() => handleDecision("REJECT")} disabled={savingId === selected._id}>Reject</Button>
                     </div>

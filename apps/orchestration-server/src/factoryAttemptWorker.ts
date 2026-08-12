@@ -208,6 +208,9 @@ export class FactoryAttemptWorker {
           verificationRecord: checkpoint.verification,
           headSha: checkpoint.candidateRevision,
           report,
+          leaseId,
+          publicationPermit: checkpoint.publicationPermit,
+          requirePublicationPermit: true,
         });
         this.completedCount += 1;
         this.lastError = null;
@@ -345,6 +348,7 @@ export class FactoryAttemptWorker {
         verificationRecord,
         headSha,
         report,
+        leaseId,
         events: verificationResult ? [] : mappedEvents,
         artifacts: verificationResult ? [] : baseArtifacts,
       });
@@ -366,7 +370,7 @@ export class FactoryAttemptWorker {
 
   private async command(
     action: keyof typeof ConvexActions.serviceCommands,
-    capability: "attempts.claim" | "attempts.renew" | "attempts.report",
+    capability: "attempts.claim" | "attempts.renew" | "attempts.report" | "attempts.authorize-publication",
     run: any,
     payload: unknown
   ) {
@@ -387,6 +391,9 @@ export class FactoryAttemptWorker {
     verificationRecord: any;
     headSha: string;
     report: (packet: any) => Promise<any>;
+    leaseId: string;
+    publicationPermit?: { id: string; leaseId: string; validUntil: number };
+    requirePublicationPermit?: boolean;
     events?: any[];
     artifacts?: any[];
   }) {
@@ -395,6 +402,26 @@ export class FactoryAttemptWorker {
     if (!privateKey || !configuredAppId) throw new Error("GitHub App runtime credentials are not configured.");
     if (configuredAppId !== input.claim.installation.appId) throw new Error("GitHub App runtime identity does not match the frozen installation.");
     if (!input.claim.providerRepositoryId) throw new Error("GitHub provider repository identity is not frozen.");
+    let publicationPermit = input.publicationPermit;
+    if (input.requirePublicationPermit && !publicationPermit) {
+      const authorization = await this.command(
+        "authorizeFactoryPublication",
+        "attempts.authorize-publication",
+        input.claim,
+        {
+          workflowRunId: input.claim.workflowRunId,
+          leaseId: input.leaseId,
+          candidateRevision: input.headSha,
+        },
+      );
+      if (!authorization?.authorized) throw new Error("Control plane did not authorize pull-request publication.");
+      publicationPermit = {
+        id: authorization.publicationPermitId,
+        leaseId: input.leaseId,
+        validUntil: authorization.validUntil,
+      };
+    }
+    if (input.requirePublicationPermit) assertPublicationPermitCurrent(publicationPermit, input.leaseId, input.headSha);
     const installationToken = await this.dependencies.mintInstallationToken({
       appId: configuredAppId,
       installationId: input.claim.installation.installationId,
@@ -402,6 +429,7 @@ export class FactoryAttemptWorker {
       privateKey,
     });
     if (installationToken.expiresAt <= Date.now() + 60_000) throw new Error("GitHub installation token expires too soon for a safe push.");
+    if (input.requirePublicationPermit) assertPublicationPermitCurrent(publicationPermit, input.leaseId, input.headSha);
     await this.dependencies.assertFactoryCandidateUnchanged(input.claim.worktree, input.headSha);
     await this.dependencies.pushFactoryBranch({
       worktree: input.claim.worktree,
@@ -409,6 +437,7 @@ export class FactoryAttemptWorker {
       branch: input.claim.branch,
       installationToken: installationToken.token,
     });
+    if (input.requirePublicationPermit) assertPublicationPermitCurrent(publicationPermit, input.leaseId, input.headSha);
     const pullRequest = await this.dependencies.createOrReusePullRequest({
       repository: input.claim.repository,
       branch: input.claim.branch,
@@ -429,6 +458,7 @@ export class FactoryAttemptWorker {
       pullRequestUrl: pullRequest.url,
       changedFiles: input.changedFiles,
       executionManifestDigest: input.claim.executionManifestDigest,
+      publicationPermitId: publicationPermit?.id,
     };
     await input.report({
       events: input.events ?? [],
@@ -553,7 +583,18 @@ function validatePublicationCheckpoint(checkpoint: any) {
     changedFiles: string[];
     verification: any;
     structuredResult: any;
+    publicationPermit?: { id: string; leaseId: string; validUntil: number };
   };
+}
+
+function assertPublicationPermitCurrent(
+  permit: { id: string; leaseId: string; validUntil: number } | undefined,
+  leaseId: string,
+  candidateRevision: string,
+) {
+  if (!permit?.id || permit.leaseId !== leaseId || !Number.isFinite(permit.validUntil) || permit.validUntil <= Date.now()) {
+    throw new Error(`Publication permit is missing or expired for candidate ${candidateRevision.slice(0, 12)}.`);
+  }
 }
 
 function sameStringSet(left: string[], right: string[]) {
