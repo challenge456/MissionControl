@@ -6,7 +6,7 @@ const configDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(configDir, "../..");
 
 export default defineConfig({
-  root: "apps/orchestration-server",
+  root: configDir,
   resolve: {
     alias: {
       "@mission-control/coordinator": path.resolve(repoRoot, "packages/coordinator/src/index.ts"),
@@ -14,6 +14,7 @@ export default defineConfig({
       "@mission-control/memory": path.resolve(repoRoot, "packages/memory/src/index.ts"),
       "@mission-control/context-router": path.resolve(repoRoot, "packages/context-router/src/index.ts"),
       "@mission-control/shared": path.resolve(repoRoot, "packages/shared/src/index.ts"),
+      "@mission-control/workflow-engine/verification": path.resolve(repoRoot, "packages/workflow-engine/src/verification.ts"),
       "@mission-control/workflow-engine": path.resolve(repoRoot, "packages/workflow-engine/src/index.ts"),
     },
   },

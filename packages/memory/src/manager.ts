@@ -5,9 +5,9 @@
  * Provides a unified interface for reading and writing memory.
  */
 
-import { SessionMemory } from "./session";
-import { ProjectMemory } from "./project";
-import { GlobalMemory, PerformanceRecord, PatternRecord } from "./global";
+import { SessionMemory } from "./session.js";
+import { ProjectMemory } from "./project.js";
+import { GlobalMemory, PerformanceRecord, PatternRecord } from "./global.js";
 
 export interface MemoryConfig {
   agentId: string;

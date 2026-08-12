@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { isValidAvatarPath, isValidEmoji } from "../types/identity";
+import { isValidAvatarPath, isValidEmoji } from "../types/identity.js";
 
 describe("isValidAvatarPath", () => {
   it("should accept http URLs", () => {

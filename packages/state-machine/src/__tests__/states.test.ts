@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { STATE_DEFINITIONS, isTerminalStatus, getRequiredArtifacts } from "../states";
+import { STATE_DEFINITIONS, isTerminalStatus, getRequiredArtifacts } from "../states.js";
 
 describe("State Definitions", () => {
   it("defines exactly 10 states", () => {

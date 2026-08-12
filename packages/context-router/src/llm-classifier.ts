@@ -16,7 +16,7 @@ import type {
   ClassificationResult,
   ComplexityTier,
   IntentCategory,
-} from "./types";
+} from "./types.js";
 
 // ============================================================================
 // LLM CLIENT INTERFACE

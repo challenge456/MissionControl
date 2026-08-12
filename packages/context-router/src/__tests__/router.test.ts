@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { ContextRouter } from "../router";
-import type { RoutingContext } from "../types";
+import { ContextRouter } from "../router.js";
+import type { RoutingContext } from "../types.js";
 
 function ctx(input: string, overrides?: Partial<RoutingContext>): RoutingContext {
   return {

@@ -23,6 +23,7 @@ export const ConvexQueries = {
   },
   workOrders: {
     get: "workOrders:get",
+    approvalQueue: "workOrders:approvalQueue",
     revisionHistory: "workOrders:revisionHistory",
     governanceValidity: "workOrders:governanceValidity",
     listExpiredApprovals: "workOrders:listExpiredApprovals",
@@ -43,6 +44,7 @@ export const ConvexActions = {
     claimFactoryAttempt: "serviceCommands:claimFactoryAttempt",
     renewFactoryAttempt: "serviceCommands:renewFactoryAttempt",
     reportFactoryAttempt: "serviceCommands:reportFactoryAttempt",
+    authorizeFactoryPublication: "serviceCommands:authorizeFactoryPublication",
     claimExecution: "serviceCommands:claimExecution",
     heartbeatExecution: "serviceCommands:heartbeatExecution",
     reportExecution: "serviceCommands:reportExecution",

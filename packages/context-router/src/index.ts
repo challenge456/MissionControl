@@ -16,10 +16,10 @@
  *   const result = await router.routeAsync({ input: "...", source: "HUMAN" });
  */
 
-export { ContextRouter, DEFAULT_ROUTER_CONFIG } from "./router";
-export { classify } from "./classifier";
-export { classifyWithLLM } from "./llm-classifier";
-export type { LLMClient } from "./llm-classifier";
+export { ContextRouter, DEFAULT_ROUTER_CONFIG } from "./router.js";
+export { classify } from "./classifier.js";
+export { classifyWithLLM } from "./llm-classifier.js";
+export type { LLMClient } from "./llm-classifier.js";
 export type {
   ContextRouterConfig,
   ClassificationResult,
@@ -29,4 +29,4 @@ export type {
   RoutingRule,
   IntentCategory,
   ComplexityTier,
-} from "./types";
+} from "./types.js";

@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { WorkOrderApprovalsView } from "./WorkOrderApprovalsView";
 
-const mocks = vi.hoisted(() => ({ decide: vi.fn() }));
+const mocks = vi.hoisted(() => ({ decide: vi.fn(), approvals: [] as any[] }));
 
 vi.mock("../../../../convex/_generated/api", () => ({
   api: {
@@ -41,13 +41,14 @@ const pendingDecision = {
 };
 
 vi.mock("convex/react", () => ({
-  useQuery: (query: string) => query === "workOrders.approvalQueue" ? [pendingDecision] : undefined,
+  useQuery: (query: string) => query === "workOrders.approvalQueue" ? mocks.approvals : undefined,
   useMutation: () => mocks.decide,
 }));
 
 describe("WorkOrderApprovalsView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.approvals = [pendingDecision];
     mocks.decide.mockResolvedValue({ status: "APPROVED" });
   });
 
@@ -78,5 +79,30 @@ describe("WorkOrderApprovalsView", () => {
       decision: "APPROVE",
       reason: "Scope is bounded and rollback is explicit.",
     })));
+  });
+
+  it("explains exact-candidate publication resume for a paused human-review checkpoint", () => {
+    mocks.approvals = [{
+      ...pendingDecision,
+      approvalType: "HUMAN_REVIEW",
+      requestedAction: "Approve verified candidate abcdef123456 for pull-request publication",
+      latestRun: {
+        runId: "attempt-1",
+        status: "PAUSED",
+        executionPhase: "AWAITING_HUMAN_REVIEW",
+        factoryContinuationStatus: "AWAITING_HUMAN_REVIEW",
+        candidateRevision: "abcdef1234567890",
+      },
+      metadata: {
+        dispatchPreview: "Unconditional approval resumes the same Attempt at pull-request publication.",
+      },
+    }];
+
+    render(<WorkOrderApprovalsView projectId={"project-1" as never} />);
+
+    expect(screen.getByRole("button", { name: "Approve & resume publish" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Require retry with conditions" })).toBeEnabled();
+    expect(screen.getByText(/Same Attempt · candidate/)).toHaveTextContent("abcdef123456");
+    expect(screen.getByText(/no agent or verifier rerun/)).toBeInTheDocument();
   });
 });

@@ -6,7 +6,7 @@ import {
   validateRunTaskAuthority,
   workflowDefinitionForRun,
   workflowEvidenceDigest,
-} from "../executor";
+} from "../executor.js";
 
 function executorWithClient(client: {
   query?: ReturnType<typeof vi.fn>;

@@ -6,7 +6,7 @@ import {
   type CandidateChange,
   type Verifier,
   type WorkOrderVerificationSpec,
-} from "../verification";
+} from "../verification.js";
 
 const candidate: CandidateChange = {
   sourceRevision: "base-sha",

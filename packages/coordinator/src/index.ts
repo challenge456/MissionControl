@@ -9,15 +9,15 @@
  *   5. Escalates to human when authority is exceeded
  */
 
-export { decompose, type DecompositionResult, type Subtask } from "./decomposer";
-export { delegate, type DelegationResult, type AgentCandidate } from "./delegator";
+export { decompose, type DecompositionResult, type Subtask } from "./decomposer.js";
+export { delegate, type DelegationResult, type AgentCandidate } from "./delegator.js";
 export { 
   buildDependencyGraph, 
   topologicalSort, 
   detectCycles, 
   type DependencyGraph 
-} from "./dependency-graph";
+} from "./dependency-graph.js";
 export { 
   CoordinatorLoop, 
   type CoordinatorConfig 
-} from "./loop";
+} from "./loop.js";

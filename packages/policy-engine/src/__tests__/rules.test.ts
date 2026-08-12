@@ -7,7 +7,7 @@ import {
   SPAWN_LIMITS,
   LOOP_DETECTION,
   DEFAULT_POLICY_V1,
-} from "../rules";
+} from "../rules.js";
 
 describe("AUTONOMY_RULES", () => {
   it("defines all three levels", () => {

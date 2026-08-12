@@ -11,7 +11,7 @@ import {
   DIRECTORY_DUMP_PATTERNS,
   AUTONOMY_RULES,
   BUDGET_DEFAULTS,
-} from "../rules";
+} from "../rules.js";
 
 describe("Safety Defaults", () => {
   describe("checkSafetyDefaults", () => {

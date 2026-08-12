@@ -13,7 +13,7 @@ import {
   prepareWorktree,
   pullRequestBody,
   runVerificationCommands,
-} from "../durableCodexWorker";
+} from "../durableCodexWorker.js";
 
 const exec = promisify(execFile);
 

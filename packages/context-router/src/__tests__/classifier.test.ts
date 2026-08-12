@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { classify } from "../classifier";
+import { classify } from "../classifier.js";
 
 describe("classify", () => {
   describe("intent detection", () => {

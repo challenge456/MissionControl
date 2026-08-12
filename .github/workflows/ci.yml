@@ -56,6 +56,11 @@ jobs:
       - name: Build shared packages
         run: |
           pnpm run ci:prepare
+
+      - name: Smoke built orchestration artifact
+        run: |
+          pnpm --filter @mission-control/orchestration-server build
+          pnpm --filter @mission-control/orchestration-server smoke:start
       
       - name: Run typecheck
         run: |

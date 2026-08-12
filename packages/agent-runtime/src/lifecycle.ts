@@ -12,8 +12,8 @@
  */
 
 import { ConvexHttpClient } from "convex/browser";
-import { AgentPersona, loadPersona } from "./persona";
-import { HeartbeatMonitor, HeartbeatConfig } from "./heartbeat";
+import { AgentPersona, loadPersona } from "./persona.js";
+import { HeartbeatMonitor, HeartbeatConfig } from "./heartbeat.js";
 import { MemoryManager } from "@mission-control/memory";
 
 export interface AgentLifecycleConfig {

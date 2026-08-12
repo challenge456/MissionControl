@@ -53,7 +53,15 @@ export interface OperatorApproval {
   createdAt?: number;
   metadata?: Record<string, unknown>;
   workOrder: OperatorWorkOrder | null;
-  latestRun?: { runId?: string; status?: string; workflowId?: string } | null;
+  latestRun?: {
+    runId?: string;
+    status?: string;
+    workflowId?: string;
+    executionPhase?: string;
+    checkpointSummary?: string;
+    factoryContinuationStatus?: string;
+    candidateRevision?: string;
+  } | null;
   verificationReceipts?: OperatorReceipt[];
   remainingUncertainty?: string[];
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { GlobalMemory, PerformanceRecord, PatternRecord } from "../global";
+import { GlobalMemory, PerformanceRecord, PatternRecord } from "../global.js";
 
 describe("GlobalMemory", () => {
   const perfRecords: PerformanceRecord[] = [

@@ -6,7 +6,7 @@ import {
   graphMetrics,
   validateGraphDefinition,
   validateStructuredOutput,
-} from "../graph";
+} from "../graph.js";
 
 describe("workflow graph", () => {
   it("compiles legacy workflows as a linear graph", () => {

@@ -105,6 +105,7 @@ import type * as lib_factoryAttempt from "../lib/factoryAttempt.js";
 import type * as lib_factoryConfiguration from "../lib/factoryConfiguration.js";
 import type * as lib_factoryDispatch from "../lib/factoryDispatch.js";
 import type * as lib_factoryHealth from "../lib/factoryHealth.js";
+import type * as lib_factoryHumanReview from "../lib/factoryHumanReview.js";
 import type * as lib_factoryOverview from "../lib/factoryOverview.js";
 import type * as lib_factoryProjectSeed from "../lib/factoryProjectSeed.js";
 import type * as lib_factoryWorkflowContract from "../lib/factoryWorkflowContract.js";
@@ -358,6 +359,7 @@ declare const fullApi: ApiFromModules<{
   "lib/factoryConfiguration": typeof lib_factoryConfiguration;
   "lib/factoryDispatch": typeof lib_factoryDispatch;
   "lib/factoryHealth": typeof lib_factoryHealth;
+  "lib/factoryHumanReview": typeof lib_factoryHumanReview;
   "lib/factoryOverview": typeof lib_factoryOverview;
   "lib/factoryProjectSeed": typeof lib_factoryProjectSeed;
   "lib/factoryWorkflowContract": typeof lib_factoryWorkflowContract;

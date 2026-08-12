@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { parse, meetsExpectations, extractData } from "../parser";
+import { parse, meetsExpectations, extractData } from "../parser.js";
 
 describe("parse", () => {
   it("should parse STATUS: done", () => {

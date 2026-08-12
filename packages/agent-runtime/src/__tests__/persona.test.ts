@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validatePersona, matchPersona, AgentPersona } from "../persona";
+import { validatePersona, matchPersona, AgentPersona } from "../persona.js";
 
 const VALID_PERSONA: AgentPersona = {
   name: "TestAgent",

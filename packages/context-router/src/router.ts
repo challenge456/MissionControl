@@ -13,8 +13,8 @@
  *   - Rejection/deferral
  */
 
-import { classify } from "./classifier";
-import { classifyWithLLM, type LLMClient } from "./llm-classifier";
+import { classify } from "./classifier.js";
+import { classifyWithLLM, type LLMClient } from "./llm-classifier.js";
 import type {
   ContextRouterConfig,
   ComplexityTier,
@@ -22,7 +22,7 @@ import type {
   RouteResult,
   RoutingContext,
   RoutingRule,
-} from "./types";
+} from "./types.js";
 
 // ============================================================================
 // COMPLEXITY ORDERING (for threshold comparison)

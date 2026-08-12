@@ -5,7 +5,7 @@
  * All enum values are UPPERCASE to match Convex schema (source of truth).
  */
 
-import { TaskStatus, TaskType, AutonomyLevel, ToolRisk } from "./types";
+import { TaskStatus, TaskType, AutonomyLevel, ToolRisk } from "./types/index.js";
 
 /**
  * Task Status Constants

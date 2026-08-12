@@ -326,6 +326,34 @@ export const reportFactoryAttempt = action({
   },
 });
 
+export const authorizeFactoryPublication = action({
+  args: { envelope, payloadJson: v.string() },
+  handler: async (ctx, args): Promise<any> => {
+    const payload = await authorize(ctx, args.envelope, args.payloadJson, "attempts.authorize-publication");
+    const scope = await ctx.runQuery(internal.factory.attempts.resolveScope, {
+      workflowRunId: payload.workflowRunId,
+    });
+    const receipt = await claimScoped(ctx, args.envelope, scope);
+    try {
+      const result = await ctx.runMutation(internal.factory.attempts.authorizePublicationInternal, {
+        workflowRunId: payload.workflowRunId,
+        leaseId: payload.leaseId,
+        ownerId: args.envelope.serviceId,
+        candidateRevision: payload.candidateRevision,
+      });
+      await ctx.runMutation(internal.serviceCommands.complete, {
+        receiptId: receipt.receiptId,
+        status: "SUCCEEDED",
+        resultReference: result.publicationPermitId,
+      });
+      return result;
+    } catch (error) {
+      await fail(ctx, receipt.receiptId, error);
+      throw error;
+    }
+  },
+});
+
 export const claimExecution = action({
   args: { envelope, payloadJson: v.string() },
   handler: async (ctx, args): Promise<any> => {

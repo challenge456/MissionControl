@@ -5,7 +5,7 @@
  * database writes, and external API calls.
  */
 
-import { sleep } from "./utils";
+import { sleep } from "./utils.js";
 
 export interface RetryConfig {
   maxAttempts: number;

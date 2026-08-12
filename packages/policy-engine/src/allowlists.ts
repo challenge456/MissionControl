@@ -4,7 +4,7 @@
  * Functions to check if shell commands, network calls, and file operations are allowed.
  */
 
-import { ALLOWLISTS } from "./rules";
+import { ALLOWLISTS } from "./rules.js";
 import { SECRET_PATTERNS, PRODUCTION_INDICATORS } from "@mission-control/shared";
 
 /**

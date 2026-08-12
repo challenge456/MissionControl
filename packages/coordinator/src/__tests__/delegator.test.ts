@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { delegate, delegateAll, AgentCandidate } from "../delegator";
-import { Subtask } from "../decomposer";
+import { delegate, delegateAll, AgentCandidate } from "../delegator.js";
+import { Subtask } from "../decomposer.js";
 
 const makeAgent = (overrides: Partial<AgentCandidate> = {}): AgentCandidate => ({
   id: "agent-1",

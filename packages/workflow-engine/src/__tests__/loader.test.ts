@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { loadWorkflow, validateWorkflow } from "../loader";
+import { loadWorkflow, validateWorkflow } from "../loader.js";
 
 describe("validateWorkflow", () => {
   it("keeps repository-changing feature steps in isolated worktrees", () => {

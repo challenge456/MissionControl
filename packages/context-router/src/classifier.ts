@@ -11,7 +11,7 @@ import type {
   ClassificationResult,
   ComplexityTier,
   IntentCategory,
-} from "./types";
+} from "./types.js";
 
 // ============================================================================
 // KEYWORD PATTERNS (ordered by specificity)

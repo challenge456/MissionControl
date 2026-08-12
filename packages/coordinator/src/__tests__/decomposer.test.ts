@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { decompose, TaskInput } from "../decomposer";
+import { decompose, TaskInput } from "../decomposer.js";
 
 describe("decompose", () => {
   const engineeringTask: TaskInput = {

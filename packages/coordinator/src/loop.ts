@@ -9,9 +9,9 @@
  *   5. Handle escalations
  */
 
-import { decompose, TaskInput } from "./decomposer";
-import { delegate, delegateAll, AgentCandidate } from "./delegator";
-import { buildDependencyGraph, findReadyTasks } from "./dependency-graph";
+import { decompose, TaskInput } from "./decomposer.js";
+import { delegate, delegateAll, AgentCandidate } from "./delegator.js";
+import { buildDependencyGraph, findReadyTasks } from "./dependency-graph.js";
 
 export interface CoordinatorConfig {
   pollIntervalMs: number;

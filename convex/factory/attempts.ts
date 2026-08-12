@@ -2,6 +2,13 @@ import { v } from "convex/values";
 import { internalMutation, internalQuery } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { activeLeaseMatches, evaluateAttemptClaim, renewAttemptLease } from "../lib/factoryAttempt";
+import {
+  PUBLICATION_SAFETY_WINDOW_MS,
+  validatePublicationPermit,
+  validatePublishContinuation,
+} from "../lib/factoryHumanReview";
+import { isApprovalUsable, latestApprovalByType, requiredApprovalTypes } from "../lib/workOrderGovernance";
+import { approvalExpiresAt, DEFAULT_GOVERNANCE_POLICY, verificationValidUntil } from "../lib/workOrderRevision";
 import { reconcileTerminalWorkflowSteps } from "../lib/workflowRunState";
 import { recomputeVerificationPacket } from "../lib/verificationPersistence";
 
@@ -22,7 +29,6 @@ const ARTIFACT_TYPES = new Set([
   "GENERATED_DOCUMENT", "VERIFICATION_EVIDENCE", "PULL_REQUEST", "CHECKPOINT",
   "STRUCTURED_OUTPUT", "OTHER",
 ]);
-
 export const resolveScope = internalQuery({
   args: { workflowRunId: v.id("workflowRuns") },
   handler: async (ctx, args) => {
@@ -98,7 +104,101 @@ export const claimInternal = internalMutation({
       throw new Error("Factory attempt GitHub App installation is not connected.");
     }
 
-    await ctx.db.patch(run._id, { status: "RUNNING", lease: decision.lease });
+    let publicationCheckpoint: any;
+    if (["READY_TO_PUBLISH", "PUBLICATION_AUTHORIZED"].includes(run.factoryContinuation?.status ?? "")) {
+      const continuation = run.factoryContinuation!;
+      const [approval, sourceReceipt, resolvedReceipt, structuredArtifact, codeDiffArtifact, approvals] = await Promise.all([
+        continuation.approvalDecisionId ? ctx.db.get(continuation.approvalDecisionId) : null,
+        ctx.db.get(continuation.verificationReceiptId),
+        continuation.resolvedVerificationReceiptId ? ctx.db.get(continuation.resolvedVerificationReceiptId) : null,
+        ctx.db.query("runArtifacts")
+          .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", `factory:${run.runId}:structured-result`))
+          .first(),
+        ctx.db.query("runArtifacts")
+          .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", `factory:${run.runId}:code-diff:${continuation.candidateRevision}`))
+          .first(),
+        ctx.db.query("approvalDecisions")
+          .withIndex("by_work_order", (q) => q.eq("workOrderId", workOrder._id))
+          .collect(),
+      ]);
+      if (continuation.status === "READY_TO_PUBLISH") {
+        const validation = validatePublishContinuation({
+          run: run as any,
+          workOrderRevisionNumber: workOrder.currentRevisionNumber ?? 1,
+          approval: approval as any,
+          sourceReceipt: sourceReceipt as any,
+          resolvedReceipt: resolvedReceipt as any,
+        });
+        if (!validation.ok) {
+          return await failInvalidPublicationContinuation(ctx, run, `Factory publication checkpoint is invalid (${validation.reason}).`);
+        }
+
+        const approvalsByType = latestApprovalByType(approvals as any[]);
+        const missingApproval = requiredApprovalTypes({
+          riskLevel: workOrder.riskLevel as any,
+          requiredApprovals: workOrder.requiredApprovals,
+        }).find((approvalType) => {
+          const candidate = approvalsByType.get(approvalType) as any;
+          return !candidate
+            || candidate.workOrderRevisionNumber !== (workOrder.currentRevisionNumber ?? 1)
+            || !isApprovalUsable(candidate);
+        });
+        if (missingApproval) {
+          return await failInvalidPublicationContinuation(ctx, run, `Required approval ${missingApproval} is not current for publication.`);
+        }
+      } else if (!continuation.publicationPermitId
+        || !continuation.publicationValidUntil
+        || continuation.publicationValidUntil <= Date.now()) {
+        return await failInvalidPublicationContinuation(ctx, run, "Factory publication permit expired before recovery completed.");
+      }
+
+      const structuredResult = structuredArtifact?.metadata?.result;
+      const changedFiles = codeDiffArtifact?.metadata?.changedFiles;
+      if (structuredArtifact?.workflowRunId !== run._id
+        || codeDiffArtifact?.workflowRunId !== run._id
+        || codeDiffArtifact?.metadata?.headSha !== continuation.candidateRevision
+        || !structuredResult || typeof structuredResult.summary !== "string"
+        || !Array.isArray(changedFiles) || changedFiles.some((file: unknown) => typeof file !== "string")) {
+        return await failInvalidPublicationContinuation(ctx, run, "Factory publication checkpoint is missing its immutable result artifacts.");
+      }
+      const authorizationExpiries: number[] = continuation.status === "PUBLICATION_AUTHORIZED"
+        ? typeof continuation.publicationValidUntil === "number" ? [continuation.publicationValidUntil] : []
+        : [approval?.expiresAt, resolvedReceipt?.validUntil]
+          .filter((value): value is number => typeof value === "number");
+      if (authorizationExpiries.length === 0) {
+        return await failInvalidPublicationContinuation(ctx, run, "Factory publication checkpoint is missing its authorization expiry.");
+      }
+      publicationCheckpoint = {
+        candidateRevision: continuation.candidateRevision,
+        sourceRevision: continuation.sourceRevision,
+        authorizationValidUntil: Math.min(...authorizationExpiries),
+        verification: {
+          verdict: resolvedReceipt?.verdict,
+          verificationRunId: resolvedReceipt?.verificationRunId,
+          verificationReceiptId: resolvedReceipt?._id,
+          verdictReasons: resolvedReceipt?.verdictReasons,
+        },
+        structuredResult,
+        changedFiles,
+        publicationPermit: continuation.status === "PUBLICATION_AUTHORIZED"
+          ? {
+              id: continuation.publicationPermitId,
+              leaseId: decision.lease.leaseId,
+              validUntil: continuation.publicationValidUntil,
+            }
+          : undefined,
+      };
+    }
+
+    const continuationPatch = run.factoryContinuation?.status === "PUBLICATION_AUTHORIZED"
+      ? { ...run.factoryContinuation, publicationPermitLeaseId: decision.lease.leaseId }
+      : run.factoryContinuation;
+    await ctx.db.patch(run._id, {
+      status: "RUNNING",
+      lease: decision.lease,
+      executionPhase: publicationCheckpoint ? "PUBLISHING" : run.executionPhase,
+      factoryContinuation: continuationPatch,
+    });
     await insertEvent(ctx, run, {
       idempotencyKey: `factory-lease:${run.runId}:${args.leaseId}:claimed`,
       eventType: decision.reclaimed ? "RUN_RESUMED" : "CHECKPOINT_CREATED",
@@ -106,7 +206,11 @@ export const claimInternal = internalMutation({
       actor: `service:${args.ownerId}`,
       status: "RUNNING",
       startedAt: Date.now(),
-      commandSummary: decision.reclaimed ? "Expired attempt lease reconciled and reclaimed" : "Factory attempt lease claimed",
+      commandSummary: publicationCheckpoint
+        ? "Approved human-review checkpoint claimed for publication"
+        : decision.reclaimed
+          ? "Expired attempt lease reconciled and reclaimed"
+          : "Factory attempt lease claimed",
       metadata: {
         leaseId: args.leaseId,
         expiresAt: decision.lease.expiresAt,
@@ -135,7 +239,91 @@ export const claimInternal = internalMutation({
       model: run.model,
       executionManifest: run.executionManifest,
       executionManifestDigest: run.executionManifestDigest,
+      publicationCheckpoint,
     };
+  },
+});
+
+export const authorizePublicationInternal = internalMutation({
+  args: {
+    workflowRunId: v.id("workflowRuns"),
+    leaseId: v.string(),
+    ownerId: v.string(),
+    candidateRevision: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const run = await ctx.db.get(args.workflowRunId);
+    if (!run || !activeLeaseMatches({ lease: run.lease, leaseId: args.leaseId, ownerId: args.ownerId, now })) {
+      throw new Error("Factory publication authorization requires the active matching lease.");
+    }
+    const continuation = run.factoryContinuation;
+    if (!run.workOrderId || !continuation || continuation.status !== "READY_TO_PUBLISH"
+      || continuation.candidateRevision !== args.candidateRevision) {
+      throw new Error("Factory publication checkpoint is not ready for authorization.");
+    }
+    const workOrder = await ctx.db.get(run.workOrderId);
+    if (!workOrder || workOrder.currentExecutionRunId !== run._id
+      || workOrder.currentRevisionNumber !== continuation.workOrderRevisionNumber) {
+      throw new Error("Factory publication WorkOrder authority changed before publication.");
+    }
+    const [approval, sourceReceipt, resolvedReceipt, approvals] = await Promise.all([
+      continuation.approvalDecisionId ? ctx.db.get(continuation.approvalDecisionId) : null,
+      ctx.db.get(continuation.verificationReceiptId),
+      continuation.resolvedVerificationReceiptId ? ctx.db.get(continuation.resolvedVerificationReceiptId) : null,
+      ctx.db.query("approvalDecisions")
+        .withIndex("by_work_order", (q) => q.eq("workOrderId", workOrder._id))
+        .collect(),
+    ]);
+    const validation = validatePublishContinuation({
+      run: run as any,
+      workOrderRevisionNumber: workOrder.currentRevisionNumber ?? 1,
+      approval: approval as any,
+      sourceReceipt: sourceReceipt as any,
+      resolvedReceipt: resolvedReceipt as any,
+      now,
+    });
+    if (!validation.ok) throw new Error(`Factory publication authority is invalid (${validation.reason}).`);
+    const approvalsByType = latestApprovalByType(approvals as any[]);
+    const missingApproval = requiredApprovalTypes({
+      riskLevel: workOrder.riskLevel as any,
+      requiredApprovals: workOrder.requiredApprovals,
+    }).find((approvalType) => {
+      const candidate = approvalsByType.get(approvalType) as any;
+      return !candidate
+        || candidate.workOrderRevisionNumber !== (workOrder.currentRevisionNumber ?? 1)
+        || !isApprovalUsable(candidate, now);
+    });
+    if (missingApproval) throw new Error(`Required approval ${missingApproval} changed before publication.`);
+    const expiries = [approval?.expiresAt, resolvedReceipt?.validUntil]
+      .filter((value): value is number => typeof value === "number");
+    if (expiries.length === 0) throw new Error("Factory publication authority has no bounded validity window.");
+    const publicationValidUntil = Math.min(...expiries);
+    if (publicationValidUntil <= now + PUBLICATION_SAFETY_WINDOW_MS) {
+      throw new Error("Factory publication authority expires too soon for a safe provider write.");
+    }
+    const publicationPermitId = `factory-publication:${run.runId}:${args.leaseId}:${now}`;
+    await ctx.db.patch(run._id, {
+      factoryContinuation: {
+        ...continuation,
+        status: "PUBLICATION_AUTHORIZED",
+        publicationPermitId,
+        publicationPermitLeaseId: args.leaseId,
+        publicationAuthorizedAt: now,
+        publicationValidUntil,
+      },
+    });
+    await insertEvent(ctx, run, {
+      idempotencyKey: `${publicationPermitId}:event`,
+      eventType: "COMMAND_APPROVED",
+      workflowStep: "pull-request-publication",
+      actor: `service:${args.ownerId}`,
+      status: "APPROVED",
+      startedAt: now,
+      commandSummary: `Publication permit consumed for ${args.candidateRevision.slice(0, 12)}`,
+      metadata: { publicationPermitId, candidateRevision: args.candidateRevision, validUntil: publicationValidUntil },
+    });
+    return { authorized: true as const, publicationPermitId, candidateRevision: args.candidateRevision, validUntil: publicationValidUntil };
   },
 });
 
@@ -273,6 +461,28 @@ export const reportInternal = internalMutation({
           if (!latestReceipt || latestReceipt.workflowRunId !== run._id || latestReceipt.verdict !== "VERIFIED") {
             throw new Error("An enforced Factory attempt cannot complete without a VERIFIED Work Order receipt from the current run.");
           }
+          if (run.factoryContinuation?.status === "PUBLICATION_AUTHORIZED") {
+            const continuation = run.factoryContinuation;
+            const pullRequestArtifact = artifactResults
+              .map((result: any) => result.artifact)
+              .find((artifact: any) => artifact?.artifactType === "PULL_REQUEST")
+              ?? await ctx.db.query("runArtifacts")
+                .withIndex("by_run_type", (q) => q.eq("workflowRunId", run._id).eq("artifactType", "PULL_REQUEST"))
+                .first();
+            const validation = validatePublicationPermit({
+              run: run as any,
+              leaseId: args.leaseId,
+              candidateRevision: pullRequestArtifact?.metadata?.headSha,
+              publicationPermitId: pullRequestArtifact?.metadata?.publicationPermitId,
+              // Provider writes are allowed only while the permit is current. Once
+              // the PR exists, terminal lineage validates the consumed immutable
+              // grant even if the wall-clock validity elapsed during the request.
+              requireUnexpired: false,
+            });
+            if (!validation.ok) throw new Error(`Human-review publication permit is invalid (${validation.reason}).`);
+          } else if (run.factoryContinuation) {
+            throw new Error("Human-review publication did not consume a control-plane permit.");
+          }
           const pullRequestArtifact = artifactResults
             .map((result: any) => result.artifact)
             .find((artifact: any) => artifact?.artifactType === "PULL_REQUEST")
@@ -299,6 +509,16 @@ export const reportInternal = internalMutation({
         failureReason,
         steps,
         lease: undefined,
+        executionPhase: "TERMINAL",
+        factoryContinuation: run.factoryContinuation
+          ? {
+              ...run.factoryContinuation,
+              status: terminal.status === "COMPLETED" ? "PUBLISHED" : "CLOSED",
+              publishedAt: terminal.status === "COMPLETED" ? completedAt : run.factoryContinuation.publishedAt,
+              closedAt: terminal.status === "COMPLETED" ? run.factoryContinuation.closedAt : completedAt,
+              closureReason: terminal.status === "COMPLETED" ? run.factoryContinuation.closureReason : failureReason,
+            }
+          : undefined,
       });
       await insertEvent(ctx, run, {
         idempotencyKey: `factory-terminal:${run.runId}:${terminal.status}`,
@@ -330,6 +550,53 @@ export const reportInternal = internalMutation({
     };
   },
 });
+
+async function failInvalidPublicationContinuation(ctx: any, run: any, reason: string) {
+  const now = Date.now();
+  const continuation = run.factoryContinuation;
+  for (const receiptId of [continuation?.verificationReceiptId, continuation?.resolvedVerificationReceiptId]) {
+    if (!receiptId) continue;
+    const receipt = await ctx.db.get(receiptId);
+    if (receipt && receipt.status !== "STALE") {
+      await ctx.db.patch(receipt._id, {
+        status: "STALE",
+        invalidatedAt: now,
+        invalidationReason: "invalid-human-review-publication-authority",
+      });
+    }
+  }
+  await ctx.db.patch(run._id, {
+    status: "FAILED",
+    completedAt: now,
+    failureReason: reason,
+    lease: undefined,
+    executionPhase: "TERMINAL",
+    steps: reconcileTerminalWorkflowSteps(run.steps, "FAILED", reason, now),
+    factoryContinuation: continuation
+      ? { ...continuation, status: "CLOSED", closedAt: now, closureReason: reason }
+      : undefined,
+  });
+  await insertEvent(ctx, run, {
+    idempotencyKey: `factory-publication-invalid:${run.runId}:${continuation?.candidateRevision ?? "unknown"}`,
+    eventType: "RUN_FAILED",
+    workflowStep: "pull-request-publication",
+    actor: "service:factory-control-plane",
+    status: "FAILED",
+    startedAt: now,
+    endedAt: now,
+    errorCategory: "PUBLICATION_AUTHORITY_INVALID",
+    errorSummary: reason,
+    commandSummary: "Invalid human-review publication checkpoint closed",
+  });
+  if (run.workOrderId) {
+    await ctx.scheduler.runAfter(0, internal.workOrders.syncExecutionOutcome, {
+      workflowRunId: run._id,
+      eventType: "RUN_FAILED",
+      summary: reason,
+    });
+  }
+  return { claimed: false as const, reason: "publication-authority-invalid", terminal: true as const };
+}
 
 async function nextSequenceNumber(ctx: any, workflowRunId: any) {
   const events = await ctx.db.query("runEvents")
@@ -605,7 +872,156 @@ async function persistVerificationPacket(ctx: any, run: any, packet: any, ownerI
     metadata: { verdictReasons: result.verdictReasons, requirementsPassed: result.requirementsPassed, requirementsFailed: result.requirementsFailed },
   });
 
-  return { verificationRunId, verificationReceiptId, verdict: result.verdict, verdictReasons: result.verdictReasons, created: true };
+  let humanReview: any;
+  if (result.verdict === "REQUIRES_HUMAN_REVIEW") {
+    humanReview = await pauseForHumanReview(ctx, {
+      run,
+      workOrder,
+      verificationRunId,
+      verificationReceiptId,
+      sourceRevision: result.sourceRevision,
+      candidateRevision: result.candidateRevision,
+    });
+  }
+
+  return {
+    verificationRunId,
+    verificationReceiptId,
+    verdict: result.verdict,
+    verdictReasons: result.verdictReasons,
+    paused: Boolean(humanReview),
+    approvalDecisionId: humanReview?.approvalDecisionId,
+    created: true,
+  };
+}
+
+async function pauseForHumanReview(ctx: any, input: {
+  run: any;
+  workOrder: any;
+  verificationRunId: any;
+  verificationReceiptId: any;
+  sourceRevision: string;
+  candidateRevision: string;
+}) {
+  const now = Date.now();
+  const policy = await resolveGovernancePolicy(ctx, input.workOrder);
+  const idempotencyKey = `factory-human-review:${input.run.runId}:${input.candidateRevision}`;
+  let approval = await ctx.db.query("approvalDecisions")
+    .withIndex("by_idempotency", (q: any) => q.eq("idempotencyKey", idempotencyKey))
+    .first();
+  if (!approval) {
+    const approvalDecisionId = await ctx.db.insert("approvalDecisions", {
+      tenantId: input.workOrder.tenantId,
+      projectId: input.workOrder.projectId,
+      workOrderId: input.workOrder._id,
+      workflowRunId: input.run._id,
+      idempotencyKey,
+      approvalType: "HUMAN_REVIEW",
+      requestedAction: `Approve verified candidate ${input.candidateRevision.slice(0, 12)} for pull-request publication`,
+      riskLevel: input.workOrder.riskLevel,
+      requestedBy: "factory-verification/v1",
+      status: "PENDING",
+      workOrderRevisionNumber: input.workOrder.currentRevisionNumber ?? 1,
+      expiresAt: approvalExpiresAt(input.workOrder.riskLevel, policy, now),
+      createdAt: now,
+      metadata: {
+        authorityBoundary: "Approval authorizes publication of this exact independently verified commit only.",
+        dispatchPreview: "Unconditional approval resumes the same Attempt at pull-request publication. Agent execution and independent verification do not run again.",
+        verificationRunId: input.verificationRunId,
+        verificationReceiptId: input.verificationReceiptId,
+        candidateRevision: input.candidateRevision,
+        sourceRevision: input.sourceRevision,
+      },
+    });
+    approval = await ctx.db.get(approvalDecisionId);
+  }
+  if (!approval) throw new Error("Human-review approval request could not be persisted.");
+  if (approval.expiresAt) {
+    await ctx.scheduler.runAt(approval.expiresAt, internal.workOrders.expireFactoryHumanReviewCheckpointInternal, {
+      approvalDecisionId: approval._id,
+    });
+  }
+
+  await ctx.db.patch(input.verificationReceiptId, {
+    validUntil: verificationValidUntil(policy, now),
+  });
+  await ctx.db.patch(input.run._id, {
+    status: "PAUSED",
+    lease: undefined,
+    checkpointAt: now,
+    checkpointSummary: `Awaiting human review of verified candidate ${input.candidateRevision.slice(0, 12)}`,
+    executionPhase: "AWAITING_HUMAN_REVIEW",
+    humanInterventions: (input.run.humanInterventions ?? 0) + 1,
+    factoryContinuation: {
+      status: "AWAITING_HUMAN_REVIEW",
+      verificationRunId: input.verificationRunId,
+      verificationReceiptId: input.verificationReceiptId,
+      approvalDecisionId: approval._id,
+      workOrderRevisionNumber: input.workOrder.currentRevisionNumber ?? 1,
+      sourceRevision: input.sourceRevision,
+      candidateRevision: input.candidateRevision,
+      pausedAt: now,
+    },
+  });
+  await insertEvent(ctx, input.run, {
+    idempotencyKey: `${idempotencyKey}:intervention`,
+    eventType: "HUMAN_INTERVENTION_REQUESTED",
+    workflowStep: "independent-verification",
+    actor: "service:factory-verification/v1",
+    status: "PENDING",
+    startedAt: now,
+    verificationRunId: input.verificationRunId,
+    verificationReceiptId: input.verificationReceiptId,
+    commandSummary: `Human review required for ${input.candidateRevision.slice(0, 12)}`,
+    metadata: { approvalDecisionId: approval._id, candidateRevision: input.candidateRevision },
+  });
+  await insertEvent(ctx, input.run, {
+    idempotencyKey: `${idempotencyKey}:paused`,
+    eventType: "RUN_PAUSED",
+    workflowStep: "independent-verification",
+    actor: "service:factory-verification/v1",
+    status: "PAUSED",
+    startedAt: now,
+    verificationRunId: input.verificationRunId,
+    verificationReceiptId: input.verificationReceiptId,
+    commandSummary: "Factory attempt paused before pull-request publication",
+    metadata: { approvalDecisionId: approval._id, candidateRevision: input.candidateRevision },
+  });
+  await ctx.db.insert("workOrderEvents", {
+    tenantId: input.workOrder.tenantId,
+    projectId: input.workOrder.projectId,
+    workOrderId: input.workOrder._id,
+    workflowRunId: input.run._id,
+    idempotencyKey: `${idempotencyKey}:work-order-event`,
+    eventType: "APPROVAL_REQUESTED",
+    actorType: "SYSTEM",
+    summary: `Human review requested for verified candidate ${input.candidateRevision.slice(0, 12)}`,
+    timestamp: now,
+    metadata: { approvalDecisionId: approval._id, verificationReceiptId: input.verificationReceiptId },
+  });
+  await ctx.db.patch(input.workOrder._id, {
+    state: "AWAITING_APPROVAL",
+    approvalStatus: "PENDING",
+    currentExecutionRunId: input.run._id,
+    blockingIssue: undefined,
+    requiredHumanAction: `Review evidence for candidate ${input.candidateRevision.slice(0, 12)}. Unconditional approval resumes this same Attempt at publication.`,
+    updatedAt: now,
+  });
+  return { approvalDecisionId: approval._id };
+}
+
+async function resolveGovernancePolicy(ctx: any, workOrder: any) {
+  if (workOrder.governancePolicyId) {
+    const direct = await ctx.db.get(workOrder.governancePolicyId);
+    if (direct) return direct;
+  }
+  if (workOrder.projectId) {
+    const projectPolicy = await ctx.db.query("governancePolicies")
+      .withIndex("by_project_active", (q: any) => q.eq("projectId", workOrder.projectId).eq("active", true))
+      .first();
+    if (projectPolicy) return projectPolicy;
+  }
+  return DEFAULT_GOVERNANCE_POLICY;
 }
 
 function optionalText(value: unknown, max: number): string | undefined {

@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { render, extractVariables, validateContext } from "../renderer";
+import { render, extractVariables, validateContext } from "../renderer.js";
 
 describe("render", () => {
   it("should render simple variables", () => {

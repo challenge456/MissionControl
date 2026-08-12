@@ -190,17 +190,20 @@ mc work-order inspect <work-order-id> --json
 - dirty worktree or changed candidate after verification: the attempt fails
   before the receipt is recorded or the branch is pushed.
 - `REQUIRES_HUMAN_REVIEW`: the P0 worker stops before branch push/PR creation.
-  The operator must make a governed revision/retry decision. Durable in-place
-  continuation after approval is a follow-up; the UI does not present this
-  state as automatically resumable.
+  The control plane persists the exact Attempt, candidate SHA, verification
+  receipt, and Factory-owned approval checkpoint. Unconditional approval queues
+  that same Attempt at publication without rerunning `codex/v1` or independent
+  verification. Immediately before the first GitHub write, the worker consumes
+  a short-lived permit bound to the active lease and candidate. Conditions,
+  rejection, revision, elapsed evidence, or invalid authority close the Attempt
+  so the operator can use the governed retry path.
 
 ## Deliberately deferred
 
 This P0 slice does not yet include remote sandbox policy enforcement, network
-egress controls, CI/GitHub check ingestion, coverage-delta calculation,
+egress controls, provider CI/GitHub check ingestion, coverage-delta calculation,
 mutation testing, flaky-test quarantine, deployment verification, or automatic
-workflow improvement. Factory-level verified-throughput metrics, the governed
-human-review resume path, learning-ledger CRUD, and trust scoring are also
-deferred until their underlying outcomes exist. Those capabilities build on the
+workflow improvement. Factory-level verified-throughput metrics,
+learning-ledger CRUD, and trust scoring are also deferred until their underlying outcomes exist. Those capabilities build on the
 same WorkOrder, Attempt, evidence, receipt, and event contracts rather than
 introducing parallel lifecycles.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildBoundedContextUpdate, validateCompletionOutput } from "../handoff";
+import { buildBoundedContextUpdate, validateCompletionOutput } from "../handoff.js";
 
 describe("Structured workflow handoffs", () => {
   it("requires an explicit completed status", () => {

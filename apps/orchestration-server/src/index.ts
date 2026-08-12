@@ -751,6 +751,30 @@ app.post("/workorders/:workOrderId/approvals", async (c) => {
   }
 });
 
+app.get("/approval-decisions", async (c) => {
+  try {
+    const projectId = c.req.query("projectId")?.trim();
+    if (!projectId) return c.json({ error: "projectId is required" }, 400);
+    const requestedLimit = Number(c.req.query("limit") ?? 50);
+    const limit = Number.isSafeInteger(requestedLimit) && requestedLimit >= 1 && requestedLimit <= 100
+      ? requestedLimit
+      : 50;
+    const rows = await client.query(ConvexQueries.workOrders.approvalQueue as any, {
+      projectId,
+      status: "PENDING",
+      limit,
+    }) as any[];
+    const checkpoints = rows.filter((row) => (
+      row.approvalType === "HUMAN_REVIEW"
+      && row.latestRun?.factoryContinuationStatus === "AWAITING_HUMAN_REVIEW"
+      && row.latestRun?.factoryApprovalDecisionId === row._id
+    ));
+    return c.json({ success: true, checkpoints });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
 app.post("/approval-decisions/:approvalDecisionId/decide", async (c) => {
   try {
     const approvalDecisionId = c.req.param("approvalDecisionId");
@@ -758,7 +782,6 @@ app.post("/approval-decisions/:approvalDecisionId/decide", async (c) => {
     const result = await client.mutation(ConvexMutations.workOrders.decideApprovalDecision as any, {
       approvalDecisionId,
       decision: body.decision,
-      approver: body.approver ?? "orchestration-server",
       reason: body.reason,
       conditions: body.conditions,
       metadata: body.metadata,

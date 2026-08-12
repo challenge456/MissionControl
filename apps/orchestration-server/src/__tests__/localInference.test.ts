@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { discoverLocalInference } from "../localInference";
+import { discoverLocalInference } from "../localInference.js";
 
 describe("discoverLocalInference", () => {
   it("discovers MLX models from an OpenAI-compatible endpoint", async () => {
