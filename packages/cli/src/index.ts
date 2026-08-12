@@ -8,6 +8,7 @@
 
 import { Command } from "commander";
 import { workflowCommand } from "./commands/workflow.js";
+import { workOrderCommand } from "./commands/workOrder.js";
 import * as dotenv from "dotenv";
 
 // Load environment variables
@@ -22,6 +23,7 @@ program
 
 // Register commands
 program.addCommand(workflowCommand);
+program.addCommand(workOrderCommand);
 
 // Parse arguments
 program.parse(process.argv);

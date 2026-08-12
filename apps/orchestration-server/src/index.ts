@@ -918,6 +918,33 @@ app.get("/workorders/:workOrderId/revisions", async (c) => {
   }
 });
 
+app.get("/workorders/:workOrderId/verification", async (c) => {
+  try {
+    const workOrderId = c.req.param("workOrderId");
+    const detail = await client.query(ConvexQueries.workOrders.get as any, { workOrderId }) as any;
+    if (!detail) return c.json({ error: "WorkOrder not found" }, 404);
+    const latestReceipt = (detail.verificationReceipts ?? [])
+      .filter((receipt: any) => receipt.receiptScope === "WORK_ORDER")
+      .sort((a: any, b: any) => (b.recordedAt ?? 0) - (a.recordedAt ?? 0))[0] ?? null;
+    return c.json({
+      success: true,
+      result: {
+        workOrderId,
+        specificationVersion: detail.workOrder.specificationVersion ?? null,
+        riskLevel: detail.workOrder.riskLevel,
+        riskReasons: detail.workOrder.riskReasons ?? [],
+        changeBudget: detail.workOrder.changeBudget ?? null,
+        verificationContract: detail.workOrder.verificationContract ?? null,
+        latestReceipt,
+        verificationRuns: detail.verificationRuns ?? [],
+        evidenceEnvelopes: detail.evidenceEnvelopes ?? [],
+      },
+    });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
 app.get("/workorders/:workOrderId/governance", async (c) => {
   try {
     const workOrderId = c.req.param("workOrderId");

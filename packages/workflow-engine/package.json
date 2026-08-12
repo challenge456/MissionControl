@@ -11,6 +11,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./verification": {
+      "types": "./dist/verification.d.ts",
+      "import": "./dist/verification.js",
+      "default": "./dist/verification.js"
     }
   },
   "scripts": {

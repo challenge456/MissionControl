@@ -15,7 +15,7 @@ type CriterionLike = {
 
 type ReceiptLike = {
   _id?: string;
-  acceptanceCriterionId: string;
+  acceptanceCriterionId?: string;
   status: string;
   verifier?: string;
   result?: string;
