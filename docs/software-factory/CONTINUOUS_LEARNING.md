@@ -134,12 +134,17 @@ fail closed on any ambiguity.
 
 ## Next safe phase
 
-Phase 2 may add one read-only website/RSS adapter behind the active registry.
-Its exit gate is one bounded run that produces provenance-linked observations
-and a retained artifact, enforces DNS/redirect/size/time/cost/retention limits,
-quarantines instruction-like content, survives retry, and cannot dispatch or
-modify repository work. Scheduling remains off until that run is independently
-verified.
+Phase 2 begins with the read-only
+[`@mission-control/research-adapters`](../../packages/research-adapters/README.md)
+Web/RSS core. Its contract and failure matrix are implemented without granting
+persistence, scheduling, Task creation, model, messaging, or repository-write
+authority.
+
+The next gate is manual-run persistence: one bounded run must produce
+provenance-linked observations and a retained artifact, atomically checkpoint
+the cursor only after evidence is durable, quarantine instruction-like content,
+survive retry, and remain unable to dispatch or modify repository work.
+Scheduling remains off until that run is independently verified.
 
 See the [Loop Engineering contract](LOOP_ENGINEERING.md) and the
 [governed continuous-learning implementation plan](../plans/2026-08-08-feat-governed-continuous-learning-plan.md).
