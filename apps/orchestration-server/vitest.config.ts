@@ -14,6 +14,7 @@ export default defineConfig({
       "@mission-control/memory": path.resolve(repoRoot, "packages/memory/src/index.ts"),
       "@mission-control/context-router": path.resolve(repoRoot, "packages/context-router/src/index.ts"),
       "@mission-control/shared": path.resolve(repoRoot, "packages/shared/src/index.ts"),
+      "@mission-control/workflow-engine": path.resolve(repoRoot, "packages/workflow-engine/src/index.ts"),
     },
   },
   test: {

@@ -38,6 +38,7 @@ verification, measurable acceptance criteria, rollback controls, and the
 appropriate human decision.
 
 - [Governed Continuous Learning implementation plan](docs/plans/2026-08-08-feat-governed-continuous-learning-plan.md)
+- [Governed Continuous Learning operator and source contract](docs/software-factory/CONTINUOUS_LEARNING.md)
 - [Mission Control North Star](docs/product/mission-control-north-star.md)
 
 ---
@@ -54,7 +55,7 @@ decisions, blockers, and evidence—not a wall of agent activity.*
 - [The delivery contract](#the-delivery-contract)
 - [How the factory works](#how-the-factory-works)
 - [What is implemented](#what-is-implemented)
-- [What remains for the V1 golden path](#what-remains-for-the-v1-golden-path)
+- [Live golden-path proof](#live-golden-path-proof)
 - [Operator surfaces](#operator-surfaces)
 - [System architecture](#system-architecture)
 - [Local development](#local-development)
@@ -126,9 +127,9 @@ Mission Control is designed so one operator can quickly answer:
 
 This repository is designed for that future operating model, but it does **not**
 claim that the current V1 has been production load-tested with hundreds of live
-agents. The present milestone is deliberately stricter: prove one complete,
-browser-operable, repository-backed golden path with durable evidence and safe
-recovery. Correct control primitives come before fleet-size claims.
+agents. The current foundation instead proves one complete, browser-operable,
+repository-backed golden path with durable evidence and safe recovery. Correct
+control primitives come before fleet-size claims.
 
 ## Project status
 
@@ -139,12 +140,18 @@ readiness, immutable Factory versions, activation gates, signed service
 commands, the `codex/v1` executor contract, and exact execution bindings are in
 the codebase and covered by automated tests.
 
-The next release milestone is the real Codex-to-GitHub pull-request golden path.
-The durable worker that claims a bound Attempt, runs Codex, enforces changed-file
-scope, pushes through an ephemeral GitHub App token, opens the PR, and reconciles
-restart/retry behavior is not yet complete. Until that path is proven against a
-sandbox repository through the browser, Mission Control should not be described
-as production-ready.
+The real Codex-to-GitHub pull-request golden path is implemented and proven
+against this repository. A private, repository-scoped GitHub App created real
+pull requests through just-in-time installation tokens after the durable worker
+claimed a bound Attempt, ran `codex/v1`, enforced the approved changed-file
+scope, pushed the server-owned branch, and persisted the exact lineage. Browser
+proof covers cancellation, immutable retries, failure, success, refresh,
+process restart, and idempotent PR reconciliation.
+
+This closes the single-path V1 proof; it does not make a broad production-scale
+claim. Durable overnight recovery, unified review evidence, deployment
+verification, and final browser hardening remain before production rollout or
+hundred-agent scaling.
 
 | Capability | Status |
 |---|---|
@@ -155,15 +162,16 @@ as production-ready.
 | Signed service commands and durable command receipts | Implemented |
 | `codex/v1` executor adapter with sandbox, events, health, and cancellation | Implemented |
 | Dispatch preflight and immutable execution envelope | Implemented |
-| Durable Codex worker through exact GitHub pull request | **Next milestone** |
+| Durable Codex worker through exact GitHub pull request | Implemented and browser-proven |
 | Governed deployment and production verification | V1.1 |
 | FDE engagement workspace and additional connectors | Post-V1 |
 
-The original repository baseline, approved implementation sequence, and next
-milestone are recorded in the
+The original repository baseline, approved implementation sequence, and live
+proof are recorded in the
 [existing-system assessment](docs/mission-control-existing-system-assessment.md),
 [V1 program plan](docs/plans/2026-08-02-feat-ai-software-factory-v1-program-plan.md),
-and [current golden-path todo](todos/024-ready-p1-real-codex-github-pr-golden-path.md).
+[completed golden-path todo](todos/024-ready-p1-real-codex-github-pr-golden-path.md),
+and [browser evidence report](docs/testing/evidence/real-codex-github-pr-golden-path/README.md).
 
 ## The delivery contract
 
@@ -361,32 +369,49 @@ approval decisions, verification receipts, PR/CI evidence, audit activity, and
 release records. Operator surfaces prioritize required decisions, failed or
 stale evidence, blockers, and remediation before routine agent activity.
 
-The evidence model is designed to distinguish pass, fail, stale, unknown,
-waived, conflicting, and not-applicable states. The unified end-to-end review
-package remains part of the golden-path milestone.
+The evidence model distinguishes pass, fail, stale, unknown, waived,
+conflicting, and not-applicable states. A more compact unified end-to-end review
+package remains a follow-on usability improvement.
 
-## What remains for the V1 golden path
+## Live golden-path proof
 
-The next coherent implementation slice is intentionally narrow:
+The completed browser-operated path is:
 
-1. Claim one bound pending Attempt with a durable lease.
-2. Allocate the approved worktree and server-owned branch.
-3. Run `codex/v1` with the frozen prompt, model, tool, timeout, and path scope.
-4. Emit ordered execution events and artifacts only through signed service
-   commands.
-5. Compare the resulting changed files with the approved code scopes.
-6. Block PR creation and create a reviewable deviation when scope is exceeded.
-7. Mint a short-lived GitHub App installation token at the provider boundary.
-8. Push the branch and create the pull request idempotently.
-9. Persist exact Mission, plan, WorkOrder, Task, Attempt, Factory, repository,
-   branch, head SHA, PR, and changed-file lineage.
-10. Prove refresh, process restart, retry, cancellation, and duplicate-delivery
-    behavior through the browser against a sandbox repository.
+`Mission → approved Plan → WorkOrder → Task → Attempt → evidence → commit → pull request → operator acceptance`
+
+![Validated Mission with complete assertion coverage](docs/testing/evidence/real-codex-github-pr-golden-path/mission-validated-pr-61.png)
+
+*The recovered Mission reached `Validated` with 1/1 assertion coverage after
+the worker receipt, structured handoff, WorkOrder acceptance, and final operator
+decision were recorded through the browser.*
+
+Two App-authored pull requests prove complementary parts of the path:
+
+- [PR #61](https://github.com/jaydubya818/MissionControl/pull/61) is the clean,
+  recovered Mission proof. It binds the approved Mission hierarchy to branch
+  `mc/8aw15s8c7z3d`, commit
+  `2fd0a5a0773560b05174776857545d7cd3bc5f95`, the exact changed file, and the
+  review-ready PR. The Mission, WorkOrder, and Task reached their accepted
+  terminal states.
+- [PR #62](https://github.com/jaydubya818/MissionControl/pull/62) preserves the
+  cancellation, two failed retries, and successful fourth Attempt. It proves
+  immutable retry history, approved verification-command execution, exact file
+  scope, process-restart reconciliation, and duplicate-PR prevention.
+
+Both pull requests were created by the private Mission Control GitHub App, have
+all nine repository checks passing, and remain open and unmerged. The App is
+installed only on `jaydubya818/MissionControl` with Metadata read, Checks read,
+Contents write, and Pull requests write.
+
+See the [durable worker and GitHub publication contract](docs/software-factory/durable-codex-github-pr.md)
+and the [complete browser evidence report](docs/testing/evidence/real-codex-github-pr-golden-path/README.md)
+for persisted identifiers, screenshots, state coverage, and deterministic test
+results.
 
 Merge remains a human decision in V1. Governed deployment and production
-verification follow in V1.1. Additional Git providers, issue trackers, FDE
-engagement workspaces, and autonomous improvement remain deferred until this
-path earns the production claim.
+verification follow in V1.1. Additional Git providers and hundred-agent scaling
+remain deferred until overnight recovery and the single-repository path are
+operationally hardened.
 
 ## Operator surfaces
 
@@ -538,7 +563,7 @@ pnpm run convex:seed:demo:force
 Open
 [http://localhost:5199/v2/command-center](http://localhost:5199/v2/command-center)
 and select **Software Factory Demo** (`sf-demo`). This is a deterministic local
-operator demo, not proof of the unfinished real GitHub PR golden path.
+operator demo; the separate live GitHub PR proof is documented above.
 
 Optional knowledge graph import:
 

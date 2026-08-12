@@ -4,9 +4,10 @@ import type { ExecutorEvent } from "@mission-control/workflow-engine";
 import { CodexV1ExecutorAdapter } from "./codexExecutorAdapter.js";
 import { ConvexActions, ConvexQueries } from "./convexCalls.js";
 import { createSignedServiceCommand } from "./serviceCommandClient.js";
-import { commitFactoryChanges, ensureFactoryWorktree, listChangedFiles, pushFactoryBranch } from "./factoryGitRuntime.js";
+import { assertFactoryCandidateUnchanged, commitFactoryChanges, ensureFactoryWorktree, inspectCandidateChange, listChangedFiles, pushFactoryBranch } from "./factoryGitRuntime.js";
 import { validateChangedFileScope } from "./factoryPathScope.js";
 import { createOrReusePullRequest, loadGithubAppPrivateKey, mintInstallationToken } from "./githubAppRuntime.js";
+import { executeIndependentVerification } from "./factoryVerification.js";
 
 const LEASE_DURATION_MS = 60_000;
 const HEARTBEAT_INTERVAL_MS = 20_000;
@@ -22,6 +23,34 @@ export interface FactoryAttemptWorkerStatus {
   credentialsConfigured: boolean;
 }
 
+export interface FactoryAttemptWorkerDependencies {
+  ensureFactoryWorktree: typeof ensureFactoryWorktree;
+  listChangedFiles: typeof listChangedFiles;
+  commitFactoryChanges: typeof commitFactoryChanges;
+  inspectCandidateChange: typeof inspectCandidateChange;
+  assertFactoryCandidateUnchanged: typeof assertFactoryCandidateUnchanged;
+  executeIndependentVerification: typeof executeIndependentVerification;
+  loadGithubAppPrivateKey: typeof loadGithubAppPrivateKey;
+  getGithubAppId: () => string | undefined;
+  mintInstallationToken: typeof mintInstallationToken;
+  pushFactoryBranch: typeof pushFactoryBranch;
+  createOrReusePullRequest: typeof createOrReusePullRequest;
+}
+
+const DEFAULT_DEPENDENCIES: FactoryAttemptWorkerDependencies = {
+  ensureFactoryWorktree,
+  listChangedFiles,
+  commitFactoryChanges,
+  inspectCandidateChange,
+  assertFactoryCandidateUnchanged,
+  executeIndependentVerification,
+  loadGithubAppPrivateKey,
+  getGithubAppId: () => process.env.GITHUB_APP_ID?.trim() || undefined,
+  mintInstallationToken,
+  pushFactoryBranch,
+  createOrReusePullRequest,
+};
+
 export class FactoryAttemptWorker {
   private readonly active = new Map<string, AbortController>();
   private pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -36,7 +65,8 @@ export class FactoryAttemptWorker {
     private readonly client: ConvexHttpClient,
     private readonly adapter = new CodexV1ExecutorAdapter(),
     private readonly enabled = process.env.FACTORY_EXECUTION_ENABLED === "1",
-    private readonly pollIntervalMs = boundedInteger(process.env.FACTORY_EXECUTION_POLL_MS, 5_000, 300_000, 15_000)
+    private readonly pollIntervalMs = boundedInteger(process.env.FACTORY_EXECUTION_POLL_MS, 5_000, 300_000, 15_000),
+    private readonly dependencies: FactoryAttemptWorkerDependencies = DEFAULT_DEPENDENCIES
   ) {}
 
   start() {
@@ -55,7 +85,7 @@ export class FactoryAttemptWorker {
   status(): FactoryAttemptWorkerStatus {
     let privateKeyConfigured = false;
     try {
-      privateKeyConfigured = Boolean(loadGithubAppPrivateKey());
+      privateKeyConfigured = Boolean(this.dependencies.loadGithubAppPrivateKey());
     } catch {
       privateKeyConfigured = false;
     }
@@ -66,7 +96,7 @@ export class FactoryAttemptWorker {
       failedCount: this.failedCount,
       lastPollAt: this.lastPollAt,
       lastError: this.lastError,
-      credentialsConfigured: Boolean(process.env.GITHUB_APP_ID?.trim() && privateKeyConfigured),
+      credentialsConfigured: Boolean(this.dependencies.getGithubAppId() && privateKeyConfigured),
     };
   }
 
@@ -137,7 +167,7 @@ export class FactoryAttemptWorker {
         if (heartbeatTask) await heartbeatTask;
       }
       if (!leaseHealthy) throw new Error("Factory attempt lease was lost before evidence could be recorded.");
-      await this.command("reportFactoryAttempt", "attempts.report", run, {
+      return await this.command("reportFactoryAttempt", "attempts.report", run, {
         workflowRunId: run._id,
         leaseId,
         packet,
@@ -146,7 +176,7 @@ export class FactoryAttemptWorker {
 
     try {
       const manifest = validateClaimManifest(claim);
-      await ensureFactoryWorktree({
+      await this.dependencies.ensureFactoryWorktree({
         checkoutRoot: claim.checkoutRoot,
         worktree: claim.worktree,
         branch: claim.branch,
@@ -189,7 +219,7 @@ export class FactoryAttemptWorker {
       }
 
       const scopeResult = validateChangedFileScope(
-        await listChangedFiles(claim.worktree, claim.defaultBranch),
+        await this.dependencies.listChangedFiles(claim.worktree, claim.defaultBranch),
         { allowedPaths: manifest.repository.allowedPaths, excludedPaths: manifest.repository.excludedPaths }
       );
       if (!scopeResult.ok) {
@@ -220,35 +250,82 @@ export class FactoryAttemptWorker {
         return;
       }
 
-      const headSha = await commitFactoryChanges({
+      const headSha = await this.dependencies.commitFactoryChanges({
         worktree: claim.worktree,
         changedFiles: scopeResult.changedFiles,
         title: String(manifest.intent?.title ?? structuredResult.summary ?? "Mission Control Work Order"),
       });
-      const privateKey = loadGithubAppPrivateKey();
-      const configuredAppId = process.env.GITHUB_APP_ID?.trim();
+      const candidate = await this.dependencies.inspectCandidateChange(claim.worktree, claim.defaultBranch);
+      if (candidate.candidateRevision !== headSha) throw new Error("Committed candidate revision changed before verification.");
+      const baseArtifacts = [
+        structuredResultArtifact(claim, structuredResult),
+        {
+          idempotencyKey: `factory:${claim.runId}:code-diff:${headSha}`,
+          artifactType: "CODE_DIFF",
+          name: `Reviewable code change ${headSha.slice(0, 12)}`,
+          contentHash: `git:${headSha}`,
+          metadata: {
+            changedFiles: scopeResult.changedFiles,
+            deletedFiles: candidate.deletedFiles,
+            linesAdded: candidate.linesAdded,
+            linesDeleted: candidate.linesDeleted,
+            branch: claim.branch,
+            headSha,
+          },
+        },
+      ];
+      let verificationRecord: any;
+      let verificationResult: any;
+      if (manifest.workOrderSpecification?.verificationContract) {
+        verificationResult = await this.dependencies.executeIndependentVerification({
+          workflowRunId: String(claim.workflowRunId),
+          workOrderId: String(claim.workOrderId),
+          workOrderRevisionNumber: manifest.causation.workOrderRevisionNumber,
+          title: String(manifest.intent.title),
+          specification: manifest.workOrderSpecification,
+          candidate,
+          repositoryRoot: claim.worktree,
+          signal: controller.signal,
+        });
+        await this.dependencies.assertFactoryCandidateUnchanged(claim.worktree, headSha);
+        const verificationReport = await report({
+          events: mappedEvents,
+          artifacts: baseArtifacts,
+          verification: verificationResult,
+        });
+        verificationRecord = verificationReport?.verification;
+        if (manifest.workOrderSpecification.verificationContract.enforcementMode === "ENFORCED"
+          && verificationRecord?.verdict !== "VERIFIED") {
+          const reason = `Independent verification did not pass: ${verificationRecord?.verdict ?? "NOT_VERIFIED"} — ${(verificationRecord?.verdictReasons ?? ["No verified receipt was returned."]).join(" ")}`;
+          await report({ terminal: { status: "FAILED", failureReason: reason } });
+          this.failedCount += 1;
+          return;
+        }
+      }
+      const privateKey = this.dependencies.loadGithubAppPrivateKey();
+      const configuredAppId = this.dependencies.getGithubAppId();
       if (!privateKey || !configuredAppId) throw new Error("GitHub App runtime credentials are not configured.");
       if (configuredAppId !== claim.installation.appId) throw new Error("GitHub App runtime identity does not match the frozen installation.");
       if (!claim.providerRepositoryId) throw new Error("GitHub provider repository identity is not frozen.");
-      const installationToken = await mintInstallationToken({
+      const installationToken = await this.dependencies.mintInstallationToken({
         appId: configuredAppId,
         installationId: claim.installation.installationId,
         providerRepositoryId: claim.providerRepositoryId,
         privateKey,
       });
       if (installationToken.expiresAt <= Date.now() + 60_000) throw new Error("GitHub installation token expires too soon for a safe push.");
-      await pushFactoryBranch({
+      await this.dependencies.pushFactoryBranch({
         worktree: claim.worktree,
         repository: claim.repository,
         branch: claim.branch,
         installationToken: installationToken.token,
       });
-      const pullRequest = await createOrReusePullRequest({
+      const pullRequest = await this.dependencies.createOrReusePullRequest({
         repository: claim.repository,
         branch: claim.branch,
         base: claim.defaultBranch,
         title: structuredResult.summary,
-        body: buildPullRequestBody(claim, structuredResult, scopeResult.changedFiles),
+        body: buildPullRequestBody(claim, structuredResult, scopeResult.changedFiles, verificationRecord),
         token: installationToken.token,
         headSha,
       });
@@ -265,16 +342,9 @@ export class FactoryAttemptWorker {
         executionManifestDigest: claim.executionManifestDigest,
       };
       await report({
-        events: mappedEvents,
+        events: verificationResult ? [] : mappedEvents,
         artifacts: [
-          structuredResultArtifact(claim, structuredResult),
-          {
-            idempotencyKey: `factory:${claim.runId}:code-diff:${headSha}`,
-            artifactType: "CODE_DIFF",
-            name: `Reviewable code change ${headSha.slice(0, 12)}`,
-            contentHash: `git:${headSha}`,
-            metadata: { changedFiles: scopeResult.changedFiles, branch: claim.branch, headSha },
-          },
+          ...(verificationResult ? [] : baseArtifacts),
           {
             idempotencyKey: `factory:${claim.runId}:pull-request`,
             artifactType: "PULL_REQUEST",
@@ -412,7 +482,7 @@ function structuredResultArtifact(claim: any, result: ReturnType<typeof parseFac
   };
 }
 
-function buildPullRequestBody(claim: any, result: ReturnType<typeof parseFactoryResult>, changedFiles: string[]) {
+function buildPullRequestBody(claim: any, result: ReturnType<typeof parseFactoryResult>, changedFiles: string[], verification?: any) {
   return [
     "## Mission Control Work Order",
     "",
@@ -424,9 +494,15 @@ function buildPullRequestBody(claim: any, result: ReturnType<typeof parseFactory
     `- Changed files: ${changedFiles.length}`,
     "- Merge authority: human only",
     "",
-    "## Verification reported by the execution harness",
+    "## Independent verification",
     "",
-    ...(result.verificationCommands.length ? result.verificationCommands.map((command) => `- \`${command}\``) : ["- No commands reported; independent verification is still required."]),
+    verification
+      ? `- Verdict: **${verification.verdict}**\n- Receipt: \`${verification.verificationReceiptId}\``
+      : "- No independent verification contract was configured for this legacy Work Order.",
+    "",
+    "## Commands reported by the execution agent (not proof)",
+    "",
+    ...(result.verificationCommands.length ? result.verificationCommands.map((command) => `- \`${command}\``) : ["- None reported."]),
     "",
     "## Known risks",
     "",

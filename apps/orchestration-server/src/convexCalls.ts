@@ -22,6 +22,7 @@ export const ConvexQueries = {
     listArtifacts: "workflowRuns:listArtifacts",
   },
   workOrders: {
+    get: "workOrders:get",
     revisionHistory: "workOrders:revisionHistory",
     governanceValidity: "workOrders:governanceValidity",
     listExpiredApprovals: "workOrders:listExpiredApprovals",
@@ -42,6 +43,10 @@ export const ConvexActions = {
     claimFactoryAttempt: "serviceCommands:claimFactoryAttempt",
     renewFactoryAttempt: "serviceCommands:renewFactoryAttempt",
     reportFactoryAttempt: "serviceCommands:reportFactoryAttempt",
+    claimExecution: "serviceCommands:claimExecution",
+    heartbeatExecution: "serviceCommands:heartbeatExecution",
+    reportExecution: "serviceCommands:reportExecution",
+    finalizeExecution: "serviceCommands:finalizeExecution",
   },
 } as const;
 
@@ -74,6 +79,7 @@ export const ConvexMutations = {
   workflowRuns: {
     linkArtifactToVerificationReceipt: "workflowRuns:linkArtifactToVerificationReceipt",
     updateStatus: "workflowRuns:updateStatus",
+    requestCancellation: "workflowRuns:requestCancellation",
   },
   automationExecutions: {
     claim: "automationExecutions:claim",

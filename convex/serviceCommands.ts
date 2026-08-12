@@ -51,6 +51,41 @@ export const resolveWorkOrderScope = internalQuery({
   },
 });
 
+export const resolveExecutionScope = internalQuery({
+  args: { workflowRunId: v.id("workflowRuns") },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.workflowRunId);
+    if (!run?.projectId || !run.repositoryId) {
+      throw new Error("Execution run is unavailable or unscoped.");
+    }
+    return {
+      projectId: String(run.projectId),
+      repositoryId: String(run.repositoryId),
+    };
+  },
+});
+
+export const resolveRepositoryScope = internalQuery({
+  args: {
+    projectId: v.id("projects"),
+    repositoryId: v.id("workspaceRepositories"),
+  },
+  handler: async (ctx, args) => {
+    const repository = await ctx.db.get(args.repositoryId);
+    if (
+      !repository ||
+      repository.projectId !== args.projectId ||
+      repository.status !== "READY"
+    ) {
+      throw new Error("Execution repository is unavailable or not ready.");
+    }
+    return {
+      projectId: String(args.projectId),
+      repositoryId: String(args.repositoryId),
+    };
+  },
+});
+
 export const claim = internalMutation({
   args: { envelope },
   handler: async (ctx, args) => {
@@ -282,6 +317,93 @@ export const reportFactoryAttempt = action({
         receiptId: receipt.receiptId,
         status: "SUCCEEDED",
         resultReference: String(payload.workflowRunId),
+      });
+      return result;
+    } catch (error) {
+      await fail(ctx, receipt.receiptId, error);
+      throw error;
+    }
+  },
+});
+
+export const claimExecution = action({
+  args: { envelope, payloadJson: v.string() },
+  handler: async (ctx, args): Promise<any> => {
+    const payload = await authorize(ctx, args.envelope, args.payloadJson, "executions.claim");
+    const scope = await ctx.runQuery(internal.serviceCommands.resolveRepositoryScope, {
+      projectId: payload.projectId,
+      repositoryId: payload.repositoryId,
+    });
+    const receipt = await claimScoped(ctx, args.envelope, scope);
+    try {
+      const result = await ctx.runMutation(internal.executionWorker.claimInternal, {
+        projectId: payload.projectId,
+        repositoryId: payload.repositoryId,
+        workerId: payload.workerId,
+        claimId: payload.claimId,
+        leaseDurationMs: payload.leaseDurationMs,
+      });
+      await ctx.runMutation(internal.serviceCommands.complete, {
+        receiptId: receipt.receiptId,
+        status: "SUCCEEDED",
+        resultReference: result?.workflowRunId ? String(result.workflowRunId) : "no-claimable-execution",
+      });
+      return result;
+    } catch (error) {
+      await fail(ctx, receipt.receiptId, error);
+      throw error;
+    }
+  },
+});
+
+export const heartbeatExecution = action({
+  args: { envelope, payloadJson: v.string() },
+  handler: async (ctx, args): Promise<any> => {
+    const payload = await authorize(ctx, args.envelope, args.payloadJson, "executions.heartbeat");
+    const scope = await ctx.runQuery(internal.serviceCommands.resolveExecutionScope, { workflowRunId: payload.workflowRunId });
+    const receipt = await claimScoped(ctx, args.envelope, scope);
+    try {
+      const result = await ctx.runMutation(internal.executionWorker.heartbeatInternal, payload);
+      await ctx.runMutation(internal.serviceCommands.complete, {
+        receiptId: receipt.receiptId, status: "SUCCEEDED", resultReference: String(payload.workflowRunId),
+      });
+      return result;
+    } catch (error) {
+      await fail(ctx, receipt.receiptId, error);
+      throw error;
+    }
+  },
+});
+
+export const reportExecution = action({
+  args: { envelope, payloadJson: v.string() },
+  handler: async (ctx, args): Promise<any> => {
+    const payload = await authorize(ctx, args.envelope, args.payloadJson, "executions.report");
+    const scope = await ctx.runQuery(internal.serviceCommands.resolveExecutionScope, { workflowRunId: payload.workflowRunId });
+    const receipt = await claimScoped(ctx, args.envelope, scope);
+    try {
+      const result = await ctx.runMutation(internal.executionWorker.reportInternal, payload);
+      await ctx.runMutation(internal.serviceCommands.complete, {
+        receiptId: receipt.receiptId, status: "SUCCEEDED", resultReference: String(payload.workflowRunId),
+      });
+      return result;
+    } catch (error) {
+      await fail(ctx, receipt.receiptId, error);
+      throw error;
+    }
+  },
+});
+
+export const finalizeExecution = action({
+  args: { envelope, payloadJson: v.string() },
+  handler: async (ctx, args): Promise<any> => {
+    const payload = await authorize(ctx, args.envelope, args.payloadJson, "executions.finalize");
+    const scope = await ctx.runQuery(internal.serviceCommands.resolveExecutionScope, { workflowRunId: payload.workflowRunId });
+    const receipt = await claimScoped(ctx, args.envelope, scope);
+    try {
+      const result = await ctx.runMutation(internal.executionWorker.finalizeInternal, payload);
+      await ctx.runMutation(internal.serviceCommands.complete, {
+        receiptId: receipt.receiptId, status: "SUCCEEDED", resultReference: result?.pullRequestUrl ?? String(payload.workflowRunId),
       });
       return result;
     } catch (error) {

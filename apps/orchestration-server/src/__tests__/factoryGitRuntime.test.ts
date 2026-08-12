@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
-import { commitFactoryChanges, ensureFactoryWorktree, listChangedFiles } from "../factoryGitRuntime.js";
+import { assertFactoryCandidateUnchanged, commitFactoryChanges, ensureFactoryWorktree, inspectCandidateChange, listChangedFiles } from "../factoryGitRuntime.js";
 
 const execFileAsync = promisify(execFile);
 const cleanup: string[] = [];
@@ -30,6 +30,13 @@ describe("Factory Git runtime", () => {
     await writeFile(path.join(worktree, "apps", "ui", "App.tsx"), "export const value = 2;\n");
     expect(await listChangedFiles(worktree, "main")).toEqual(["apps/ui/App.tsx"]);
     const firstHead = await commitFactoryChanges({ worktree, changedFiles: ["apps/ui/App.tsx"], title: "Update app" });
+    const candidate = await inspectCandidateChange(worktree, "main");
+    expect(candidate).toMatchObject({ candidateRevision: firstHead, changedFiles: ["apps/ui/App.tsx"], linesAdded: 1, linesDeleted: 1 });
+    await expect(assertFactoryCandidateUnchanged(worktree, firstHead)).resolves.toBeUndefined();
+
+    await writeFile(path.join(worktree, "verification-output.tmp"), "untrusted side effect\n");
+    await expect(assertFactoryCandidateUnchanged(worktree, firstHead)).rejects.toThrow(/left repository changes behind/);
+    await rm(path.join(worktree, "verification-output.tmp"));
 
     await ensureFactoryWorktree({ checkoutRoot: repository, worktree, branch: "mc/attempt-1", defaultBranch: "main" });
     expect(await listChangedFiles(worktree, "main")).toEqual(["apps/ui/App.tsx"]);

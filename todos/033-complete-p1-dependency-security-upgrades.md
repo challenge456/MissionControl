@@ -97,6 +97,23 @@ feature changes into this pull request.
 - Continuous scheduling remained disabled and no Research Lab product behavior
   changed.
 
+### 2026-08-11 - Post-Research-Stack Compatibility Proof
+
+**By:** Codex
+
+- Reconciled the dependency upgrades with the completed Research Lab stack
+  after PRs #64, #65, #66, and #69 landed on `main`.
+- Moved the new `@mission-control/research-adapters` package to Vitest 3.2.7
+  so the research workspace does not reintroduce the remediated Vitest 1.x
+  advisory tree.
+- Rebuilt the merged lockfile and confirmed the final audit still reports
+  0 critical and 0 high findings, with 10 moderate and 4 low findings remaining.
+- Re-ran the merged repository gates: 51 UI files (221 tests), 71 Convex files
+  (486 tests), all workspace tests including 17 research-adapter tests, lint,
+  typecheck, production Vite 6 build, frozen install, and the runtime-contract
+  guard all passed.
+- Continuous scheduling remains disabled.
+
 ## Notes
 
 - This todo records the current audit truth even though it exceeds the earlier

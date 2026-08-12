@@ -27,6 +27,7 @@ export const applyCiIngest = internalMutation({
     repoFullName: v.string(),
     branch: v.optional(v.string()),
     title: v.optional(v.string()),
+    prState: v.optional(v.union(v.literal("OPEN"), v.literal("CLOSED"), v.literal("MERGED"))),
     ciStatus: v.optional(
       v.union(
         v.literal("PASS"),
@@ -145,6 +146,7 @@ export const applyCiIngest = internalMutation({
       repoFullName: args.repoFullName,
       branch: args.branch,
       title: args.title,
+      prState: args.prState,
       ciStatus: args.ciStatus ?? "UNKNOWN",
       ciRunUrl: args.ciRunUrl,
       ciProvider: "github",

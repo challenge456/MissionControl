@@ -43,10 +43,21 @@ export interface WorkOrderRevisionSnapshot {
     id: string;
     title: string;
     description?: string;
-    verificationMethod?: "MANUAL" | "COMMAND" | "TEST" | "CHECKLIST";
+    requirementIds?: string[];
+    givenWhenThen?: { given: string; when: string; then: string };
+    requiredEvidence?: Array<{ category: string; minimumCount: number; independent: boolean }>;
+    verificationMethod?: "MANUAL" | "COMMAND" | "TEST" | "CHECKLIST" | "BROWSER";
     status?: string;
   }>;
+  requirements?: any[];
   constraints?: string[];
+  positiveConstraints?: string[];
+  negativeConstraints?: any[];
+  dataBoundaries?: any[];
+  changeBudget?: any;
+  verificationContract?: any;
+  autonomyLevel?: string;
+  riskReasons?: string[];
   dependencies?: string[];
   sourceOfTruthRefs?: Array<{ kind: string; label: string; location: string }>;
   requiredApprovals?: string[];
@@ -102,6 +113,9 @@ function normalizeCriteria(criteria: WorkOrderRevisionSnapshot["acceptanceCriter
       id: criterion.id,
       title: criterion.title,
       description: criterion.description,
+      requirementIds: sortStrings(criterion.requirementIds),
+      givenWhenThen: criterion.givenWhenThen,
+      requiredEvidence: criterion.requiredEvidence,
       verificationMethod: criterion.verificationMethod,
     }))
     .sort((a, b) => a.id.localeCompare(b.id));
@@ -120,8 +134,16 @@ export function snapshotRevisionFields(workOrder: any): WorkOrderRevisionSnapsho
     requestedBy: workOrder.requestedBy,
     assignedAgent: workOrder.assignedAgent,
     assignedSquad: workOrder.assignedSquad,
+    requirements: workOrder.requirements,
     acceptanceCriteria: normalizeCriteria(workOrder.acceptanceCriteria ?? []),
     constraints: sortStrings(workOrder.constraints),
+    positiveConstraints: sortStrings(workOrder.positiveConstraints),
+    negativeConstraints: workOrder.negativeConstraints,
+    dataBoundaries: workOrder.dataBoundaries,
+    changeBudget: workOrder.changeBudget,
+    verificationContract: workOrder.verificationContract,
+    autonomyLevel: workOrder.autonomyLevel,
+    riskReasons: sortStrings(workOrder.riskReasons),
     dependencies: sortStrings(workOrder.dependencies),
     sourceOfTruthRefs: [...(workOrder.sourceOfTruthRefs ?? [])].sort((a, b) => `${a.kind}:${a.location}`.localeCompare(`${b.kind}:${b.location}`)),
     requiredApprovals: sortStrings(workOrder.requiredApprovals),
@@ -138,6 +160,8 @@ export function buildRevisionSnapshot(args: {
     ...args.patch,
     acceptanceCriteria: normalizeCriteria(args.patch.acceptanceCriteria ?? args.current.acceptanceCriteria),
     constraints: sortStrings(args.patch.constraints ?? args.current.constraints),
+    positiveConstraints: sortStrings(args.patch.positiveConstraints ?? args.current.positiveConstraints),
+    riskReasons: sortStrings(args.patch.riskReasons ?? args.current.riskReasons),
     dependencies: sortStrings(args.patch.dependencies ?? args.current.dependencies),
     requiredApprovals: sortStrings(args.patch.requiredApprovals ?? args.current.requiredApprovals),
     sourceOfTruthRefs: [...(args.patch.sourceOfTruthRefs ?? args.current.sourceOfTruthRefs ?? [])].sort((a, b) => `${a.kind}:${a.location}`.localeCompare(`${b.kind}:${b.location}`)),
@@ -158,8 +182,16 @@ export function changedFieldsBetween(current: WorkOrderRevisionSnapshot, next: W
     "requestedBy",
     "assignedAgent",
     "assignedSquad",
+    "requirements",
     "acceptanceCriteria",
     "constraints",
+    "positiveConstraints",
+    "negativeConstraints",
+    "dataBoundaries",
+    "changeBudget",
+    "verificationContract",
+    "autonomyLevel",
+    "riskReasons",
     "dependencies",
     "sourceOfTruthRefs",
     "requiredApprovals",
@@ -200,9 +232,9 @@ export function evaluateRevisionImpact(args: {
       ? "DECREASED"
       : "UNCHANGED";
 
-  const scopeChanged = changedFields.some((field) => ["title", "desiredOutcome", "context", "constraints", "dependencies"].includes(field));
+  const scopeChanged = changedFields.some((field) => ["title", "desiredOutcome", "context", "requirements", "constraints", "positiveConstraints", "negativeConstraints", "dataBoundaries", "changeBudget", "dependencies"].includes(field));
   const codeOrRepoChanged = changedFields.some((field) => ["repository", "branchStrategy"].includes(field));
-  const workflowChanged = changedFields.includes("workflowId");
+  const workflowChanged = changedFields.includes("workflowId") || changedFields.includes("verificationContract");
   const approvalsChanged = changedFields.includes("requiredApprovals") || riskReassessment === "INCREASED";
   const environmentChanged = changedFields.includes("metadata") && stableJson(args.current.metadata?.environment) !== stableJson(args.next.metadata?.environment);
   const criteriaChanged = impactedAcceptanceCriteria.length > 0;

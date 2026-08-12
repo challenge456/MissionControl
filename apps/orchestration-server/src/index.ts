@@ -36,6 +36,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { executeAutomation } from "./automationAdapter.js";
 import { discoverLocalInference } from "./localInference.js";
 import { FactoryAttemptWorker } from "./factoryAttemptWorker.js";
+import { DurableCodexWorker } from "./durableCodexWorker.js";
+import { GithubAppPublisher } from "./githubAppPublisher.js";
 
 const envSearchPaths = [
   path.resolve(process.cwd(), ".env.local"),
@@ -60,6 +62,7 @@ const PROJECT_SLUG = process.env.PROJECT_SLUG ?? "openclaw";
 const TICK_INTERVAL_MS = parseInt(process.env.TICK_INTERVAL_MS ?? "30000", 10);
 const AGENTS_DIR = process.env.AGENTS_DIR ?? path.resolve(process.cwd(), "../../agents");
 const AUTOMATION_REPOSITORY_ROOT = path.resolve(process.env.AUTOMATION_REPOSITORY_ROOT ?? process.cwd());
+const CODEX_FACTORY_WORKER_ENABLED = process.env.CODEX_FACTORY_WORKER_ENABLED === "true";
 
 if (!CONVEX_URL) {
   console.error("[orchestration] CONVEX_URL is required. Set it in .env or environment.");
@@ -88,6 +91,7 @@ let lastTickAt: number | null = null;
 let lastTickResult: any = null;
 let tickCount = 0;
 let startedAt: number | null = null;
+let durableCodexWorker: DurableCodexWorker | null = null;
 
 // ============================================================================
 // COORDINATOR TICK
@@ -290,6 +294,11 @@ export const app = new Hono();
 // CORS so UI (different origin/port) can call gateway/status and other endpoints
 app.use("*", cors());
 
+// Default-deny every orchestration route except the explicit public health and
+// connection-status probes declared in auth.ts. This avoids silently exposing
+// new mutation routes when a path prefix is added in the future.
+app.use("*", requireAuth());
+
 // Health check (unauthenticated for load balancers)
 app.get("/health", (c) => {
   return c.json({
@@ -300,18 +309,9 @@ app.get("/health", (c) => {
     lastTickAt,
     activeAgents: Array.from(activeAgents.keys()),
     factoryAttemptWorker: factoryAttemptWorker.status(),
+    codexFactoryWorker: CODEX_FACTORY_WORKER_ENABLED ? "enabled" : "disabled",
   });
 });
-
-// Protected routes: require Bearer token when ORCHESTRATION_API_TOKEN or MC_API_TOKEN is set
-// GET /gateway/status is left unauthenticated so the UI can check configured/token status (no secrets returned)
-app.use("/status", requireAuth());
-app.use("/tick", requireAuth());
-app.use("/agents/*", requireAuth());
-app.use("/workorders/*", requireAuth());
-app.use("/runs/*", requireAuth());
-app.use("/run-artifacts/*", requireAuth());
-app.use("/local-inference/*", requireAuth());
 
 // Detailed status
 app.get("/status", (c) => {
@@ -918,6 +918,33 @@ app.get("/workorders/:workOrderId/revisions", async (c) => {
   }
 });
 
+app.get("/workorders/:workOrderId/verification", async (c) => {
+  try {
+    const workOrderId = c.req.param("workOrderId");
+    const detail = await client.query(ConvexQueries.workOrders.get as any, { workOrderId }) as any;
+    if (!detail) return c.json({ error: "WorkOrder not found" }, 404);
+    const latestReceipt = (detail.verificationReceipts ?? [])
+      .filter((receipt: any) => receipt.receiptScope === "WORK_ORDER")
+      .sort((a: any, b: any) => (b.recordedAt ?? 0) - (a.recordedAt ?? 0))[0] ?? null;
+    return c.json({
+      success: true,
+      result: {
+        workOrderId,
+        specificationVersion: detail.workOrder.specificationVersion ?? null,
+        riskLevel: detail.workOrder.riskLevel,
+        riskReasons: detail.workOrder.riskReasons ?? [],
+        changeBudget: detail.workOrder.changeBudget ?? null,
+        verificationContract: detail.workOrder.verificationContract ?? null,
+        latestReceipt,
+        verificationRuns: detail.verificationRuns ?? [],
+        evidenceEnvelopes: detail.evidenceEnvelopes ?? [],
+      },
+    });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
 app.get("/workorders/:workOrderId/governance", async (c) => {
   try {
     const workOrderId = c.req.param("workOrderId");
@@ -1229,12 +1256,34 @@ export function startServer() {
   runTick().then((result) => {
     console.log(`[orchestration] Initial tick complete:`, result);
   });
+  if (CODEX_FACTORY_WORKER_ENABLED && process.env.FACTORY_EXECUTION_ENABLED === "1") {
+    throw new Error("Configure exactly one Factory execution worker; legacy and durable workers cannot run together.");
+  }
   factoryAttemptWorker.start();
+
+  if (CODEX_FACTORY_WORKER_ENABLED) {
+    const projectId = requiredRuntimeSetting("CODEX_WORKER_PROJECT_ID");
+    const repositoryId = requiredRuntimeSetting("CODEX_WORKER_REPOSITORY_ID");
+    const repositoryRoot = path.resolve(requiredRuntimeSetting("CODEX_WORKER_REPOSITORY_ROOT"));
+    const appId = requiredRuntimeSetting("GITHUB_APP_ID");
+    const privateKey = requiredRuntimeSetting("GITHUB_APP_PRIVATE_KEY");
+    durableCodexWorker = new DurableCodexWorker({
+      client,
+      projectId,
+      repositoryId,
+      repositoryRoot,
+      workerId: process.env.CODEX_WORKER_ID,
+      publisher: new GithubAppPublisher(appId, privateKey),
+    });
+    durableCodexWorker.start();
+    console.log(`[orchestration] Durable codex/v1 worker enabled for one governed repository.`);
+  }
 
   process.on("SIGINT", async () => {
     console.log("\n[orchestration] Shutting down...");
     if (tickTimer) clearInterval(tickTimer);
     await factoryAttemptWorker.stop();
+    await durableCodexWorker?.stop();
     for (const [name] of activeAgents) {
       try {
         await stopAgent(name);
@@ -1249,6 +1298,7 @@ export function startServer() {
     console.log("\n[orchestration] SIGTERM received, shutting down...");
     if (tickTimer) clearInterval(tickTimer);
     await factoryAttemptWorker.stop();
+    await durableCodexWorker?.stop();
     process.exit(0);
   });
 
@@ -1263,6 +1313,12 @@ export function startServer() {
   });
 
   return server;
+}
+
+function requiredRuntimeSetting(name: string) {
+  const value = process.env[name]?.trim();
+  if (!value) throw new Error(`${name} is required when CODEX_FACTORY_WORKER_ENABLED=true.`);
+  return value;
 }
 
 const entryUrl = process.argv[1] ? pathToFileURL(process.argv[1]).href : null;

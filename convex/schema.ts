@@ -7,6 +7,19 @@
 
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import {
+  acceptanceCriterionValidator,
+  changeBudgetValidator,
+  criterionCoverageValidator,
+  dataBoundaryValidator,
+  evidenceCategoryValidator,
+  negativeConstraintValidator,
+  requirementValidator,
+  verificationCheckResultValidator,
+  verificationCheckStatusValidator,
+  verificationContractValidator,
+  verificationVerdictValidator,
+} from "./lib/workOrderSpecificationValidators";
 
 // ============================================================================
 // ENUMS (as union types)
@@ -169,6 +182,10 @@ const verificationReceiptStatus = v.union(
 
 const runEventType = v.union(
   v.literal("RUN_STARTED"),
+  v.literal("EXECUTION_CLAIMED"),
+  v.literal("CANCELLATION_REQUESTED"),
+  v.literal("POLICY_DEVIATION"),
+  v.literal("PULL_REQUEST_CREATED"),
   v.literal("STEP_STARTED"),
   v.literal("STEP_COMPLETED"),
   v.literal("TOOL_CALLED"),
@@ -179,11 +196,27 @@ const runEventType = v.union(
   v.literal("RETRY_STARTED"),
   v.literal("RETRY_COMPLETED"),
   v.literal("HUMAN_INTERVENTION_REQUESTED"),
+  v.literal("SPEC_VALIDATED"),
+  v.literal("RISK_CLASSIFIED"),
+  v.literal("CHANGE_BUDGET_ASSIGNED"),
+  v.literal("COMMAND_REQUESTED"),
+  v.literal("COMMAND_APPROVED"),
+  v.literal("COMMAND_DENIED"),
+  v.literal("CHANGE_BUDGET_EXCEEDED"),
+  v.literal("VERIFICATION_STARTED"),
+  v.literal("VERIFICATION_CHECK_STARTED"),
+  v.literal("VERIFICATION_CHECK_PASSED"),
+  v.literal("VERIFICATION_CHECK_FAILED"),
+  v.literal("EVIDENCE_CREATED"),
+  v.literal("INDEPENDENT_REVIEW_STARTED"),
+  v.literal("VERIFICATION_RECEIPT_CREATED"),
+  v.literal("PULL_REQUEST_CREATED"),
   v.literal("RUN_PAUSED"),
   v.literal("RUN_RESUMED"),
   v.literal("CANCELLATION_REQUESTED"),
   v.literal("RUN_CANCELED"),
   v.literal("RUN_FAILED"),
+  v.literal("RUN_CANCELED"),
   v.literal("RUN_COMPLETED")
 );
 
@@ -1313,6 +1346,13 @@ export default defineSchema({
       constraints: v.optional(v.array(v.string())),
       requiredApprovals: v.optional(v.array(v.string())),
       estimatedCostUsd: v.optional(v.number()),
+      implementationPolicy: v.optional(v.object({
+        allowedCommands: v.array(v.string()),
+        maxCostUsd: v.optional(v.number()),
+        maxAttempts: v.number(),
+        timeoutMinutes: v.number(),
+        stopCondition: v.string(),
+      })),
       dependsOnBlueprintIds: v.array(v.string()),
       assertionIds: v.array(v.string()),
     })),
@@ -1437,21 +1477,22 @@ export default defineSchema({
     assignedAgent: v.optional(v.string()),
     assignedSquad: v.optional(v.string()),
 
-    acceptanceCriteria: v.array(v.object({
-      id: v.string(),
-      title: v.string(),
-      description: v.optional(v.string()),
-      verificationMethod: v.optional(v.union(
-        v.literal("MANUAL"),
-        v.literal("COMMAND"),
-        v.literal("TEST"),
-        v.literal("CHECKLIST"),
-        v.literal("BROWSER")
-      )),
-      status: verificationStatus,
-    })),
+    requirements: v.optional(v.array(requirementValidator)),
+    acceptanceCriteria: v.array(acceptanceCriterionValidator),
 
     constraints: v.optional(v.array(v.string())),
+    positiveConstraints: v.optional(v.array(v.string())),
+    negativeConstraints: v.optional(v.array(negativeConstraintValidator)),
+    dataBoundaries: v.optional(v.array(dataBoundaryValidator)),
+    changeBudget: v.optional(changeBudgetValidator),
+    verificationContract: v.optional(verificationContractValidator),
+    autonomyLevel: v.optional(v.union(
+      v.literal("LEVEL_0"), v.literal("LEVEL_1"), v.literal("LEVEL_2"),
+      v.literal("LEVEL_3"), v.literal("LEVEL_4"), v.literal("LEVEL_5"),
+    )),
+    riskReasons: v.optional(v.array(v.string())),
+    specificationVersion: v.optional(v.number()),
+    specificationValidatedAt: v.optional(v.number()),
     dependencies: v.optional(v.array(v.string())),
     sourceOfTruthRefs: v.optional(v.array(v.object({
       kind: v.union(
@@ -1676,8 +1717,10 @@ export default defineSchema({
     missionId: v.optional(v.id("missions")),
     validationAssertionId: v.optional(v.id("validationAssertions")),
     workOrderId: v.id("workOrders"),
-    acceptanceCriterionId: v.string(),
+    receiptScope: v.optional(v.union(v.literal("ACCEPTANCE_CRITERION"), v.literal("WORK_ORDER"))),
+    acceptanceCriterionId: v.optional(v.string()),
     workflowRunId: v.id("workflowRuns"),
+    verificationRunId: v.optional(v.id("verificationRuns")),
     idempotencyKey: v.optional(v.string()),
     verificationMethod: v.optional(v.union(
       v.literal("MANUAL"),
@@ -1695,6 +1738,19 @@ export default defineSchema({
     exceptionOrWaiver: v.optional(v.string()),
     waiverApprovalDecisionId: v.optional(v.id("approvalDecisions")),
     linkedRunArtifactIds: v.optional(v.array(v.id("runArtifacts"))),
+    evidenceEnvelopeIds: v.optional(v.array(v.id("evidenceEnvelopes"))),
+    verdict: v.optional(verificationVerdictValidator),
+    verdictReasons: v.optional(v.array(v.string())),
+    checks: v.optional(v.array(verificationCheckResultValidator)),
+    criterionCoverage: v.optional(v.array(criterionCoverageValidator)),
+    requirementsPassed: v.optional(v.number()),
+    requirementsFailed: v.optional(v.number()),
+    violations: v.optional(v.array(v.string())),
+    approvalRequirements: v.optional(v.array(v.string())),
+    riskLevel: v.optional(workOrderRiskLevel),
+    riskReasons: v.optional(v.array(v.string())),
+    sourceRevision: v.optional(v.string()),
+    candidateRevision: v.optional(v.string()),
     workOrderRevisionNumber: v.optional(v.number()),
     validUntil: v.optional(v.number()),
     invalidatedAt: v.optional(v.number()),
@@ -1709,6 +1765,76 @@ export default defineSchema({
     .index("by_mission", ["missionId"])
     .index("by_work_order_criterion", ["workOrderId", "acceptanceCriterionId"])
     .index("by_run", ["workflowRunId"])
+    .index("by_verification_run", ["verificationRunId"])
+    .index("by_work_order_scope", ["workOrderId", "receiptScope"])
+    .index("by_idempotency", ["idempotencyKey"]),
+
+  verificationRuns: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.optional(v.id("projects")),
+    missionId: v.optional(v.id("missions")),
+    workOrderId: v.id("workOrders"),
+    workflowRunId: v.id("workflowRuns"),
+    idempotencyKey: v.string(),
+    engineVersion: v.string(),
+    workOrderRevisionNumber: v.number(),
+    sourceRevision: v.string(),
+    candidateRevision: v.string(),
+    status: v.literal("COMPLETED"),
+    checks: v.array(verificationCheckResultValidator),
+    criterionCoverage: v.array(criterionCoverageValidator),
+    requirementsPassed: v.number(),
+    requirementsFailed: v.number(),
+    violations: v.array(v.string()),
+    approvalRequirements: v.array(v.string()),
+    riskLevel: workOrderRiskLevel,
+    riskReasons: v.array(v.string()),
+    verdict: verificationVerdictValidator,
+    verdictReasons: v.array(v.string()),
+    startedAt: v.number(),
+    completedAt: v.number(),
+    durationMs: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_work_order", ["workOrderId"])
+    .index("by_run", ["workflowRunId"])
+    .index("by_work_order_created", ["workOrderId", "createdAt"])
+    .index("by_idempotency", ["idempotencyKey"]),
+
+  evidenceEnvelopes: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.optional(v.id("projects")),
+    missionId: v.optional(v.id("missions")),
+    workOrderId: v.id("workOrders"),
+    workflowRunId: v.id("workflowRuns"),
+    verificationRunId: v.id("verificationRuns"),
+    idempotencyKey: v.string(),
+    evidenceKey: v.string(),
+    checkId: v.string(),
+    category: evidenceCategoryValidator,
+    result: verificationCheckStatusValidator,
+    summary: v.string(),
+    acceptanceCriterionIds: v.array(v.string()),
+    primaryCriterionId: v.optional(v.string()),
+    producer: v.object({
+      actorType: v.union(v.literal("SYSTEM"), v.literal("SERVICE"), v.literal("AGENT"), v.literal("HUMAN")),
+      actorId: v.string(),
+      role: v.string(),
+      independent: v.boolean(),
+    }),
+    artifactIds: v.array(v.id("runArtifacts")),
+    artifactReferences: v.array(v.string()),
+    sourceRevision: v.string(),
+    candidateRevision: v.string(),
+    contentHash: v.optional(v.string()),
+    provenance: v.union(v.literal("LIVE"), v.literal("SYNTHETIC"), v.literal("DEMO"), v.literal("IMPORTED"), v.literal("LEGACY")),
+    recordedAt: v.number(),
+    metadata: v.optional(v.any()),
+  })
+    .index("by_verification_run", ["verificationRunId"])
+    .index("by_work_order", ["workOrderId"])
+    .index("by_run", ["workflowRunId"])
+    .index("by_work_order_criterion", ["workOrderId", "primaryCriterionId"])
     .index("by_idempotency", ["idempotencyKey"]),
 
   runEvents: defineTable({
@@ -1730,6 +1856,8 @@ export default defineSchema({
     durationMs: v.optional(v.number()),
     retryNumber: v.optional(v.number()),
     verificationReceiptId: v.optional(v.id("verificationReceipts")),
+    verificationRunId: v.optional(v.id("verificationRuns")),
+    evidenceEnvelopeIds: v.optional(v.array(v.id("evidenceEnvelopes"))),
     evidenceArtifactIds: v.optional(v.array(v.id("runArtifacts"))),
     errorCategory: v.optional(v.string()),
     errorSummary: v.optional(v.string()),
@@ -1740,6 +1868,7 @@ export default defineSchema({
     .index("by_run_sequence", ["workflowRunId", "sequenceNumber"])
     .index("by_work_order", ["workOrderId"])
     .index("by_receipt", ["verificationReceiptId"])
+    .index("by_verification_run", ["verificationRunId"])
     .index("by_idempotency", ["idempotencyKey"]),
 
   runArtifacts: defineTable({
@@ -3732,7 +3861,7 @@ export default defineSchema({
     worktree: v.optional(v.string()),
     failureReason: v.optional(v.string()),
     humanInterventions: v.optional(v.number()),
-    
+
     // Timing
     startedAt: v.number(),
     completedAt: v.optional(v.number()),
@@ -4994,6 +5123,292 @@ export default defineSchema({
   }).index("by_project", ["projectId"]),
 
   // -------------------------------------------------------------------------
+  // RESEARCH SOURCE REGISTRY (governed source authority; fetching stays off)
+  // -------------------------------------------------------------------------
+  researchSources: defineTable({
+    tenantId: v.id("tenants"),
+    projectId: v.id("projects"),
+    kind: v.union(
+      v.literal("X_USER"),
+      v.literal("YOUTUBE_CHANNEL"),
+      v.literal("WEBSITE"),
+      v.literal("RSS_ATOM")
+    ),
+    locator: v.string(),
+    canonicalProviderId: v.optional(v.string()),
+    canonicalUrl: v.optional(v.string()),
+    displayName: v.string(),
+    state: v.union(
+      v.literal("DRAFT"),
+      v.literal("VERIFIED"),
+      v.literal("ACTIVE"),
+      v.literal("PAUSED"),
+      v.literal("DEGRADED"),
+      v.literal("REVOKED"),
+      v.literal("RETIRED")
+    ),
+    version: v.number(),
+    ownerId: v.string(),
+    adapter: v.object({
+      name: v.string(),
+      version: v.string(),
+      authenticationMode: v.union(
+        v.literal("NONE"),
+        v.literal("API_KEY"),
+        v.literal("OAUTH")
+      ),
+    }),
+    schedule: v.object({
+      cadence: v.union(
+        v.literal("MANUAL"),
+        v.literal("HOURLY"),
+        v.literal("DAILY"),
+        v.literal("WEEKLY")
+      ),
+      timezone: v.string(),
+    }),
+    freshnessTargetMinutes: v.number(),
+    maxItemsPerRun: v.number(),
+    monthlyCostCeilingUsd: v.number(),
+    retentionDays: v.number(),
+    allowedContentClasses: v.array(v.string()),
+    exclusions: v.array(v.string()),
+    providerCursor: v.optional(v.string()),
+    etag: v.optional(v.string()),
+    lastModified: v.optional(v.string()),
+    cursorState: v.optional(v.object({
+      providerCursor: v.optional(v.string()),
+      etag: v.optional(v.string()),
+      lastModified: v.optional(v.string()),
+      knownItems: v.array(v.object({
+        providerItemId: v.string(),
+        contentHash: v.string(),
+      })),
+      checkpointedAt: v.number(),
+      workflowRunId: v.id("workflowRuns"),
+    })),
+    lastSuccessfulRunAt: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+    nextRetryAt: v.optional(v.number()),
+    consecutiveFailureCount: v.number(),
+    validationStatus: v.union(
+      v.literal("PENDING"),
+      v.literal("PASSED"),
+      v.literal("FAILED"),
+      v.literal("PROVIDER_RESOLUTION_REQUIRED")
+    ),
+    validationMessage: v.optional(v.string()),
+    validatedAt: v.optional(v.number()),
+    policyReviewState: v.union(
+      v.literal("DRAFT"),
+      v.literal("ACKNOWLEDGED"),
+      v.literal("APPROVED"),
+      v.literal("REVIEW_REQUIRED")
+    ),
+    policyVersion: v.string(),
+    approvedBy: v.optional(v.string()),
+    approvedAt: v.optional(v.number()),
+    deletionRequestedAt: v.optional(v.number()),
+    deletionRequestedBy: v.optional(v.string()),
+    idempotencyKey: v.string(),
+    createdBy: v.string(),
+    updatedBy: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_state", ["projectId", "state"])
+    .index("by_project_kind", ["projectId", "kind"])
+    .index("by_project_locator", ["projectId", "locator"])
+    .index("by_canonical_identity", ["projectId", "kind", "canonicalProviderId"])
+    .index("by_next_retry", ["state", "nextRetryAt"])
+    .index("by_idempotency", ["idempotencyKey"]),
+
+  researchSourceEvents: defineTable({
+    tenantId: v.id("tenants"),
+    projectId: v.id("projects"),
+    sourceId: v.id("researchSources"),
+    eventType: v.union(
+      v.literal("DRAFT_CREATED"),
+      v.literal("VALIDATION_PASSED"),
+      v.literal("VALIDATION_FAILED"),
+      v.literal("POLICY_ACKNOWLEDGED"),
+      v.literal("ACTIVATED"),
+      v.literal("PAUSED"),
+      v.literal("RESUMED"),
+      v.literal("DEGRADED"),
+      v.literal("REVOKED"),
+      v.literal("RETIRED"),
+      v.literal("CREDENTIAL_FAILED"),
+      v.literal("POLICY_DRIFT"),
+      v.literal("DELETION_REQUESTED")
+    ),
+    actorId: v.string(),
+    reason: v.string(),
+    fromState: v.optional(v.string()),
+    toState: v.optional(v.string()),
+    sourceVersion: v.number(),
+    policyVersion: v.string(),
+    metadata: v.optional(v.any()),
+    idempotencyKey: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_source", ["sourceId"])
+    .index("by_project", ["projectId"])
+    .index("by_project_time", ["projectId", "createdAt"])
+    .index("by_event_type", ["projectId", "eventType"])
+    .index("by_idempotency", ["idempotencyKey"]),
+
+  researchSourceRuns: defineTable({
+    tenantId: v.id("tenants"),
+    projectId: v.id("projects"),
+    sourceId: v.id("researchSources"),
+    workOrderId: v.id("workOrders"),
+    workflowRunId: v.id("workflowRuns"),
+    runArtifactId: v.optional(v.id("runArtifacts")),
+    verificationReceiptId: v.optional(v.id("verificationReceipts")),
+    observationIds: v.array(v.id("researchObservations")),
+    trigger: v.literal("MANUAL"),
+    status: v.union(
+      v.literal("RUNNING"),
+      v.literal("AWAITING_VERIFICATION"),
+      v.literal("VERIFIED"),
+      v.literal("FAILED")
+    ),
+    sourceVersion: v.number(),
+    adapterName: v.string(),
+    adapterVersion: v.string(),
+    cursorBefore: v.object({
+      providerCursor: v.optional(v.string()),
+      etag: v.optional(v.string()),
+      lastModified: v.optional(v.string()),
+      knownItems: v.array(v.object({
+        providerItemId: v.string(),
+        contentHash: v.string(),
+      })),
+    }),
+    cursorAfter: v.optional(v.object({
+      providerCursor: v.optional(v.string()),
+      etag: v.optional(v.string()),
+      lastModified: v.optional(v.string()),
+      knownItems: v.array(v.object({
+        providerItemId: v.string(),
+        contentHash: v.string(),
+      })),
+    })),
+    lease: v.optional(v.object({
+      leaseId: v.string(),
+      ownerId: v.string(),
+      claimedAt: v.number(),
+      expiresAt: v.number(),
+    })),
+    receipt: v.optional(v.object({
+      finalUrl: v.string(),
+      statusCode: v.number(),
+      requestCount: v.number(),
+      bytesRead: v.number(),
+      elapsedMs: v.number(),
+      itemCount: v.number(),
+      duplicateCount: v.number(),
+      changedItemCount: v.number(),
+      notModified: v.boolean(),
+      etag: v.optional(v.string()),
+      lastModified: v.optional(v.string()),
+    })),
+    artifactHash: v.optional(v.string()),
+    discoveredItemCount: v.number(),
+    insertedObservationCount: v.number(),
+    duplicateObservationCount: v.number(),
+    quarantinedObservationCount: v.number(),
+    attemptCount: v.number(),
+    requestedBy: v.string(),
+    failureCode: v.optional(v.string()),
+    failureMessage: v.optional(v.string()),
+    retryable: v.optional(v.boolean()),
+    nextRetryAt: v.optional(v.number()),
+    idempotencyKey: v.string(),
+    startedAt: v.number(),
+    committedAt: v.optional(v.number()),
+    verifiedAt: v.optional(v.number()),
+    failedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_status", ["projectId", "status"])
+    .index("by_source", ["sourceId"])
+    .index("by_source_status", ["sourceId", "status"])
+    .index("by_workflow_run", ["workflowRunId"])
+    .index("by_work_order", ["workOrderId"])
+    .index("by_idempotency", ["idempotencyKey"]),
+
+  researchObservations: defineTable({
+    tenantId: v.id("tenants"),
+    projectId: v.id("projects"),
+    sourceId: v.id("researchSources"),
+    workflowRunId: v.id("workflowRuns"),
+    runArtifactId: v.id("runArtifacts"),
+    providerItemId: v.string(),
+    canonicalUrl: v.string(),
+    authorProviderId: v.optional(v.string()),
+    authorName: v.optional(v.string()),
+    title: v.optional(v.string()),
+    normalizedExcerpt: v.optional(v.string()),
+    publishedAt: v.optional(v.number()),
+    retrievedAt: v.number(),
+    state: v.union(
+      v.literal("ACTIVE"),
+      v.literal("DELETED"),
+      v.literal("SUPERSEDED")
+    ),
+    supersedesObservationId: v.optional(v.id("researchObservations")),
+    contentHash: v.string(),
+    adapterVersion: v.string(),
+    language: v.optional(v.string()),
+    contentType: v.string(),
+    trustClassification: v.union(
+      v.literal("PRIMARY"),
+      v.literal("OFFICIAL"),
+      v.literal("VENDOR"),
+      v.literal("COMMUNITY"),
+      v.literal("UNKNOWN")
+    ),
+    safetyScanStatus: v.union(
+      v.literal("PENDING"),
+      v.literal("PASSED"),
+      v.literal("QUARANTINED"),
+      v.literal("FAILED")
+    ),
+    detectedInstructionLikeContent: v.boolean(),
+    quarantineReason: v.optional(v.string()),
+    extractionStatus: v.union(
+      v.literal("PENDING"),
+      v.literal("COMPLETE"),
+      v.literal("FAILED")
+    ),
+    citedClaimIds: v.array(v.string()),
+    verificationDecision: v.union(
+      v.literal("PENDING"),
+      v.literal("ACCEPTED"),
+      v.literal("REJECTED")
+    ),
+    retentionDays: v.number(),
+    sensitivity: v.string(),
+    rightsTermsReference: v.string(),
+    purgeAt: v.number(),
+    idempotencyKey: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_source", ["sourceId"])
+    .index("by_source_provider_item", ["sourceId", "providerItemId"])
+    .index("by_source_content_hash", ["sourceId", "contentHash"])
+    .index("by_workflow_run", ["workflowRunId"])
+    .index("by_artifact", ["runArtifactId"])
+    .index("by_purge_at", ["purgeAt"])
+    .index("by_idempotency", ["idempotencyKey"]),
+
+  // -------------------------------------------------------------------------
   // LOOP ENGINEERING (bounded research -> implementation -> learning cycles)
   // -------------------------------------------------------------------------
   loopEngineeringCycles: defineTable({
@@ -5255,6 +5670,7 @@ export default defineSchema({
     repoFullName: v.string(),
     branch: v.optional(v.string()),
     title: v.optional(v.string()),
+    prState: v.optional(v.union(v.literal("OPEN"), v.literal("CLOSED"), v.literal("MERGED"))),
     ciStatus: v.optional(
       v.union(
         v.literal("PASS"),

@@ -79,3 +79,39 @@ export type {
   ExecutorRequest,
   ExecutorResult,
 } from "./executorAdapter";
+
+export {
+  matchesRepositoryGlob,
+  normalizeRepositoryPath,
+  validateChangedFileScope,
+  type RepositoryScope,
+  type RepositoryScopeViolation,
+} from "./repositoryScope";
+
+export {
+  VerificationEngine,
+  ChangeBudgetVerifier,
+  NegativeConstraintVerifier,
+  calculateCriterionCoverage,
+  evaluateVerificationOutcome,
+  matchesRepositoryPattern,
+  type AcceptanceCriterionSpec,
+  type CandidateChange,
+  type ChangeBudget,
+  type CommandClass,
+  type CriterionCoverage,
+  type EvidenceCategory,
+  type EvidenceRequirement,
+  type NegativeConstraint,
+  type VerificationCategory,
+  type VerificationCheckResult,
+  type VerificationCheckSpec,
+  type VerificationCheckStatus,
+  type VerificationContract,
+  type VerificationEngineResult,
+  type VerificationEvidenceDraft,
+  type VerificationExecutionContext,
+  type VerificationVerdict,
+  type Verifier,
+  type WorkOrderVerificationSpec,
+} from "./verification";

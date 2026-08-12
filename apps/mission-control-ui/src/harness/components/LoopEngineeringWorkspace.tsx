@@ -5,6 +5,7 @@ import type { Doc, Id } from "../../../../../convex/_generated/dataModel";
 import type { MainView } from "../../TopNav";
 import { useToast } from "../../Toast";
 import { ExecutionRunInspector } from "../../controlPlane/ExecutionRunInspector";
+import { ResearchWatchlistPanel } from "./ResearchWatchlistPanel";
 import {
   graphDispatchState,
   summarizeGraphExecution,
@@ -230,6 +231,8 @@ export function LoopEngineeringWorkspace({
 
   return (
     <div className="space-y-6">
+      <ResearchWatchlistPanel projectId={projectId} />
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <Select
