@@ -2209,8 +2209,8 @@ function CreateWorkOrderDialog({
   const [verificationCategory, setVerificationCategory] = useState("TYPECHECK");
   const [evidenceCategory, setEvidenceCategory] = useState("STATIC_ANALYSIS");
   const [commandClass, setCommandClass] = useState("TYPECHECK");
-  const [verificationExecutable, setVerificationExecutable] = useState("pnpm");
-  const [verificationArgsText, setVerificationArgsText] = useState('[\n  "--filter",\n  "mission-control-ui",\n  "typecheck"\n]');
+  const [verificationExecutable, setVerificationExecutable] = useState("");
+  const [verificationArgsText, setVerificationArgsText] = useState("[]");
   const [requireHumanReview, setRequireHumanReview] = useState("yes");
   const factoryContext = useQuery(
     api["factory/configuration"].getActiveForRepository,
@@ -2443,11 +2443,11 @@ function CreateWorkOrderDialog({
                 <div className="space-y-1.5"><Label>Command class</Label><Select value={commandClass} onValueChange={setCommandClass}><SelectTrigger aria-label="Verification command class"><SelectValue /></SelectTrigger><SelectContent>{["BUILD", "TYPECHECK", "TEST", "LINT", "SECURITY_SCAN", "DEPENDENCY_SCAN"].map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
               </div>
               <div className="grid gap-3 md:grid-cols-[0.6fr_1.4fr]">
-                <div className="space-y-1.5"><Label>Executable</Label><Input aria-label="Verification executable" value={verificationExecutable} onChange={(event) => setVerificationExecutable(event.target.value)} placeholder="pnpm" /></div>
+                <div className="space-y-1.5"><Label>Executable</Label><Input aria-label="Verification executable" value={verificationExecutable} onChange={(event) => setVerificationExecutable(event.target.value)} placeholder="node" /></div>
                 <div className="space-y-1.5">
                   <Label>Arguments (exact JSON argv)</Label>
                   <Textarea aria-label="Verification arguments" value={verificationArgsText} onChange={(event) => setVerificationArgsText(event.target.value)} rows={5} spellCheck={false} className="font-mono text-xs" />
-                  <p className="text-xs text-muted-foreground">Each JSON string is one argument. Spaces inside `node -e` code remain intact.</p>
+                  <p className="text-xs text-muted-foreground">No command is inferred. Enter an executable and exact JSON argv that work inside the clean frozen worktree.</p>
                   {verificationArgsError ? <p role="alert" className="text-xs text-red-300">{verificationArgsError}</p> : null}
                 </div>
               </div>

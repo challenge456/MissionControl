@@ -199,10 +199,13 @@ proof was captured. The audit IDs, event counts, and screenshots are recorded in
 [`docs/testing/evidence/pr-72-human-review-resume/`](docs/testing/evidence/pr-72-human-review-resume/README.md).
 
 Browser-governed creation is fail-closed until that repository has an active,
-passing Factory version. The local browser exercise recorded the complete
-configuration and create gate, but correctly stopped because this environment
-does not contain the private GitHub App installation credentials required to
-activate the exact repository. See
+passing Factory version. The isolated browser exercise for
+[PR #87](https://github.com/jaydubya818/MissionControl/pull/87) reconnected the
+repository-scoped GitHub App, created and approved the pre-dispatch checkpoint,
+dispatched an exact immutable Factory binding, and reached the expected
+post-verification pause. The candidate changed one approved file, passed the
+independent verifier, and produced no remote branch or pull request before the
+publication approval. Exact lineage and screenshots are recorded in
 [`docs/testing/evidence/browser-governed-factory-dispatch/`](docs/testing/evidence/browser-governed-factory-dispatch/README.md).
 
 This closes the single-repository delivery and review proof; it does not make a
@@ -218,7 +221,7 @@ providers, and fleet-scale scheduling remain deferred.
 | Governed WorkOrders, Tasks, Attempts, and evidence records | Implemented |
 | GitHub App identity, least-privilege readiness, signed webhooks, ephemeral CI reads, and replay ledger | Implemented and browser-proven |
 | Immutable Factory configuration, readiness assessment, and activation | Implemented |
-| Browser-governed scoped WorkOrder creation and exact Factory dispatch binding | Implemented; external App installation required for a new live activation |
+| Browser-governed scoped WorkOrder creation and exact Factory dispatch binding | Implemented and browser-proven through verified pause |
 | Signed service commands and durable command receipts | Implemented |
 | `codex/v1` executor adapter with sandbox, events, health, and cancellation | Implemented |
 | Dispatch preflight and immutable execution envelope | Implemented |

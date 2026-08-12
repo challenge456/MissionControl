@@ -107,8 +107,8 @@ export function parseVerificationArguments(value: string):
   | { ok: false; error: string } {
   try {
     const parsed: unknown = JSON.parse(value);
-    if (!Array.isArray(parsed) || parsed.length === 0) {
-      return { ok: false, error: "Enter at least one verification argument as a JSON string array." };
+    if (!Array.isArray(parsed)) {
+      return { ok: false, error: "Enter verification arguments as a JSON string array." };
     }
     if (parsed.some((argument) => typeof argument !== "string")) {
       return { ok: false, error: "Every verification argument must be a JSON string." };

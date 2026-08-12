@@ -90,10 +90,13 @@ describe("work order queue model", () => {
     });
   });
 
-  it("rejects non-array, non-string, and empty verification argv", () => {
+  it("accepts an empty argv for executables that take no arguments", () => {
+    expect(parseVerificationArguments("[]")).toEqual({ ok: true, args: [] });
+  });
+
+  it("rejects non-array and non-string verification argv", () => {
     expect(parseVerificationArguments('"--version"')).toMatchObject({ ok: false });
     expect(parseVerificationArguments('["--filter", 3]')).toMatchObject({ ok: false });
-    expect(parseVerificationArguments("[]")).toMatchObject({ ok: false });
     expect(parseVerificationArguments("not-json")).toMatchObject({ ok: false });
   });
 });
