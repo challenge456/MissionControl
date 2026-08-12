@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  evaluateFactoryProductionEligibility,
   evaluateFactoryReleaseVerification,
   evaluateFactoryReleaseProvenance,
   factoryReleaseAllowedOrigins,
@@ -8,6 +9,7 @@ import {
   factoryReleaseMergeIdentityIssue,
   factoryReleaseRedeploymentIssue,
   factoryReleaseTransitionAllowed,
+  factoryReleaseVerificationHeaders,
   normalizeCommitSha,
   validateFactoryReleaseVerificationUrls,
 } from "../lib/factoryRelease";
@@ -51,6 +53,65 @@ describe("factory release state and evidence", () => {
       ...failedDeployment,
       state: "VERIFIED",
     })).toBe("release-not-deployed");
+  });
+
+  it("scopes the Vercel protection bypass to HTTPS Vercel deployment origins", () => {
+    expect(factoryReleaseVerificationHeaders(
+      "https://factory-abc.vercel.app/api/release",
+      "test-secret",
+    )).toEqual({ "x-vercel-protection-bypass": "test-secret" });
+    expect(factoryReleaseVerificationHeaders(
+      "https://staging.example.com/api/release",
+      "test-secret",
+    )).toEqual({});
+    expect(factoryReleaseVerificationHeaders(
+      "http://factory-abc.vercel.app/api/release",
+      "test-secret",
+    )).toEqual({});
+    expect(factoryReleaseVerificationHeaders(
+      "https://factory-abc.vercel.app/api/release",
+    )).toEqual({});
+  });
+
+  it("requires three distinct verified staging merges including the exact candidate", () => {
+    const releases = ["a", "b", "c"].map((character, index) => ({
+      releaseId: `release-${index + 1}`,
+      mergeCommitSha: character.repeat(40),
+      state: "VERIFIED" as const,
+      verifiedAt: index + 1,
+    }));
+    expect(evaluateFactoryProductionEligibility({
+      candidateMergeCommitSha: "c".repeat(40),
+      releases,
+    })).toMatchObject({
+      eligible: true,
+      candidateVerified: true,
+      verifiedReleaseCount: 3,
+    });
+    expect(evaluateFactoryProductionEligibility({
+      candidateMergeCommitSha: "d".repeat(40),
+      releases,
+    })).toMatchObject({
+      eligible: false,
+      blocker: "candidate-staging-verification-missing",
+    });
+    expect(evaluateFactoryProductionEligibility({
+      candidateMergeCommitSha: "b".repeat(40),
+      releases: [releases[0]!, releases[1]!, { ...releases[1]!, releaseId: "duplicate" }],
+    })).toMatchObject({
+      eligible: false,
+      verifiedReleaseCount: 2,
+      blocker: "verified-staging-releases-required:3",
+    });
+    expect(evaluateFactoryProductionEligibility({
+      candidateMergeCommitSha: "c".repeat(40),
+      releases: releases.map((release) => release.releaseId === "release-3"
+        ? { ...release, state: "ROLLED_BACK" as const }
+        : release),
+    })).toMatchObject({
+      eligible: false,
+      candidateVerified: false,
+    });
   });
 
   it("requires configured, same-origin HTTPS verification endpoints", () => {

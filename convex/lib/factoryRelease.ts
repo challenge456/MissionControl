@@ -17,6 +17,14 @@ export interface FactoryReleaseCheckResult {
   summary: string;
 }
 
+export interface FactoryReleaseEligibilityCandidate {
+  releaseId: string;
+  mergeCommitSha: string;
+  state: FactoryReleaseState;
+  verifiedAt?: number;
+  blockingIssue?: string;
+}
+
 const TRANSITIONS: Record<FactoryReleaseState, FactoryReleaseState[]> = {
   MERGED: ["DEPLOYED"],
   DEPLOYED: ["VERIFIED", "ROLLED_BACK"],
@@ -47,6 +55,60 @@ export function factoryReleaseRedeploymentIssue(input: {
     return "deployment-receipt-unchanged";
   }
   return undefined;
+}
+
+export function factoryReleaseVerificationHeaders(
+  candidateUrl: string,
+  automationBypassSecret?: string,
+): Record<string, string> {
+  const secret = automationBypassSecret?.trim();
+  if (!secret) return {};
+  try {
+    const url = new URL(candidateUrl);
+    if (url.protocol !== "https:" || !url.hostname.toLowerCase().endsWith(".vercel.app")) {
+      return {};
+    }
+  } catch {
+    return {};
+  }
+  return { "x-vercel-protection-bypass": secret };
+}
+
+export function evaluateFactoryProductionEligibility(input: {
+  candidateMergeCommitSha: string;
+  releases: FactoryReleaseEligibilityCandidate[];
+  minimumVerifiedReleases?: number;
+}): {
+  eligible: boolean;
+  candidateMergeCommitSha: string | null;
+  candidateVerified: boolean;
+  verifiedReleaseCount: number;
+  qualifyingReleaseIds: string[];
+  blocker?: string;
+} {
+  const candidateMergeCommitSha = normalizeCommitSha(input.candidateMergeCommitSha);
+  const qualifying = new Map<string, FactoryReleaseEligibilityCandidate>();
+  for (const release of input.releases) {
+    const mergeCommitSha = normalizeCommitSha(release.mergeCommitSha);
+    if (!mergeCommitSha || release.state !== "VERIFIED" || !release.verifiedAt || release.blockingIssue) continue;
+    if (!qualifying.has(mergeCommitSha)) qualifying.set(mergeCommitSha, release);
+  }
+  const candidateVerified = Boolean(candidateMergeCommitSha && qualifying.has(candidateMergeCommitSha));
+  const minimumVerifiedReleases = Math.max(1, input.minimumVerifiedReleases ?? 3);
+  const verifiedReleaseCount = qualifying.size;
+  const base = {
+    eligible: false,
+    candidateMergeCommitSha,
+    candidateVerified,
+    verifiedReleaseCount,
+    qualifyingReleaseIds: [...qualifying.values()].map((release) => release.releaseId),
+  };
+  if (!candidateMergeCommitSha) return { ...base, blocker: "candidate-merge-sha-invalid" };
+  if (!candidateVerified) return { ...base, blocker: "candidate-staging-verification-missing" };
+  if (verifiedReleaseCount < minimumVerifiedReleases) {
+    return { ...base, blocker: `verified-staging-releases-required:${minimumVerifiedReleases}` };
+  }
+  return { ...base, eligible: true };
 }
 
 export function factoryReleaseMergeIdentityIssue(input: {
