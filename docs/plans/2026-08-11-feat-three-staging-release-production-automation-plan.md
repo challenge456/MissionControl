@@ -42,6 +42,9 @@ staging control plane, registers `jaydubya818/MissionControl`, and configures
 Vercel Preview to use the staging Convex deployment. It does not alter the
 legacy production backend.
 
+Release 1 advances the runtime contract to v13 because it adds public staging
+attempt binding and public-repository PR evidence ingestion functions.
+
 ## Release Sequence
 
 ### Release 1 — Provider-verifiable application identity
@@ -124,4 +127,3 @@ gate and browser evidence proves the operator path survives refresh.
 - One exact production candidate completes deployment and verification, or the
   system performs an evidence-backed rollback without losing audit history.
 - Vercel and Mission Control have one documented authoritative production path.
-
