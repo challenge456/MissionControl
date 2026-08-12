@@ -911,6 +911,75 @@ export const ingestPullRequest = action({
   },
 });
 
+/**
+ * Credential-free fallback for public repositories. Mission Control still
+ * fetches the authoritative PR, merge, head, and check-run payload directly
+ * from GitHub; the operator supplies only the scoped lineage to reconcile it.
+ */
+export const ingestPublicPullRequest = action({
+  args: {
+    ...pullRequestIngestArgs,
+    projectId: v.id("projects"),
+  },
+  handler: async (ctx, args) => {
+    await requireFactoryActionWithAudit(ctx, {
+      projectId: args.projectId,
+      permission: FACTORY_PERMISSIONS.IMPROVE,
+      operation: "PUBLIC_PR_EVIDENCE_INGEST",
+    });
+    const parsed = parseGitHubPrUrl(args.prUrl.trim());
+    if (!parsed) {
+      throw new Error("Invalid GitHub PR URL — expected https://github.com/owner/repo/pull/123");
+    }
+
+    const payload = await fetchPullRequestCi(parsed.owner, parsed.repo, parsed.prNumber);
+    const lineage = await ctx.runQuery(internal.factory.prChecks.resolveLineage, {
+      projectId: args.projectId,
+      workOrderId: args.workOrderId ?? payload.lineage?.workOrderId as Id<"workOrders"> | undefined,
+      workflowRunId: args.workflowRunId ?? payload.lineage?.workflowRunId as Id<"workflowRuns"> | undefined,
+      taskId: args.taskId ?? payload.lineage?.taskId as Id<"tasks"> | undefined,
+      repoFullName: payload.repoFullName,
+      branch: payload.branch,
+    });
+    const id: Id<"harnessPrChecks"> = await ctx.runMutation(
+      internal.factory.githubCi.applyCiIngest,
+      {
+        projectId: lineage.projectId,
+        workOrderId: lineage.workOrderId,
+        workflowRunId: lineage.workflowRunId,
+        taskId: lineage.taskId,
+        loopEngineeringCycleId: lineage.loopEngineeringCycleId,
+        lineageStatus: lineage.lineageStatus,
+        releaseDeploymentId: args.releaseDeploymentId,
+        prUrl: payload.prUrl,
+        prNumber: payload.prNumber,
+        repoFullName: payload.repoFullName,
+        branch: payload.branch,
+        title: payload.title,
+        prState: payload.prState,
+        mergeActor: payload.mergeActor,
+        mergedAt: payload.mergedAt,
+        mergeCommitSha: payload.mergeCommitSha,
+        ciStatus: payload.ciStatus,
+        ciRunUrl: payload.ciRunUrl,
+        headSha: payload.headSha,
+        checkRuns: payload.checkRuns,
+        signals: payload.signals,
+        sourceRef: payload.headSha,
+        sourceEventId: args.sourceEventId,
+      },
+    );
+
+    return {
+      id,
+      prUrl: payload.prUrl,
+      ciStatus: payload.ciStatus,
+      checkCount: payload.checkRuns.length,
+      diffLineCount: payload.diffLineCount,
+    };
+  },
+});
+
 /** Called only after the HTTP route verifies the GitHub webhook signature. */
 export const ingestPullRequestFromWebhook = internalAction({
   args: pullRequestIngestArgs,
