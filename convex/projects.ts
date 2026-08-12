@@ -17,6 +17,26 @@ import {
   validateCodeScopeInput,
   validateRepositoryInput,
 } from "./lib/workspaceRepositories";
+import {
+  COMPANY_PERMISSIONS,
+  listCompanyMemberships,
+  requireCompanyPermission,
+  requireWorkspaceAccess,
+} from "./lib/companyAccess";
+import { isCompanyContextEnforced } from "./lib/companyContextGate";
+
+async function enforceProjectAccess(
+  ctx: any,
+  project: any,
+  permission?: (typeof COMPANY_PERMISSIONS)[keyof typeof COMPANY_PERMISSIONS]
+) {
+  if (!project) throw new Error("Workspace not found.");
+  if (!(await isCompanyContextEnforced(ctx, project._id))) return null;
+  if (!project.tenantId) {
+    throw new Error("Workspace company assignment is incomplete. Run the tenant backfill before enabling enforcement.");
+  }
+  return await requireWorkspaceAccess(ctx, project.tenantId, project._id, { permission });
+}
 
 async function syncDefaultRepositoryConnection(
   ctx: any,
@@ -54,6 +74,7 @@ async function syncDefaultRepositoryConnection(
       validatedAt: input.validatedAt,
       validationError: input.validationError,
       webhookStatus: project.githubWebhookSecret ? "CONFIGURED" : "MISSING",
+      migrationVersion: 1,
       updatedAt: now,
     });
     return matching._id;
@@ -76,6 +97,7 @@ async function syncDefaultRepositoryConnection(
         validatedAt: input.validatedAt,
         validationError: input.validationError,
         webhookStatus: project.githubWebhookSecret ? "CONFIGURED" : "MISSING",
+        migrationVersion: 1,
         updatedAt: now,
       });
       return currentDefault._id;
@@ -94,6 +116,7 @@ async function syncDefaultRepositoryConnection(
     validatedAt: input.validatedAt,
     validationError: input.validationError,
     webhookStatus: project.githubWebhookSecret ? "CONFIGURED" : "MISSING",
+    migrationVersion: 1,
     createdAt: now,
     updatedAt: now,
   });
@@ -109,7 +132,17 @@ async function syncDefaultRepositoryConnection(
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db.query("projects").order("asc").collect();
+    const projects = await ctx.db.query("projects").order("asc").collect();
+    const visible = [];
+    for (const project of projects) {
+      try {
+        await enforceProjectAccess(ctx, project);
+        visible.push(project);
+      } catch {
+        // Never disclose an enforced workspace through the legacy portfolio.
+      }
+    }
+    return visible;
   },
 });
 
@@ -119,7 +152,10 @@ export const list = query({
 export const get = query({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.projectId);
+    const project = await ctx.db.get(args.projectId);
+    if (!project) return null;
+    await enforceProjectAccess(ctx, project);
+    return project;
   },
 });
 
@@ -129,10 +165,13 @@ export const get = query({
 export const getBySlug = query({
   args: { slug: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const project = await ctx.db
       .query("projects")
       .withIndex("by_slug", (q) => q.eq("slug", args.slug))
       .first();
+    if (!project) return null;
+    await enforceProjectAccess(ctx, project);
+    return project;
   },
 });
 
@@ -142,6 +181,8 @@ export const getBySlug = query({
 export const getStats = query({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
+    const project = await ctx.db.get(args.projectId);
+    await enforceProjectAccess(ctx, project);
     const tasks = await ctx.db
       .query("tasks")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
@@ -202,10 +243,19 @@ export const getStats = query({
 export const getRepositoryPortfolioSummary = query({
   args: {},
   handler: async (ctx) => {
-    const [projects, connections] = await Promise.all([
-      ctx.db.query("projects").collect(),
-      ctx.db.query("workspaceRepositories").collect(),
-    ]);
+    const allProjects = await ctx.db.query("projects").collect();
+    const projects = [];
+    for (const project of allProjects) {
+      try {
+        await enforceProjectAccess(ctx, project);
+        projects.push(project);
+      } catch {
+        // Omit inaccessible workspaces and their counts.
+      }
+    }
+    const projectIds = new Set(projects.map((project) => project._id));
+    const connections = (await ctx.db.query("workspaceRepositories").collect())
+      .filter((connection) => projectIds.has(connection.projectId));
     const projectsWithConnections = new Set(
       connections.map((connection) => connection.projectId)
     );
@@ -232,6 +282,7 @@ export const listRepositories = query({
   handler: async (ctx, args) => {
     const project = await ctx.db.get(args.projectId);
     if (!project) return [];
+    await enforceProjectAccess(ctx, project);
     const connections = await ctx.db
       .query("workspaceRepositories")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
@@ -281,6 +332,10 @@ export const listRepositories = query({
 export const listCodeScopes = query({
   args: { repositoryId: v.id("workspaceRepositories") },
   handler: async (ctx, args) => {
+    const repository = await ctx.db.get(args.repositoryId);
+    if (!repository) return [];
+    const project = await ctx.db.get(repository.projectId);
+    await enforceProjectAccess(ctx, project);
     return await ctx.db
       .query("repositoryCodeScopes")
       .withIndex("by_repository", (q) => q.eq("repositoryId", args.repositoryId))
@@ -318,6 +373,11 @@ export const create = mutation({
     metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
+    const globalEnforced = await isCompanyContextEnforced(ctx);
+    if (globalEnforced) {
+      if (!args.tenantId) throw new Error("Company account is required while company enforcement is enabled.");
+      await requireCompanyPermission(ctx, args.tenantId, COMPANY_PERMISSIONS.CREATE_WORKSPACES);
+    }
     // ARM Phase 1: Require tenantId for new projects
     // TODO: Remove this check after migration completes
     if (!args.tenantId) {
@@ -422,6 +482,7 @@ export const update = mutation({
     if (!project) {
       return { success: false, error: "Project not found" };
     }
+    await enforceProjectAccess(ctx, project, COMPANY_PERMISSIONS.MANAGE_WORKSPACES);
 
     const updates: any = {};
     if (args.name !== undefined) updates.name = args.name;
@@ -469,6 +530,7 @@ export const connectRepository = mutation({
     if (!project) {
       return { success: false, error: "Workspace not found" };
     }
+    await enforceProjectAccess(ctx, project, COMPANY_PERMISSIONS.MANAGE_REPOSITORIES);
 
     const repository = args.repository.trim();
     const defaultBranch = args.defaultBranch.trim();
@@ -534,6 +596,7 @@ export const reportRepositoryValidation = mutation({
     if (!project.githubRepo) {
       return { success: false, error: "Connect a repository before reporting validation" };
     }
+    await enforceProjectAccess(ctx, project, COMPANY_PERMISSIONS.MANAGE_REPOSITORIES);
 
     const validatedAt = Date.now();
     await ctx.db.patch(args.projectId, {
@@ -577,6 +640,7 @@ export const createRepositoryConnection = mutation({
   handler: async (ctx, args) => {
     const project = await ctx.db.get(args.projectId);
     if (!project) return { success: false, error: "Workspace not found" };
+    await enforceProjectAccess(ctx, project, COMPANY_PERMISSIONS.MANAGE_REPOSITORIES);
     const repository = args.repository.trim();
     const defaultBranch = args.defaultBranch.trim();
     const validationError = validateRepositoryInput({ repository, defaultBranch });
@@ -611,6 +675,7 @@ export const createRepositoryConnection = mutation({
       isDefault: makeDefault,
       status: "CONFIGURED",
       webhookStatus: "MISSING",
+      migrationVersion: 1,
       createdAt: now,
       updatedAt: now,
     });
@@ -645,6 +710,7 @@ export const setDefaultRepository = mutation({
     if (!selected) return { success: false, error: "Repository connection not found" };
     const project = await ctx.db.get(selected.projectId);
     if (!project) return { success: false, error: "Workspace not found" };
+    await enforceProjectAccess(ctx, project, COMPANY_PERMISSIONS.MANAGE_REPOSITORIES);
     const connections = await ctx.db
       .query("workspaceRepositories")
       .withIndex("by_project", (q) => q.eq("projectId", selected.projectId))
@@ -684,9 +750,15 @@ export const backfillLegacyRepositories = mutation({
     const projects = args.projectId
       ? [await ctx.db.get(args.projectId)].filter(Boolean)
       : await ctx.db.query("projects").collect();
-    const result = { created: 0, existing: 0, skipped: 0, failed: 0 };
+    const result = { migrationVersion: 1, created: 0, existing: 0, skipped: 0, failed: 0 };
 
     for (const project of projects) {
+      try {
+        await enforceProjectAccess(ctx, project, COMPANY_PERMISSIONS.MANAGE_REPOSITORIES);
+      } catch {
+        result.skipped += 1;
+        continue;
+      }
       if (!project?.githubRepo) {
         result.skipped += 1;
         continue;
@@ -733,17 +805,22 @@ export const createRepositoryCodeScope = mutation({
     description: v.optional(v.string()),
     includePaths: v.array(v.string()),
     excludePaths: v.array(v.string()),
+    owningTeamId: v.optional(v.id("scrumTeams")),
     owningTeam: v.optional(v.string()),
     requiredReviewers: v.array(v.string()),
     allowedEnvironments: v.array(
       v.union(v.literal("LOCAL"), v.literal("CLOUD"))
     ),
     verificationPolicy: v.optional(v.string()),
+    approvalPolicy: v.optional(v.string()),
+    overlapPriority: v.optional(v.number()),
     allowOverlap: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const repository = await ctx.db.get(args.repositoryId);
     if (!repository) return { success: false, error: "Repository connection not found" };
+    const project = await ctx.db.get(repository.projectId);
+    const access = await enforceProjectAccess(ctx, project, COMPANY_PERMISSIONS.MANAGE_REPOSITORIES);
     const validationError = validateCodeScopeInput(args);
     if (validationError) return { success: false, error: validationError };
 
@@ -762,6 +839,17 @@ export const createRepositoryCodeScope = mutation({
         overlaps,
       };
     }
+    if (overlaps.length > 0 && (!args.overlapPriority || args.overlapPriority < 1 || !args.approvalPolicy?.trim())) {
+      return {
+        success: false,
+        error: "Overlapping scopes require an explicit positive priority and approval policy.",
+        overlaps,
+      };
+    }
+    const owningTeam = args.owningTeamId ? await ctx.db.get(args.owningTeamId) : null;
+    if (args.owningTeamId && (!owningTeam || owningTeam.projectId !== repository.projectId || owningTeam.status !== "ACTIVE")) {
+      return { success: false, error: "Owning team must be active in this workspace." };
+    }
 
     const now = Date.now();
     const scopeId = await ctx.db.insert("repositoryCodeScopes", {
@@ -773,13 +861,19 @@ export const createRepositoryCodeScope = mutation({
       description: args.description?.trim() || undefined,
       includePaths: normalizeCodePaths(args.includePaths),
       excludePaths: normalizeCodePaths(args.excludePaths),
-      owningTeam: args.owningTeam?.trim() || undefined,
+      owningTeamId: owningTeam?._id,
+      owningTeam: owningTeam?.name ?? (args.owningTeam?.trim() || undefined),
       requiredReviewers: args.requiredReviewers.map((item) => item.trim()).filter(Boolean),
       allowedEnvironments: args.allowedEnvironments,
       verificationPolicy: args.verificationPolicy?.trim() || undefined,
+      approvalPolicy: args.approvalPolicy?.trim() || undefined,
+      overlapPriority: args.overlapPriority,
+      migrationVersion: 1,
       active: true,
       createdAt: now,
       updatedAt: now,
+      createdBy: access?.membership.operatorId,
+      updatedBy: access?.membership.operatorId,
     });
     await ctx.db.insert("activities", {
       projectId: repository.projectId,
@@ -799,6 +893,8 @@ export const archiveRepositoryCodeScope = mutation({
   handler: async (ctx, args) => {
     const scope = await ctx.db.get(args.scopeId);
     if (!scope) return { success: false, error: "Code scope not found" };
+    const project = await ctx.db.get(scope.projectId);
+    await enforceProjectAccess(ctx, project, COMPANY_PERMISSIONS.MANAGE_REPOSITORIES);
     await ctx.db.patch(scope._id, { active: false, updatedAt: Date.now() });
     await ctx.db.insert("activities", {
       projectId: scope.projectId,
@@ -826,6 +922,7 @@ export const remove = mutation({
     if (!project) {
       return { success: false, error: "Project not found" };
     }
+    await enforceProjectAccess(ctx, project, COMPANY_PERMISSIONS.MANAGE_WORKSPACES);
 
     // Check if project has any tasks
     const tasks = await ctx.db
@@ -904,19 +1001,30 @@ export const createSoftwareFactoryProject = mutation({
     requestedBy: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    let defaultTenant = await ctx.db
-      .query("tenants")
-      .withIndex("by_slug", (q) => q.eq("slug", "default"))
-      .first();
+    const companyEnforced = await isCompanyContextEnforced(ctx);
+    let defaultTenant;
+    if (companyEnforced) {
+      const manageable = (await listCompanyMemberships(ctx)).filter((membership) => membership.canManageCompany);
+      if (manageable.length !== 1) {
+        throw new Error("Select exactly one manageable company account before creating a factory workspace.");
+      }
+      await requireCompanyPermission(ctx, manageable[0].tenant._id, COMPANY_PERMISSIONS.CREATE_WORKSPACES);
+      defaultTenant = manageable[0].tenant;
+    } else {
+      defaultTenant = await ctx.db
+        .query("tenants")
+        .withIndex("by_slug", (q) => q.eq("slug", "default"))
+        .first();
 
-    if (!defaultTenant) {
-      const tenantId = await ctx.db.insert("tenants", {
-        name: "Default Organization",
-        slug: "default",
-        description: "Default tenant for migration",
-        active: true,
-      });
-      defaultTenant = await ctx.db.get(tenantId);
+      if (!defaultTenant) {
+        const tenantId = await ctx.db.insert("tenants", {
+          name: "Default Organization",
+          slug: "default",
+          description: "Default tenant for migration",
+          active: true,
+        });
+        defaultTenant = await ctx.db.get(tenantId);
+      }
     }
 
     const seed = buildFactoryProjectSeed(args);
@@ -926,6 +1034,9 @@ export const createSoftwareFactoryProject = mutation({
       .query("projects")
       .withIndex("by_slug", (q) => q.eq("slug", seed.project.slug))
       .first();
+    if (project && companyEnforced && project.tenantId !== defaultTenant!._id) {
+      throw new Error("A workspace with this slug exists in another company account.");
+    }
     let projectCreated = false;
 
     if (!project) {
@@ -1303,14 +1414,8 @@ export const updateGitHubIntegration = mutation({
     if (!project) {
       return { success: false, error: "Project not found" };
     }
-
-    // Authorization check: verify caller identity
+    const access = await enforceProjectAccess(ctx, project, COMPANY_PERMISSIONS.MANAGE_REPOSITORIES);
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      return { success: false, error: "Unauthorized: No identity found" };
-    }
-    // TODO: Add project membership/role check when user management is implemented
-    // For now, we allow any authenticated user to update their projects
 
     const updates: any = {};
     if (args.githubRepo !== undefined) updates.githubRepo = args.githubRepo;
@@ -1347,7 +1452,7 @@ export const updateGitHubIntegration = mutation({
     // Log activity
     await ctx.db.insert("activities", {
       actorType: "HUMAN",
-      actorId: identity.subject,
+      actorId: access?.membership.operatorId ?? identity?.subject,
       action: "PROJECT_GITHUB_UPDATED",
       description: `GitHub integration updated for "${project.name}"`,
       targetType: "PROJECT",
@@ -1375,14 +1480,8 @@ export const updateSwarmConfig = mutation({
     if (!project) {
       return { success: false, error: "Project not found" };
     }
-
-    // Authorization check: verify caller identity
+    const access = await enforceProjectAccess(ctx, project, COMPANY_PERMISSIONS.MANAGE_WORKSPACES);
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      return { success: false, error: "Unauthorized: No identity found" };
-    }
-    // TODO: Add project membership/role check when user management is implemented
-    // For now, we allow any authenticated user to update their projects
 
     const swarmConfig = {
       maxAgents: args.maxAgents ?? project.swarmConfig?.maxAgents ?? 5,
@@ -1395,7 +1494,7 @@ export const updateSwarmConfig = mutation({
     // Log activity
     await ctx.db.insert("activities", {
       actorType: "HUMAN",
-      actorId: identity.subject,
+      actorId: access?.membership.operatorId ?? identity?.subject,
       action: "PROJECT_SWARM_CONFIG_UPDATED",
       description: `Swarm config updated for "${project.name}"`,
       targetType: "PROJECT",

@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { action, internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
@@ -15,6 +15,7 @@ import {
   requireWorkspacePermission,
   type FactoryPermission,
 } from "./lib/companyAccess";
+import { requireFactoryActionWithAudit } from "./lib/factoryActionAuthorization";
 
 function cycleRef(cycleId: Id<"loopEngineeringCycles">) {
   return `loop-engineering:${cycleId}`;
@@ -111,7 +112,7 @@ export const getByRootWorkOrderInternal = internalQuery({
   handler: async (ctx, args) => findCycleByRootWorkOrder(ctx, args.workOrderId),
 });
 
-export const recordProjectionFailure = internalMutation({
+export const recordProjectionFailureInternal = internalMutation({
   args: {
     workflowRunId: v.id("workflowRuns"),
     error: v.string(),
@@ -288,14 +289,19 @@ export const applyWorkflowProjection = internalMutation({
   },
 });
 
-async function projectCompletedWorkflowRun(
-  ctx: any,
-  args: { workflowRunId: Id<"workflowRuns">; dryRun?: boolean }
-): Promise<any> {
-    const run = await ctx.runQuery(internal.workflowRuns.getByIdInternal, {
-      id: args.workflowRunId,
+export const projectWorkflowRun = action({
+  args: {
+    workflowRunId: v.id("workflowRuns"),
+    dryRun: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args): Promise<any> => {
+    const run = await ctx.runQuery(api.workflowRuns.getById, { id: args.workflowRunId });
+    if (!run?.projectId) throw new Error("Workflow run is unavailable or unauthorized.");
+    await requireFactoryActionWithAudit(ctx, {
+      projectId: run.projectId,
+      permission: FACTORY_PERMISSIONS.IMPROVE,
+      operation: "LOOP_WORKFLOW_PROJECT",
     });
-    if (!run) throw new Error("Workflow run not found.");
     if (run.workflowId !== "loop-engineering") {
       throw new Error("Only Loop Engineering runs can be projected.");
     }
@@ -356,40 +362,26 @@ async function projectCompletedWorkflowRun(
       approvedAt: approval?.decidedAt,
     });
     return { ...preview, ...result, dryRun: false };
-}
-
-export const projectWorkflowRun = action({
-  args: {
-    workflowRunId: v.id("workflowRuns"),
-    dryRun: v.optional(v.boolean()),
-  },
-  handler: async (ctx, args): Promise<any> => {
-    const run = await ctx.runQuery(internal.workflowRuns.getByIdInternal, {
-      id: args.workflowRunId,
-    });
-    if (!run) throw new Error("Workflow run not found.");
-    if (!run.projectId) throw new Error("Workflow run is not workspace-scoped.");
-    await ctx.runQuery(internal.companyContext.authorizeFactoryAction, {
-      projectId: run.projectId,
-      permission: FACTORY_PERMISSIONS.IMPROVE,
-    });
-    return await projectCompletedWorkflowRun(ctx, args);
   },
 });
 
-export const projectWorkflowRunInternal = internalAction({
-  args: { workflowRunId: v.id("workflowRuns") },
+export const recordProjectionFailureFromService = action({
+  args: {
+    workflowRunId: v.id("workflowRuns"),
+    error: v.string(),
+  },
   handler: async (ctx, args): Promise<any> => {
-    try {
-      return await projectCompletedWorkflowRun(ctx, args);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      await ctx.runMutation(internal.loopEngineering.recordProjectionFailure, {
-        workflowRunId: args.workflowRunId,
-        error: message,
-      });
-      return { projected: false, error: message };
-    }
+    const run = await ctx.runQuery(api.workflowRuns.getById, { id: args.workflowRunId });
+    if (!run?.projectId) throw new Error("Workflow run is unavailable or unauthorized.");
+    await requireFactoryActionWithAudit(ctx, {
+      projectId: run.projectId,
+      permission: FACTORY_PERMISSIONS.IMPROVE,
+      operation: "LOOP_WORKFLOW_PROJECTION_FAILURE",
+    });
+    return await ctx.runMutation(
+      internal.loopEngineering.recordProjectionFailureInternal,
+      { workflowRunId: args.workflowRunId, error: args.error }
+    );
   },
 });
 
@@ -515,10 +507,11 @@ export const create = action({
     iteration: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<any> => {
-    const authorization = await ctx.runQuery(
-      internal.companyContext.authorizeFactoryAction,
-      { projectId: args.projectId, permission: FACTORY_PERMISSIONS.IMPROVE }
-    );
+    const authorization = await requireFactoryActionWithAudit(ctx, {
+      projectId: args.projectId,
+      permission: FACTORY_PERMISSIONS.IMPROVE,
+      operation: "LOOP_CYCLE_CREATE",
+    });
     const actorId = authorization.actorId;
     const objective = args.objective.trim();
     const stopCondition = args.stopCondition.trim();
@@ -1023,10 +1016,11 @@ export const approveRecommendations = action({
     }
     const project = await ctx.runQuery(api.projects.get, { projectId: cycle.projectId });
     if (!project) throw new Error("Project not found.");
-    const authorization = await ctx.runQuery(
-      internal.companyContext.authorizeFactoryAction,
-      { projectId: cycle.projectId, permission: FACTORY_PERMISSIONS.APPROVE }
-    );
+    const authorization = await requireFactoryActionWithAudit(ctx, {
+      projectId: cycle.projectId,
+      permission: FACTORY_PERMISSIONS.APPROVE,
+      operation: "LOOP_RECOMMENDATIONS_APPROVE",
+    });
     const authorityActor = authorization.actorId;
 
     const links = [];
@@ -1364,10 +1358,11 @@ export const createNextCycle = action({
     if (cycle.iteration >= cycle.maxIterations) {
       throw new Error("The cycle reached its configured maximum iteration count.");
     }
-    const authorization = await ctx.runQuery(
-      internal.companyContext.authorizeFactoryAction,
-      { projectId: cycle.projectId, permission: FACTORY_PERMISSIONS.IMPROVE }
-    );
+    const authorization = await requireFactoryActionWithAudit(ctx, {
+      projectId: cycle.projectId,
+      permission: FACTORY_PERMISSIONS.IMPROVE,
+      operation: "LOOP_NEXT_CYCLE_CREATE",
+    });
     const actorId = authorization.actorId;
     const result: any = await ctx.runAction(api.loopEngineering.create, {
       projectId: cycle.projectId,

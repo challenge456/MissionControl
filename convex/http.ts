@@ -10,6 +10,7 @@ import { api, internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import {
   extractPrFromWebhookEvent,
+  isSupportedPullRequestWebhookAction,
   verifyGithubWebhookSignature,
 } from "./lib/githubCiIngest";
 import {
@@ -304,7 +305,7 @@ http.route({
 
     if (
       event === "pull_request" &&
-      !["opened", "synchronize", "reopened"].includes(String(payload.action ?? ""))
+      !isSupportedPullRequestWebhookAction(payload.action)
     ) {
       await complete("IGNORED", `Unsupported pull_request action ${String(payload.action ?? "")}.`);
       return new Response("OK (ignored action)", { status: 200 });

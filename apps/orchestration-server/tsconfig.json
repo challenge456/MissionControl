@@ -21,6 +21,7 @@
       "@mission-control/agent-runtime": ["packages/agent-runtime/src/index.ts"],
       "@mission-control/memory": ["packages/memory/src/index.ts"],
       "@mission-control/context-router": ["packages/context-router/src/index.ts"],
+      "@mission-control/workflow-engine": ["packages/workflow-engine/src/index.ts"],
       "@mission-control/shared": ["packages/shared/src/index.ts"]
     }
   },

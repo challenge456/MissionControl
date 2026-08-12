@@ -12,6 +12,10 @@ const validDraft: MissionDraftValues = {
   constraints: ["No state-machine changes"],
   sourceOfTruthRefs: [{ kind: "PRD", label: "PR 1", location: "docs/pr1.md" }],
   owner: "Platform",
+  ownerMemberId: "member-1",
+  owningTeamId: "team-1",
+  repositoryId: "repo-1",
+  codeScopeIds: ["scope-1"],
   budgetUsd: "12.50",
   stopCondition: "Focused tests pass",
   maxReadOnlyConcurrency: "2",
@@ -26,6 +30,10 @@ describe("Mission draft model", () => {
       budgetUsd: 12.5,
       maxReadOnlyConcurrency: 2,
       maxCorrectiveIterations: 1,
+      ownerMemberId: "member-1",
+      owningTeamId: "team-1",
+      repositoryId: "repo-1",
+      codeScopeIds: ["scope-1"],
     });
   });
 
@@ -39,6 +47,21 @@ describe("Mission draft model", () => {
       budgetUsd: "Budget must be zero or greater.",
       maxReadOnlyConcurrency: "Concurrency must be a whole number of at least 1.",
       maxCorrectiveIterations: "Corrective iterations must be a whole number of at least 0.",
+    });
+  });
+
+  it("requires stable delivery ownership and repository scope", () => {
+    expect(validateMissionDraft({
+      ...validDraft,
+      ownerMemberId: "",
+      owningTeamId: "",
+      repositoryId: "",
+      codeScopeIds: [],
+    })).toMatchObject({
+      ownerMemberId: "Accountable owner is required.",
+      owningTeamId: "Owning team is required.",
+      repositoryId: "Repository is required.",
+      codeScopeIds: "Code scope is required.",
     });
   });
 });

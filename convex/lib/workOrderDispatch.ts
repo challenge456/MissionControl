@@ -49,11 +49,44 @@ export function validateRetryRequest(args: {
   if (args.priorRun.workOrderId !== args.workOrderId) {
     return { ok: false, reason: "retry-run-work-order-mismatch" };
   }
-  if (args.priorRun.status !== "FAILED") {
-    return { ok: false, reason: `retry-run-not-failed:${args.priorRun.status}` };
+  if (!["FAILED", "CANCELED"].includes(args.priorRun.status)) {
+    return { ok: false, reason: `retry-run-not-recoverable:${args.priorRun.status}` };
   }
   if (reason.length < 10) return { ok: false, reason: "retry-reason-required" };
   return { ok: true, reason };
+}
+
+export function resolveRetryExecutionBinding(args: {
+  branch?: string;
+  worktree?: string;
+  priorRun?: {
+    _id?: string;
+    branch?: string;
+    worktree?: string;
+    metadata?: { retryOfWorkflowRunId?: string };
+  } | null;
+  lineage?: Array<{
+    _id: string;
+    branch?: string;
+    worktree?: string;
+    metadata?: { retryOfWorkflowRunId?: string };
+  }>;
+}) {
+  const byId = new Map((args.lineage ?? []).map((run) => [run._id, run]));
+  let bindingSource = args.priorRun ?? undefined;
+  const visited = new Set<string>();
+  while (bindingSource?.metadata?.retryOfWorkflowRunId) {
+    const parentId = bindingSource.metadata.retryOfWorkflowRunId;
+    if (visited.has(parentId)) break;
+    visited.add(parentId);
+    const parent = byId.get(parentId);
+    if (!parent) break;
+    bindingSource = parent;
+  }
+  return {
+    branch: args.branch?.trim() || bindingSource?.branch,
+    worktree: args.worktree?.trim() || bindingSource?.worktree,
+  };
 }
 
 export function validateDispatchable(args: {

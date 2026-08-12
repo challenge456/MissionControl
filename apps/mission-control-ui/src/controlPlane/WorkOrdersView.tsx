@@ -118,11 +118,12 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
   const [revisingId, setRevisingId] = useState<string | null>(null);
   const [reopeningId, setReopeningId] = useState<string | null>(null);
   const [supersedingId, setSupersedingId] = useState<string | null>(null);
-  const [inspectorRunId, setInspectorRunId] = useState<Id<"workflowRuns"> | null>(null);
-  const [inspectorReceiptId, setInspectorReceiptId] = useState<Id<"verificationReceipts"> | null>(null);
-  const [inspectorCriterionId, setInspectorCriterionId] = useState<string | null>(null);
+  const requestedInspectorRunId = searchParams.get("run") as Id<"workflowRuns"> | null;
+  const inspectorReceiptId = searchParams.get("receipt") as Id<"verificationReceipts"> | null;
+  const inspectorCriterionId = searchParams.get("criterion");
   const [dispatchError, setDispatchError] = useState<string | null>(null);
   const [dispatchTaskSelections, setDispatchTaskSelections] = useState<Record<string, string>>({});
+  const [dispatchCodeScopeSelections, setDispatchCodeScopeSelections] = useState<Record<string, string>>({});
   const [governanceError, setGovernanceError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [seeding, setSeeding] = useState(false);
@@ -139,6 +140,21 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
     accessibleSelectedId
       ? { workOrderId: accessibleSelectedId as Id<"workOrders"> }
       : "skip"
+  );
+  const inspectorRunId = selected?.executionRuns.some((run) => run._id === requestedInspectorRunId)
+    ? requestedInspectorRunId
+    : null;
+  const inspectorUnavailable = Boolean(requestedInspectorRunId && selected !== undefined && !inspectorRunId);
+  const repositoryRows = useQuery(
+    api.projects.listRepositories,
+    projectId ? { projectId } : "skip"
+  );
+  const dispatchRepositoryId = selected?.workOrder.repositoryId
+    ?? repositoryRows?.find((repository) => repository.isDefault)?.repositoryId
+    ?? repositoryRows?.[0]?.repositoryId;
+  const dispatchCodeScopes = useQuery(
+    api.projects.listCodeScopes,
+    dispatchRepositoryId ? { repositoryId: dispatchRepositoryId } : "skip"
   );
   const activeFactory = useQuery(
     api["factory/configuration"].getActiveForWorkOrder,
@@ -159,6 +175,28 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
       hadRequestedWorkOrder.current = false;
     }
   }, [searchParams, selectedId]);
+
+  const openRunInspector = (input: {
+    runId: Id<"workflowRuns">;
+    receiptId?: Id<"verificationReceipts"> | null;
+    criterionId?: string | null;
+  }) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("run", input.runId);
+    if (input.receiptId) next.set("receipt", input.receiptId);
+    else next.delete("receipt");
+    if (input.criterionId) next.set("criterion", input.criterionId);
+    else next.delete("criterion");
+    setSearchParams(next, { replace: true });
+  };
+
+  const closeRunInspector = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("run");
+    next.delete("receipt");
+    next.delete("criterion");
+    setSearchParams(next, { replace: true });
+  };
   const createWorkOrder = useMutation(api.workOrders.create);
   const dispatchWorkOrder = useMutation(api.workOrders.dispatch);
   const requestApprovalDecision = useMutation(api.workOrders.requestApprovalDecision);
@@ -284,6 +322,18 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
   const selectedDispatchTaskId = selected
     ? dispatchTaskSelections[selected.workOrder._id] ?? ""
     : "";
+  const selectedDispatchCodeScopeId = selected
+    ? dispatchCodeScopeSelections[selected.workOrder._id]
+      ?? (selected.workOrder.codeScopeIds?.length === 1 ? selected.workOrder.codeScopeIds[0] : "")
+    : "";
+  const selectedDispatchCodeScopeIds = selected
+    ? dispatchCodeScopeSelections[selected.workOrder._id]
+      ? [dispatchCodeScopeSelections[selected.workOrder._id] as Id<"repositoryCodeScopes">]
+      : selected.workOrder.codeScopeIds ?? []
+    : [];
+  const activeLocalCodeScopes = (dispatchCodeScopes ?? []).filter((scope) =>
+    scope.active && scope.allowedEnvironments.includes("LOCAL")
+  );
   const verifiedCriteriaCount = selected
     ? Math.max(
         0,
@@ -293,6 +343,17 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
           (selected.acceptanceSummary?.staleCriteriaIds?.length ?? 0)
       )
     : 0;
+  const scopePolicyRequirements = selected
+    ? (selected.workOrder.metadata as {
+        scopePolicyRequirements?: {
+          owningTeamIds: string[];
+          requiredReviewers: string[];
+          verificationPolicies: string[];
+          approvalPolicies: string[];
+          requiresCrossTeamReview: boolean;
+        };
+      } | undefined)?.scopePolicyRequirements
+    : undefined;
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
@@ -449,7 +510,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Button size="sm" variant="outline" onClick={() => { setGovernanceError(null); setRevisionOpen(true); }}>Request revision</Button>
-                    <Button size="sm" variant="outline" onClick={() => { setGovernanceError(null); setReopenOpen(true); }} disabled={["SUPERSEDED", "CANCELED"].includes(selected.workOrder.state)}>Reopen</Button>
+                    <Button size="sm" variant="outline" onClick={() => { setGovernanceError(null); setReopenOpen(true); }} disabled={selected.workOrder.state === "SUPERSEDED"}>Reopen</Button>
                     <Button size="sm" variant="outline" onClick={async () => {
                       try {
                         setGovernanceError(null);
@@ -468,6 +529,22 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                     <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{selected.workOrder.context}</p>
                   ) : null}
                 </Section>
+
+                {scopePolicyRequirements ? (
+                  <Section title="Governed execution scope">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline">{selected.workOrder.codeScopeIds?.length ?? 0} code scopes</Badge>
+                      <Badge variant="outline">{scopePolicyRequirements.owningTeamIds.length} owning teams</Badge>
+                      {scopePolicyRequirements.requiresCrossTeamReview ? <Badge variant="outline" className="border-amber-500/30 text-amber-200">Cross-team review required</Badge> : null}
+                    </div>
+                    <dl className="mt-3 grid gap-3 text-sm md:grid-cols-2">
+                      <MetaRow label="Required reviewers" value={scopePolicyRequirements.requiredReviewers.join(", ") || "No additional reviewer policy"} />
+                      <MetaRow label="Approval policies" value={scopePolicyRequirements.approvalPolicies.join("; ") || "No additional approval policy"} />
+                      <MetaRow label="Verification policies" value={scopePolicyRequirements.verificationPolicies.join("; ") || "No additional verification policy"} />
+                      <MetaRow label="Policy source" value="Union of every selected repository code scope" />
+                    </dl>
+                  </Section>
+                ) : null}
 
                 {selected.workOrder.metadata?.automationDefinitionId ? (
                   <Section title="Automation lineage">
@@ -852,9 +929,12 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                               variant="outline"
                               disabled={!receipt?.workflowRunId}
                               onClick={() => {
-                                setInspectorRunId((receipt?.workflowRunId ?? null) as Id<"workflowRuns"> | null);
-                                setInspectorReceiptId((receipt?._id ?? null) as Id<"verificationReceipts"> | null);
-                                setInspectorCriterionId(receipt?.acceptanceCriterionId ?? criterion.id);
+                                if (!receipt?.workflowRunId) return;
+                                openRunInspector({
+                                  runId: receipt.workflowRunId,
+                                  receiptId: receipt._id,
+                                  criterionId: receipt.acceptanceCriterionId ?? criterion.id,
+                                });
                               }}
                             >
                               Inspect evidence
@@ -885,7 +965,46 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                 </Section>
 
                 <Section title="Linked execution runs">
-                  <div className="mb-3 grid gap-3 rounded-lg border border-[var(--panel-line)] bg-background/30 p-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+                  <div className="mb-3 grid gap-3 rounded-lg border border-[var(--panel-line)] bg-background/30 p-3 md:grid-cols-2">
+                    <div>
+                      <Label htmlFor={`dispatch-scope-${selected.workOrder._id}`}>
+                        Approved code scope
+                      </Label>
+                      {activeLocalCodeScopes.length > 0 ? (
+                        <>
+                          <Select
+                            value={selectedDispatchCodeScopeId}
+                            onValueChange={(scopeId) =>
+                              setDispatchCodeScopeSelections((current) => ({
+                                ...current,
+                                [selected.workOrder._id]: scopeId,
+                              }))
+                            }
+                          >
+                            <SelectTrigger
+                              id={`dispatch-scope-${selected.workOrder._id}`}
+                              className="mt-2"
+                            >
+                              <SelectValue placeholder="Select the approved file boundary" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {activeLocalCodeScopes.map((scope) => (
+                                <SelectItem key={scope._id} value={scope._id}>
+                                  {scope.name} · {scope.includePaths.join(", ")}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <p className="mt-1.5 text-xs text-muted-foreground">
+                            The worker rejects changed files outside this repository-relative boundary before push.
+                          </p>
+                        </>
+                      ) : (
+                        <p className="mt-1.5 text-xs text-amber-200">
+                          Add an active local code scope to the default repository before dispatch.
+                        </p>
+                      )}
+                    </div>
                     <div>
                       <Label htmlFor={`dispatch-task-${selected.workOrder._id}`}>
                         Task to execute
@@ -928,6 +1047,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                         </p>
                       )}
                     </div>
+                    <div className="flex items-end justify-end md:col-span-2">
                     <Button
                       size="sm"
                       onClick={async () => {
@@ -944,6 +1064,9 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                             actorId: "operator",
                             idempotencyKey: `ui-dispatch:${selected.workOrder._id}:${selected.workOrder.updatedAt}`,
                             runtime: "Mission Control UI",
+                            repositoryId: dispatchRepositoryId,
+                            codeScopeIds: selectedDispatchCodeScopeIds,
+                            executionEnvironment: "LOCAL",
                             factoryDefinitionVersionId: selected.workOrder.missionId
                               ? activeFactoryVersionId
                               : undefined,
@@ -961,12 +1084,19 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                         !canDispatchSelected ||
                         dispatchingId === selected.workOrder._id ||
                         (selected.childTasks.length > 0 && !selectedDispatchTaskId) ||
+                        (Boolean(selected.workOrder.missionId) && selectedDispatchCodeScopeIds.length === 0) ||
                         (Boolean(selected.workOrder.missionId) && !activeFactoryVersionId)
                       }
                     >
                       {dispatchingId === selected.workOrder._id ? "Dispatching…" : "Dispatch"}
                     </Button>
+                    </div>
                   </div>
+                  {selected.workOrder.missionId && selectedDispatchCodeScopeIds.length === 0 ? (
+                    <div className="mb-3 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
+                      Select the approved code scope before dispatching this Mission WorkOrder.
+                    </div>
+                  ) : null}
                   {selected.workOrder.missionId && !activeFactoryVersionId ? (
                     <div className="mb-3 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
                       Activate a passing Factory version before dispatching this Mission WorkOrder.
@@ -994,11 +1124,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => {
-                                  setInspectorRunId(run._id);
-                                  setInspectorReceiptId(null);
-                                  setInspectorCriterionId(null);
-                                }}
+                                onClick={() => openRunInspector({ runId: run._id })}
                               >
                                 Inspect run
                               </Button>
@@ -1262,10 +1388,11 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
       />
 
       <ExecutionRunInspector
-        open={!!inspectorRunId}
+        open={Boolean(requestedInspectorRunId && selected !== undefined)}
         workflowRunId={inspectorRunId}
         verificationReceiptId={inspectorReceiptId}
         acceptanceCriterionId={inspectorCriterionId}
+        unavailable={inspectorUnavailable}
         retrying={!!selected && dispatchingId === selected.workOrder._id}
         onRetryFailedRun={selected
           ? async ({ workflowRunId, reason, runtime, model, worktree }) => {
@@ -1283,6 +1410,9 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                   worktree,
                   retryOfWorkflowRunId: workflowRunId,
                   retryReason: reason,
+                  repositoryId: selected.workOrder.repositoryId,
+                  codeScopeIds: selected.workOrder.codeScopeIds,
+                  executionEnvironment: selected.workOrder.executionEnvironment ?? "LOCAL",
                   factoryDefinitionVersionId: selected.workOrder.missionId
                     ? activeFactoryVersionId
                     : undefined,
@@ -1295,11 +1425,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
               }
             }
           : undefined}
-        onClose={() => {
-          setInspectorRunId(null);
-          setInspectorReceiptId(null);
-          setInspectorCriterionId(null);
-        }}
+        onClose={closeRunInspector}
       />
     </div>
   );

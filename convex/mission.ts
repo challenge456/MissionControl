@@ -9,6 +9,7 @@ import { mutation, query, action } from "./_generated/server";
 import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { resolveActiveTenantId } from "./lib/getActiveTenant";
+import { buildMissionSuggestionIntake } from "./lib/missionPromptScheduling";
 
 // ============================================================================
 // QUERIES
@@ -250,15 +251,11 @@ Respond with valid JSON only, no markdown:
             ? agents.find((a: any) => a.name === suggestion.suggestedAssignee)
             : null;
 
-          await ctx.runMutation(api.tasks.create, {
+          await ctx.runMutation(api.tasks.create, buildMissionSuggestionIntake({
             projectId: args.projectId,
-            title: suggestion.title,
-            description: `${suggestion.description}\n\n**Mission Alignment:** ${suggestion.reasoning}`,
-            type: suggestion.type,
-            priority: suggestion.priority,
-            source: "MISSION_PROMPT",
-            assigneeIds: agent ? [agent._id] : undefined,
-          });
+            suggestion,
+            suggestedAgentId: agent?._id,
+          }));
         }
 
         // Note: Activity logging would go here, but activities.ts has no create mutation

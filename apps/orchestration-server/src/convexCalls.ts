@@ -42,6 +42,10 @@ export const ConvexActions = {
     claimFactoryAttempt: "serviceCommands:claimFactoryAttempt",
     renewFactoryAttempt: "serviceCommands:renewFactoryAttempt",
     reportFactoryAttempt: "serviceCommands:reportFactoryAttempt",
+    claimExecution: "serviceCommands:claimExecution",
+    heartbeatExecution: "serviceCommands:heartbeatExecution",
+    reportExecution: "serviceCommands:reportExecution",
+    finalizeExecution: "serviceCommands:finalizeExecution",
   },
 } as const;
 
@@ -63,6 +67,9 @@ export const ConvexMutations = {
     supersedeWorkOrder: "workOrders:supersedeWorkOrder",
     expireGovernanceRecords: "workOrders:expireGovernanceRecords",
   },
+  softwareFactoryControlPlane: {
+    bindExecutor: "softwareFactoryControlPlane:bindExecutor",
+  },
   missions: {
     recordHandoff: "missions:recordHandoff",
     recordValidationResult: "missions:recordValidationResult",
@@ -71,6 +78,7 @@ export const ConvexMutations = {
   workflowRuns: {
     linkArtifactToVerificationReceipt: "workflowRuns:linkArtifactToVerificationReceipt",
     updateStatus: "workflowRuns:updateStatus",
+    requestCancellation: "workflowRuns:requestCancellation",
   },
   automationExecutions: {
     claim: "automationExecutions:claim",

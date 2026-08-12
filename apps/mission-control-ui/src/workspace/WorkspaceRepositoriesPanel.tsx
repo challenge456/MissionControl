@@ -221,6 +221,7 @@ export function WorkspaceRepositoriesPanel({ project }: WorkspaceRepositoriesPan
           <GitHubAppReadinessPanel repositoryId={selectedRepository.repositoryId} />
           <FactoryConfigurationPanel projectId={project._id} repositoryId={selectedRepository.repositoryId} />
           <CodeScopeList
+            projectId={project._id}
             repositoryId={selectedRepository.repositoryId}
             repository={selectedRepository.repository}
             onAdd={() => setScopeOpen(true)}
@@ -233,6 +234,7 @@ export function WorkspaceRepositoriesPanel({ project }: WorkspaceRepositoriesPan
       ) : null}
       {scopeOpen && selectedRepository?.repositoryId ? (
         <AddCodeScopeDialog
+          projectId={project._id}
           repositoryId={selectedRepository.repositoryId}
           repository={selectedRepository.repository}
           onClose={() => setScopeOpen(false)}
@@ -250,7 +252,21 @@ function GitHubAppReadinessPanel({
   const readiness = useQuery(api.githubAppConnections.getRepositoryReadiness, {
     repositoryId,
   });
+  const deliveries = useQuery(api.githubAppConnections.listDeliveries, {
+    repositoryId,
+    limit: 50,
+  });
+  const visibleDeliveries = useMemo(() => {
+    if (!deliveries) return deliveries;
+    const selected = deliveries.slice(0, 8);
+    for (const event of ["pull_request", "pull_request_review"]) {
+      const representative = deliveries.find((delivery) => delivery.event === event);
+      if (representative && !selected.some((delivery) => delivery._id === representative._id)) selected.push(representative);
+    }
+    return selected;
+  }, [deliveries]);
   const beginInstallation = useAction(api.githubAppConnections.beginInstallation);
+  const verifyInstallation = useAction(api.githubAppConnections.verifyInstallation);
   const [installPending, setInstallPending] = useState(false);
   const [installError, setInstallError] = useState("");
 
@@ -272,6 +288,18 @@ function GitHubAppReadinessPanel({
     setInstallPending(true);
     setInstallError("");
     try {
+      if (readiness.installation) {
+        const verification = await verifyInstallation({ repositoryId });
+        if (!verification.ok) {
+          setInstallError(
+            "code" in verification && verification.code === "NOT_CONFIGURED"
+              ? "GitHub App verification is not configured for this environment. Add the required server credentials, then try again."
+              : "GitHub App verification failed. Confirm that this installation grants access to the exact repository, then try again."
+          );
+        }
+        setInstallPending(false);
+        return;
+      }
       const result = await beginInstallation({ repositoryId });
       if (!result.ok) {
         setInstallError(
@@ -303,7 +331,9 @@ function GitHubAppReadinessPanel({
           {readiness.overall !== "VERIFIED" ? (
             <Button variant="outline" size="sm" disabled={installPending} onClick={install}>
               <Github className="h-3.5 w-3.5" aria-hidden />
-              {installPending ? "Opening GitHub…" : readiness.installation ? "Repair installation" : "Install GitHub App"}
+              {installPending
+                ? readiness.installation ? "Verifying…" : "Opening GitHub…"
+                : readiness.installation ? "Verify installation" : "Install GitHub App"}
             </Button>
           ) : null}
         </div>
@@ -338,21 +368,64 @@ function GitHubAppReadinessPanel({
           Installation {readiness.installation.installationId} · {readiness.installation.accountLogin} · tokens are not stored
         </div>
       ) : null}
+      <div className="mt-4 border-t border-line pt-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-[12.5px] font-medium text-ink-secondary">Recent webhook deliveries</div>
+            <div className="mt-1 text-[11.5px] text-ink-muted">Authenticated GitHub events for this exact repository connection.</div>
+          </div>
+          <StatusBadge tone={visibleDeliveries?.some((delivery) => delivery.status === "FAILED") ? "error" : "success"}>
+            {visibleDeliveries === undefined ? "loading" : `${visibleDeliveries.length} shown`}
+          </StatusBadge>
+        </div>
+        {deliveries === undefined ? (
+          <div className="mt-3 h-16 animate-pulse rounded-lg bg-surface-2" aria-label="Loading recent webhook deliveries" />
+        ) : visibleDeliveries!.length === 0 ? (
+          <div className="mt-3 rounded-lg border border-line bg-surface-2 px-3 py-3 text-[12px] text-ink-muted">No webhook deliveries recorded for this repository yet.</div>
+        ) : (
+          <ul className="mt-3 space-y-2" aria-label="Recent webhook deliveries">
+            {visibleDeliveries!.map((delivery) => {
+              const passing = delivery.status === "PROCESSED" || delivery.status === "IGNORED";
+              return (
+                <li key={delivery._id} className="rounded-lg border border-line bg-surface-2 px-3 py-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <div className="text-[12.5px] font-medium text-ink">{delivery.event}{delivery.action ? ` · ${delivery.action}` : ""}</div>
+                      <div className="mt-1 font-mono text-[10.5px] text-ink-muted">{delivery.deliveryId}</div>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <StatusBadge tone={delivery.signatureStatus === "VALID" ? "success" : "error"}>signature {delivery.signatureStatus.toLowerCase()}</StatusBadge>
+                      <StatusBadge tone={passing ? "success" : delivery.status === "FAILED" ? "error" : "warning"}>{delivery.status.toLowerCase()}</StatusBadge>
+                    </div>
+                  </div>
+                  <div className="mt-2 flex flex-wrap justify-between gap-2 text-[11px] text-ink-muted">
+                    <span>{delivery.result ?? delivery.error ?? "Processing result not recorded."}</span>
+                    <time dateTime={new Date(delivery.receivedAt).toISOString()}>{new Date(delivery.receivedAt).toLocaleString()}</time>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
       {installError ? <ErrorNotice message={installError} /> : null}
     </section>
   );
 }
 
 function CodeScopeList({
+  projectId,
   repositoryId,
   repository,
   onAdd,
 }: {
+  projectId: Id<"projects">;
   repositoryId: Id<"workspaceRepositories">;
   repository: string;
   onAdd: () => void;
 }) {
   const scopes = useQuery(api.projects.listCodeScopes, { repositoryId });
+  const structure = useQuery(api.softwareFactoryControlPlane.listWorkspaceStructure, { projectId });
   const archiveScope = useMutation(api.projects.archiveRepositoryCodeScope);
   const activeScopes = scopes?.filter((scope) => scope.active);
 
@@ -389,9 +462,12 @@ function CodeScopeList({
                     ))}
                   </div>
                   <div className="mt-2 text-[11.5px] text-ink-muted">
-                    {scope.owningTeam ? `Owner: ${scope.owningTeam} · ` : ""}
+                    {scope.owningTeamId
+                      ? `Owner: ${structure?.teams.find((team) => team._id === scope.owningTeamId)?.name ?? scope.owningTeam ?? "Assigned team"} · `
+                      : scope.owningTeam ? `Legacy owner: ${scope.owningTeam} · ` : ""}
                     {scope.allowedEnvironments.join(" + ").toLowerCase()} execution
                     {scope.verificationPolicy ? ` · ${scope.verificationPolicy}` : ""}
+                    {scope.overlapPriority ? ` · overlap priority ${scope.overlapPriority}` : ""}
                   </div>
                 </div>
                 <Button variant="ghost" size="sm" onClick={() => archiveScope({ scopeId: scope._id })}>
@@ -477,23 +553,29 @@ function AddRepositoryDialog({
 }
 
 function AddCodeScopeDialog({
+  projectId,
   repositoryId,
   repository,
   onClose,
 }: {
+  projectId: Id<"projects">;
   repositoryId: Id<"workspaceRepositories">;
   repository: string;
   onClose: () => void;
 }) {
   const createScope = useMutation(api.projects.createRepositoryCodeScope);
+  const structure = useQuery(api.softwareFactoryControlPlane.listWorkspaceStructure, { projectId });
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [slugEdited, setSlugEdited] = useState(false);
   const [includePaths, setIncludePaths] = useState("");
   const [excludePaths, setExcludePaths] = useState("");
-  const [owningTeam, setOwningTeam] = useState("");
+  const [owningTeamId, setOwningTeamId] = useState<Id<"scrumTeams"> | "">("");
   const [requiredReviewers, setRequiredReviewers] = useState("");
   const [verificationPolicy, setVerificationPolicy] = useState("");
+  const [approvalPolicy, setApprovalPolicy] = useState("");
+  const [allowOverlap, setAllowOverlap] = useState(false);
+  const [overlapPriority, setOverlapPriority] = useState("");
   const [allowLocal, setAllowLocal] = useState(true);
   const [allowCloud, setAllowCloud] = useState(true);
   const [error, setError] = useState("");
@@ -528,10 +610,13 @@ function AddCodeScopeDialog({
         slug: slug.trim(),
         includePaths: splitList(includePaths),
         excludePaths: splitList(excludePaths),
-        owningTeam: owningTeam.trim() || undefined,
+        owningTeamId: owningTeamId || undefined,
         requiredReviewers: splitList(requiredReviewers),
         allowedEnvironments,
         verificationPolicy: verificationPolicy.trim() || undefined,
+        approvalPolicy: approvalPolicy.trim() || undefined,
+        allowOverlap,
+        overlapPriority: allowOverlap && overlapPriority ? Number(overlapPriority) : undefined,
       });
       if (!result.success) {
         setError(result.error || "Code scope could not be created.");
@@ -569,7 +654,10 @@ function AddCodeScopeDialog({
               <Textarea id="scope-excludes" value={excludePaths} onChange={(event) => setExcludePaths(event.target.value)} rows={2} placeholder="apps/buyer-portal/generated" />
             </Field>
             <Field id="scope-team" label="Owning team">
-              <Input id="scope-team" value={owningTeam} onChange={(event) => setOwningTeam(event.target.value)} placeholder="Checkout" />
+              <select id="scope-team" value={owningTeamId} onChange={(event) => setOwningTeamId(event.target.value as Id<"scrumTeams"> | "")} className="h-9 w-full rounded-md border border-line bg-surface-1 px-3 text-[13px] text-ink outline-none focus:border-info-accent focus:ring-2 focus:ring-info-accent/25">
+                <option value="">No owning team</option>
+                {(structure?.teams ?? []).filter((team) => team.status === "ACTIVE").map((team) => <option key={team._id} value={team._id}>{team.name}</option>)}
+              </select>
             </Field>
             <Field id="scope-reviewers" label="Required reviewers">
               <Input id="scope-reviewers" value={requiredReviewers} onChange={(event) => setRequiredReviewers(event.target.value)} placeholder="Platform, Security" />
@@ -577,6 +665,22 @@ function AddCodeScopeDialog({
             <Field id="scope-policy" label="Verification policy" className="md:col-span-2">
               <Input id="scope-policy" value={verificationPolicy} onChange={(event) => setVerificationPolicy(event.target.value)} placeholder="Unit + browser + independent review" />
             </Field>
+            <div className="md:col-span-2 rounded-lg border border-line bg-surface-2 px-4 py-3">
+              <label className="flex items-start gap-2 text-[12.5px] text-ink-secondary">
+                <input type="checkbox" checked={allowOverlap} onChange={(event) => setAllowOverlap(event.target.checked)} className="mt-0.5" />
+                <span><strong className="font-medium text-ink">Allow an intentional path overlap</strong><br />Overlaps need deterministic priority and an approval policy.</span>
+              </label>
+              {allowOverlap ? (
+                <div className="mt-3 grid gap-3 md:grid-cols-[140px_1fr]">
+                  <Field id="scope-priority" label="Priority">
+                    <Input id="scope-priority" type="number" min={1} value={overlapPriority} onChange={(event) => setOverlapPriority(event.target.value)} placeholder="1" />
+                  </Field>
+                  <Field id="scope-approval-policy" label="Approval policy">
+                    <Input id="scope-approval-policy" value={approvalPolicy} onChange={(event) => setApprovalPolicy(event.target.value)} placeholder="Both owning team leads approve" />
+                  </Field>
+                </div>
+              ) : null}
+            </div>
             <div className="md:col-span-2 rounded-lg border border-line bg-surface-2 px-4 py-3">
               <div className="flex items-center gap-2 text-[12.5px] font-medium text-ink"><ShieldCheck size={14} /> Allowed execution</div>
               <div className="mt-3 flex flex-wrap gap-5 text-[12.5px] text-ink-secondary">

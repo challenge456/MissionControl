@@ -9,7 +9,11 @@ export type ServiceCapability =
   | "receipts.ingest"
   | "attempts.claim"
   | "attempts.renew"
-  | "attempts.report";
+  | "attempts.report"
+  | "executions.claim"
+  | "executions.heartbeat"
+  | "executions.report"
+  | "executions.finalize";
 
 export function createSignedServiceCommand(args: {
   capability: ServiceCapability;

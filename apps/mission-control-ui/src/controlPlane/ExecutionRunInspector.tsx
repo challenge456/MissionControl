@@ -1,20 +1,24 @@
-import { useMemo } from "react";
-import { useQuery } from "convex/react";
+import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { orderTimelineEvents, latestHumanAttention, filterEvidenceArtifacts } from "./runInspectorModel";
 import { RunRecoveryPanel } from "./RunRecoveryPanel";
 import { EvidenceLineagePanel, type EvidenceLineageStage } from "./EvidenceLineagePanel";
+import { ExecutionRecoveryCard, type ExecutionRecoveryData } from "./ExecutionRecoveryCard";
+import { ReviewEvidencePackage, type ReviewEvidencePackageData } from "./ReviewEvidencePackage";
 
 export function ExecutionRunInspector({
   open,
   workflowRunId,
   verificationReceiptId,
   acceptanceCriterionId,
+  unavailable = false,
   retrying = false,
   onRetryFailedRun,
   onClose,
@@ -23,6 +27,7 @@ export function ExecutionRunInspector({
   workflowRunId: Id<"workflowRuns"> | null;
   verificationReceiptId?: Id<"verificationReceipts"> | null;
   acceptanceCriterionId?: string | null;
+  unavailable?: boolean;
   retrying?: boolean;
   onRetryFailedRun?: (input: {
     workflowRunId: Id<"workflowRuns">;
@@ -47,6 +52,16 @@ export function ExecutionRunInspector({
     api.modelRoutingDecisions.getForWorkflowRun,
     open && workflowRunId ? { workflowRunId } : "skip"
   );
+  const requestCancellation = useMutation(api.workflowRuns.requestCancellation);
+  const [cancelReason, setCancelReason] = useState("");
+  const [canceling, setCanceling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+  const [cancelConfirmation, setCancelConfirmation] = useState<string | null>(null);
+  useEffect(() => {
+    setCancelReason("");
+    setCancelError(null);
+    setCancelConfirmation(null);
+  }, [workflowRunId]);
 
   const orderedEvents = useMemo(() => orderTimelineEvents((inspector?.events ?? []) as any), [inspector?.events]);
   const attention = useMemo(() => latestHumanAttention((inspector?.events ?? []) as any), [inspector?.events]);
@@ -73,10 +88,26 @@ export function ExecutionRunInspector({
         </DialogHeader>
 
         <div className="max-h-[80vh] overflow-y-auto p-6">
-          {!workflowRunId ? (
+          {unavailable ? (
+            <Card role="alert" className="border-red-500/30 p-6">
+              <div className="text-sm font-medium text-foreground">Run unavailable</div>
+              <p className="mt-2 text-sm text-muted-foreground">
+                This run no longer exists or is outside the selected WorkOrder. Close the inspector and select a current Attempt.
+              </p>
+              <Button className="mt-4" variant="outline" onClick={onClose}>Close inspector</Button>
+            </Card>
+          ) : !workflowRunId ? (
             <Card className="p-6 text-sm text-muted-foreground">Select a run to inspect.</Card>
-          ) : !inspector ? (
-            <Card className="p-6 text-sm text-muted-foreground">Loading run inspector…</Card>
+          ) : inspector === undefined ? (
+            <Card className="p-6 text-sm text-muted-foreground" aria-live="polite">Loading run inspector…</Card>
+          ) : inspector === null ? (
+            <Card role="alert" className="border-red-500/30 p-6">
+              <div className="text-sm font-medium text-foreground">Run unavailable</div>
+              <p className="mt-2 text-sm text-muted-foreground">
+                This run no longer exists or is outside your authorized workspace. Close the inspector and select a current Attempt.
+              </p>
+              <Button className="mt-4" variant="outline" onClick={onClose}>Close inspector</Button>
+            </Card>
           ) : (
             <div className="space-y-6">
               <Card className="p-4">
@@ -87,6 +118,7 @@ export function ExecutionRunInspector({
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Badge variant="outline">{inspector.run.status}</Badge>
+                    {inspector.run.cancellationRequestedAt ? <Badge variant="outline" className="border-amber-500/30 text-amber-300">Cancellation requested</Badge> : null}
                     {receiptOnlyCompletion ? <Badge variant="outline" className="border-amber-500/30 text-amber-300">Verification-only closeout</Badge> : null}
                     <Badge variant="outline">{inspector.run.workflowId}</Badge>
                   </div>
@@ -107,6 +139,10 @@ export function ExecutionRunInspector({
                   <Meta label="Human intervention" value={attention ?? (inspector.summary.humanInterventionRequired ? "Required" : "Not required")} />
                 </div>
               </Card>
+
+              <ReviewEvidencePackage review={inspector.reviewPackage as ReviewEvidencePackageData} />
+
+              <ExecutionRecoveryCard recovery={inspector.recovery as ExecutionRecoveryData} />
 
               {inspector.run.executionManifest ? (
                 <Card className="p-4">
@@ -165,8 +201,63 @@ export function ExecutionRunInspector({
                   <Meta label="Policy / environment" value={[inspector.run.policyEnvelopeId, inspector.run.environmentId].filter(Boolean).join(" / ") || "—"} />
                   <Meta label="Worktree" value={inspector.run.worktree ?? "—"} />
                   <Meta label="Allowed tools" value={inspector.run.allowedTools?.join(", ") || "None declared"} />
+                  <Meta label="Worker / phase" value={[inspector.run.executionClaimedBy, inspector.run.executionPhase].filter(Boolean).join(" / ") || "Awaiting claim"} />
+                  <Meta label="Lease heartbeat" value={inspector.run.executionHeartbeatAt ? new Date(inspector.run.executionHeartbeatAt).toLocaleString() : "—"} />
+                  <Meta label="Base / head commit" value={[inspector.run.executionBaseSha?.slice(0, 12), inspector.run.headSha?.slice(0, 12)].filter(Boolean).join(" → ") || "—"} />
+                  <div className="rounded-lg border border-[var(--panel-line)] bg-background/30 px-3 py-2">
+                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Pull request</div>
+                    {inspector.run.pullRequestUrl ? (
+                      <a className="mt-1 block break-all text-sm text-primary underline-offset-4 hover:underline" href={inspector.run.pullRequestUrl} target="_blank" rel="noreferrer">
+                        #{inspector.run.pullRequestNumber ?? "open"} · {inspector.run.pullRequestUrl}
+                      </a>
+                    ) : <div className="mt-1 break-words text-sm text-foreground">Not published</div>}
+                  </div>
                 </div>
               </Card>
+
+              {["PENDING", "RUNNING", "PAUSED"].includes(inspector.run.status) ? (
+                <Card className="border-amber-500/20 p-4">
+                  <div className="text-sm font-medium text-foreground">Cancel this Attempt</div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Cancellation is durable. The active worker will stop at its next heartbeat; an unclaimed Attempt stops immediately.
+                  </p>
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                    <Input
+                      aria-label="Cancellation reason"
+                      value={cancelReason}
+                      onChange={(event) => setCancelReason(event.target.value)}
+                      placeholder="Why should this Attempt stop?"
+                    />
+                    <Button
+                      variant="outline"
+                      disabled={canceling || cancelReason.trim().length < 3}
+                      onClick={async () => {
+                        setCanceling(true);
+                        setCancelError(null);
+                        setCancelConfirmation(null);
+                        try {
+                          const result = await requestCancellation({
+                            workflowRunId: inspector.run._id,
+                            reason: cancelReason.trim(),
+                            actorId: "operator",
+                          });
+                          setCancelConfirmation(result.status === "CANCELED"
+                            ? "Attempt canceled."
+                            : "Cancellation requested; waiting for the worker heartbeat.");
+                        } catch (error) {
+                          setCancelError(error instanceof Error ? error.message : "Cancellation request failed.");
+                        } finally {
+                          setCanceling(false);
+                        }
+                      }}
+                    >
+                      {canceling ? "Requesting…" : "Request cancellation"}
+                    </Button>
+                  </div>
+                  {cancelError ? <p className="mt-2 text-sm text-destructive">{cancelError}</p> : null}
+                  {cancelConfirmation ? <p className="mt-2 text-sm text-emerald-300">{cancelConfirmation}</p> : null}
+                </Card>
+              ) : null}
 
               <Card className="p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -197,7 +288,7 @@ export function ExecutionRunInspector({
                 )}
               </Card>
 
-              {inspector.run.status === "FAILED" ? (
+              {["FAILED", "CANCELED"].includes(inspector.run.status) ? (
                 <RunRecoveryPanel
                   runId={inspector.run.runId}
                   failureSummary={inspector.summary.failureSummary}
@@ -430,9 +521,9 @@ export function ExecutionRunInspector({
 
 function Meta({ label, value }: { label: string; value?: string | null }) {
   return (
-    <div>
+    <div className="min-w-0">
       <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{label}</div>
-      <div className="mt-1 text-sm text-foreground">{value ?? "—"}</div>
+      <div className="mt-1 break-all text-sm text-foreground">{value ?? "—"}</div>
     </div>
   );
 }
