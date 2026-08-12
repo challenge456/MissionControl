@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { evaluateFactoryDispatchPreflight, type FactoryDispatchPreflightInput } from "../lib/factoryDispatch";
+import {
+  evaluateFactoryDispatchPreflight,
+  factoryVersionApprovesWorkOrderScopes,
+  selectCurrentFactoryHost,
+  type FactoryDispatchPreflightInput,
+} from "../lib/factoryDispatch";
 
 const ready: FactoryDispatchPreflightInput = {
-  missionLinked: true,
+  factoryRequired: true,
   versionProvided: true,
   definitionActive: true,
   versionIsActive: true,
@@ -50,6 +55,32 @@ describe("Factory dispatch preflight", () => {
   });
 
   it("preserves legacy non-Mission dispatch while migration is in progress", () => {
-    expect(evaluateFactoryDispatchPreflight({ ...ready, missionLinked: false, versionProvided: false })).toEqual({ ok: true });
+    expect(evaluateFactoryDispatchPreflight({ ...ready, factoryRequired: false, versionProvided: false })).toEqual({ ok: true });
+  });
+
+  it("requires every WorkOrder scope to be frozen into the Factory version", () => {
+    expect(factoryVersionApprovesWorkOrderScopes(["scope-a", "scope-b"], ["scope-b"])).toBe(true);
+    expect(factoryVersionApprovesWorkOrderScopes(["scope-a"], ["scope-b"])).toBe(false);
+    expect(factoryVersionApprovesWorkOrderScopes(["scope-a"], [])).toBe(false);
+  });
+
+  it("selects the newest current clean host for the exact repository", () => {
+    const now = 100_000_000;
+    expect(selectCurrentFactoryHost([
+      { hostId: "stale", repository: "sellerfi/marketplace", status: "READY", dirty: false, checkedAt: now - 24 * 60 * 60 * 1_000 - 1 },
+      { hostId: "wrong-repository", repository: "sellerfi/docs", status: "READY", dirty: false, checkedAt: now },
+      { hostId: "dirty", repository: "SellerFi/Marketplace", status: "READY", dirty: true, checkedAt: now },
+      { hostId: "older", repository: "sellerfi/marketplace", status: "READY", dirty: false, checkedAt: now - 2_000 },
+      { hostId: "newer", repository: " SellerFi/Marketplace ", status: "READY", dirty: false, checkedAt: now - 1_000 },
+    ], "sellerfi/marketplace", now)?.hostId).toBe("newer");
+  });
+
+  it("honors an explicitly selected eligible host and rejects an ineligible one", () => {
+    const hosts = [
+      { hostId: "host-a", repository: "sellerfi/marketplace", status: "READY", dirty: false, checkedAt: 9_000 },
+      { hostId: "host-b", repository: "sellerfi/marketplace", status: "DIRTY", dirty: true, checkedAt: 10_000 },
+    ];
+    expect(selectCurrentFactoryHost(hosts, "sellerfi/marketplace", 10_000, "host-a")?.hostId).toBe("host-a");
+    expect(selectCurrentFactoryHost(hosts, "sellerfi/marketplace", 10_000, "host-b")).toBeNull();
   });
 });

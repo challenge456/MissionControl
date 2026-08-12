@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation, query } from "../_generated/server";
 import { appendChangeRecord } from "../lib/armAudit";
 import { resolveActiveTenantId } from "../lib/getActiveTenant";
+import { FACTORY_PERMISSIONS, requireWorkspacePermission } from "../lib/companyAccess";
 
 export const createTemplate = mutation({
   args: {
@@ -13,6 +14,9 @@ export const createTemplate = mutation({
     metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
+    if (args.projectId) {
+      await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.IMPROVE);
+    }
     const tenantId = await resolveActiveTenantId(
       { db: ctx.db as any },
       {

@@ -36,6 +36,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { executeAutomation } from "./automationAdapter.js";
 import { discoverLocalInference } from "./localInference.js";
 import { FactoryAttemptWorker } from "./factoryAttemptWorker.js";
+import { FactoryHostReporter } from "./factoryHostReporter.js";
+import os from "node:os";
 
 const envSearchPaths = [
   path.resolve(process.cwd(), ".env.local"),
@@ -91,6 +93,19 @@ const factoryAttemptWorker = new FactoryAttemptWorker(
   undefined,
   FACTORY_WORKER_SCOPE,
 );
+const factoryHostReporter = FACTORY_WORKER_SCOPE
+  ? new FactoryHostReporter(client, {
+      projectId: FACTORY_WORKER_SCOPE.projectId,
+      hostId: process.env.CODEX_WORKER_HOST_ID?.trim() || `orchestration:${os.hostname()}`,
+      checkoutRoot: path.resolve(process.env.CODEX_WORKER_CHECKOUT_ROOT?.trim() || process.cwd()),
+      maxConcurrentRuns: boundedPositiveInteger(process.env.CODEX_WORKER_MAX_CONCURRENT_RUNS, 1),
+      getCurrentRuns: () => factoryAttemptWorker.status().activeRunIds.length,
+      approvedModelIds: commaSeparatedValues(process.env.CODEX_WORKER_APPROVED_MODEL_IDS),
+      networkPolicyStatus: attestationStatus(process.env.CODEX_WORKER_NETWORK_POLICY_STATUS),
+      secretPolicyStatus: attestationStatus(process.env.CODEX_WORKER_SECRET_POLICY_STATUS),
+      onError: (error) => console.error("[orchestration] Factory host report failed:", error),
+    })
+  : null;
 const coordinator = new CoordinatorLoop({ pollIntervalMs: TICK_INTERVAL_MS });
 const activeAgents = new Map<string, AgentLifecycle>();
 const memoryManagers = new Map<string, MemoryManager>();
@@ -1294,6 +1309,7 @@ export function startServer() {
     throw new Error("Configure exactly one Factory execution worker; legacy and durable workers cannot run together.");
   }
   factoryAttemptWorker.start();
+  factoryHostReporter?.start();
 
   if (CODEX_FACTORY_WORKER_ENABLED) {
     console.log(`[orchestration] Durable verification-first codex/v1 worker enabled for one governed repository.`);
@@ -1302,6 +1318,7 @@ export function startServer() {
   process.on("SIGINT", async () => {
     console.log("\n[orchestration] Shutting down...");
     if (tickTimer) clearInterval(tickTimer);
+    factoryHostReporter?.stop();
     await factoryAttemptWorker.stop();
     for (const [name] of activeAgents) {
       try {
@@ -1316,6 +1333,7 @@ export function startServer() {
   process.on("SIGTERM", async () => {
     console.log("\n[orchestration] SIGTERM received, shutting down...");
     if (tickTimer) clearInterval(tickTimer);
+    factoryHostReporter?.stop();
     await factoryAttemptWorker.stop();
     process.exit(0);
   });
@@ -1337,6 +1355,23 @@ function requiredRuntimeSetting(name: string) {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name} is required when CODEX_FACTORY_WORKER_ENABLED=true.`);
   return value;
+}
+
+function boundedPositiveInteger(value: string | undefined, fallback: number) {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function commaSeparatedValues(value: string | undefined) {
+  const values = value?.split(",").map((item) => item.trim()).filter(Boolean);
+  return values?.length ? values : undefined;
+}
+
+function attestationStatus(value: string | undefined) {
+  const normalized = value?.trim().toUpperCase();
+  return normalized === "READY" || normalized === "BLOCKED" || normalized === "UNKNOWN"
+    ? normalized
+    : undefined;
 }
 
 const entryUrl = process.argv[1] ? pathToFileURL(process.argv[1]).href : null;
