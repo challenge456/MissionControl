@@ -16,6 +16,7 @@ import {
   factoryReleaseBoundLineageIssue,
   factoryReleaseEvidenceReplayMatches,
   factoryReleaseMergeIdentityIssue,
+  factoryProductionReleaseTransitionAllowed,
   factoryReleaseRedeploymentIssue,
   factoryReleaseTransitionAllowed,
   normalizeCommitSha,
@@ -39,6 +40,20 @@ const verificationResultValidator = v.object({
     v.literal("PROVENANCE"),
     v.literal("SMOKE_TEST"),
     v.literal("HEALTH_CHECK"),
+  ),
+  passed: v.boolean(),
+  url: v.string(),
+  httpStatus: v.optional(v.number()),
+  latencyMs: v.optional(v.number()),
+  contentDigest: v.optional(v.string()),
+  summary: v.string(),
+});
+
+const productionVerificationResultValidator = v.object({
+  kind: v.union(
+    v.literal("PRODUCTION_PROVENANCE"),
+    v.literal("PRODUCTION_SMOKE_TEST"),
+    v.literal("PRODUCTION_HEALTH_CHECK"),
   ),
   passed: v.boolean(),
   url: v.string(),
@@ -100,6 +115,140 @@ export const getProductionEligibility = query({
           blockingIssue: release.blockingIssue,
         })),
     });
+  },
+});
+
+export const configureProductionVerification = mutation({
+  args: {
+    projectId: v.id("projects"),
+    environmentId: v.id("environments"),
+    allowedOrigin: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const access = await requireWorkspacePermission(
+      ctx,
+      args.projectId,
+      FACTORY_PERMISSIONS.MANAGE_AUTOMATION,
+    );
+    const environment = await ctx.db.get(args.environmentId);
+    if (!environment || environment.type !== "prod" || environment.tenantId !== access.project.tenantId) {
+      throw new Error("Select a production environment in this workspace company.");
+    }
+    const candidate = args.allowedOrigin.trim();
+    const validation = validateFactoryReleaseVerificationUrls({
+      urls: {
+        deploymentUrl: candidate,
+        provenanceUrl: candidate,
+        smokeUrl: candidate,
+        healthUrl: candidate,
+      },
+      allowedOrigins: [candidate],
+      allowLocalhost: false,
+    });
+    if ("reason" in validation) {
+      throw new Error(`Production verification origin is unsafe (${validation.reason}).`);
+    }
+    await ctx.db.patch(environment._id, {
+      metadata: {
+        ...(environment.metadata && typeof environment.metadata === "object" ? environment.metadata : {}),
+        releaseVerification: { allowedOrigins: [validation.origin] },
+      },
+    });
+    await recordActivity(ctx, {
+      projectId: args.projectId,
+      actorType: "HUMAN",
+      actorId: access.actorId,
+      action: "FACTORY_PRODUCTION_ORIGIN_CONFIGURED",
+      description: `Configured ${validation.origin} as the production verification origin`,
+      targetType: "ENVIRONMENT",
+      targetId: String(environment._id),
+      metadata: { allowedOrigin: validation.origin },
+    });
+    return { environmentId: environment._id, allowedOrigin: validation.origin };
+  },
+});
+
+export const approveProductionDeployment = mutation({
+  args: {
+    releaseId: v.id("factoryReleases"),
+    productionEnvironmentId: v.id("environments"),
+    expectedMergeCommitSha: v.string(),
+    rationale: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const release = await requireRelease(ctx, args.releaseId);
+    const access = await requireWorkspacePermission(
+      ctx,
+      release.projectId,
+      FACTORY_PERMISSIONS.APPROVE,
+    );
+    const expectedSha = normalizeCommitSha(args.expectedMergeCommitSha);
+    if (!expectedSha || expectedSha !== release.mergeCommitSha) {
+      throw new Error("Production approval must bind the exact staging-verified merge commit.");
+    }
+    if (release.state !== "VERIFIED") {
+      throw new Error("Production approval requires exact verified staging evidence.");
+    }
+    const environment = await ctx.db.get(args.productionEnvironmentId);
+    if (!environment || environment.type !== "prod" || environment.tenantId !== access.project.tenantId) {
+      throw new Error("Production approval requires this workspace's production environment.");
+    }
+    const releases = await ctx.db.query("factoryReleases")
+      .withIndex("by_project", (q) => q.eq("projectId", release.projectId))
+      .collect();
+    const eligibility = evaluateFactoryProductionEligibility({
+      candidateMergeCommitSha: release.mergeCommitSha,
+      releases: releases
+        .filter((candidate) => candidate.repositoryId === release.repositoryId)
+        .map((candidate) => ({
+          releaseId: String(candidate._id),
+          mergeCommitSha: candidate.mergeCommitSha,
+          state: candidate.state,
+          verifiedAt: candidate.verifiedAt,
+          blockingIssue: candidate.blockingIssue,
+        })),
+    });
+    if (!eligibility.eligible) {
+      throw new Error(`Production approval blocked (${eligibility.blocker ?? "not-eligible"}).`);
+    }
+    const rationale = args.rationale.trim();
+    if (rationale.length < 12) throw new Error("A production approval rationale is required.");
+    if (release.productionApprovalStatus === "APPROVED") {
+      if (release.productionApprovedBy !== access.actorId
+        || release.productionApprovalRationale !== rationale
+        || release.productionEnvironmentId !== environment._id) {
+        throw new Error("Production approval is already recorded and immutable.");
+      }
+      return { approved: false as const, eligibility, release };
+    }
+    const now = Date.now();
+    await ctx.db.patch(release._id, {
+      productionEnvironmentId: environment._id,
+      productionState: "ELIGIBLE",
+      productionApprovalStatus: "APPROVED",
+      productionApprovedBy: access.actorId,
+      productionApprovedAt: now,
+      productionApprovalRationale: rationale,
+      productionVerificationAttemptCount: 0,
+      productionBlockingIssue: undefined,
+      productionRequiredHumanAction: "Create a staged production deployment without assigning live domains.",
+      updatedAt: now,
+    });
+    await appendEvidence(ctx, release, {
+      kind: "PRODUCTION_APPROVAL",
+      status: "PASS",
+      subjectSha: release.mergeCommitSha,
+      summary: rationale,
+      actorType: "HUMAN",
+      actorId: access.actorId,
+      idempotencyKey: `factory-release:${release._id}:production-approval:${release.mergeCommitSha}`,
+      metadata: {
+        productionEnvironmentId: environment._id,
+        qualifyingReleaseIds: eligibility.qualifyingReleaseIds,
+        verifiedReleaseCount: eligibility.verifiedReleaseCount,
+      },
+    });
+    return { approved: true as const, eligibility, release: await ctx.db.get(release._id) };
   },
 });
 
@@ -578,6 +727,434 @@ export const recordStagingRedeployment = mutation({
       actorType: "HUMAN",
       actorId: access.actorId,
       idempotencyKey: `factory-release:${release._id}:work-order:redeployed:${deploymentAttempt}`,
+    });
+    return { recorded: true as const, release: await ctx.db.get(release._id) };
+  },
+});
+
+export const recordProductionDeployment = mutation({
+  args: {
+    releaseId: v.id("factoryReleases"),
+    commitSha: v.string(),
+    provider: v.string(),
+    providerDeploymentId: v.string(),
+    deploymentUrl: v.string(),
+    provenanceUrl: v.string(),
+    smokeUrl: v.string(),
+    healthUrl: v.string(),
+    idempotencyKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const release = await requireRelease(ctx, args.releaseId);
+    const access = await requireWorkspacePermission(
+      ctx,
+      release.projectId,
+      FACTORY_PERMISSIONS.IMPROVE,
+    );
+    const commitSha = normalizeCommitSha(args.commitSha);
+    if (!commitSha || commitSha !== release.mergeCommitSha) {
+      throw new Error("Production deployment receipt must name the exact approved merge commit.");
+    }
+    if (release.productionState !== "ELIGIBLE"
+      || !factoryProductionReleaseTransitionAllowed(release.productionState, "DEPLOYED")
+      || release.productionApprovalStatus !== "APPROVED") {
+      throw new Error("Fresh production approval and eligibility are required before deployment.");
+    }
+    const environment = release.productionEnvironmentId
+      ? await ctx.db.get(release.productionEnvironmentId)
+      : null;
+    if (!environment || environment.type !== "prod") {
+      throw new Error("Production deployment environment is unavailable.");
+    }
+    const urls = validateFactoryReleaseVerificationUrls({
+      urls: {
+        deploymentUrl: args.deploymentUrl,
+        provenanceUrl: args.provenanceUrl,
+        smokeUrl: args.smokeUrl,
+        healthUrl: args.healthUrl,
+      },
+      allowedOrigins: factoryReleaseAllowedOrigins(environment.metadata),
+      allowLocalhost: false,
+    });
+    if ("reason" in urls) throw new Error(`Production verification URLs are unsafe (${urls.reason}).`);
+    const provider = args.provider.trim();
+    const providerDeploymentId = args.providerDeploymentId.trim();
+    if (!provider || !providerDeploymentId) {
+      throw new Error("Production provider and deployment ID are required.");
+    }
+    const summary = `${provider} reported staged production deployment ${providerDeploymentId}`;
+    const metadata = {
+      origin: urls.origin,
+      provider,
+      provenanceUrl: urls.urls.provenanceUrl,
+      smokeUrl: urls.urls.smokeUrl,
+      healthUrl: urls.urls.healthUrl,
+      domainAssignment: "disabled",
+    };
+    const duplicate = await ctx.db.query("factoryReleaseEvidence")
+      .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.idempotencyKey))
+      .first();
+    if (duplicate) {
+      if (duplicate.releaseId !== release._id || !factoryReleaseEvidenceReplayMatches(duplicate, {
+        kind: "PRODUCTION_DEPLOYMENT",
+        subjectSha: release.mergeCommitSha,
+        providerRef: providerDeploymentId,
+        evidenceUrl: urls.urls.deploymentUrl,
+        summary,
+        metadata,
+      })) {
+        throw new Error("Production deployment idempotency key is bound to different evidence.");
+      }
+      return { recorded: false as const, release };
+    }
+    const now = Date.now();
+    await ctx.db.patch(release._id, {
+      productionState: "DEPLOYED",
+      productionDeploymentProvider: provider,
+      productionProviderDeploymentId: providerDeploymentId,
+      productionDeploymentUrl: urls.urls.deploymentUrl,
+      productionProvenanceUrl: urls.urls.provenanceUrl,
+      productionSmokeUrl: urls.urls.smokeUrl,
+      productionHealthUrl: urls.urls.healthUrl,
+      productionDeployedAt: now,
+      productionBlockingIssue: undefined,
+      productionRequiredHumanAction: "Run independent production provenance, smoke, and health verification before promotion.",
+      updatedAt: now,
+    });
+    await appendEvidence(ctx, release, {
+      kind: "PRODUCTION_DEPLOYMENT",
+      status: "INFO",
+      subjectSha: release.mergeCommitSha,
+      providerRef: providerDeploymentId,
+      evidenceUrl: urls.urls.deploymentUrl,
+      summary,
+      actorType: "HUMAN",
+      actorId: access.actorId,
+      idempotencyKey: args.idempotencyKey,
+      metadata,
+    });
+    return { recorded: true as const, release: await ctx.db.get(release._id) };
+  },
+});
+
+export const getProductionVerificationManifest = internalQuery({
+  args: { releaseId: v.id("factoryReleases") },
+  handler: async (ctx, args) => {
+    const release = await ctx.db.get(args.releaseId);
+    if (!release || release.productionState !== "DEPLOYED") {
+      throw new Error("Only a staged production deployment can be verified.");
+    }
+    const environment = release.productionEnvironmentId
+      ? await ctx.db.get(release.productionEnvironmentId)
+      : null;
+    if (!environment || environment.type !== "prod") {
+      throw new Error("Production verification environment is unavailable.");
+    }
+    if (!release.productionProviderDeploymentId
+      || !release.productionDeploymentUrl
+      || !release.productionProvenanceUrl
+      || !release.productionSmokeUrl
+      || !release.productionHealthUrl) {
+      throw new Error("Production deployment receipt is incomplete.");
+    }
+    const urls = validateFactoryReleaseVerificationUrls({
+      urls: {
+        deploymentUrl: release.productionDeploymentUrl,
+        provenanceUrl: release.productionProvenanceUrl,
+        smokeUrl: release.productionSmokeUrl,
+        healthUrl: release.productionHealthUrl,
+      },
+      allowedOrigins: factoryReleaseAllowedOrigins(environment.metadata),
+      allowLocalhost: false,
+    });
+    if ("reason" in urls) throw new Error(`Production verification URLs are unsafe (${urls.reason}).`);
+    return {
+      projectId: release.projectId,
+      releaseId: release._id,
+      mergeCommitSha: release.mergeCommitSha,
+      providerDeploymentId: release.productionProviderDeploymentId,
+      verificationAttemptCount: release.productionVerificationAttemptCount ?? 0,
+      urls: urls.urls,
+    };
+  },
+});
+
+export const verifyProductionDeployment = action({
+  args: { releaseId: v.id("factoryReleases") },
+  handler: async (ctx, args): Promise<any> => {
+    const manifest = await ctx.runQuery(internal.factory.releases.getProductionVerificationManifest, {
+      releaseId: args.releaseId,
+    });
+    await requireFactoryActionWithAudit(ctx, {
+      projectId: manifest.projectId,
+      permission: FACTORY_PERMISSIONS.IMPROVE,
+      operation: "FACTORY_PRODUCTION_VERIFY",
+    });
+    const [provenanceResponse, smokeResponse, healthResponse] = await Promise.all([
+      fetchEvidence(manifest.urls.provenanceUrl),
+      fetchEvidence(manifest.urls.smokeUrl),
+      fetchEvidence(manifest.urls.healthUrl),
+    ]);
+    let provenance: unknown;
+    try {
+      provenance = provenanceResponse.bodyText ? JSON.parse(provenanceResponse.bodyText) : undefined;
+    } catch {
+      provenance = undefined;
+    }
+    const provenanceResult = evaluateFactoryReleaseProvenance({
+      mergeCommitSha: manifest.mergeCommitSha,
+      providerDeploymentId: manifest.providerDeploymentId,
+      provenance,
+      expectedEnvironment: "production",
+    });
+    const checks = [
+      {
+        kind: "PRODUCTION_PROVENANCE" as const,
+        passed: provenanceResponse.ok && !('reason' in provenanceResult),
+        url: manifest.urls.provenanceUrl,
+        httpStatus: provenanceResponse.httpStatus,
+        latencyMs: provenanceResponse.latencyMs,
+        contentDigest: provenanceResponse.contentDigest,
+        summary: !provenanceResponse.ok
+          ? provenanceResponse.error ?? "Production provenance request failed."
+          : !('reason' in provenanceResult)
+            ? "Production provenance matches the exact merge and staged deployment."
+            : provenanceResult.reason,
+      },
+      {
+        kind: "PRODUCTION_SMOKE_TEST" as const,
+        passed: smokeResponse.ok,
+        url: manifest.urls.smokeUrl,
+        httpStatus: smokeResponse.httpStatus,
+        latencyMs: smokeResponse.latencyMs,
+        contentDigest: smokeResponse.contentDigest,
+        summary: smokeResponse.ok ? "Production smoke endpoint passed." : smokeResponse.error ?? "Production smoke request failed.",
+      },
+      {
+        kind: "PRODUCTION_HEALTH_CHECK" as const,
+        passed: healthResponse.ok,
+        url: manifest.urls.healthUrl,
+        httpStatus: healthResponse.httpStatus,
+        latencyMs: healthResponse.latencyMs,
+        contentDigest: healthResponse.contentDigest,
+        summary: healthResponse.ok ? "Production health endpoint passed." : healthResponse.error ?? "Production health request failed.",
+      },
+    ];
+    const verified = checks.every((check) => check.passed);
+    const reason = verified
+      ? undefined
+      : "reason" in provenanceResult
+        ? provenanceResult.reason
+        : `required-production-checks-failed:${checks.filter((check) => !check.passed).map((check) => check.kind).sort().join(",")}`;
+    return await ctx.runMutation(internal.factory.releases.recordProductionVerificationInternal, {
+      releaseId: args.releaseId,
+      expectedVerificationAttemptCount: manifest.verificationAttemptCount,
+      verified,
+      reason,
+      checks,
+    });
+  },
+});
+
+export const recordProductionVerificationInternal = internalMutation({
+  args: {
+    releaseId: v.id("factoryReleases"),
+    expectedVerificationAttemptCount: v.number(),
+    verified: v.boolean(),
+    reason: v.optional(v.string()),
+    checks: v.array(productionVerificationResultValidator),
+  },
+  handler: async (ctx, args) => {
+    const release = await requireRelease(ctx, args.releaseId);
+    if (release.productionState !== "DEPLOYED") {
+      throw new Error("Only a staged production deployment can receive verification evidence.");
+    }
+    if ((release.productionVerificationAttemptCount ?? 0) !== args.expectedVerificationAttemptCount) {
+      return { recorded: false as const, reason: "production-verification-attempt-superseded", release };
+    }
+    const attempt = args.expectedVerificationAttemptCount + 1;
+    for (const check of args.checks) {
+      await appendEvidence(ctx, release, {
+        kind: check.kind,
+        status: check.passed ? "PASS" : "FAIL",
+        subjectSha: release.mergeCommitSha,
+        providerRef: release.productionProviderDeploymentId,
+        evidenceUrl: check.url,
+        httpStatus: check.httpStatus,
+        latencyMs: check.latencyMs,
+        contentDigest: check.contentDigest,
+        summary: check.summary,
+        actorType: "SYSTEM",
+        actorId: "system:production-verifier",
+        idempotencyKey: `factory-release:${release._id}:production-verification:${attempt}:${check.kind}`,
+      });
+    }
+    const now = Date.now();
+    if (args.verified) {
+      if (!factoryProductionReleaseTransitionAllowed(release.productionState, "VERIFIED")) {
+        throw new Error("Production release cannot transition to verified.");
+      }
+      await ctx.db.patch(release._id, {
+        productionState: "VERIFIED",
+        productionVerifiedAt: now,
+        productionVerificationAttemptCount: attempt,
+        productionBlockingIssue: undefined,
+        productionRequiredHumanAction: "Promote this exact staged deployment to the production domains and attach the provider receipt.",
+        updatedAt: now,
+      });
+    } else {
+      const reason = args.reason ?? "required production verification failed";
+      await ctx.db.patch(release._id, {
+        productionVerificationAttemptCount: attempt,
+        productionBlockingIssue: reason,
+        productionRequiredHumanAction: "Review failed production evidence or roll back without promotion.",
+        updatedAt: now,
+      });
+    }
+    return { recorded: true as const, verified: args.verified, release: await ctx.db.get(release._id) };
+  },
+});
+
+export const recordProductionPromotion = mutation({
+  args: {
+    releaseId: v.id("factoryReleases"),
+    providerDeploymentId: v.string(),
+    providerPromotionId: v.string(),
+    evidenceUrl: v.string(),
+    humanConfirmed: v.boolean(),
+    idempotencyKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const release = await requireRelease(ctx, args.releaseId);
+    const access = await requireWorkspacePermission(
+      ctx,
+      release.projectId,
+      FACTORY_PERMISSIONS.APPROVE,
+    );
+    if (!args.humanConfirmed) throw new Error("Explicit production promotion confirmation is required.");
+    if (!release.productionProviderDeploymentId
+      || args.providerDeploymentId.trim() !== release.productionProviderDeploymentId) {
+      throw new Error("Promotion receipt must name the exact verified provider deployment.");
+    }
+    const providerPromotionId = args.providerPromotionId.trim();
+    if (!providerPromotionId) throw new Error("Provider promotion ID is required.");
+    const evidenceUrl = validateProviderEvidenceUrl(args.evidenceUrl);
+    const summary = `Promoted verified production deployment ${release.productionProviderDeploymentId}`;
+    const duplicate = await ctx.db.query("factoryReleaseEvidence")
+      .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.idempotencyKey))
+      .first();
+    if (duplicate) {
+      if (duplicate.releaseId !== release._id || !factoryReleaseEvidenceReplayMatches(duplicate, {
+        kind: "PRODUCTION_PROMOTION",
+        subjectSha: release.mergeCommitSha,
+        providerRef: providerPromotionId,
+        evidenceUrl,
+        summary,
+        metadata: { providerDeploymentId: release.productionProviderDeploymentId },
+      })) {
+        throw new Error("Production promotion idempotency key is bound to different evidence.");
+      }
+      return { recorded: false as const, release };
+    }
+    if (release.productionState !== "VERIFIED"
+      || !factoryProductionReleaseTransitionAllowed(release.productionState, "PROMOTED")) {
+      throw new Error("Only an independently verified production deployment can be promoted.");
+    }
+    const now = Date.now();
+    await ctx.db.patch(release._id, {
+      productionState: "PROMOTED",
+      productionPromotedAt: now,
+      productionPromotionProviderRef: providerPromotionId,
+      productionPromotionUrl: evidenceUrl,
+      productionBlockingIssue: undefined,
+      productionRequiredHumanAction: undefined,
+      updatedAt: now,
+    });
+    await appendEvidence(ctx, release, {
+      kind: "PRODUCTION_PROMOTION",
+      status: "PASS",
+      subjectSha: release.mergeCommitSha,
+      providerRef: providerPromotionId,
+      evidenceUrl,
+      summary,
+      actorType: "HUMAN",
+      actorId: access.actorId,
+      idempotencyKey: args.idempotencyKey,
+      metadata: { providerDeploymentId: release.productionProviderDeploymentId },
+    });
+    return { recorded: true as const, release: await ctx.db.get(release._id) };
+  },
+});
+
+export const recordProductionRollback = mutation({
+  args: {
+    releaseId: v.id("factoryReleases"),
+    restoredCommitSha: v.string(),
+    providerRollbackId: v.string(),
+    evidenceUrl: v.string(),
+    rationale: v.string(),
+    humanConfirmed: v.boolean(),
+    idempotencyKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const release = await requireRelease(ctx, args.releaseId);
+    const access = await requireWorkspacePermission(
+      ctx,
+      release.projectId,
+      FACTORY_PERMISSIONS.APPROVE,
+    );
+    if (!args.humanConfirmed) throw new Error("Explicit production rollback confirmation is required.");
+    const restoredCommitSha = normalizeCommitSha(args.restoredCommitSha);
+    if (!restoredCommitSha || restoredCommitSha === release.mergeCommitSha) {
+      throw new Error("Production rollback must restore a different full commit SHA.");
+    }
+    const providerRollbackId = args.providerRollbackId.trim();
+    const rationale = args.rationale.trim();
+    if (!providerRollbackId || rationale.length < 8) {
+      throw new Error("Production rollback provider receipt and rationale are required.");
+    }
+    const evidenceUrl = validateProviderEvidenceUrl(args.evidenceUrl);
+    const duplicate = await ctx.db.query("factoryReleaseEvidence")
+      .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.idempotencyKey))
+      .first();
+    if (duplicate) {
+      if (duplicate.releaseId !== release._id || !factoryReleaseEvidenceReplayMatches(duplicate, {
+        kind: "PRODUCTION_ROLLBACK",
+        subjectSha: restoredCommitSha,
+        providerRef: providerRollbackId,
+        evidenceUrl,
+        summary: rationale,
+        metadata: { rolledBackProductionCommitSha: release.mergeCommitSha },
+      })) {
+        throw new Error("Production rollback idempotency key is bound to different evidence.");
+      }
+      return { recorded: false as const, release };
+    }
+    if (!release.productionState
+      || !factoryProductionReleaseTransitionAllowed(release.productionState, "ROLLED_BACK")) {
+      throw new Error("This production release cannot be rolled back from its current state.");
+    }
+    const now = Date.now();
+    await ctx.db.patch(release._id, {
+      productionState: "ROLLED_BACK",
+      productionRolledBackAt: now,
+      productionRestoredCommitSha: restoredCommitSha,
+      productionRollbackProviderRef: providerRollbackId,
+      productionBlockingIssue: `Production rolled back from ${release.mergeCommitSha.slice(0, 12)} to ${restoredCommitSha.slice(0, 12)}.`,
+      productionRequiredHumanAction: "Open a corrective WorkOrder before another production release.",
+      updatedAt: now,
+    });
+    await appendEvidence(ctx, release, {
+      kind: "PRODUCTION_ROLLBACK",
+      status: "INFO",
+      subjectSha: restoredCommitSha,
+      providerRef: providerRollbackId,
+      evidenceUrl,
+      summary: rationale,
+      actorType: "HUMAN",
+      actorId: access.actorId,
+      idempotencyKey: args.idempotencyKey,
+      metadata: { rolledBackProductionCommitSha: release.mergeCommitSha },
     });
     return { recorded: true as const, release: await ctx.db.get(release._id) };
   },
@@ -1145,6 +1722,24 @@ async function readBoundedResponse(response: Response, limit: number): Promise<U
 async function sha256(bytes: Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", Uint8Array.from(bytes).buffer);
   return `sha256=${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function validateProviderEvidenceUrl(candidate: string): string {
+  let url: URL;
+  try {
+    url = new URL(candidate.trim());
+  } catch {
+    throw new Error("Provider evidence URL is invalid.");
+  }
+  const hostname = url.hostname.toLowerCase();
+  if (url.protocol !== "https:"
+    || url.username
+    || url.password
+    || url.hash
+    || (hostname !== "vercel.com" && !hostname.endsWith(".vercel.com") && !hostname.endsWith(".vercel.app"))) {
+    throw new Error("Provider evidence must use an approved Vercel HTTPS origin.");
+  }
+  return url.toString();
 }
 
 function validateRollbackEvidenceUrl(candidate: string, deploymentUrl?: string): string {

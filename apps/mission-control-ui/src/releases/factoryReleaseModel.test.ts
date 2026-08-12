@@ -3,6 +3,8 @@ import {
   factoryReleaseCounts,
   factoryReleaseNextAction,
   factoryReleaseTone,
+  factoryProductionNextAction,
+  factoryProductionReleaseTone,
 } from "./factoryReleaseModel";
 
 describe("factory release operator model", () => {
@@ -21,6 +23,15 @@ describe("factory release operator model", () => {
   it("uses explicit verified and rollback tones", () => {
     expect(factoryReleaseTone("VERIFIED")).toBe("success");
     expect(factoryReleaseTone("ROLLED_BACK")).toBe("error");
+    expect(factoryProductionReleaseTone("PROMOTED")).toBe("success");
+    expect(factoryProductionReleaseTone("ROLLED_BACK")).toBe("error");
+  });
+
+  it("keeps production staged until verification and promotion", () => {
+    expect(factoryProductionNextAction({ state: "ELIGIBLE" })).toContain("staged");
+    expect(factoryProductionNextAction({ state: "DEPLOYED" })).toContain("verification");
+    expect(factoryProductionNextAction({ state: "VERIFIED" })).toContain("Promote");
+    expect(factoryProductionNextAction({ state: "PROMOTED" })).toContain("current");
   });
 
   it("counts the actionable lifecycle states", () => {

@@ -1,10 +1,35 @@
 export type FactoryReleaseState = "MERGED" | "DEPLOYED" | "VERIFIED" | "ROLLED_BACK";
+export type FactoryProductionReleaseState = "ELIGIBLE" | "DEPLOYED" | "VERIFIED" | "PROMOTED" | "ROLLED_BACK";
 
 export function factoryReleaseTone(state: FactoryReleaseState) {
   if (state === "VERIFIED") return "success" as const;
   if (state === "ROLLED_BACK") return "error" as const;
   if (state === "DEPLOYED") return "warning" as const;
   return "info" as const;
+}
+
+export function factoryProductionReleaseTone(state: FactoryProductionReleaseState) {
+  if (state === "PROMOTED") return "success" as const;
+  if (state === "ROLLED_BACK") return "error" as const;
+  if (state === "VERIFIED") return "success" as const;
+  if (state === "DEPLOYED") return "warning" as const;
+  return "info" as const;
+}
+
+export function factoryProductionNextAction(input: {
+  state?: FactoryProductionReleaseState;
+  blockingIssue?: string;
+  requiredHumanAction?: string;
+}) {
+  if (!input.state) return "Production has not been approved for this staging-verified release.";
+  if (input.requiredHumanAction) return input.requiredHumanAction;
+  if (input.state === "ELIGIBLE") return "Create a staged production deployment without assigning live domains.";
+  if (input.state === "DEPLOYED") return input.blockingIssue
+    ? "Review failed production evidence or roll back without promotion."
+    : "Run independent production verification before promotion.";
+  if (input.state === "VERIFIED") return "Promote this exact verified deployment and attach the provider receipt.";
+  if (input.state === "PROMOTED") return "Production is current and independently verified.";
+  return "Open a corrective WorkOrder before another production release.";
 }
 
 export function factoryReleaseNextAction(input: {
@@ -21,7 +46,7 @@ export function factoryReleaseNextAction(input: {
   if (input.state === "DEPLOYED") return input.blockingIssue
     ? "Review failed staging evidence, correct the deployment, or roll back."
     : "Run independent provenance, smoke, and health verification.";
-  if (input.state === "VERIFIED") return "Staging proof is complete. Production remains out of scope.";
+  if (input.state === "VERIFIED") return "Staging proof is complete. Production requires separate eligibility and approval.";
   return "Open a corrective WorkOrder before attempting another release.";
 }
 

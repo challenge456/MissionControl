@@ -81,3 +81,18 @@ Execute `docs/plans/2026-08-11-feat-three-staging-release-production-automation-
 - Opened WorkOrder `h97hve2rx51avp45rcbanmcpqs8cby4e`, inbox Task `MCF-004`,
   and Codex Attempt `tn73s1xx015pjcnbj8h4949hps8cbeav` for a scoped protection
   bypass and the three-distinct-release production eligibility gate.
+
+### 2026-08-12 — Three staging releases verified; production automation opened
+
+- Release 1 `0157d38805d7a1fa977723faa34adaf2ef0d3b75` is `VERIFIED` on
+  Git-sourced Vercel deployment `dpl_6VvmyQgawA3JRab4sA6suSjCMm8A`; its two
+  earlier HTTP 401 failures remain immutable.
+- Release 2 `cd4ea9b74df784265f3c1922d939dd199a8c635c` is `VERIFIED` on
+  `dpl_2GDkEVVe7VHdJNAmLtrhDik4Zzoy` on the first verification attempt.
+- Release 3 `b36cb2bdedf435bc289c623009a3a29f2290a5f4` is `VERIFIED` on
+  `dpl_6zb9tQum7NfuCc8NtkwRHigtv99e` on the first verification attempt.
+- Production eligibility returns `eligible: true`, candidate verified, and
+  three distinct qualifying release IDs for Release 3.
+- Opened WorkOrder `h97qsfwqza28zk8jve1wzyxzth8casyw`, inbox Task `MCF-005`,
+  and Codex Attempt `tn74zxnrzg7zmzp3s0pd1z3ey98cb6ya` for governed staged
+  production deployment, verification, promotion, and rollback evidence.
