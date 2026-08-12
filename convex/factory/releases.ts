@@ -162,6 +162,98 @@ export const configureStagingVerification = mutation({
   },
 });
 
+/**
+ * Bind a human-operated Codex attempt to its immutable staging source. This is
+ * a bootstrap/manual execution lane: later GitHub ingestion must independently
+ * report the same PR head before a release can be created.
+ */
+export const bindManualStagingAttempt = mutation({
+  args: {
+    workflowRunId: v.id("workflowRuns"),
+    repositoryId: v.id("workspaceRepositories"),
+    environmentId: v.id("environments"),
+    headSha: v.string(),
+    branch: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.workflowRunId);
+    if (!run?.projectId || !run.workOrderId) {
+      throw new Error("Manual staging attempt must belong to a workspace WorkOrder.");
+    }
+    const access = await requireWorkspacePermission(
+      ctx,
+      run.projectId,
+      FACTORY_PERMISSIONS.IMPROVE,
+    );
+    const [workOrder, repository, environment] = await Promise.all([
+      ctx.db.get(run.workOrderId),
+      ctx.db.get(args.repositoryId),
+      ctx.db.get(args.environmentId),
+    ]);
+    if (!workOrder || workOrder.projectId !== run.projectId) {
+      throw new Error("Manual staging attempt WorkOrder scope is invalid.");
+    }
+    if (!repository || repository.projectId !== run.projectId || repository.status !== "READY") {
+      throw new Error("Manual staging attempt repository must be ready in this workspace.");
+    }
+    if (!workOrder.repository
+      || canonicalRepositoryKey(repository.repository) !== canonicalRepositoryKey(workOrder.repository)) {
+      throw new Error("Manual staging attempt repository does not match the WorkOrder.");
+    }
+    if (!environment || environment.type !== "staging"
+      || (workOrder.tenantId && environment.tenantId !== workOrder.tenantId)) {
+      throw new Error("Manual staging attempt requires this workspace's staging environment.");
+    }
+    const headSha = normalizeCommitSha(args.headSha);
+    if (!headSha) throw new Error("Manual staging attempt requires a full Git commit SHA.");
+    const branch = args.branch.trim();
+    if (!branch || branch.length > 255) throw new Error("Manual staging attempt branch is invalid.");
+    const existing = {
+      repositoryId: run.repositoryId,
+      environmentId: run.environmentId,
+      headSha: normalizeCommitSha(run.headSha ?? ""),
+      branch: run.branch,
+    };
+    if ((existing.repositoryId && existing.repositoryId !== repository._id)
+      || (existing.environmentId && existing.environmentId !== environment._id)
+      || (existing.headSha && existing.headSha !== headSha)
+      || (existing.branch && existing.branch !== branch)) {
+      throw new Error("Manual staging attempt source binding is already recorded and immutable.");
+    }
+
+    await ctx.db.patch(run._id, {
+      repositoryId: repository._id,
+      environmentId: environment._id,
+      headSha,
+      branch,
+      metadata: {
+        ...(run.metadata && typeof run.metadata === "object" ? run.metadata : {}),
+        releaseQualification: {
+          lane: "manual-codex",
+          boundBy: access.actorId,
+          boundAt: Date.now(),
+        },
+      },
+    });
+    await recordActivity(ctx, {
+      projectId: run.projectId,
+      actorType: "HUMAN",
+      actorId: access.actorId,
+      action: "FACTORY_MANUAL_STAGING_ATTEMPT_BOUND",
+      description: `Bound manual Codex attempt ${run.runId} to ${headSha.slice(0, 12)}`,
+      targetType: "WORKFLOW_RUN",
+      targetId: String(run._id),
+      metadata: {
+        repositoryId: repository._id,
+        environmentId: environment._id,
+        headSha,
+        branch,
+      },
+    });
+    return { workflowRunId: run._id, repositoryId: repository._id, environmentId: environment._id, headSha, branch };
+  },
+});
+
 export const approveStagingDeployment = mutation({
   args: {
     releaseId: v.id("factoryReleases"),
