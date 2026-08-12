@@ -65,9 +65,30 @@ describe("FactoryAttemptWorker verification-first lifecycle", () => {
     });
     await fixture.worker.stop();
   });
+
+  it("pauses for human review and resumes publication without rerunning Codex or verification", async () => {
+    const fixture = await runFixture("REQUIRES_HUMAN_REVIEW");
+
+    await vi.waitFor(() => expect(fixture.reports.some((packet) => packet.verification)).toBe(true));
+    await vi.waitFor(() => expect(fixture.worker.status().activeRunIds).toEqual([]));
+    expect(fixture.createPullRequest).not.toHaveBeenCalled();
+    expect(fixture.reports.some((packet) => packet.terminal)).toBe(false);
+    expect(fixture.executeCodex).toHaveBeenCalledOnce();
+    expect(fixture.executeVerification).toHaveBeenCalledOnce();
+
+    fixture.resumeAfterApproval();
+    await fixture.worker.tick();
+    await vi.waitFor(() => expect(fixture.worker.status().completedCount).toBe(1));
+
+    expect(fixture.createPullRequest).toHaveBeenCalledOnce();
+    expect(fixture.executeCodex).toHaveBeenCalledOnce();
+    expect(fixture.executeVerification).toHaveBeenCalledOnce();
+    expect(fixture.reports.at(-1)?.terminal).toEqual({ status: "COMPLETED" });
+    await fixture.worker.stop();
+  });
 });
 
-async function runFixture(serverVerdict: "VERIFIED" | "NOT_VERIFIED") {
+async function runFixture(serverVerdict: "VERIFIED" | "NOT_VERIFIED" | "REQUIRES_HUMAN_REVIEW") {
   const checkoutRoot = await mkdtemp(path.join(tmpdir(), "mc-verification-first-worker-"));
   cleanup.push(checkoutRoot);
   await git(checkoutRoot, ["init", "-b", "main"]);
@@ -105,40 +126,66 @@ async function runFixture(serverVerdict: "VERIFIED" | "NOT_VERIFIED") {
     installation: { appId: "202", installationId: "303" },
     executionManifest: executionManifest(),
   };
+  let lifecycle: "INITIAL" | "PAUSED" | "RESUME" | "COMPLETED" = "INITIAL";
+  let verifiedCandidate: { sourceRevision: string; candidateRevision: string } | null = null;
   const client = {
-    query: vi.fn(async (_query: unknown, args: any) => args.status === "PENDING" ? [run] : []),
+    query: vi.fn(async (_query: unknown, args: any) => (
+      args.status === "PENDING" && ["INITIAL", "RESUME"].includes(lifecycle) ? [run] : []
+    )),
     action: vi.fn(async (_action: unknown, command: { payloadJson: string }) => {
       const payload = JSON.parse(command.payloadJson);
-      if (!payload.packet) return claim;
+      if (!payload.packet) {
+        if (lifecycle === "RESUME") {
+          if (!verifiedCandidate) throw new Error("Missing verified candidate fixture state");
+          return {
+            ...claim,
+            publicationCheckpoint: {
+              ...verifiedCandidate,
+              authorizationValidUntil: Date.now() + 10 * 60_000,
+              changedFiles: ["src/feature.ts"],
+              verification: {
+                verdict: "VERIFIED",
+                verdictReasons: ["Human review approved the exact candidate."],
+                verificationReceiptId: "receipt-approved",
+              },
+              structuredResult: completedFactoryResult(),
+            },
+          };
+        }
+        return claim;
+      }
       reports.push(payload.packet);
       if (payload.packet.verification) {
+        verifiedCandidate = {
+          sourceRevision: payload.packet.verification.sourceRevision,
+          candidateRevision: payload.packet.verification.candidateRevision,
+        };
+        if (serverVerdict === "REQUIRES_HUMAN_REVIEW") lifecycle = "PAUSED";
         return {
           verification: {
             verdict: serverVerdict,
-            verdictReasons: serverVerdict === "VERIFIED" ? ["All mandatory proof is present."] : ["Control-plane recomputation rejected the packet."],
+            verdictReasons: serverVerdict === "VERIFIED"
+              ? ["All mandatory proof is present."]
+              : serverVerdict === "REQUIRES_HUMAN_REVIEW"
+                ? ["The verification contract reserves final advancement for human review."]
+                : ["Control-plane recomputation rejected the packet."],
             verificationReceiptId: "receipt-1",
+            paused: serverVerdict === "REQUIRES_HUMAN_REVIEW",
           },
         };
       }
+      if (payload.packet.terminal?.status === "COMPLETED") lifecycle = "COMPLETED";
       return { reported: true };
     }),
   } as any;
-  const adapter = new CodexV1ExecutorAdapter("codex-fixture", async ({ cwd }) => {
+  const executeCodex = vi.fn(async ({ cwd }: { cwd: string }) => {
     await writeFile(path.join(cwd, "src", "feature.ts"), "export const verified = true;\n");
     return {
       exitCode: 0,
-      output: JSON.stringify({
-        status: "COMPLETED",
-        summary: "Implement the governed issue outcome",
-        completedAcceptanceCriterionIds: ["ac-1"],
-        incompleteAcceptanceCriterionIds: [],
-        unknownAcceptanceCriterionIds: [],
-        verificationCommands: ["node -e deterministic verifier"],
-        knownRisks: [],
-        nextAction: "Run independent factory verification.",
-      }),
+      output: JSON.stringify(completedFactoryResult()),
     };
   });
+  const adapter = new CodexV1ExecutorAdapter("codex-fixture", executeCodex);
   const createPullRequest = vi.fn(async (input: Parameters<FactoryAttemptWorkerDependencies["createOrReusePullRequest"]>[0]) => ({
     number: 42,
     url: "https://example.test/sellerfi/mission-control-fixture/pull/42",
@@ -146,13 +193,14 @@ async function runFixture(serverVerdict: "VERIFIED" | "NOT_VERIFIED") {
     headSha: input.headSha,
     reused: false,
   }));
+  const executeVerification = vi.fn(executeIndependentVerification);
   const dependencies: FactoryAttemptWorkerDependencies = {
     ensureFactoryWorktree,
     listChangedFiles,
     commitFactoryChanges,
     inspectCandidateChange,
     assertFactoryCandidateUnchanged,
-    executeIndependentVerification,
+    executeIndependentVerification: executeVerification,
     loadGithubAppPrivateKey: () => "test-private-key",
     getGithubAppId: () => "202",
     mintInstallationToken: async () => ({ token: "installation-token", expiresAt: Date.now() + 10 * 60_000 }),
@@ -164,7 +212,27 @@ async function runFixture(serverVerdict: "VERIFIED" | "NOT_VERIFIED") {
   const worker = new FactoryAttemptWorker(client, adapter, true, 60_000, dependencies);
 
   await worker.tick();
-  return { worker, reports, createPullRequest };
+  return {
+    worker,
+    reports,
+    createPullRequest,
+    executeCodex,
+    executeVerification,
+    resumeAfterApproval: () => { lifecycle = "RESUME"; },
+  };
+}
+
+function completedFactoryResult() {
+  return {
+    status: "COMPLETED",
+    summary: "Implement the governed issue outcome",
+    completedAcceptanceCriterionIds: ["ac-1"],
+    incompleteAcceptanceCriterionIds: [],
+    unknownAcceptanceCriterionIds: [],
+    verificationCommands: ["node -e deterministic verifier"],
+    knownRisks: [],
+    nextAction: "Run independent factory verification.",
+  };
 }
 
 function executionManifest() {

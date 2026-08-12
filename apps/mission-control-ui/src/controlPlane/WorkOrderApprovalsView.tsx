@@ -93,6 +93,9 @@ export function WorkOrderApprovalsView({ projectId }: { projectId: Id<"projects"
   );
   const selected = ordered.find((item) => item._id === selectedId) ?? ordered[0] ?? null;
   const packet = selected ? buildOperatorDecisionPacket(selected) : null;
+  const resumesVerifiedAttempt = selected?.approvalType === "HUMAN_REVIEW"
+    && selected.latestRun?.status === "PAUSED"
+    && selected.latestRun?.factoryContinuationStatus === "AWAITING_HUMAN_REVIEW";
   const workOrderHref = packet?.workOrderId
     ? projectId
       ? workspacePath(`/v2/control-work-orders?workOrder=${packet.workOrderId}`, String(projectId))
@@ -137,7 +140,7 @@ export function WorkOrderApprovalsView({ projectId }: { projectId: Id<"projects"
     try {
       setSavingId(selected._id);
       setMessage(null);
-      await decideApprovalDecision({
+      const result = await decideApprovalDecision({
         approvalDecisionId: selected._id as Id<"approvalDecisions">,
         projectId: projectId ?? undefined,
         decision,
@@ -147,7 +150,14 @@ export function WorkOrderApprovalsView({ projectId }: { projectId: Id<"projects"
         metadata: { surface: "operator-decision-workspace", packetVersion: "v1" },
       });
       const resultLabel = decision === "REQUEST_REVISION" ? "Revision requested" : decision === "REJECT" ? "Decision rejected" : "Authorization recorded";
-      setMessage({ type: "success", text: `${resultLabel}. Dispatch remains a separate governed action.` });
+      const continuationOutcome = (result as { factoryContinuationOutcome?: "RESUME_PUBLISH" | "FAIL_ATTEMPT" } | null)
+        ?.factoryContinuationOutcome;
+      const continuationMessage = continuationOutcome === "RESUME_PUBLISH"
+        ? "The same verified Attempt is queued to resume at pull-request publication."
+        : continuationOutcome === "FAIL_ATTEMPT"
+            ? "The paused Attempt is closed and cannot publish."
+            : "Dispatch remains a separate governed action.";
+      setMessage({ type: "success", text: `${resultLabel}. ${continuationMessage}` });
     } catch (error) {
       setMessage({ type: "error", text: error instanceof Error ? error.message : "Decision could not be recorded." });
     } finally {
@@ -175,7 +185,7 @@ export function WorkOrderApprovalsView({ projectId }: { projectId: Id<"projects"
         <div className="mt-4 flex flex-wrap items-end justify-between gap-3 rounded-xl border border-[var(--panel-line)] bg-card/40 p-3">
           <div>
             <div className="text-[10.5px] font-semibold uppercase tracking-[0.16em] text-cyan-200">Decision gate</div>
-            <p className="mt-1 text-[12.5px] text-muted-foreground">Approval records authority. It never starts execution or proves completion by itself.</p>
+            <p className="mt-1 text-[12.5px] text-muted-foreground">Approval records authority. A verification checkpoint may resume only the exact reviewed candidate; every other dispatch remains explicit.</p>
           </div>
           <div className="w-[220px] space-y-1.5">
             <Label className="text-[10.5px] uppercase tracking-[0.14em] text-muted-foreground">Decision status</Label>
@@ -286,8 +296,13 @@ export function WorkOrderApprovalsView({ projectId }: { projectId: Id<"projects"
                 <Card className="overflow-hidden">
                   <div className="grid lg:grid-cols-2">
                     <section className="border-b border-[var(--panel-line)] p-4 lg:border-b-0 lg:border-r">
-                      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground"><ArrowUpRight className="h-3.5 w-3.5" /> Dispatch after decision</div>
+                      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground"><ArrowUpRight className="h-3.5 w-3.5" /> {resumesVerifiedAttempt ? "Resume after decision" : "Dispatch after decision"}</div>
                       <p className="mt-2 text-[12.5px] leading-relaxed text-foreground/85">{packet.dispatchPreview}</p>
+                      {resumesVerifiedAttempt ? (
+                        <div className="mt-3 rounded-lg border border-cyan-500/25 bg-cyan-500/[0.06] p-3 text-[11.5px] text-cyan-100">
+                          Same Attempt · candidate <span className="font-mono">{selected.latestRun?.candidateRevision?.slice(0, 12)}</span> · resumes at publication · no agent or verifier rerun
+                        </div>
+                      ) : null}
                     </section>
                     <section className="p-4">
                       <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground"><FileCheck2 className="h-3.5 w-3.5" /> Proof required to close</div>
@@ -310,7 +325,7 @@ export function WorkOrderApprovalsView({ projectId }: { projectId: Id<"projects"
                     </div>
                     {message ? <div role={message.type === "error" ? "alert" : "status"} className={cn("mt-3 rounded-lg border px-3 py-2 text-[12.5px]", message.type === "error" ? "border-red-500/30 bg-red-500/[0.08] text-red-200" : "border-emerald-500/30 bg-emerald-500/[0.08] text-emerald-200")}>{message.text}</div> : null}
                     <div className="mt-4 flex flex-wrap gap-2">
-                      <Button size="sm" onClick={() => handleDecision("APPROVE")} disabled={savingId === selected._id || !packet.canDecide}>{savingId === selected._id ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}Approve scope</Button>
+                      <Button size="sm" onClick={() => handleDecision("APPROVE")} disabled={savingId === selected._id || !packet.canDecide}>{savingId === selected._id ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}{resumesVerifiedAttempt ? "Approve & resume publish" : "Approve scope"}</Button>
                       <Button size="sm" variant="outline" onClick={() => handleDecision("APPROVE_WITH_CONDITIONS")} disabled={savingId === selected._id || !packet.canDecide}>Approve with conditions</Button>
                       <Button size="sm" variant="secondary" onClick={() => handleDecision("REQUEST_REVISION")} disabled={savingId === selected._id}>Request revision</Button>
                       <Button size="sm" variant="destructive" onClick={() => handleDecision("REJECT")} disabled={savingId === selected._id}>Reject</Button>

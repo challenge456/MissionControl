@@ -137,7 +137,10 @@ Mission Control is in active V1 development.
 The governed factory foundation is implemented: repository identity, GitHub App
 readiness, immutable Factory versions, activation gates, signed service
 commands, the `codex/v1` executor contract, and exact execution bindings are in
-the codebase and covered by automated tests.
+the codebase and covered by automated tests. WorkOrders can also freeze an
+executable verification contract with mandatory checks, negative constraints,
+change budgets, criterion-level evidence requirements, and an independently
+computed WorkOrder verdict.
 
 The real Codex-to-GitHub pull-request golden path is implemented and proven
 against this repository. A private, repository-scoped GitHub App created real
@@ -147,10 +150,18 @@ scope, pushed the server-owned branch, and persisted the exact lineage. Browser
 proof covers cancellation, immutable retries, failure, success, refresh,
 process restart, and idempotent PR reconciliation.
 
+An enforced `REQUIRES_HUMAN_REVIEW` verdict now creates a durable publication
+checkpoint instead of failing the Attempt. Unconditional approval appends an
+approval-linked `VERIFIED` receipt and reclaims the same Attempt at
+`PUBLISHING`; the worker rechecks the exact candidate SHA and does not rerun
+`codex/v1` or independent verification. Conditional approval, rejection, or a
+revision request closes the Attempt fail-closed so changed conditions require a
+new governed retry.
+
 This closes the single-path V1 proof; it does not make a broad production-scale
-claim. Durable overnight recovery, unified review evidence, deployment
-verification, and final browser hardening remain before production rollout or
-hundred-agent scaling.
+claim. Remote sandbox enforcement, provider CI ingestion, learning-ledger CRUD,
+trust scoring, verified-throughput metrics, deployment, and production
+verification remain explicitly deferred.
 
 | Capability | Status |
 |---|---|
@@ -162,7 +173,12 @@ hundred-agent scaling.
 | `codex/v1` executor adapter with sandbox, events, health, and cancellation | Implemented |
 | Dispatch preflight and immutable execution envelope | Implemented |
 | Durable Codex worker through exact GitHub pull request | Implemented and browser-proven |
-| Governed deployment and production verification | V1.1 |
+| Independent verification before pull-request publication | Implemented |
+| Durable human-review pause and same-Attempt publication resume | Implemented |
+| Built Node ESM orchestration startup smoke | Implemented and enforced in CI |
+| Remote sandbox enforcement and provider CI ingestion | Deferred |
+| Learning ledger, trust scoring, and verified-throughput metrics | Deferred |
+| Governed deployment and production verification | Deferred |
 | FDE engagement workspace and additional connectors | Post-V1 |
 
 The original repository baseline, approved implementation sequence, and live
@@ -340,9 +356,13 @@ The adapter provides:
 - repository-relative allowed paths;
 - bounded timeouts;
 - cancellation;
-- explicit no-resume semantics for V1;
+- explicit no-resume semantics for the in-process `codex/v1` session;
 - health reporting; and
 - bounded, redacted diagnostics.
+
+Factory workflow checkpoints are a separate control-plane concern. A verified
+Attempt may resume at publication after human approval without pretending the
+underlying Codex session itself is resumable.
 
 The adapter executes an already-approved Attempt. It cannot approve a plan,
 widen repository scope, activate a Factory, validate its own work, merge a PR,
@@ -590,6 +610,26 @@ Authenticated orchestration additionally requires:
 
 Secrets must remain server-side and must never use a `VITE_` prefix.
 
+### Built orchestration service
+
+Production startup uses compiled Node ESM artifacts rather than the development
+`tsx` loader:
+
+```bash
+pnpm run ci:prepare
+pnpm --filter @mission-control/orchestration-server build
+pnpm --filter @mission-control/orchestration-server start
+```
+
+Runtime workspace packages use explicit `.js` ESM specifiers in emitted code.
+The startup smoke loads the same compiled entrypoint with network listeners and
+workers disabled, so extensionless or directory-import regressions fail before
+deployment:
+
+```bash
+pnpm run smoke:orchestration-start
+```
+
 ## Built-in workflows
 
 The repository includes six YAML workflow definitions:
@@ -613,6 +653,7 @@ pnpm run typecheck
 pnpm run test
 pnpm run lint
 pnpm run build
+pnpm run smoke:orchestration-start
 ```
 
 Critical browser checks:
@@ -622,7 +663,8 @@ pnpm run test:e2e:critical
 ```
 
 CI also runs a smoke test, a public Convex runtime-contract guard, skill-quality
-gates, unit/contract suites, and the UI build. The hosted E2E job currently
+gates, the built orchestration startup check, unit/contract suites, and the UI
+build. The hosted E2E job currently
 depends on live Convex infrastructure and is non-blocking; production release
 evidence must therefore include an explicit local or isolated-environment
 browser run.
@@ -657,6 +699,7 @@ Security and governance contracts:
 - [V1 Product Strategy](docs/product/mission-control-v1-product-strategy.md)
 - [Existing-System Assessment](docs/mission-control-existing-system-assessment.md)
 - [AI Software Factory V1 Program Plan](docs/plans/2026-08-02-feat-ai-software-factory-v1-program-plan.md)
+- [ESM startup and human-review resume plan](docs/plans/2026-08-11-fix-esm-startup-human-review-resume-plan.md)
 - [V1 Product Decisions](docs/decisions/ai-software-factory-v1-decisions.md)
 - [Company, Workspace, and Repository Control Plane](docs/architecture/company-workspace-repository-control-plane.md)
 - [Executor Adapter Contract](docs/architecture/executor-adapter-contract.md)

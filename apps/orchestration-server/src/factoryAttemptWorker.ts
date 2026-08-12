@@ -183,6 +183,37 @@ export class FactoryAttemptWorker {
         defaultBranch: claim.defaultBranch,
       });
 
+      if (claim.publicationCheckpoint) {
+        const checkpoint = validatePublicationCheckpoint(claim.publicationCheckpoint);
+        const structuredResult = validateFactoryResult(checkpoint.structuredResult);
+        const candidate = await this.dependencies.inspectCandidateChange(claim.worktree, claim.defaultBranch);
+        if (candidate.sourceRevision !== checkpoint.sourceRevision
+          || candidate.candidateRevision !== checkpoint.candidateRevision) {
+          throw new Error("Approved publication checkpoint no longer matches the attempt worktree.");
+        }
+        if (!sameStringSet(candidate.changedFiles, checkpoint.changedFiles)) {
+          throw new Error("Approved publication checkpoint changed-file set no longer matches the verified candidate.");
+        }
+        const scopeResult = validateChangedFileScope(checkpoint.changedFiles, {
+          allowedPaths: manifest.repository.allowedPaths,
+          excludedPaths: manifest.repository.excludedPaths,
+        });
+        if (!scopeResult.ok) throw new Error(`Approved candidate is now outside the frozen code scope: ${scopeResult.outsideScope.join(", ")}`);
+        await this.dependencies.assertFactoryCandidateUnchanged(claim.worktree, checkpoint.candidateRevision);
+        await this.publishCandidate({
+          claim,
+          manifest,
+          structuredResult,
+          changedFiles: scopeResult.changedFiles,
+          verificationRecord: checkpoint.verification,
+          headSha: checkpoint.candidateRevision,
+          report,
+        });
+        this.completedCount += 1;
+        this.lastError = null;
+        return;
+      }
+
       const executorEvents: ExecutorEvent[] = [];
       const result = await this.adapter.execute({
         executionId: `${claim.runId}:${claim.executionManifestDigest}`,
@@ -296,66 +327,26 @@ export class FactoryAttemptWorker {
         verificationRecord = verificationReport?.verification;
         if (manifest.workOrderSpecification.verificationContract.enforcementMode === "ENFORCED"
           && verificationRecord?.verdict !== "VERIFIED") {
+          if (verificationRecord?.verdict === "REQUIRES_HUMAN_REVIEW" && verificationRecord?.paused) {
+            this.lastError = null;
+            return;
+          }
           const reason = `Independent verification did not pass: ${verificationRecord?.verdict ?? "NOT_VERIFIED"} — ${(verificationRecord?.verdictReasons ?? ["No verified receipt was returned."]).join(" ")}`;
           await report({ terminal: { status: "FAILED", failureReason: reason } });
           this.failedCount += 1;
           return;
         }
       }
-      const privateKey = this.dependencies.loadGithubAppPrivateKey();
-      const configuredAppId = this.dependencies.getGithubAppId();
-      if (!privateKey || !configuredAppId) throw new Error("GitHub App runtime credentials are not configured.");
-      if (configuredAppId !== claim.installation.appId) throw new Error("GitHub App runtime identity does not match the frozen installation.");
-      if (!claim.providerRepositoryId) throw new Error("GitHub provider repository identity is not frozen.");
-      const installationToken = await this.dependencies.mintInstallationToken({
-        appId: configuredAppId,
-        installationId: claim.installation.installationId,
-        providerRepositoryId: claim.providerRepositoryId,
-        privateKey,
-      });
-      if (installationToken.expiresAt <= Date.now() + 60_000) throw new Error("GitHub installation token expires too soon for a safe push.");
-      await this.dependencies.pushFactoryBranch({
-        worktree: claim.worktree,
-        repository: claim.repository,
-        branch: claim.branch,
-        installationToken: installationToken.token,
-      });
-      const pullRequest = await this.dependencies.createOrReusePullRequest({
-        repository: claim.repository,
-        branch: claim.branch,
-        base: claim.defaultBranch,
-        title: structuredResult.summary,
-        body: buildPullRequestBody(claim, structuredResult, scopeResult.changedFiles, verificationRecord),
-        token: installationToken.token,
-        headSha,
-      });
-      const pullRequestLineage = {
-        ...manifest.causation,
-        repositoryId: String(claim.repositoryId),
-        repository: claim.repository,
-        installationId: claim.installation.installationId,
-        branch: claim.branch,
-        headSha,
-        pullRequestNumber: pullRequest.number,
-        pullRequestUrl: pullRequest.url,
+      await this.publishCandidate({
+        claim,
+        manifest,
+        structuredResult,
         changedFiles: scopeResult.changedFiles,
-        executionManifestDigest: claim.executionManifestDigest,
-      };
-      await report({
+        verificationRecord,
+        headSha,
+        report,
         events: verificationResult ? [] : mappedEvents,
-        artifacts: [
-          ...(verificationResult ? [] : baseArtifacts),
-          {
-            idempotencyKey: `factory:${claim.runId}:pull-request`,
-            artifactType: "PULL_REQUEST",
-            name: `Pull request #${pullRequest.number}`,
-            description: "Review-ready pull request created by the governed GitHub App boundary. Human merge remains required.",
-            externalLocation: pullRequest.url,
-            contentHash: `sha256:${createHash("sha256").update(JSON.stringify(pullRequestLineage)).digest("hex")}`,
-            metadata: pullRequestLineage,
-          },
-        ],
-        terminal: { status: "COMPLETED" },
+        artifacts: verificationResult ? [] : baseArtifacts,
       });
       this.completedCount += 1;
       this.lastError = null;
@@ -386,6 +377,75 @@ export class FactoryAttemptWorker {
       payload,
     });
     return await this.client.action(ConvexActions.serviceCommands[action] as any, command) as any;
+  }
+
+  private async publishCandidate(input: {
+    claim: any;
+    manifest: any;
+    structuredResult: ReturnType<typeof validateFactoryResult>;
+    changedFiles: string[];
+    verificationRecord: any;
+    headSha: string;
+    report: (packet: any) => Promise<any>;
+    events?: any[];
+    artifacts?: any[];
+  }) {
+    const privateKey = this.dependencies.loadGithubAppPrivateKey();
+    const configuredAppId = this.dependencies.getGithubAppId();
+    if (!privateKey || !configuredAppId) throw new Error("GitHub App runtime credentials are not configured.");
+    if (configuredAppId !== input.claim.installation.appId) throw new Error("GitHub App runtime identity does not match the frozen installation.");
+    if (!input.claim.providerRepositoryId) throw new Error("GitHub provider repository identity is not frozen.");
+    const installationToken = await this.dependencies.mintInstallationToken({
+      appId: configuredAppId,
+      installationId: input.claim.installation.installationId,
+      providerRepositoryId: input.claim.providerRepositoryId,
+      privateKey,
+    });
+    if (installationToken.expiresAt <= Date.now() + 60_000) throw new Error("GitHub installation token expires too soon for a safe push.");
+    await this.dependencies.assertFactoryCandidateUnchanged(input.claim.worktree, input.headSha);
+    await this.dependencies.pushFactoryBranch({
+      worktree: input.claim.worktree,
+      repository: input.claim.repository,
+      branch: input.claim.branch,
+      installationToken: installationToken.token,
+    });
+    const pullRequest = await this.dependencies.createOrReusePullRequest({
+      repository: input.claim.repository,
+      branch: input.claim.branch,
+      base: input.claim.defaultBranch,
+      title: input.structuredResult.summary,
+      body: buildPullRequestBody(input.claim, input.structuredResult, input.changedFiles, input.verificationRecord),
+      token: installationToken.token,
+      headSha: input.headSha,
+    });
+    const pullRequestLineage = {
+      ...input.manifest.causation,
+      repositoryId: String(input.claim.repositoryId),
+      repository: input.claim.repository,
+      installationId: input.claim.installation.installationId,
+      branch: input.claim.branch,
+      headSha: input.headSha,
+      pullRequestNumber: pullRequest.number,
+      pullRequestUrl: pullRequest.url,
+      changedFiles: input.changedFiles,
+      executionManifestDigest: input.claim.executionManifestDigest,
+    };
+    await input.report({
+      events: input.events ?? [],
+      artifacts: [
+        ...(input.artifacts ?? []),
+        {
+          idempotencyKey: `factory:${input.claim.runId}:pull-request`,
+          artifactType: "PULL_REQUEST",
+          name: `Pull request #${pullRequest.number}`,
+          description: "Review-ready pull request created by the governed GitHub App boundary. Human merge remains required.",
+          externalLocation: pullRequest.url,
+          contentHash: `sha256:${createHash("sha256").update(JSON.stringify(pullRequestLineage)).digest("hex")}`,
+          metadata: pullRequestLineage,
+        },
+      ],
+      terminal: { status: "COMPLETED" },
+    });
   }
 }
 
@@ -448,6 +508,10 @@ function parseFactoryResult(output: string) {
   } catch {
     throw new Error("Codex did not return the required factory-result/v1 JSON object.");
   }
+  return validateFactoryResult(result);
+}
+
+function validateFactoryResult(result: any) {
   const statuses = ["COMPLETED", "BLOCKED", "FAILED"];
   const arrayFields = [
     "completedAcceptanceCriterionIds", "incompleteAcceptanceCriterionIds",
@@ -469,6 +533,33 @@ function parseFactoryResult(output: string) {
     knownRisks: string[];
     nextAction: string;
   };
+}
+
+function validatePublicationCheckpoint(checkpoint: any) {
+  if (!checkpoint || typeof checkpoint !== "object"
+    || typeof checkpoint.sourceRevision !== "string" || !checkpoint.sourceRevision
+    || typeof checkpoint.candidateRevision !== "string" || !checkpoint.candidateRevision
+    || !Number.isFinite(checkpoint.authorizationValidUntil)
+    || checkpoint.authorizationValidUntil <= Date.now() + 60_000
+    || !Array.isArray(checkpoint.changedFiles) || checkpoint.changedFiles.some((file: unknown) => typeof file !== "string")
+    || checkpoint.verification?.verdict !== "VERIFIED"
+    || !checkpoint.verification?.verificationReceiptId) {
+    throw new Error("Claimed Factory publication checkpoint is invalid.");
+  }
+  return checkpoint as {
+    sourceRevision: string;
+    candidateRevision: string;
+    authorizationValidUntil: number;
+    changedFiles: string[];
+    verification: any;
+    structuredResult: any;
+  };
+}
+
+function sameStringSet(left: string[], right: string[]) {
+  const sortedLeft = [...left].sort();
+  const sortedRight = [...right].sort();
+  return sortedLeft.length === sortedRight.length && sortedLeft.every((item, index) => item === sortedRight[index]);
 }
 
 function structuredResultArtifact(claim: any, result: ReturnType<typeof parseFactoryResult>) {
