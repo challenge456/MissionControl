@@ -14,6 +14,16 @@ export interface MissionPlanWorkflowOption {
   name: string;
   version: number;
 }
+
+export function defaultImplementationPolicy() {
+  return {
+    allowedCommands: ["git diff --check"],
+    maxAttempts: 2,
+    timeoutMinutes: 30,
+    stopCondition: "Stop after the approved file scope and verification commands pass and the review-ready pull request identity is persisted.",
+  };
+}
+
 export function emptyMissionPlan(workflow?: MissionPlanWorkflowOption): MissionPlanValues {
   return {
     summary: "",
@@ -45,6 +55,7 @@ export function emptyBlueprint(
     branchStrategy: "isolated-worktree",
     constraints: [],
     requiredApprovals: [],
+    implementationPolicy: defaultImplementationPolicy(),
     dependsOnBlueprintIds: [],
     assertionIds: ["assertion-1"],
   };
@@ -76,6 +87,8 @@ export function planToMissionPlanValues(plan: any, repository?: string, reposito
       riskLevel: blueprint.riskLevel ?? "MEDIUM",
       constraints: blueprint.constraints ?? [],
       requiredApprovals: blueprint.requiredApprovals ?? [],
+      implementationPolicy: blueprint.implementationPolicy
+        ?? (blueprint.isMutating ? defaultImplementationPolicy() : undefined),
     })),
     assertions: plan?.assertions ?? plan?.metadata?.assertions ?? [],
   };
@@ -95,6 +108,13 @@ export function missionPlanPayload(values: MissionPlanValues) {
       branchStrategy: blueprint.branchStrategy?.trim() || undefined,
       constraints: blueprint.constraints.map((item) => item.trim()).filter(Boolean),
       requiredApprovals: blueprint.requiredApprovals.map((item) => item.trim()).filter(Boolean),
+      implementationPolicy: blueprint.implementationPolicy
+        ? {
+            ...blueprint.implementationPolicy,
+            allowedCommands: blueprint.implementationPolicy.allowedCommands.map((item) => item.trim()).filter(Boolean),
+            stopCondition: blueprint.implementationPolicy.stopCondition.trim(),
+          }
+        : undefined,
       dependsOnBlueprintIds: [...new Set(blueprint.dependsOnBlueprintIds)],
       assertionIds: [...new Set(blueprint.assertionIds)],
     })),
@@ -121,6 +141,29 @@ export function nextPlanItemId(prefix: string, existingIds: string[]): string {
   let index = existingIds.length + 1;
   while (existingIds.includes(`${prefix}-${index}`)) index += 1;
   return `${prefix}-${index}`;
+}
+
+export function updateMissionPlanAssertion(
+  values: MissionPlanValues,
+  index: number,
+  patch: Partial<MissionPlanAssertionInput>,
+): MissionPlanValues {
+  const previousId = values.assertions[index]?.assertionId;
+  const assertions = [...values.assertions];
+  assertions[index] = { ...assertions[index], ...patch };
+  if (patch.assertionId === undefined || patch.assertionId === previousId) {
+    return { ...values, assertions };
+  }
+  return {
+    ...values,
+    assertions,
+    workOrderBlueprints: values.workOrderBlueprints.map((blueprint) => ({
+      ...blueprint,
+      assertionIds: blueprint.assertionIds.map((assertionId) =>
+        assertionId === previousId ? patch.assertionId! : assertionId
+      ),
+    })),
+  };
 }
 
 export function summarizePlanDiff(base: MissionPlanValues | null, current: MissionPlanValues): string[] {

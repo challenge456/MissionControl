@@ -14,6 +14,10 @@ export interface MissionDraftValues {
   constraints: string[];
   sourceOfTruthRefs: MissionSourceRefValue[];
   owner: string;
+  ownerMemberId: string;
+  owningTeamId: string;
+  repositoryId: string;
+  codeScopeIds: string[];
   budgetUsd: string;
   stopCondition: string;
   maxReadOnlyConcurrency: string;
@@ -30,6 +34,10 @@ export function missionToDraftValues(mission: any): MissionDraftValues {
     constraints: mission.constraints ?? [],
     sourceOfTruthRefs: mission.sourceOfTruthRefs ?? [],
     owner: mission.owner ?? "",
+    ownerMemberId: mission.ownerMemberId ?? "",
+    owningTeamId: mission.owningTeamId ?? "",
+    repositoryId: mission.repositoryId ?? "",
+    codeScopeIds: mission.codeScopeIds ?? [],
     budgetUsd: mission.budgetUsd === undefined ? "" : String(mission.budgetUsd),
     stopCondition: mission.stopCondition ?? "",
     maxReadOnlyConcurrency: String(mission.maxReadOnlyConcurrency ?? 2),
@@ -48,6 +56,10 @@ export function validateMissionDraft(values: MissionDraftValues): MissionDraftEr
   if (!values.title.trim()) errors.title = "Title is required.";
   if (!values.objective.trim()) errors.objective = "Objective is required.";
   if (!values.stopCondition.trim()) errors.stopCondition = "Stop condition is required.";
+  if (!values.owningTeamId) errors.owningTeamId = "Owning team is required.";
+  if (!values.ownerMemberId) errors.ownerMemberId = "Accountable owner is required.";
+  if (!values.repositoryId) errors.repositoryId = "Repository is required.";
+  if (values.codeScopeIds.length === 0) errors.codeScopeIds = "Code scope is required.";
   if (values.budgetUsd.trim() && (!Number.isFinite(Number(values.budgetUsd)) || Number(values.budgetUsd) < 0)) {
     errors.budgetUsd = "Budget must be zero or greater.";
   }
@@ -78,6 +90,10 @@ export function missionDraftPayload(values: MissionDraftValues) {
       location: ref.location.trim(),
     })),
     owner: values.owner.trim() || undefined,
+    ownerMemberId: values.ownerMemberId,
+    owningTeamId: values.owningTeamId,
+    repositoryId: values.repositoryId,
+    codeScopeIds: values.codeScopeIds,
     budgetUsd: values.budgetUsd.trim() ? Number(values.budgetUsd) : undefined,
     stopCondition: values.stopCondition.trim(),
     maxReadOnlyConcurrency: Number(values.maxReadOnlyConcurrency),

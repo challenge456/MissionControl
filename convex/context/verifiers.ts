@@ -13,7 +13,17 @@ export const list = query({
     activeOnly: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.VIEW);
+    if (args.projectId) {
+      await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.VIEW);
+    } else if (args.packageId) {
+      const pkg = await ctx.db.get(args.packageId);
+      if (!pkg) return [];
+      if (pkg.projectId) {
+        await requireWorkspacePermission(ctx, pkg.projectId, FACTORY_PERMISSIONS.VIEW);
+      }
+    } else {
+      return [];
+    }
     let rows = await ctx.db.query("contextVerifiers").collect();
     rows = rows.filter((r) => r.projectId === args.projectId);
     if (args.packageId) rows = rows.filter((r) => r.packageId === args.packageId);
@@ -31,9 +41,11 @@ export const create = mutation({
     globPatterns: v.array(v.string()),
     sourceSkillId: v.optional(v.id("contextPackages")),
     idempotencyKey: v.optional(v.string()),
+    /** @deprecated Browser actor labels are ignored; authority is server-derived. */
     actorId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    if (!args.projectId) throw new Error("Select a workspace before creating a verifier");
     const access = await requireWorkspacePermission(
       ctx,
       args.projectId,
@@ -106,11 +118,10 @@ export const generateFromSkill = mutation({
       projectId: args.projectId,
       actorType: "HUMAN",
       actorId: access.actorId,
-      action: "VERIFIER_GENERATED_FROM_SKILL",
-      description: `Generated verifier from skill: ${pkg.slug}`,
+      action: "VERIFIER_CREATED",
+      description: `Created verifier from skill: ${label}`,
       targetType: "contextVerifier",
       targetId: id,
-      metadata: { packageId: pkg._id },
     });
     return id;
   },
@@ -119,6 +130,7 @@ export const generateFromSkill = mutation({
 export const ruleDecayCandidates = query({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
+    if (!args.projectId) return [];
     await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.VIEW);
     let rows = await ctx.db.query("contextVerifiers").collect();
     rows = rows.filter((r) => r.projectId === args.projectId);

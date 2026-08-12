@@ -12,11 +12,13 @@ import {
   emptyAssertion,
   emptyBlueprint,
   emptyMissionPlan,
+  defaultImplementationPolicy,
   missionPlanPayload,
   missionPlanValuesEqual,
   nextPlanItemId,
   planToMissionPlanValues,
   summarizePlanDiff,
+  updateMissionPlanAssertion,
   validateMissionPlanValues,
   type MissionPlanValues,
   type MissionPlanWorkflowOption,
@@ -58,9 +60,7 @@ function PlanEditor({
     onChange({ ...values, workOrderBlueprints });
   };
   const updateAssertion = (index: number, patch: Record<string, unknown>) => {
-    const assertions = [...values.assertions];
-    assertions[index] = { ...assertions[index], ...patch };
-    onChange({ ...values, assertions });
+    onChange(updateMissionPlanAssertion(values, index, patch as any));
   };
   const blueprintErrors = (id: string) => errors.filter((error) => error.blueprintId === id);
   const assertionErrors = (id: string) => errors.filter((error) => error.assertionId === id);
@@ -100,14 +100,15 @@ function PlanEditor({
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5"><Label>Priority</Label><select aria-label={`WorkOrder ${index + 1} priority`} value={blueprint.priority} onChange={(event) => updateBlueprint(index, { priority: Number(event.target.value) })} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">{[1, 2, 3, 4].map((priority) => <option key={priority} value={priority}>{priority}</option>)}</select></div>
-                <label className="mt-6 flex h-9 items-center gap-2 rounded-md border border-line px-3 text-sm text-ink-secondary"><input type="checkbox" checked={blueprint.isMutating} onChange={(event) => updateBlueprint(index, { isMutating: event.target.checked, branchStrategy: event.target.checked ? blueprint.branchStrategy || "isolated-worktree" : undefined })} />Repository mutation</label>
+                <label className="mt-6 flex h-9 items-center gap-2 rounded-md border border-line px-3 text-sm text-ink-secondary"><input type="checkbox" checked={blueprint.isMutating} onChange={(event) => updateBlueprint(index, { isMutating: event.target.checked, branchStrategy: event.target.checked ? blueprint.branchStrategy || "isolated-worktree" : undefined, implementationPolicy: event.target.checked ? blueprint.implementationPolicy ?? defaultImplementationPolicy() : undefined })} />Repository mutation</label>
               </div>
               <div className="space-y-1.5"><Label>Constraints (one per line)</Label><Textarea aria-label={`WorkOrder ${index + 1} constraints`} value={blueprint.constraints.join("\n")} onChange={(event) => updateBlueprint(index, { constraints: event.target.value.split("\n") })} /></div>
               <div className="space-y-1.5"><Label>Required approvals (one per line)</Label><Textarea aria-label={`WorkOrder ${index + 1} required approvals`} value={blueprint.requiredApprovals.join("\n")} onChange={(event) => updateBlueprint(index, { requiredApprovals: event.target.value.split("\n") })} /></div>
             </div>
+            {blueprint.isMutating ? <fieldset className="rounded-lg border border-line p-3"><legend className="px-1 text-xs font-medium text-ink">Implementation policy</legend><div className="mt-2 grid gap-4 sm:grid-cols-2"><div className="space-y-1.5 sm:col-span-2"><Label>Approved verification commands (one per line)</Label><Textarea aria-label={`WorkOrder ${index + 1} verification commands`} className="font-mono" value={blueprint.implementationPolicy?.allowedCommands.join("\n") ?? ""} onChange={(event) => updateBlueprint(index, { implementationPolicy: { ...(blueprint.implementationPolicy ?? defaultImplementationPolicy()), allowedCommands: event.target.value.split("\n") } })} /></div><div className="space-y-1.5"><Label>Maximum attempts</Label><Input aria-label={`WorkOrder ${index + 1} maximum attempts`} type="number" min="1" step="1" value={blueprint.implementationPolicy?.maxAttempts ?? 2} onChange={(event) => updateBlueprint(index, { implementationPolicy: { ...(blueprint.implementationPolicy ?? defaultImplementationPolicy()), maxAttempts: Number(event.target.value) } })} /></div><div className="space-y-1.5"><Label>Timeout (minutes)</Label><Input aria-label={`WorkOrder ${index + 1} timeout minutes`} type="number" min="1" step="1" value={blueprint.implementationPolicy?.timeoutMinutes ?? 30} onChange={(event) => updateBlueprint(index, { implementationPolicy: { ...(blueprint.implementationPolicy ?? defaultImplementationPolicy()), timeoutMinutes: Number(event.target.value) } })} /></div><div className="space-y-1.5 sm:col-span-2"><Label>Stop condition</Label><Textarea aria-label={`WorkOrder ${index + 1} stop condition`} value={blueprint.implementationPolicy?.stopCondition ?? ""} onChange={(event) => updateBlueprint(index, { implementationPolicy: { ...(blueprint.implementationPolicy ?? defaultImplementationPolicy()), stopCondition: event.target.value } })} /></div></div></fieldset> : null}
             <div className="grid gap-4 lg:grid-cols-2">
               <fieldset className="rounded-lg border border-line p-3"><legend className="px-1 text-xs font-medium text-ink">Dependencies</legend><div className="mt-2 space-y-2">{values.workOrderBlueprints.filter((candidate) => candidate.id !== blueprint.id && candidate.sequence < blueprint.sequence).map((candidate) => <label key={candidate.id} className="flex items-center gap-2 text-xs text-ink-secondary"><input type="checkbox" checked={blueprint.dependsOnBlueprintIds.includes(candidate.id)} onChange={(event) => updateBlueprint(index, { dependsOnBlueprintIds: event.target.checked ? [...blueprint.dependsOnBlueprintIds, candidate.id] : blueprint.dependsOnBlueprintIds.filter((id) => id !== candidate.id) })} />{candidate.id}</label>)}{index === 0 ? <div className="text-xs text-ink-muted">No predecessor required.</div> : null}</div></fieldset>
-              <fieldset className="rounded-lg border border-line p-3"><legend className="px-1 text-xs font-medium text-ink">Assertion coverage</legend><div className="mt-2 space-y-2">{values.assertions.map((assertion) => <label key={assertion.assertionId} className="flex items-center gap-2 text-xs text-ink-secondary"><input type="checkbox" checked={blueprint.assertionIds.includes(assertion.assertionId)} onChange={(event) => updateBlueprint(index, { assertionIds: event.target.checked ? [...blueprint.assertionIds, assertion.assertionId] : blueprint.assertionIds.filter((id) => id !== assertion.assertionId) })} />{assertion.assertionId || "Unnamed assertion"}</label>)}</div></fieldset>
+              <fieldset className="rounded-lg border border-line p-3"><legend className="px-1 text-xs font-medium text-ink">Assertion coverage</legend><div className="mt-2 space-y-2">{values.assertions.map((assertion) => <label key={assertion.assertionId} className="flex items-center gap-2 text-xs text-ink-secondary"><input type="checkbox" checked={blueprint.assertionIds.includes(assertion.assertionId)} onChange={(event) => updateBlueprint(index, { assertionIds: event.target.checked ? [...blueprint.assertionIds, assertion.assertionId] : blueprint.assertionIds.filter((id) => id !== assertion.assertionId) })} />{assertion.assertionId || "Unnamed assertion"}</label>)}{blueprint.assertionIds.filter((assertionId) => !values.assertions.some((assertion) => assertion.assertionId === assertionId)).map((assertionId) => <div key={assertionId} className="flex items-center justify-between gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-xs text-destructive"><span>Stale assertion: {assertionId}</span><Button type="button" variant="outline" size="sm" onClick={() => updateBlueprint(index, { assertionIds: blueprint.assertionIds.filter((id) => id !== assertionId) })}>Remove stale assertion {assertionId}</Button></div>)}</div></fieldset>
             </div>
             {blueprintErrors(blueprint.id).length ? <div className="text-xs text-destructive">{blueprintErrors(blueprint.id).map((error) => error.message).join(" ")}</div> : null}
           </article>

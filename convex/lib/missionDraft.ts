@@ -9,6 +9,10 @@ export interface MissionDraftInput {
   stopCondition: string;
   maxReadOnlyConcurrency?: number;
   maxCorrectiveIterations?: number;
+  ownerMemberId?: string;
+  owningTeamId?: string;
+  repositoryId?: string;
+  codeScopeIds?: string[];
 }
 
 export function validateMissionDraftInput(input: MissionDraftInput): void {
@@ -36,6 +40,15 @@ export function validateMissionDraftInput(input: MissionDraftInput): void {
   if (input.sourceOfTruthRefs?.some((ref) => !ref.label.trim() || !ref.location.trim())) {
     throw new Error("Mission source references require a label and location");
   }
+  const scopedDeliveryFields = [
+    input.ownerMemberId,
+    input.owningTeamId,
+    input.repositoryId,
+    input.codeScopeIds?.length ? input.codeScopeIds : undefined,
+  ];
+  if (scopedDeliveryFields.some(Boolean) && scopedDeliveryFields.some((value) => !value)) {
+    throw new Error("Mission delivery scope requires an owner, team, repository, and code scope");
+  }
 }
 
 const DRAFT_FIELDS = [
@@ -49,6 +62,10 @@ const DRAFT_FIELDS = [
   "stopCondition",
   "maxReadOnlyConcurrency",
   "maxCorrectiveIterations",
+  "ownerMemberId",
+  "owningTeamId",
+  "repositoryId",
+  "codeScopeIds",
 ] as const;
 
 export function changedMissionDraftFields(

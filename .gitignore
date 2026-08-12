@@ -62,3 +62,6 @@ tmp/
 
 # Convex data snapshots (may contain workspace/project data)
 backups/
+
+# Durable worker state is local and must never be committed.
+/.mission-control/

@@ -44,7 +44,7 @@ export function RunRecoveryPanel({
         <div className="min-w-0 flex-1">
           <div className="text-[13px] font-medium text-ink">Start a recovery run</div>
           <p className="mt-1 text-[12.5px] leading-5 text-ink-secondary">
-            This creates a new run from the current WorkOrder. The failed run, error, timeline, and artifacts remain unchanged.
+            This creates a new run from the reopened WorkOrder. The prior terminal run, timeline, and artifacts remain unchanged.
           </p>
           {failureSummary ? (
             <div className="mt-3 rounded-lg border border-line bg-surface-1 px-3 py-2 text-[12.5px] text-ink-secondary">
@@ -54,7 +54,7 @@ export function RunRecoveryPanel({
 
           {recoveryStarted ? (
             <div className="mt-3 rounded-lg border border-ok/30 bg-ok-soft px-3 py-2 text-[12.5px] text-ok">
-              Recovery run created. The original failure remains available in this inspector.
+              Recovery run created. The prior terminal run remains available in this inspector.
             </div>
           ) : (
             <div className="mt-4">

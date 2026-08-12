@@ -163,9 +163,10 @@ export function HarnessCodeReviewWizardSteps({
           size="sm"
           disabled={!projectId || busy || policyApplied}
           onClick={() => {
+            if (!projectId) return;
             setBusy(true);
             void upsertPolicy({
-              projectId: projectId!,
+              projectId,
               name: "Code review wizard policy",
               strictness: 45,
               rules: defaultRules ?? [],

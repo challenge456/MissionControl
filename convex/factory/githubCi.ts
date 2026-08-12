@@ -4,9 +4,10 @@ import { internal } from "../_generated/api";
 import {
   buildChangeReviewLenses,
   buildMutationTestingReport,
+  shouldPreserveManualPrLineage,
   type PrCheckSignals,
 } from "../lib/harnessPrChecks";
-import { ciBlockCanRecover } from "../lib/prEvaluation";
+import { ciBlockedHead, ciBlockCanRecover } from "../lib/prEvaluation";
 
 export const applyCiIngest = internalMutation({
   args: {
@@ -26,6 +27,7 @@ export const applyCiIngest = internalMutation({
     repoFullName: v.string(),
     branch: v.optional(v.string()),
     title: v.optional(v.string()),
+    prState: v.optional(v.union(v.literal("OPEN"), v.literal("CLOSED"), v.literal("MERGED"))),
     ciStatus: v.optional(
       v.union(
         v.literal("PASS"),
@@ -120,7 +122,17 @@ export const applyCiIngest = internalMutation({
         : undefined;
     const releaseDeploymentId = args.releaseDeploymentId ?? existing?.releaseDeploymentId ?? previous?.releaseDeploymentId;
 
-    const inheritPriorLineage = args.lineageStatus == null;
+    const existingMetadata = existing?.metadata && typeof existing.metadata === "object"
+      ? existing.metadata as Record<string, unknown>
+      : {};
+    const preserveManualLineage = shouldPreserveManualPrLineage(
+      existingMetadata.lineageStatus,
+      args.lineageStatus
+    );
+    const inheritPriorLineage = args.lineageStatus == null || preserveManualLineage;
+    const lineageStatus = preserveManualLineage
+      ? String(existingMetadata.lineageStatus)
+      : args.lineageStatus ?? "LEGACY_UNVERIFIED";
     const doc = {
       projectId: args.projectId,
       workOrderId: args.workOrderId ?? (inheritPriorLineage ? existing?.workOrderId ?? previous?.workOrderId : undefined),
@@ -134,6 +146,7 @@ export const applyCiIngest = internalMutation({
       repoFullName: args.repoFullName,
       branch: args.branch,
       title: args.title,
+      prState: args.prState,
       ciStatus: args.ciStatus ?? "UNKNOWN",
       ciRunUrl: args.ciRunUrl,
       ciProvider: "github",
@@ -146,7 +159,8 @@ export const applyCiIngest = internalMutation({
       syncedAt: now,
       createdAt: existing?.createdAt ?? now,
       metadata: {
-        lineageStatus: args.lineageStatus ?? "LEGACY_UNVERIFIED",
+        ...existingMetadata,
+        lineageStatus,
         headSha: args.headSha,
         checkRuns: args.checkRuns,
         diffLineCount: args.signals?.diffLineCount,
@@ -173,10 +187,16 @@ export const applyCiIngest = internalMutation({
     }
     if (linkedWorkOrderId && doc.ciStatus === "PASS") {
       const workOrder = await ctx.db.get(linkedWorkOrderId);
+      const blockedHeadSha = ciBlockedHead(workOrder?.blockingIssue);
+      const blockedEvaluation = blockedHeadSha
+        ? await ctx.db.query("harnessPrChecks")
+            .withIndex("by_pr_head", (q) => q.eq("prUrl", args.prUrl).eq("headSha", blockedHeadSha))
+            .first()
+        : null;
       if (workOrder && ciBlockCanRecover({
         ciStatus: doc.ciStatus,
         blockingIssue: workOrder.blockingIssue,
-        priorHeadSha: priorEvaluation?.headSha,
+        priorHeadSha: blockedEvaluation?.ciStatus === "FAIL" ? blockedEvaluation.headSha : undefined,
         headSha: doc.headSha,
       })) {
         await ctx.db.patch(linkedWorkOrderId, {
@@ -194,9 +214,9 @@ export const applyCiIngest = internalMutation({
           summary: `Passing CI on ${doc.headSha} cleared the prior-head CI block`,
           timestamp: now,
           metadata: {
-            priorEvaluationId: priorEvaluation?._id,
+            priorEvaluationId: blockedEvaluation?._id,
             evaluationId: id,
-            priorHeadSha: priorEvaluation?.headSha,
+            priorHeadSha: blockedEvaluation?.headSha,
             headSha: doc.headSha,
           },
         });

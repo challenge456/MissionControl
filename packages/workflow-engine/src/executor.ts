@@ -21,6 +21,8 @@ import { buildBoundedContextUpdate, validateCompletionOutput } from "./handoff";
 
 export interface WorkflowExecutorConfig {
   convexUrl: string;
+  /** Server-only JWT mapped to an active Mission Control operator. */
+  serviceAuthToken?: string;
   pollIntervalMs?: number;
   stepTimeoutMs?: number;
 }
@@ -134,6 +136,9 @@ export class WorkflowExecutor {
 
   constructor(config: WorkflowExecutorConfig) {
     this.client = new ConvexHttpClient(config.convexUrl);
+    if (config.serviceAuthToken?.trim()) {
+      this.client.setAuth(config.serviceAuthToken.trim());
+    }
     this.pollIntervalMs = config.pollIntervalMs ?? 5000;
     this.stepTimeoutMs = config.stepTimeoutMs ?? 60000;
   }
@@ -748,6 +753,19 @@ export class WorkflowExecutor {
       targetType: "WORKFLOW_RUN",
       targetId: run._id,
     });
+    if (run.workflowId === "loop-engineering") {
+      try {
+        await this.client.action(api.loopEngineering.projectWorkflowRun, {
+          workflowRunId: run._id,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        await this.client.action(api.loopEngineering.recordProjectionFailureFromService, {
+          workflowRunId: run._id,
+          error: message,
+        });
+      }
+    }
   }
 
   private async failRun(run: any, reason: string): Promise<void> {

@@ -7,7 +7,7 @@ import {
   githubInstallationIsStale,
 } from "./lib/githubAppReadiness";
 import { canonicalRepositoryKey } from "./lib/workspaceRepositories";
-import { sha256Hex } from "./lib/githubAppAuth";
+import { sha256Hex, verifyGithubInstallationAccess } from "./lib/githubAppAuth";
 
 const permissionAccess = v.union(
   v.literal("none"),
@@ -52,6 +52,67 @@ export const getRepositoryForSetup = internalQuery({
     const repository = await ctx.db.get(args.repositoryId);
     if (!repository) throw new Error("Repository connection not found");
     return repository;
+  },
+});
+
+export const getInstallationForVerification = internalQuery({
+  args: { repositoryId: v.id("workspaceRepositories") },
+  handler: async (ctx, args) => {
+    const repository = await ctx.db.get(args.repositoryId);
+    if (!repository) throw new Error("Repository connection not found");
+    const installation = await ctx.db
+      .query("githubAppInstallations")
+      .withIndex("by_repository", (q) => q.eq("repositoryId", repository._id))
+      .first();
+    return { repository, installation };
+  },
+});
+
+export const verifyInstallation = action({
+  args: { repositoryId: v.id("workspaceRepositories") },
+  handler: async (ctx, args): Promise<
+    | { ok: true }
+    | { ok: false; code: "MISSING_INSTALLATION" | "NOT_CONFIGURED" | "VERIFICATION_FAILED" }
+  > => {
+    const setup = await ctx.runQuery(internal.githubAppConnections.getInstallationForVerification, {
+      repositoryId: args.repositoryId,
+    });
+    await ctx.runQuery(internal.companyContext.authorizeFactoryAction, {
+      projectId: setup.repository.projectId,
+      permission: FACTORY_PERMISSIONS.MANAGE_AUTOMATION,
+    });
+    if (!setup.installation) return { ok: false, code: "MISSING_INSTALLATION" };
+
+    const appId = process.env.GITHUB_APP_ID;
+    const privateKey = process.env.GITHUB_APP_PRIVATE_KEY;
+    if (!appId || !privateKey) return { ok: false, code: "NOT_CONFIGURED" };
+
+    try {
+      const verified = await verifyGithubInstallationAccess({
+        installationId: setup.installation.installationId,
+        repository: setup.repository.repository,
+        appId,
+        privateKey,
+      });
+      await ctx.runMutation(internal.githubAppConnections.upsertInstallation, {
+        repositoryId: setup.repository._id,
+        providerRepositoryId: verified.providerRepositoryId,
+        installationId: verified.installationId,
+        appId,
+        accountLogin: verified.accountLogin,
+        accountType: verified.accountType,
+        repositorySelection: verified.repositorySelection,
+        permissions: verified.permissions,
+        subscribedEvents: verified.subscribedEvents,
+        status: "CONNECTED",
+        installedAt: verified.installedAt,
+        verifiedAt: verified.verifiedAt,
+        lastTokenIssuedAt: verified.lastTokenIssuedAt,
+      });
+      return { ok: true };
+    } catch {
+      return { ok: false, code: "VERIFICATION_FAILED" };
+    }
   },
 });
 
@@ -171,7 +232,7 @@ export const getRepositoryReadiness = query({
           ? `Missing ${capability.missingEvents.join(", ")}`
           : "Required PR, review, and check events are subscribed; installation lifecycle events are automatic.",
         remediation: capability.missingEvents.length
-          ? "Subscribe the GitHub App webhook to every required V1 event."
+          ? "Subscribe the GitHub App webhook to every configurable V1 event."
           : undefined,
       },
       {
@@ -239,18 +300,25 @@ export const upsertInstallation = internalMutation({
   handler: async (ctx, args) => {
     const repository = await ctx.db.get(args.repositoryId);
     if (!repository) throw new Error("Repository connection not found");
+    const now = Date.now();
     const existingByInstallation = await ctx.db
       .query("githubAppInstallations")
       .withIndex("by_installation", (q) => q.eq("installationId", args.installationId))
       .first();
     if (existingByInstallation && existingByInstallation.repositoryId !== repository._id) {
-      throw new Error("GitHub App installation is already bound to another repository");
+      if (existingByInstallation.status !== "REVOKED") {
+        throw new Error("GitHub App installation is already bound to another repository");
+      }
+      await ctx.db.patch(existingByInstallation._id, {
+        installationId: `revoked:${args.installationId}:${existingByInstallation._id}`,
+        lastError: "Superseded after GitHub moved the installation to a different selected repository.",
+        updatedAt: now,
+      });
     }
     const existingByRepository = await ctx.db
       .query("githubAppInstallations")
       .withIndex("by_repository", (q) => q.eq("repositoryId", repository._id))
       .first();
-    const now = Date.now();
     const {
       repositoryId: _repositoryId,
       providerRepositoryId: _providerRepositoryId,

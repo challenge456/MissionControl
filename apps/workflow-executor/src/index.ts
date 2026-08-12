@@ -18,6 +18,7 @@ dotenv.config();
 const CONVEX_URL = process.env.CONVEX_URL;
 const POLL_INTERVAL_MS = parseInt(process.env.POLL_INTERVAL_MS || "5000", 10);
 const STEP_TIMEOUT_MS = parseInt(process.env.STEP_TIMEOUT_MS || "60000", 10);
+const CONVEX_SERVICE_AUTH_TOKEN = process.env.CONVEX_SERVICE_AUTH_TOKEN?.trim();
 
 if (!CONVEX_URL) {
   console.error("❌ Error: CONVEX_URL environment variable is required");
@@ -38,6 +39,7 @@ console.log("");
 // Create executor
 const executor = createExecutor({
   convexUrl: CONVEX_URL,
+  serviceAuthToken: CONVEX_SERVICE_AUTH_TOKEN,
   pollIntervalMs: POLL_INTERVAL_MS,
   stepTimeoutMs: STEP_TIMEOUT_MS,
 });

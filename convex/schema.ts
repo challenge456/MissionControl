@@ -169,6 +169,10 @@ const verificationReceiptStatus = v.union(
 
 const runEventType = v.union(
   v.literal("RUN_STARTED"),
+  v.literal("EXECUTION_CLAIMED"),
+  v.literal("CANCELLATION_REQUESTED"),
+  v.literal("POLICY_DEVIATION"),
+  v.literal("PULL_REQUEST_CREATED"),
   v.literal("STEP_STARTED"),
   v.literal("STEP_COMPLETED"),
   v.literal("TOOL_CALLED"),
@@ -184,6 +188,7 @@ const runEventType = v.union(
   v.literal("CANCELLATION_REQUESTED"),
   v.literal("RUN_CANCELED"),
   v.literal("RUN_FAILED"),
+  v.literal("RUN_CANCELED"),
   v.literal("RUN_COMPLETED")
 );
 
@@ -398,6 +403,8 @@ export default defineSchema({
       type: v.union(
         v.literal("tenant"),
         v.literal("project"),
+        v.literal("team"),
+        v.literal("repository"),
         v.literal("environment")
       ),
       id: v.string(),
@@ -675,6 +682,7 @@ export default defineSchema({
     description: v.optional(v.string()),
     purpose: v.optional(v.string()),
     owner: v.optional(v.string()),
+    ownerMemberId: v.optional(v.id("orgMembers")),
     defaultPolicy: v.optional(v.string()),
     status: v.optional(
       v.union(v.literal("ACTIVE"), v.literal("PAUSED"), v.literal("ARCHIVED"))
@@ -717,6 +725,8 @@ export default defineSchema({
     metadata: v.optional(v.any()),
     createdAt: v.optional(v.number()),
     updatedAt: v.optional(v.number()),
+    createdBy: v.optional(v.id("operators")),
+    updatedBy: v.optional(v.id("operators")),
   })
     .index("by_tenant", ["tenantId"])
     .index("by_slug", ["slug"])
@@ -750,8 +760,10 @@ export default defineSchema({
       v.literal("ERROR")
     ),
     policyOverrides: v.optional(v.any()),
-    fixtureKey: v.optional(v.string()),
     migrationVersion: v.optional(v.number()),
+    fixtureKey: v.optional(v.string()),
+    createdBy: v.optional(v.id("operators")),
+    updatedBy: v.optional(v.id("operators")),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -976,14 +988,17 @@ export default defineSchema({
     excludePaths: v.array(v.string()),
     owningTeam: v.optional(v.string()),
     owningTeamId: v.optional(v.id("scrumTeams")),
+    overlapPriority: v.optional(v.number()),
     requiredReviewers: v.array(v.string()),
     allowedEnvironments: v.array(
       v.union(v.literal("LOCAL"), v.literal("CLOUD"))
     ),
     verificationPolicy: v.optional(v.string()),
     approvalPolicy: v.optional(v.string()),
-    fixtureKey: v.optional(v.string()),
     migrationVersion: v.optional(v.number()),
+    fixtureKey: v.optional(v.string()),
+    createdBy: v.optional(v.id("operators")),
+    updatedBy: v.optional(v.id("operators")),
     active: v.boolean(),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -1002,15 +1017,15 @@ export default defineSchema({
     observedBranch: v.optional(v.string()),
     observedCommit: v.optional(v.string()),
     dirty: v.boolean(),
-    approvedModelIds: v.optional(v.array(v.string())),
-    attestedAt: v.optional(v.number()),
-    capacity: v.optional(v.object({
-      currentRuns: v.number(),
-      maxConcurrentRuns: v.number(),
-    })),
-    networkPolicyStatus: v.optional(v.string()),
     runtime: v.optional(v.string()),
-    secretPolicyStatus: v.optional(v.string()),
+    approvedModelIds: v.optional(v.array(v.string())),
+    networkPolicyStatus: v.optional(v.union(v.literal("READY"), v.literal("BLOCKED"), v.literal("UNKNOWN"))),
+    secretPolicyStatus: v.optional(v.union(v.literal("READY"), v.literal("BLOCKED"), v.literal("UNKNOWN"))),
+    capacity: v.optional(v.object({
+      maxConcurrentRuns: v.number(),
+      currentRuns: v.number(),
+    })),
+    attestedAt: v.optional(v.number()),
     status: v.union(
       v.literal("READY"),
       v.literal("MISSING"),
@@ -1303,6 +1318,13 @@ export default defineSchema({
       constraints: v.optional(v.array(v.string())),
       requiredApprovals: v.optional(v.array(v.string())),
       estimatedCostUsd: v.optional(v.number()),
+      implementationPolicy: v.optional(v.object({
+        allowedCommands: v.array(v.string()),
+        maxCostUsd: v.optional(v.number()),
+        maxAttempts: v.number(),
+        timeoutMinutes: v.number(),
+        stopCondition: v.string(),
+      })),
       dependsOnBlueprintIds: v.array(v.string()),
       assertionIds: v.array(v.string()),
     })),
@@ -3145,6 +3167,7 @@ export default defineSchema({
     executionEnvironment: v.optional(v.union(
       v.literal("LOCAL"),
       v.literal("CLOUD"),
+      v.literal("REMOTE"),
       v.literal("POLICY_SELECTED"),
     )),
     policyRequirements: v.optional(v.object({
@@ -3708,13 +3731,20 @@ export default defineSchema({
     pullRequestUrl: v.optional(v.string()),
     publishedAt: v.optional(v.number()),
     escalationOwner: v.optional(v.string()),
-    evidenceState: v.optional(v.string()),
-    returnHandoff: v.optional(v.any()),
     routingDecisionId: v.optional(v.id("modelRoutingDecisions")),
+    returnHandoff: v.optional(v.object({
+      summary: v.string(),
+      changedArtifacts: v.array(v.string()),
+      failedChecks: v.array(v.string()),
+      unresolvedRisks: v.array(v.string()),
+      nextDecision: v.string(),
+      createdAt: v.number(),
+    })),
+    evidenceState: v.optional(v.union(v.literal("PASSING"), v.literal("FAILING"), v.literal("STALE"), v.literal("MISSING"), v.literal("UNKNOWN"))),
     worktree: v.optional(v.string()),
     failureReason: v.optional(v.string()),
     humanInterventions: v.optional(v.number()),
-    
+
     // Timing
     startedAt: v.number(),
     completedAt: v.optional(v.number()),
@@ -5523,6 +5553,7 @@ export default defineSchema({
     repoFullName: v.string(),
     branch: v.optional(v.string()),
     title: v.optional(v.string()),
+    prState: v.optional(v.union(v.literal("OPEN"), v.literal("CLOSED"), v.literal("MERGED"))),
     ciStatus: v.optional(
       v.union(
         v.literal("PASS"),
@@ -5577,8 +5608,8 @@ export default defineSchema({
     .index("by_work_order", ["workOrderId"])
     .index("by_repo", ["repoFullName"]),
 
-  // Immutable operator decisions for PR/CI evidence that cannot be correlated
-  // automatically to one exact WorkOrder and Attempt.
+  // Immutable operator decisions for valid PR/CI evidence that could not be
+  // correlated automatically to one exact WorkOrder and Attempt.
   prEvidenceReconciliations: defineTable({
     projectId: v.id("projects"),
     evaluationId: v.id("harnessPrChecks"),

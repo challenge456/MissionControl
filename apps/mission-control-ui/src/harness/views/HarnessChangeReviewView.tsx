@@ -56,11 +56,10 @@ export function HarnessChangeReviewView({
 
   const runIngest = async () => {
     const url = prUrl.trim();
-    if (!url || ingesting) return;
+    if (!url || !projectId || ingesting) return;
     setIngesting(true);
     setIngestMsg(null);
     try {
-      if (!projectId) throw new Error("Select a workspace before ingesting pull request evidence");
       const result = await ingest({ prUrl: url, projectId });
       setIngestMsg(
         `Ingested ${result.checkCount} check runs · CI ${result.ciStatus} · ${result.diffLineCount ?? 0} diff lines`

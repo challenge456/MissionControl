@@ -5,7 +5,7 @@
  */
 
 import { v } from "convex/values";
-import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
+import { mutation, query, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { appendOpEvent } from "./lib/armAudit";
 import { resolveAgentRef } from "./lib/agentResolver";
@@ -13,6 +13,10 @@ import { buildContinuousEvidenceLineage, buildEvidenceLineage, buildFileChanges,
 import { summarizeWorkflowObservability } from "./lib/workflowObservability";
 import { reconcileTerminalWorkflowSteps } from "./lib/workflowRunState";
 import { snapshotWorkflowDefinition } from "./lib/workflowSnapshot";
+import { assertAuthorizedDeliveryRecord, requireAuthorizedDeliveryScope } from "./lib/deliveryAuthorization";
+import { COMPANY_PERMISSIONS } from "./lib/companyAccess";
+import { buildExecutionRecoverySummary } from "./lib/executionRecovery";
+import { buildReviewPackage } from "./lib/reviewPackage";
 
 // ============================================================================
 // HELPERS
@@ -25,6 +29,10 @@ function generateRunId(): string {
 
 const runEventType = v.union(
   v.literal("RUN_STARTED"),
+  v.literal("EXECUTION_CLAIMED"),
+  v.literal("CANCELLATION_REQUESTED"),
+  v.literal("POLICY_DEVIATION"),
+  v.literal("PULL_REQUEST_CREATED"),
   v.literal("STEP_STARTED"),
   v.literal("STEP_COMPLETED"),
   v.literal("TOOL_CALLED"),
@@ -38,6 +46,7 @@ const runEventType = v.union(
   v.literal("RUN_PAUSED"),
   v.literal("RUN_RESUMED"),
   v.literal("RUN_FAILED"),
+  v.literal("RUN_CANCELED"),
   v.literal("RUN_COMPLETED")
 );
 
@@ -276,11 +285,6 @@ export const getById = query({
   },
 });
 
-export const getByIdInternal = internalQuery({
-  args: { id: v.id("workflowRuns") },
-  handler: async (ctx, args) => await ctx.db.get(args.id),
-});
-
 export const listEvents = query({
   args: { workflowRunId: v.id("workflowRuns") },
   handler: async (ctx, args) => {
@@ -313,9 +317,12 @@ export const getInspector = query({
     const run = await ctx.db.get(args.workflowRunId);
     if (!run) return null;
 
-    const [installedWorkflow, workOrder, events, artifacts, receipts, linkedAgentRuns] = await Promise.all([
+    const workOrder = run.workOrderId ? await ctx.db.get(run.workOrderId) : null;
+    const access = await requireAuthorizedDeliveryScope(ctx, workOrder?.projectId ?? run.projectId);
+    if (workOrder) assertAuthorizedDeliveryRecord(access, workOrder);
+
+    const [installedWorkflow, events, artifacts, receipts, linkedAgentRuns] = await Promise.all([
       ctx.db.query("workflows").withIndex("by_workflow_id", (q) => q.eq("workflowId", run.workflowId)).first(),
-      run.workOrderId ? ctx.db.get(run.workOrderId) : null,
       ctx.db.query("runEvents").withIndex("by_run_sequence", (q) => q.eq("workflowRunId", run._id)).collect(),
       ctx.db.query("runArtifacts").withIndex("by_run", (q) => q.eq("workflowRunId", run._id)).order("desc").collect(),
       run.workOrderId
@@ -344,6 +351,38 @@ export const getInspector = query({
       fileChanges,
       artifacts: artifacts as any,
       receipts: receipts as any,
+    });
+    const [workOrderReceipts, prChecks, missionPlan, factoryVersion] = await Promise.all([
+      workOrder
+        ? ctx.db.query("verificationReceipts").withIndex("by_work_order", (q) => q.eq("workOrderId", workOrder._id)).collect()
+        : [],
+      workOrder
+        ? ctx.db.query("harnessPrChecks").withIndex("by_work_order", (q) => q.eq("workOrderId", workOrder._id)).collect()
+        : [],
+      workOrder?.missionPlanId ? ctx.db.get(workOrder.missionPlanId) : null,
+      run.factoryDefinitionVersionId ? ctx.db.get(run.factoryDefinitionVersionId) : null,
+    ]);
+    const configuredMaxAttempts = Number(
+      workOrder?.metadata?.implementationPolicy?.maxAttempts
+      ?? factoryVersion?.budget?.maxAttempts,
+    );
+    const recovery = buildExecutionRecoverySummary({
+      run,
+      now: Date.now(),
+      maxAttempts: Number.isFinite(configuredMaxAttempts) ? configuredMaxAttempts : null,
+    });
+    const reviewPackage = buildReviewPackage({
+      now: Date.now(),
+      run,
+      workOrder,
+      receipts: workOrderReceipts,
+      prChecks,
+      events: orderedEvents,
+      fileChanges,
+      rollbackApproach: missionPlan?.rollbackApproach
+        ?? (typeof workOrder?.metadata?.rollbackApproach === "string"
+          ? workOrder.metadata.rollbackApproach
+          : null),
     });
     const inspectorRun = run.executionManifest
       ? {
@@ -381,6 +420,8 @@ export const getInspector = query({
       retryTimeline,
       evidenceLineage,
       continuousEvidenceLineage,
+      recovery,
+      reviewPackage,
     };
   },
 });
@@ -944,6 +985,84 @@ export const advance = mutation({
 });
 
 /**
+ * Durable operator cancellation. Active workers observe this through their
+ * signed heartbeat; unclaimed/expired work is canceled immediately.
+ */
+export const requestCancellation = mutation({
+  args: {
+    workflowRunId: v.id("workflowRuns"),
+    reason: v.string(),
+    actorId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.workflowRunId);
+    if (!run) throw new Error("Workflow run not found");
+    if (!run.workOrderId) throw new Error("Only WorkOrder execution runs can be canceled here.");
+    const workOrder = await ctx.db.get(run.workOrderId);
+    if (!workOrder) throw new Error("Linked WorkOrder not found");
+    const access = await requireAuthorizedDeliveryScope(ctx, workOrder.projectId, COMPANY_PERMISSIONS.UPDATE_DELIVERY);
+    assertAuthorizedDeliveryRecord(access, workOrder);
+    if (["COMPLETED", "FAILED", "CANCELED"].includes(run.status)) {
+      return { requested: false, status: run.status };
+    }
+    const now = Date.now();
+    const reason = args.reason.trim();
+    if (!reason) throw new Error("A cancellation reason is required.");
+    await ctx.db.patch(run._id, {
+      cancellationRequestedAt: run.cancellationRequestedAt ?? now,
+      cancellationRequestedBy: args.actorId ?? "operator",
+      checkpointSummary: `Cancellation requested: ${reason}`,
+      checkpointAt: now,
+    });
+    await insertRunEvent(ctx, {
+      workflowRunId: run._id,
+      workOrderId: run.workOrderId,
+      projectId: run.projectId,
+      tenantId: run.tenantId,
+      eventType: "CANCELLATION_REQUESTED",
+      workflowStep: run.steps[run.currentStepIndex]?.stepId,
+      actor: args.actorId ?? "operator",
+      status: "PENDING",
+      startedAt: now,
+      commandSummary: reason,
+      idempotencyKey: `cancellation-request:${run._id}`,
+    });
+    const hasActiveLease = Boolean(run.executionClaimId && (run.executionLeaseExpiresAt ?? 0) > now);
+    if (hasActiveLease) return { requested: true, status: run.status };
+
+    const steps = reconcileTerminalWorkflowSteps(run.steps, "CANCELED", reason, now);
+    await ctx.db.patch(run._id, {
+      status: "CANCELED",
+      steps,
+      completedAt: now,
+      failureReason: reason,
+      executionPhase: "TERMINAL",
+      executionLeaseExpiresAt: now,
+    });
+    await insertRunEvent(ctx, {
+      workflowRunId: run._id,
+      workOrderId: run.workOrderId,
+      projectId: run.projectId,
+      tenantId: run.tenantId,
+      eventType: "RUN_CANCELED",
+      workflowStep: run.steps[run.currentStepIndex]?.stepId,
+      actor: args.actorId ?? "operator",
+      status: "CANCELED",
+      startedAt: run.startedAt,
+      endedAt: now,
+      errorSummary: reason,
+      idempotencyKey: `run-canceled:${run._id}`,
+    });
+    await ctx.runMutation(internal.workOrders.syncExecutionOutcome, {
+      workflowRunId: run._id,
+      eventType: "RUN_CANCELED",
+      summary: `Workflow run ${run.runId} canceled before execution claim.`,
+    });
+    return { requested: true, status: "CANCELED" as const };
+  },
+});
+
+/**
  * Update workflow run status
  */
 export const updateStatus = mutation({
@@ -1056,11 +1175,6 @@ export const updateStatus = mutation({
         endedAt: updates.completedAt,
         idempotencyKey: `run-complete:${run.runId}`,
       });
-      if (run.workflowId === "loop-engineering") {
-        await ctx.scheduler.runAfter(0, internal.loopEngineering.projectWorkflowRunInternal, {
-          workflowRunId: run._id,
-        });
-      }
     }
 
     if (run.workOrderId) {
