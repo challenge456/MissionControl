@@ -19,26 +19,26 @@ export {
   workflowEvidenceDigest,
   type WorkflowExecutorConfig,
   type StepExecutionResult,
-} from "./executor";
+} from "./executor.js";
 
 export {
   render,
   extractVariables,
   validateContext,
   type RenderContext,
-} from "./renderer";
+} from "./renderer.js";
 
 export {
   buildBoundedContextUpdate,
   validateCompletionOutput,
-} from "./handoff";
+} from "./handoff.js";
 
 export {
   parse,
   meetsExpectations,
   extractData,
   type ParsedOutput,
-} from "./parser";
+} from "./parser.js";
 
 export {
   loadWorkflow,
@@ -47,7 +47,7 @@ export {
   type WorkflowDefinition,
   type WorkflowStepDefinition,
   type WorkflowValidationError,
-} from "./loader";
+} from "./loader.js";
 
 export {
   compileWorkflowGraph,
@@ -66,7 +66,7 @@ export {
   type WorkflowNodeKind,
   type WorkflowNodeStatus,
   type WorkflowTopology,
-} from "./graph";
+} from "./graph.js";
 
 export type {
   ExecutorAdapter,
@@ -78,7 +78,7 @@ export type {
   ExecutorHealth,
   ExecutorRequest,
   ExecutorResult,
-} from "./executorAdapter";
+} from "./executorAdapter.js";
 
 export {
   matchesRepositoryGlob,
@@ -86,7 +86,7 @@ export {
   validateChangedFileScope,
   type RepositoryScope,
   type RepositoryScopeViolation,
-} from "./repositoryScope";
+} from "./repositoryScope.js";
 
 export {
   VerificationEngine,
@@ -114,4 +114,4 @@ export {
   type VerificationVerdict,
   type Verifier,
   type WorkOrderVerificationSpec,
-} from "./verification";
+} from "./verification.js";

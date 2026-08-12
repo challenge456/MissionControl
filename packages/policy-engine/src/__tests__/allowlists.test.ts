@@ -7,7 +7,7 @@ import {
   containsSecrets,
   affectsProduction,
   validateToolAction,
-} from "../allowlists";
+} from "../allowlists.js";
 
 describe("isShellAllowed", () => {
   it("allows whitelisted commands", () => {

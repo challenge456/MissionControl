@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CoordinatorLoop, type CoordinatorState } from "../loop";
+import { CoordinatorLoop, type CoordinatorState } from "../loop.js";
 
 function buildState(overrides: Partial<CoordinatorState> = {}): CoordinatorState {
   return {

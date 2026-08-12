@@ -5,7 +5,7 @@ import {
   detectCycles,
   findReadyTasks,
   criticalPath,
-} from "../dependency-graph";
+} from "../dependency-graph.js";
 
 const TASKS = [
   { id: "1", title: "Setup DB", status: "DONE", dependsOn: [] },

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isAgentStale } from "../heartbeat";
+import { isAgentStale } from "../heartbeat.js";
 
 describe("isAgentStale", () => {
   const THRESHOLD_MS = 60_000; // 60 seconds

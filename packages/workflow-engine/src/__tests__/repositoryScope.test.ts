@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { matchesRepositoryGlob, validateChangedFileScope } from "../repositoryScope";
+import { matchesRepositoryGlob, validateChangedFileScope } from "../repositoryScope.js";
 
 describe("repository scope enforcement", () => {
   it("accepts files included by an approved scope", () => {

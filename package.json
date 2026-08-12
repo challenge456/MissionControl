@@ -22,6 +22,7 @@
     "dev:orchestration": "pnpm --filter @mission-control/orchestration-server dev",
     "build": "pnpm -r --if-present run build",
     "build:workspaces": "pnpm -r --filter './packages/*' build",
+    "smoke:orchestration-start": "pnpm run ci:prepare && pnpm --filter @mission-control/orchestration-server build && pnpm --filter @mission-control/orchestration-server smoke:start",
     "test": "pnpm -r --if-present run test && pnpm exec vitest run convex/__tests__",
     "test:integration": "npx vitest run",
     "test:e2e:arm": "npx playwright test -c playwright.config.ts tests/e2e/arm-ui.e2e.spec.ts",

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ExecutorAdapter, ExecutorRequest } from "../executorAdapter";
+import type { ExecutorAdapter, ExecutorRequest } from "../executorAdapter.js";
 
 describe("ExecutorAdapter contract", () => {
   it("requires the complete governed lifecycle surface", () => {

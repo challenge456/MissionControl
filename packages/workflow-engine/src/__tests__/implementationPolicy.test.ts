@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { implementationAttemptKey, isAllowedImplementationCommand, validateImplementationClaim } from "../implementationPolicy";
+import { implementationAttemptKey, isAllowedImplementationCommand, validateImplementationClaim } from "../implementationPolicy.js";
 
 function validClaim() {
   return {

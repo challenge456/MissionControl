@@ -4,6 +4,6 @@
  * Deterministic task state machine with strict transition validation.
  */
 
-export * from "./states";
-export * from "./transitions";
-export * from "./validator";
+export * from "./states.js";
+export * from "./transitions.js";
+export * from "./validator.js";

@@ -7,6 +7,7 @@
     "dev": "tsx watch src/index.ts",
     "start": "node dist/apps/orchestration-server/src/index.js",
     "build": "tsc",
+    "smoke:start": "node ../../scripts/smoke-orchestration-start.mjs",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit"
   },

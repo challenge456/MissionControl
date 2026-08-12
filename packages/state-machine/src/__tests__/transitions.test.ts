@@ -4,7 +4,7 @@ import {
   getValidTransitions,
   findTransitionRule,
   isValidTransition,
-} from "../transitions";
+} from "../transitions.js";
 
 describe("Transition Rules", () => {
   it("has no duplicate rules", () => {

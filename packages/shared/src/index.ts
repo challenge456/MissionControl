@@ -4,9 +4,9 @@
  * Shared types, constants, and utilities used across all packages.
  */
 
-export * from "./types";
-export * from "./constants";
-export * from "./utils";
-export * from "./logger";
-export * from "./retry";
-export * from "./serviceCommandEnvelope";
+export * from "./types/index.js";
+export * from "./constants.js";
+export * from "./utils.js";
+export * from "./logger.js";
+export * from "./retry.js";
+export * from "./serviceCommandEnvelope.js";

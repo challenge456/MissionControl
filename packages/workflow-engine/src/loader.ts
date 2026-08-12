@@ -14,7 +14,7 @@ import {
   type WorkflowFailurePolicy,
   type WorkflowNodeKind,
   type WorkflowTopology,
-} from "./graph";
+} from "./graph.js";
 
 export interface WorkflowStepDefinition {
   id: string;

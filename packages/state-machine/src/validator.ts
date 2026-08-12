@@ -5,8 +5,8 @@
  */
 
 import { TaskStatus, TransitionActor } from "@mission-control/shared";
-import { findTransitionRule, isValidTransition, TRANSITION_RULES } from "./transitions";
-import { getRequiredArtifacts, isTerminalStatus } from "./states";
+import { findTransitionRule, isValidTransition, TRANSITION_RULES } from "./transitions.js";
+import { getRequiredArtifacts, isTerminalStatus } from "./states.js";
 
 export interface ValidationResult {
   valid: boolean;

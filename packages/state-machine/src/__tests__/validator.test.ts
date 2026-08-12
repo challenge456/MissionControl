@@ -6,7 +6,7 @@ import {
   getValidNextStatuses,
   explainTransition,
   TransitionContext,
-} from "../validator";
+} from "../validator.js";
 
 describe("validateTransition", () => {
   it("allows valid transition with correct actor", () => {

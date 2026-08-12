@@ -10,8 +10,8 @@ import {
   Agent,
   Task,
 } from "@mission-control/shared";
-import { TOOL_RISK_MAP, AUTONOMY_RULES } from "./rules";
-import { validateToolAction, containsSecrets, affectsProduction } from "./allowlists";
+import { TOOL_RISK_MAP, AUTONOMY_RULES } from "./rules.js";
+import { validateToolAction, containsSecrets, affectsProduction } from "./allowlists.js";
 
 /**
  * Classify tool risk level

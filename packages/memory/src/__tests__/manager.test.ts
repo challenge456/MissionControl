@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { MemoryManager } from "../manager";
+import { MemoryManager } from "../manager.js";
 
 describe("MemoryManager", () => {
   it("initializes all three memory tiers", () => {

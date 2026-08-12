@@ -15,9 +15,9 @@ import {
   getRunnableNodeIndexes,
   validateStructuredOutput,
   type WorkflowNodeStatus,
-} from "./graph";
-import { render, validateContext } from "./renderer";
-import { buildBoundedContextUpdate, validateCompletionOutput } from "./handoff";
+} from "./graph.js";
+import { render, validateContext } from "./renderer.js";
+import { buildBoundedContextUpdate, validateCompletionOutput } from "./handoff.js";
 
 export interface WorkflowExecutorConfig {
   convexUrl: string;

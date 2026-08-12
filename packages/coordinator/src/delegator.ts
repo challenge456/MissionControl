@@ -9,7 +9,7 @@
  *   - Budget remaining
  */
 
-import { Subtask } from "./decomposer";
+import { Subtask } from "./decomposer.js";
 
 export interface AgentCandidate {
   id: string;

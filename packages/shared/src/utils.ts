@@ -4,7 +4,7 @@
  * Common utility functions used across packages.
  */
 
-import { SECRET_PATTERNS } from "./constants";
+import { SECRET_PATTERNS } from "./constants.js";
 
 /**
  * Generate idempotency key

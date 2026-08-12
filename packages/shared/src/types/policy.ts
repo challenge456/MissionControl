@@ -4,9 +4,9 @@
  * Policies define risk classification, approval rules, budgets, and limits.
  */
 
-import { AutonomyLevel } from "./agent";
-import { TaskType } from "./task";
-import { ToolRisk } from "./toolCall";
+import { AutonomyLevel } from "./agent.js";
+import { TaskType } from "./task.js";
+import { ToolRisk } from "./toolCall.js";
 
 export interface AutonomyRules {
   [key: string]: {

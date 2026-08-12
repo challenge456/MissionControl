@@ -10,6 +10,6 @@
  *   - Error streak management
  */
 
-export { loadPersona, validatePersona, type AgentPersona } from "./persona";
-export { AgentLifecycle, type AgentLifecycleConfig } from "./lifecycle";
-export { HeartbeatMonitor, type HeartbeatConfig } from "./heartbeat";
+export { loadPersona, validatePersona, type AgentPersona } from "./persona.js";
+export { AgentLifecycle, type AgentLifecycleConfig } from "./lifecycle.js";
+export { HeartbeatMonitor, type HeartbeatConfig } from "./heartbeat.js";

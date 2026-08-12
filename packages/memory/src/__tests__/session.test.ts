@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { SessionMemory } from "../session";
+import { SessionMemory } from "../session.js";
 
 describe("SessionMemory", () => {
   it("starts empty", () => {

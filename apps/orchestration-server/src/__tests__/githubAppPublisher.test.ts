@@ -1,6 +1,6 @@
 import { generateKeyPairSync } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
-import { GithubAppPublisher, parseGithubRepository } from "../githubAppPublisher";
+import { GithubAppPublisher, parseGithubRepository } from "../githubAppPublisher.js";
 
 function privateKey() {
   return generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey.export({ type: "pkcs8", format: "pem" }).toString();

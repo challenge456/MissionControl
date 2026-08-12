@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { classifyRisk, requiresApproval, canSpawn, evaluatePolicy } from "../evaluator";
+import { classifyRisk, requiresApproval, canSpawn, evaluatePolicy } from "../evaluator.js";
 import { Agent, Task } from "@mission-control/shared";
 
 // Test fixtures
