@@ -27,6 +27,7 @@ const input: FactoryExecutionManifestInput = {
   workOrder: {
     title: "Add the buyer gate",
     desiredOutcome: "Buyers see a trusted decision gate",
+    riskLevel: "MEDIUM",
     acceptanceCriteria: [{ id: "ac-1", title: "Gate is visible" }],
     constraints: ["No schema changes"],
   },
@@ -62,6 +63,7 @@ describe("Factory execution manifest", () => {
       excludedPaths: ["apps/ui/generated/**"],
     });
     expect(result.manifest.intent).toMatchObject({ title: "Add the buyer gate", acceptanceCriterionIds: ["ac-1"] });
+    expect(result.manifest.workOrderSpecification).toMatchObject({ riskLevel: "MEDIUM", acceptanceCriteria: [{ id: "ac-1" }] });
     expect(result.manifest.compiledPrompt).toContain("The control plane owns those actions.");
     expect(result.manifest.compiledPromptHash).toMatch(/^sha256:[a-f0-9]{64}$/);
   });
@@ -71,6 +73,15 @@ describe("Factory execution manifest", () => {
     const second = buildFactoryExecutionManifest({
       ...input,
       codeScopes: [{ ...input.codeScopes[0], includePaths: ["apps/admin/**"] }],
+    }).digest;
+    expect(second).not.toBe(first);
+  });
+
+  it("changes its digest when the verification contract changes", () => {
+    const first = buildFactoryExecutionManifest(input).digest;
+    const second = buildFactoryExecutionManifest({
+      ...input,
+      workOrder: { ...input.workOrder, verificationContract: { schemaVersion: 1, enforcementMode: "ENFORCED", requireHumanReview: false, checks: [] } },
     }).digest;
     expect(second).not.toBe(first);
   });

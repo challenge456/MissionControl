@@ -321,12 +321,18 @@ export const getInspector = query({
     const access = await requireAuthorizedDeliveryScope(ctx, workOrder?.projectId ?? run.projectId);
     if (workOrder) assertAuthorizedDeliveryRecord(access, workOrder);
 
-    const [installedWorkflow, events, artifacts, receipts, linkedAgentRuns] = await Promise.all([
+    const [installedWorkflow, events, artifacts, receipts, verificationRuns, evidenceEnvelopes, linkedAgentRuns] = await Promise.all([
       ctx.db.query("workflows").withIndex("by_workflow_id", (q) => q.eq("workflowId", run.workflowId)).first(),
       ctx.db.query("runEvents").withIndex("by_run_sequence", (q) => q.eq("workflowRunId", run._id)).collect(),
       ctx.db.query("runArtifacts").withIndex("by_run", (q) => q.eq("workflowRunId", run._id)).order("desc").collect(),
       run.workOrderId
         ? ctx.db.query("verificationReceipts").withIndex("by_run", (q) => q.eq("workflowRunId", run._id)).collect()
+        : [],
+      run.workOrderId
+        ? ctx.db.query("verificationRuns").withIndex("by_run", (q) => q.eq("workflowRunId", run._id)).order("desc").collect()
+        : [],
+      run.workOrderId
+        ? ctx.db.query("evidenceEnvelopes").withIndex("by_run", (q) => q.eq("workflowRunId", run._id)).order("desc").collect()
         : [],
       ctx.db.query("runs").withIndex("by_workflow_run", (q) => q.eq("workflowRunId", run._id)).take(201),
     ]);
@@ -401,6 +407,8 @@ export const getInspector = query({
       events: orderedEvents,
       artifacts,
       verificationReceipts: receipts,
+      verificationRuns,
+      evidenceEnvelopes,
       summary: {
         revisionNumber: run.workOrderRevisionNumber ?? null,
         currentStep: run.steps[run.currentStepIndex]?.stepId ?? null,

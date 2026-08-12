@@ -36,8 +36,10 @@ export interface ApprovalDecisionLike {
 }
 
 export interface VerificationReceiptLike {
-  acceptanceCriterionId: string;
+  receiptScope?: "ACCEPTANCE_CRITERION" | "WORK_ORDER";
+  acceptanceCriterionId?: string;
   status: VerificationReceiptStatus;
+  verdict?: "VERIFIED" | "NOT_VERIFIED" | "BLOCKED" | "REQUIRES_HUMAN_REVIEW";
   waiverApprovalDecisionId?: string;
   _creationTime?: number;
   recordedAt?: number;
@@ -111,9 +113,16 @@ export function latestApprovalByType<T extends ApprovalDecisionLike>(approvals: 
 export function latestReceiptByCriterion<T extends VerificationReceiptLike>(receipts: T[]) {
   const latest = new Map<string, T>();
   for (const receipt of [...receipts].sort((a, b) => timestampOf(b) - timestampOf(a))) {
+    if (receipt.receiptScope === "WORK_ORDER" || !receipt.acceptanceCriterionId) continue;
     if (!latest.has(receipt.acceptanceCriterionId)) latest.set(receipt.acceptanceCriterionId, receipt);
   }
   return latest;
+}
+
+export function latestWorkOrderReceipt<T extends VerificationReceiptLike>(receipts: T[]) {
+  return [...receipts]
+    .sort((a, b) => timestampOf(b) - timestampOf(a))
+    .find((receipt) => receipt.receiptScope === "WORK_ORDER");
 }
 
 export function deriveApprovalStatus(args: {
@@ -165,6 +174,7 @@ export function evaluateAcceptance(args: {
 }) {
   const latestApprovals = latestApprovalByType(args.approvalDecisions);
   const latestReceipts = latestReceiptByCriterion(args.verificationReceipts);
+  const workOrderReceipt = latestWorkOrderReceipt(args.verificationReceipts);
   const requiredTypes = requiredApprovalTypes(args);
   const approvalStatus = deriveApprovalStatus({
     riskLevel: args.riskLevel,
@@ -207,6 +217,9 @@ export function evaluateAcceptance(args: {
   if (staleCriteriaIds.length > 0) blockingReasons.push(`Stale criteria: ${staleCriteriaIds.join(", ")}`);
   if (missingCriteriaIds.length > 0) blockingReasons.push(`Missing receipts: ${missingCriteriaIds.join(", ")}`);
   if (waiverWithoutApprovalCriteriaIds.length > 0) blockingReasons.push(`Waiver approval missing: ${waiverWithoutApprovalCriteriaIds.join(", ")}`);
+  if (workOrderReceipt && workOrderReceipt.verdict !== "VERIFIED") {
+    blockingReasons.push(`Work Order verification verdict: ${workOrderReceipt.verdict ?? "NOT_VERIFIED"}`);
+  }
 
   return {
     approvalStatus,
@@ -218,6 +231,7 @@ export function evaluateAcceptance(args: {
     staleCriteriaIds,
     waivedCriteriaIds,
     waiverWithoutApprovalCriteriaIds,
+    verificationVerdict: workOrderReceipt?.verdict,
     blockingReasons,
     eligible: blockingReasons.length === 0,
   };

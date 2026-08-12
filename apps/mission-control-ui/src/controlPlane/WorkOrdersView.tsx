@@ -90,18 +90,25 @@ function criteriaFromText(value: string, existingCriteria: Array<{ id: string; t
     });
 }
 
-function latestByCriterion<T extends { acceptanceCriterionId: string; recordedAt: number }>(receipts: T[]) {
+function latestByCriterion<T extends { acceptanceCriterionId?: string; receiptScope?: string; recordedAt: number }>(receipts: T[]) {
   const latest = new Map<string, T>();
   [...receipts].sort((a, b) => b.recordedAt - a.recordedAt).forEach((receipt) => {
+    if (!receipt.acceptanceCriterionId || receipt.receiptScope === "WORK_ORDER") return;
     if (!latest.has(receipt.acceptanceCriterionId)) latest.set(receipt.acceptanceCriterionId, receipt);
   });
   return latest;
+}
+
+function nonEmptyLines(value: string) {
+  return value.split("\n").map((line) => line.trim()).filter(Boolean);
 }
 
 export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const hadRequestedWorkOrder = useRef(Boolean(searchParams.get("workOrder")));
+  const mobileDetailPanelRef = useRef<HTMLDivElement>(null);
+  const mobileBackButtonRef = useRef<HTMLButtonElement>(null);
   const [filters, setFilters] = useState<WorkOrderQueueFilters>(DEFAULT_WORK_ORDER_FILTERS);
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("workOrder"));
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
@@ -197,6 +204,16 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
     next.delete("criterion");
     setSearchParams(next, { replace: true });
   };
+
+  useEffect(() => {
+    if (!mobileDetailOpen || !globalThis.matchMedia?.("(max-width: 1279px)").matches) return;
+    const frame = requestAnimationFrame(() => {
+      mobileDetailPanelRef.current?.scrollIntoView({ block: "start" });
+      mobileBackButtonRef.current?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [mobileDetailOpen, selectedId]);
+
   const createWorkOrder = useMutation(api.workOrders.create);
   const dispatchWorkOrder = useMutation(api.workOrders.dispatch);
   const requestApprovalDecision = useMutation(api.workOrders.requestApprovalDecision);
@@ -239,6 +256,11 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
     const next = new URLSearchParams(searchParams);
     next.delete("workOrder");
     setSearchParams(next, { replace: true });
+    requestAnimationFrame(() => {
+      const selectedRow = document.querySelector<HTMLButtonElement>(`[data-work-order-id="${selectedId ?? ""}"]`);
+      selectedRow?.scrollIntoView({ block: "nearest" });
+      selectedRow?.focus({ preventScroll: true });
+    });
   };
 
   const repositories = useMemo(
@@ -296,6 +318,12 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
       ...receipt,
       recordedAt: receipt.recordedAt ?? receipt._creationTime ?? 0,
     }))),
+    [selected]
+  );
+  const latestWorkOrderReceipt = useMemo(
+    () => [...(selected?.verificationReceipts ?? [])]
+      .filter((receipt) => receipt.receiptScope === "WORK_ORDER")
+      .sort((a, b) => (b.recordedAt ?? b._creationTime) - (a.recordedAt ?? a._creationTime))[0] ?? null,
     [selected]
   );
   const revisionSplit = useMemo(
@@ -363,7 +391,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
         description="Requested outcomes, acceptance criteria, and governed execution in one queue."
         icon={<ClipboardList className="h-5 w-5" />}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" size="sm" onClick={handleSeed} disabled={seeding}>
               <Sparkles className="mr-1.5 h-3.5 w-3.5" />
               {seeding ? "Seeding…" : "Seed demo"}
@@ -435,6 +463,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                   <button
                     key={item._id}
                     type="button"
+                    data-work-order-id={item._id}
                     onClick={() => {
                       selectWorkOrder(item._id);
                       setMobileDetailOpen(true);
@@ -445,7 +474,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="text-sm font-medium text-foreground">{item.title}</div>
-                        <div className="mt-1 text-xs text-muted-foreground line-clamp-2">{item.desiredOutcome}</div>
+                        <div className={`mt-1 text-xs line-clamp-2 ${selectedRow ? "text-foreground/75" : "text-muted-foreground"}`}>{item.desiredOutcome}</div>
                       </div>
                       <Badge variant="outline" className={RISK_STYLES[item.riskLevel] ?? ""}>{item.riskLevel}</Badge>
                     </div>
@@ -463,7 +492,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                       ) : null}
                     </div>
 
-                    <div className="mt-3 grid gap-2 text-xs text-muted-foreground md:grid-cols-2">
+                    <div className={`mt-3 grid gap-2 text-xs md:grid-cols-2 ${selectedRow ? "text-foreground/75" : "text-muted-foreground"}`}>
                       <div>
                         <span className="text-foreground/80">Assigned:</span> {item.assignedAgent ?? item.assignedSquad ?? "Unassigned"}
                       </div>
@@ -483,12 +512,13 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
             )}
           </div>
 
-          <Card className={`${mobileDetailOpen ? "block" : "hidden xl:block"} min-h-[420px] p-5`}>
+          <Card ref={mobileDetailPanelRef} className={`${mobileDetailOpen ? "block" : "hidden xl:block"} min-h-[420px] scroll-mt-4 p-5`}>
             {!selected ? (
               <div className="text-sm text-muted-foreground">Select a work order to inspect requested outcome, criteria, and linked execution.</div>
             ) : (
               <div className="space-y-5">
                 <Button
+                  ref={mobileBackButtonRef}
                   size="sm"
                   variant="outline"
                   className="xl:hidden"
@@ -529,6 +559,18 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                     <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{selected.workOrder.context}</p>
                   ) : null}
                 </Section>
+
+                <ExecutableSpecificationPanel workOrder={selected.workOrder} />
+
+                <IndependentVerificationPanel
+                  receipt={latestWorkOrderReceipt}
+                  verificationRuns={selected.verificationRuns ?? []}
+                  onInspect={(workflowRunId, receiptId) => {
+                    setInspectorRunId(workflowRunId as Id<"workflowRuns">);
+                    setInspectorReceiptId(receiptId as Id<"verificationReceipts">);
+                    setInspectorCriterionId(null);
+                  }}
+                />
 
                 {scopePolicyRequirements ? (
                   <Section title="Governed execution scope">
@@ -708,8 +750,14 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                           <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />
                           Request approval
                         </Button>
-                        <Button size="sm" variant="outline" onClick={() => { setGovernanceError(null); setReceiptOpen(true); }}>
-                          Record receipt
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => { setGovernanceError(null); setReceiptOpen(true); }}
+                          disabled={selected.workOrder.verificationContract?.enforcementMode === "ENFORCED"}
+                          title={selected.workOrder.verificationContract?.enforcementMode === "ENFORCED" ? "Enforced Work Orders require a server-generated independent receipt." : undefined}
+                        >
+                          Record legacy receipt
                         </Button>
                         <Button
                           size="sm"
@@ -1206,7 +1254,61 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
               riskLevel: payload.riskLevel as "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
               requestedBy: payload.requestedBy || undefined,
               assignedAgent: payload.assignedAgent || undefined,
-              acceptanceCriteria: criteriaFromText(payload.acceptanceCriteria),
+              requirements: nonEmptyLines(payload.requirements || payload.acceptanceCriteria).map((description, index) => ({
+                id: `req-${index + 1}`,
+                title: description,
+                description,
+                type: "FUNCTIONAL" as const,
+                priority: "MUST" as const,
+              })),
+              acceptanceCriteria: criteriaFromText(payload.acceptanceCriteria).map((criterion, index) => ({
+                ...criterion,
+                requirementIds: [`req-${Math.min(index + 1, nonEmptyLines(payload.requirements || payload.acceptanceCriteria).length)}`],
+                requiredEvidence: [{ category: payload.evidenceCategory as any, minimumCount: 1, independent: true }],
+                verificationMethod: "COMMAND" as const,
+              })),
+              positiveConstraints: ["Implement only the declared outcome and preserve unrelated behavior."],
+              negativeConstraints: [
+                { id: "no-plaintext-secrets", type: "NO_PLAINTEXT_SECRETS" as const, description: "Do not introduce plaintext credentials or secrets." },
+                { id: "no-assertion-weakening", type: "NO_ASSERTION_WEAKENING" as const, description: "Do not weaken or skip existing assertions." },
+                { id: "no-test-removal", type: "NO_TEST_REMOVAL" as const, description: "Do not remove existing tests." },
+                ...nonEmptyLines(payload.deniedPaths).map((path, index) => ({ id: `protected-path-${index + 1}`, type: "PROTECTED_PATH" as const, description: `Do not modify ${path}.`, paths: [path] })),
+              ],
+              dataBoundaries: nonEmptyLines(payload.deniedPaths).map((path, index) => ({ id: `protected-file-${index + 1}`, kind: "PROTECTED_FILE" as const, description: `Protected repository path: ${path}`, paths: [path] })),
+              changeBudget: {
+                maxFilesChanged: Number(payload.maxFilesChanged),
+                maxLinesChanged: Number(payload.maxLinesChanged),
+                allowedPaths: nonEmptyLines(payload.allowedPaths),
+                deniedPaths: nonEmptyLines(payload.deniedPaths),
+                allowedCommandClasses: [payload.commandClass as any],
+                prohibitedCommandClasses: ["DESTRUCTIVE" as const, "PRODUCTION_ACCESS" as const, "SECRETS_ACCESS" as const, "PUBLISH" as const],
+                allowDependencyChanges: false,
+                allowSchemaChanges: false,
+                allowMigrations: false,
+                allowInfrastructureChanges: false,
+              },
+              verificationContract: {
+                schemaVersion: 1,
+                enforcementMode: payload.enforcementMode as "ENFORCED" | "OBSERVE_ONLY",
+                requireHumanReview: payload.requireHumanReview === "yes",
+                checks: [{
+                  id: "independent-command",
+                  name: "Independent verification command",
+                  category: payload.verificationCategory as any,
+                  verifierId: "factory-command/v1",
+                  mandatory: true,
+                  acceptanceCriterionIds: criteriaFromText(payload.acceptanceCriteria).map((criterion) => criterion.id),
+                  evidenceCategory: payload.evidenceCategory as any,
+                  command: {
+                    executable: payload.verificationExecutable,
+                    args: payload.verificationArgs.split(/\s+/).filter(Boolean),
+                    commandClass: payload.commandClass as any,
+                    timeoutMs: 10 * 60_000,
+                  },
+                }],
+              },
+              autonomyLevel: "LEVEL_2",
+              requiredApprovals: payload.requireHumanReview === "yes" ? ["HUMAN_REVIEW"] : undefined,
               sourceOfTruthRefs: payload.repository
                 ? [{ kind: "REPO", label: payload.repository, location: `github.com/${payload.repository}` }]
                 : undefined,
@@ -1469,11 +1571,118 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function MetaRow({ label, value }: { label: string; value?: string | null }) {
+function ExecutableSpecificationPanel({ workOrder }: { workOrder: any }) {
+  const contract = workOrder.verificationContract;
+  const budget = workOrder.changeBudget;
   return (
-    <div className="flex items-start justify-between gap-3">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="text-right text-foreground/85">{value ?? "—"}</dd>
+    <Section title="Executable specification">
+      <div className="overflow-hidden rounded-xl border border-[var(--panel-line)] bg-background/30">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--panel-line)] px-4 py-3">
+          <div>
+            <div className="text-sm font-medium text-foreground">Specification v{workOrder.specificationVersion ?? 1}</div>
+            <p className="mt-1 text-xs text-muted-foreground">Frozen requirements, negative space, budget, and proof obligations.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="outline">Autonomy {workOrder.autonomyLevel ?? "Not declared"}</Badge>
+            <Badge variant="outline">{contract?.enforcementMode ?? "NO CONTRACT"}</Badge>
+          </div>
+        </div>
+        <div className="grid gap-px bg-[var(--panel-line)]">
+          <div className="bg-card p-4">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Requirements</div>
+            {workOrder.requirements?.length ? (
+              <ol className="mt-3 space-y-2">
+                {workOrder.requirements.map((requirement: any) => (
+                  <li key={requirement.id} className="text-sm text-foreground/85">
+                    <span className="mr-2 font-mono text-xs text-muted-foreground">{requirement.id}</span>{requirement.title}
+                  </li>
+                ))}
+              </ol>
+            ) : <p className="mt-3 text-sm text-warning">No first-class requirements were declared.</p>}
+          </div>
+          <div className="bg-card p-4">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Risk classification</div>
+            <div className="mt-3 flex items-center gap-2"><Badge variant="outline" className={RISK_STYLES[workOrder.riskLevel] ?? ""}>{workOrder.riskLevel}</Badge><span className="text-xs text-muted-foreground">server classified</span></div>
+            <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
+              {(workOrder.riskReasons ?? ["No classification reasons recorded."]).map((reason: string) => <li key={reason}>• {reason}</li>)}
+            </ul>
+          </div>
+          <div className="bg-card p-4">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Change budget</div>
+            {budget ? (
+              <dl className="mt-3 grid grid-cols-2 gap-3 text-xs">
+                <MetaRow label="Maximum files" value={String(budget.maxFilesChanged)} />
+                <MetaRow label="Maximum lines" value={String(budget.maxLinesChanged)} />
+                <MetaRow className="col-span-2" label="Allowed paths" value={budget.allowedPaths.join(", ") || "None"} />
+                <MetaRow className="col-span-2" label="Denied paths" value={budget.deniedPaths.join(", ") || "None"} />
+              </dl>
+            ) : <p className="mt-3 text-sm text-warning">No change budget configured.</p>}
+          </div>
+          <div className="bg-card p-4">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Negative-space constraints</div>
+            {workOrder.negativeConstraints?.length ? (
+              <ul className="mt-3 space-y-2 text-xs text-muted-foreground">
+                {workOrder.negativeConstraints.map((constraint: any) => <li key={constraint.id} className="break-words"><span className="font-mono text-foreground/75 [overflow-wrap:anywhere]">{constraint.type}</span> · {constraint.description}</li>)}
+              </ul>
+            ) : <p className="mt-3 text-sm text-warning">No negative constraints declared.</p>}
+          </div>
+        </div>
+        <div className="border-t border-[var(--panel-line)] px-4 py-3">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Mandatory verification checks</div>
+          {contract?.checks?.length ? (
+            <div className="mt-3 space-y-2">
+              {contract.checks.map((check: any) => (
+                <div key={check.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--panel-line)] px-3 py-2 text-xs">
+                  <div><span className="font-medium text-foreground">{check.name}</span><span className="ml-2 text-muted-foreground">{check.category} · {check.verifierId}</span></div>
+                  <code className="max-w-full break-words text-muted-foreground [overflow-wrap:anywhere]">{check.command ? `${check.command.executable} ${check.command.args.join(" ")}` : "No command configured"}</code>
+                </div>
+              ))}
+            </div>
+          ) : <p className="mt-3 text-sm text-warning">No executable verification checks configured.</p>}
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function IndependentVerificationPanel({ receipt, verificationRuns, onInspect }: { receipt: any; verificationRuns: any[]; onInspect: (workflowRunId: string, receiptId: string) => void }) {
+  const verdict = receipt?.verdict ?? "NOT_VERIFIED";
+  const successful = verdict === "VERIFIED";
+  return (
+    <Section title="Independent verification">
+      <div className={`rounded-xl border p-4 ${successful ? "border-success/30 bg-success/10" : "border-warning/30 bg-warning/10"}`}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className={`text-lg font-semibold ${successful ? "text-success" : "text-warning"}`}>{receipt ? verdict : "No Work Order receipt"}</div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {receipt ? receipt.verdictReasons?.join(" ") : "This Work Order has not produced server-recomputed proof. Agent-reported commands do not count as verification."}
+            </p>
+          </div>
+          {receipt ? <Badge variant="outline">{receipt.requirementsPassed ?? 0} passed · {receipt.requirementsFailed ?? 0} missing</Badge> : null}
+        </div>
+        {receipt?.checks?.length ? (
+          <div className="mt-4 overflow-x-auto rounded-lg border border-[var(--panel-line)] bg-card">
+            <table className="w-full text-left text-xs">
+              <thead className="border-b border-[var(--panel-line)] text-muted-foreground"><tr><th className="px-3 py-2 font-medium">Check</th><th className="px-3 py-2 font-medium">Status</th><th className="px-3 py-2 font-medium">Evidence</th><th className="px-3 py-2 font-medium">Summary</th></tr></thead>
+              <tbody className="divide-y divide-[var(--panel-line)]">
+                {receipt.checks.map((check: any) => <tr key={check.checkId}><td className="px-3 py-2 text-foreground">{check.name}</td><td className={`px-3 py-2 font-medium ${check.status === "PASS" ? "text-success" : "text-danger"}`}>{check.status}</td><td className="px-3 py-2 text-muted-foreground">{check.evidenceIds?.length ?? 0}</td><td className="max-w-md px-3 py-2 text-muted-foreground">{check.summary}</td></tr>)}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+        {receipt?.violations?.length ? <div role="alert" className="mt-3 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">{receipt.violations.join(" ")}</div> : null}
+        {receipt?.workflowRunId ? <Button className="mt-3" size="sm" variant="outline" onClick={() => onInspect(receipt.workflowRunId, receipt._id)}>Inspect evidence lineage</Button> : null}
+        {verificationRuns.length > 1 ? <p className="mt-3 text-xs text-muted-foreground">{verificationRuns.length - 1} prior verification run{verificationRuns.length === 2 ? "" : "s"} retained for audit.</p> : null}
+      </div>
+    </Section>
+  );
+}
+
+function MetaRow({ label, value, className = "" }: { label: string; value?: string | null; className?: string }) {
+  return (
+    <div className={`flex min-w-0 items-start justify-between gap-3 ${className}`}>
+      <dt className="shrink-0 text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 break-words text-right text-foreground/85 [overflow-wrap:anywhere]">{value ?? "—"}</dd>
     </div>
   );
 }
@@ -1902,7 +2111,19 @@ function CreateWorkOrderDialog({
     riskLevel: string;
     requestedBy: string;
     assignedAgent: string;
+    requirements: string;
     acceptanceCriteria: string;
+    allowedPaths: string;
+    deniedPaths: string;
+    maxFilesChanged: string;
+    maxLinesChanged: string;
+    enforcementMode: string;
+    verificationCategory: string;
+    evidenceCategory: string;
+    commandClass: string;
+    verificationExecutable: string;
+    verificationArgs: string;
+    requireHumanReview: string;
   }) => Promise<void>;
 }) {
   const [title, setTitle] = useState("");
@@ -1915,50 +2136,62 @@ function CreateWorkOrderDialog({
   const [riskLevel, setRiskLevel] = useState("MEDIUM");
   const [requestedBy, setRequestedBy] = useState("Hermes");
   const [assignedAgent, setAssignedAgent] = useState("Pi");
+  const [requirements, setRequirements] = useState("");
   const [acceptanceCriteria, setAcceptanceCriteria] = useState("");
+  const [allowedPaths, setAllowedPaths] = useState("apps/mission-control-ui/src/**");
+  const [deniedPaths, setDeniedPaths] = useState("convex/schema.ts\n.github/workflows/**\n.env*");
+  const [maxFilesChanged, setMaxFilesChanged] = useState("8");
+  const [maxLinesChanged, setMaxLinesChanged] = useState("400");
+  const [enforcementMode, setEnforcementMode] = useState("ENFORCED");
+  const [verificationCategory, setVerificationCategory] = useState("TYPECHECK");
+  const [evidenceCategory, setEvidenceCategory] = useState("STATIC_ANALYSIS");
+  const [commandClass, setCommandClass] = useState("TYPECHECK");
+  const [verificationExecutable, setVerificationExecutable] = useState("pnpm");
+  const [verificationArgs, setVerificationArgs] = useState("--filter mission-control-ui typecheck");
+  const [requireHumanReview, setRequireHumanReview] = useState("no");
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="sm:max-w-[720px]">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[980px]">
         <DialogHeader>
           <DialogTitle>Create WorkOrder</DialogTitle>
-          <DialogDescription>Define value in terms of outcome, repository context, and acceptance criteria.</DialogDescription>
+          <DialogDescription>Define an executable contract: intent, bounded change authority, and independent proof before pull-request creation.</DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-3">
             <div className="space-y-1.5">
               <Label>Title</Label>
-              <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Work order title" />
+              <Input aria-label="Work Order title" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Work order title" />
             </div>
             <div className="space-y-1.5">
               <Label>Desired outcome</Label>
-              <Textarea value={desiredOutcome} onChange={(event) => setDesiredOutcome(event.target.value)} rows={4} placeholder="What value should be delivered?" />
+              <Textarea aria-label="Desired outcome" value={desiredOutcome} onChange={(event) => setDesiredOutcome(event.target.value)} rows={4} placeholder="What value should be delivered?" />
             </div>
             <div className="space-y-1.5">
               <Label>Context</Label>
-              <Textarea value={context} onChange={(event) => setContext(event.target.value)} rows={4} placeholder="Business or engineering context" />
+              <Textarea aria-label="Context" value={context} onChange={(event) => setContext(event.target.value)} rows={4} placeholder="Business or engineering context" />
             </div>
           </div>
 
           <div className="space-y-3">
             <div className="space-y-1.5">
               <Label>Workflow</Label>
-              <Input value={workflowId} onChange={(event) => setWorkflowId(event.target.value)} placeholder="feature-dev" />
+              <Input aria-label="Workflow" value={workflowId} onChange={(event) => setWorkflowId(event.target.value)} placeholder="feature-dev" />
             </div>
             <div className="space-y-1.5">
               <Label>Repository</Label>
-              <Input value={repository} onChange={(event) => setRepository(event.target.value)} placeholder="owner/repo" />
+              <Input aria-label="Repository" value={repository} onChange={(event) => setRepository(event.target.value)} placeholder="owner/repo" />
             </div>
             <div className="space-y-1.5">
               <Label>Branch strategy</Label>
-              <Input value={branchStrategy} onChange={(event) => setBranchStrategy(event.target.value)} />
+              <Input aria-label="Branch strategy" value={branchStrategy} onChange={(event) => setBranchStrategy(event.target.value)} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Priority</Label>
                 <Select value={priority} onValueChange={setPriority}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label="Priority"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="1">Critical</SelectItem>
                     <SelectItem value="2">High</SelectItem>
@@ -1970,7 +2203,7 @@ function CreateWorkOrderDialog({
               <div className="space-y-1.5">
                 <Label>Risk</Label>
                 <Select value={riskLevel} onValueChange={setRiskLevel}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label="Risk"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="LOW">Low</SelectItem>
                     <SelectItem value="MEDIUM">Medium</SelectItem>
@@ -1983,16 +2216,55 @@ function CreateWorkOrderDialog({
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Requested by</Label>
-                <Input value={requestedBy} onChange={(event) => setRequestedBy(event.target.value)} />
+                <Input aria-label="Requested by" value={requestedBy} onChange={(event) => setRequestedBy(event.target.value)} />
               </div>
               <div className="space-y-1.5">
                 <Label>Assigned agent</Label>
-                <Input value={assignedAgent} onChange={(event) => setAssignedAgent(event.target.value)} />
+                <Input aria-label="Assigned agent" value={assignedAgent} onChange={(event) => setAssignedAgent(event.target.value)} />
               </div>
             </div>
             <div className="space-y-1.5">
+              <Label>Requirements</Label>
+              <Textarea aria-label="Requirements" value={requirements} onChange={(event) => setRequirements(event.target.value)} rows={4} placeholder={"One requirement per line\nThe Work Order shows its proof verdict"} />
+            </div>
+            <div className="space-y-1.5">
               <Label>Acceptance criteria</Label>
-              <Textarea value={acceptanceCriteria} onChange={(event) => setAcceptanceCriteria(event.target.value)} rows={6} placeholder={"One criterion per line\nBuild passes\nQueue renders\nLinked run is visible"} />
+              <Textarea aria-label="Acceptance criteria" value={acceptanceCriteria} onChange={(event) => setAcceptanceCriteria(event.target.value)} rows={6} placeholder={"One criterion per line\nBuild passes\nQueue renders\nLinked run is visible"} />
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-[var(--panel-line)] bg-background/30 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-sm font-medium text-foreground">Change authority and proof contract</div>
+              <p className="mt-1 text-xs text-muted-foreground">Commands execute directly without shell expansion. Protected classes and paths fail closed.</p>
+            </div>
+            <Badge variant="outline">Verification-first</Badge>
+          </div>
+          <div className="mt-4 grid gap-4 md:grid-cols-3">
+            <div className="space-y-3 md:col-span-1">
+              <div className="space-y-1.5"><Label>Allowed paths</Label><Textarea aria-label="Allowed paths" value={allowedPaths} onChange={(event) => setAllowedPaths(event.target.value)} rows={4} placeholder="src/**" /></div>
+              <div className="space-y-1.5"><Label>Denied / protected paths</Label><Textarea aria-label="Denied or protected paths" value={deniedPaths} onChange={(event) => setDeniedPaths(event.target.value)} rows={4} /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5"><Label>Max files</Label><Input aria-label="Maximum files changed" type="number" min="1" value={maxFilesChanged} onChange={(event) => setMaxFilesChanged(event.target.value)} /></div>
+                <div className="space-y-1.5"><Label>Max lines</Label><Input aria-label="Maximum changed lines" type="number" min="1" value={maxLinesChanged} onChange={(event) => setMaxLinesChanged(event.target.value)} /></div>
+              </div>
+            </div>
+            <div className="space-y-3 md:col-span-2">
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="space-y-1.5"><Label>Enforcement</Label><Select value={enforcementMode} onValueChange={setEnforcementMode}><SelectTrigger aria-label="Verification enforcement"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ENFORCED">Enforced</SelectItem><SelectItem value="OBSERVE_ONLY">Observe only</SelectItem></SelectContent></Select></div>
+                <div className="space-y-1.5"><Label>Check category</Label><Select value={verificationCategory} onValueChange={setVerificationCategory}><SelectTrigger aria-label="Verification check category"><SelectValue /></SelectTrigger><SelectContent>{["BUILD", "TYPECHECK", "UNIT_TEST", "INTEGRATION_TEST", "CONTRACT_TEST", "SECURITY"].map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
+                <div className="space-y-1.5"><Label>Command class</Label><Select value={commandClass} onValueChange={setCommandClass}><SelectTrigger aria-label="Verification command class"><SelectValue /></SelectTrigger><SelectContent>{["BUILD", "TYPECHECK", "TEST", "LINT", "SECURITY_SCAN", "DEPENDENCY_SCAN"].map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
+              </div>
+              <div className="grid gap-3 md:grid-cols-[0.6fr_1.4fr]">
+                <div className="space-y-1.5"><Label>Executable</Label><Input aria-label="Verification executable" value={verificationExecutable} onChange={(event) => setVerificationExecutable(event.target.value)} placeholder="pnpm" /></div>
+                <div className="space-y-1.5"><Label>Arguments</Label><Input aria-label="Verification arguments" value={verificationArgs} onChange={(event) => setVerificationArgs(event.target.value)} placeholder="--filter app test" /></div>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-1.5"><Label>Evidence category</Label><Select value={evidenceCategory} onValueChange={setEvidenceCategory}><SelectTrigger aria-label="Required evidence category"><SelectValue /></SelectTrigger><SelectContent>{["TEST_RESULT", "BUILD_RESULT", "STATIC_ANALYSIS", "SECURITY_SCAN", "BROWSER_RESULT", "CI_RESULT"].map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
+                <div className="space-y-1.5"><Label>Reserve final advancement for human review</Label><Select value={requireHumanReview} onValueChange={setRequireHumanReview}><SelectTrigger aria-label="Require human review"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="no">No</SelectItem><SelectItem value="yes">Yes — require HUMAN_REVIEW</SelectItem></SelectContent></Select></div>
+              </div>
             </div>
           </div>
         </div>
@@ -2002,8 +2274,8 @@ function CreateWorkOrderDialog({
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button
-            onClick={() => onCreate({ title, desiredOutcome, context, workflowId, repository, branchStrategy, priority, riskLevel, requestedBy, assignedAgent, acceptanceCriteria })}
-            disabled={creating || !title.trim() || !desiredOutcome.trim() || !acceptanceCriteria.trim()}
+            onClick={() => onCreate({ title, desiredOutcome, context, workflowId, repository, branchStrategy, priority, riskLevel, requestedBy, assignedAgent, requirements, acceptanceCriteria, allowedPaths, deniedPaths, maxFilesChanged, maxLinesChanged, enforcementMode, verificationCategory, evidenceCategory, commandClass, verificationExecutable, verificationArgs, requireHumanReview })}
+            disabled={creating || !title.trim() || !desiredOutcome.trim() || !acceptanceCriteria.trim() || !allowedPaths.trim() || !verificationExecutable.trim() || !verificationArgs.trim() || Number(maxFilesChanged) < 1 || Number(maxLinesChanged) < 1}
           >
             {creating ? "Creating…" : "Create WorkOrder"}
           </Button>
