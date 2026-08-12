@@ -11,6 +11,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import {
   evaluateFactoryReleaseVerification,
   evaluateFactoryReleaseProvenance,
+  evaluateFactoryProductionEligibility,
   factoryReleaseAllowedOrigins,
   factoryReleaseBoundLineageIssue,
   factoryReleaseEvidenceReplayMatches,
@@ -19,6 +20,7 @@ import {
   factoryReleaseTransitionAllowed,
   normalizeCommitSha,
   validateFactoryReleaseVerificationUrls,
+  factoryReleaseVerificationHeaders,
   type FactoryReleaseCheckResult,
 } from "../lib/factoryRelease";
 import { isVerifiedPrLineage } from "../lib/harnessPrChecks";
@@ -67,6 +69,37 @@ export const listForProject = query({
       ]);
       return { release, workOrder, environment, evidence };
     }));
+  },
+});
+
+export const getProductionEligibility = query({
+  args: {
+    projectId: v.id("projects"),
+    repositoryId: v.id("workspaceRepositories"),
+    candidateMergeCommitSha: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.VIEW);
+    const repository = await ctx.db.get(args.repositoryId);
+    if (!repository || repository.projectId !== args.projectId || repository.status !== "READY") {
+      throw new Error("Production eligibility requires a ready repository in this workspace.");
+    }
+    const releases = await ctx.db
+      .query("factoryReleases")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .collect();
+    return evaluateFactoryProductionEligibility({
+      candidateMergeCommitSha: args.candidateMergeCommitSha,
+      releases: releases
+        .filter((release) => release.repositoryId === repository._id)
+        .map((release) => ({
+          releaseId: String(release._id),
+          mergeCommitSha: release.mergeCommitSha,
+          state: release.state,
+          verifiedAt: release.verifiedAt,
+          blockingIssue: release.blockingIssue,
+        })),
+    });
   },
 });
 
@@ -1049,7 +1082,13 @@ async function fetchEvidence(url: string): Promise<{
   try {
     const response = await fetch(url, {
       method: "GET",
-      headers: { Accept: "application/json, text/plain;q=0.9, */*;q=0.1" },
+      headers: {
+        Accept: "application/json, text/plain;q=0.9, */*;q=0.1",
+        ...factoryReleaseVerificationHeaders(
+          url,
+          process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
+        ),
+      },
       redirect: "error",
       signal: controller.signal,
     });

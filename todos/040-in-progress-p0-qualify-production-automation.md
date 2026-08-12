@@ -66,3 +66,18 @@ Execute `docs/plans/2026-08-11-feat-three-staging-release-production-automation-
 - Opened WorkOrder `h97j42dy2d479wg2vh5s3275bn8ca772`, inbox Task `MCF-003`,
   and Codex Attempt `tn772b1kdqv9a9g7sznx39tdq98casmy` for a constrained
   recovery receipt and Git-integration staging dispatch.
+
+### 2026-08-11 — Release 2 merged; Preview Protection gate isolated
+
+- Merged PR #79 at exact commit
+  `cd4ea9b74df784265f3c1922d939dd199a8c635c`; GitHub ingestion created the
+  second Factory release with PASS CI and exact WorkOrder/Attempt lineage.
+- Created a Git-source Vercel deployment for the Release 1 merge. Its protected
+  runtime endpoint returns the exact merge SHA, deployment ID, and `staging`
+  environment when accessed through Vercel's automation path.
+- Preserved a second failed Release 1 verification showing HTTP 401 for all
+  three checks. This isolated Preview Protection—not source provenance—as the
+  remaining blocker.
+- Opened WorkOrder `h97hve2rx51avp45rcbanmcpqs8cby4e`, inbox Task `MCF-004`,
+  and Codex Attempt `tn73s1xx015pjcnbj8h4949hps8cbeav` for a scoped protection
+  bypass and the three-distinct-release production eligibility gate.
