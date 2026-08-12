@@ -71,6 +71,12 @@ The UI is an exception-and-evidence surface. It shows the current gate, missing
 evidence, required human action, and links to the underlying Tasks and Work
 Orders. Agent activity is supporting evidence, not the primary content.
 
+The Research Watchlist is the separate source-authority layer inside this
+surface. It controls which exact public sources may be used by future read-only
+adapters and under which schedule, item, spend, retention, content, and
+exclusion limits. An active Watchlist entry grants no execution or repository
+authority. See [Governed Continuous Learning](CONTINUOUS_LEARNING.md).
+
 ## Runtime contract
 
 Creating a cycle idempotently provisions the project-scoped `Research Scout`
