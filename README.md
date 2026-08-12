@@ -151,6 +151,20 @@ scope, pushed the server-owned branch, and persisted the exact lineage. Browser
 proof covers cancellation, immutable retries, failure, success, refresh,
 process restart, and idempotent PR reconciliation.
 
+The Mission acceptance path now reconciles a current passing Worker receipt and
+complete structured handoff into a linked non-independent assertion. Assertions
+that require independent validation remain Validator-only. Mission drafts bind
+the accountable owner, team, repository, and approved code scopes, while
+mutating plan blueprints release explicit commands, attempt and time limits,
+budget, and stop conditions into their WorkOrders.
+
+GitHub follow-up reads no longer depend on a personal or global token. The
+Factory mints a short-lived installation token for the exact bound repository,
+normalizes pull-request and check-run webhook identities, validates the
+factory-authored WorkOrder/Attempt/Task lineage, and exposes signature-valid
+delivery outcomes in the operator UI. Browser proof showed PR evidence leaving
+quarantine and linking automatically without a control-plane repair command.
+
 An enforced `REQUIRES_HUMAN_REVIEW` verdict now creates a durable publication
 checkpoint instead of failing the Attempt. Unconditional approval appends an
 approval-linked `VERIFIED` receipt and reclaims the same Attempt at
@@ -163,27 +177,32 @@ new governed retry. Authenticated operators and tools can enumerate pending
 Factory review checkpoints with `GET /approval-decisions?projectId=...`; the
 executor still has no self-approval authority.
 
-This closes the single-path V1 proof; it does not make a broad production-scale
-claim. Remote sandbox enforcement, provider CI ingestion, learning-ledger CRUD,
-trust scoring, verified-throughput metrics, deployment, and production
-verification remain explicitly deferred.
+This closes the single-repository delivery and review proof; it does not make a
+broad production-scale claim. Unified review evidence, governed staging, and
+human-approved production-release automation are implemented. The first
+production qualification remains in progress, while remote sandbox enforcement,
+learning-ledger CRUD, trust scoring, verified-throughput metrics, additional
+providers, and fleet-scale scheduling remain deferred.
 
 | Capability | Status |
 |---|---|
 | Mission planning and human plan approval | Implemented |
 | Governed WorkOrders, Tasks, Attempts, and evidence records | Implemented |
-| GitHub App identity, least-privilege readiness, signed webhooks, and replay ledger | Implemented |
+| GitHub App identity, least-privilege readiness, signed webhooks, ephemeral CI reads, and replay ledger | Implemented and browser-proven |
 | Immutable Factory configuration, readiness assessment, and activation | Implemented |
 | Signed service commands and durable command receipts | Implemented |
 | `codex/v1` executor adapter with sandbox, events, health, and cancellation | Implemented |
 | Dispatch preflight and immutable execution envelope | Implemented |
 | Durable Codex worker through exact GitHub pull request | Implemented and browser-proven |
+| Worker receipt and handoff reconciliation into Mission assertions | Implemented and browser-proven |
 | Independent verification before pull-request publication | Implemented |
 | Durable human-review pause and same-Attempt publication resume | Implemented |
+| Exact-Attempt unified review evidence package | Implemented and browser-proven |
 | Built Node ESM orchestration startup smoke | Implemented and enforced in CI |
-| Remote sandbox enforcement and provider CI ingestion | Deferred |
+| Governed staging deployment and independent verification | Implemented |
+| Human-approved production deployment, verification, and promotion | Implemented; qualification in progress |
+| Remote sandbox enforcement | Deferred |
 | Learning ledger, trust scoring, and verified-throughput metrics | Deferred |
-| Governed deployment and production verification | Deferred |
 | FDE engagement workspace and additional connectors | Post-V1 |
 
 The original repository baseline, approved implementation sequence, and live
@@ -191,6 +210,8 @@ proof are recorded in the
 [existing-system assessment](docs/mission-control-existing-system-assessment.md),
 [V1 program plan](docs/plans/2026-08-02-feat-ai-software-factory-v1-program-plan.md),
 [completed golden-path todo](todos/024-ready-p1-real-codex-github-pr-golden-path.md),
+[Mission evidence reconciliation](todos/029-complete-p1-reconcile-worker-evidence-into-mission-acceptance.md),
+[authenticated GitHub CI ingestion](todos/030-complete-p1-authenticate-github-webhook-ci-ingestion.md),
 and [browser evidence report](docs/testing/evidence/real-codex-github-pr-golden-path/README.md).
 
 ## The delivery contract
@@ -394,8 +415,11 @@ release records. Operator surfaces prioritize required decisions, failed or
 stale evidence, blockers, and remediation before routine agent activity.
 
 The evidence model distinguishes pass, fail, stale, unknown, waived,
-conflicting, and not-applicable states. A more compact unified end-to-end review
-package remains a follow-on usability improvement.
+conflicting, and not-applicable states. The run inspector derives one fail-closed
+review package from the exact Attempt, frozen WorkOrder revision, commit, open
+pull request, CI result, changed files, risks, and rollback guidance. Missing or
+mismatched lineage remains visibly blocked instead of borrowing WorkOrder-wide
+evidence. See the [review evidence browser proof](docs/testing/evidence/v1-review-browser-hardening/README.md).
 
 ## Live golden-path proof
 
@@ -409,7 +433,7 @@ The completed browser-operated path is:
 the worker receipt, structured handoff, WorkOrder acceptance, and final operator
 decision were recorded through the browser.*
 
-Two App-authored pull requests prove complementary parts of the path:
+Three App-authored pull requests prove complementary parts of the path:
 
 - [PR #61](https://github.com/jaydubya818/MissionControl/pull/61) is the clean,
   recovered Mission proof. It binds the approved Mission hierarchy to branch
@@ -421,21 +445,39 @@ Two App-authored pull requests prove complementary parts of the path:
   cancellation, two failed retries, and successful fourth Attempt. It proves
   immutable retry history, approved verification-command execution, exact file
   scope, process-restart reconciliation, and duplicate-PR prevention.
+- [PR #63](https://github.com/jaydubya818/MissionControl/pull/63) is the complete
+  browser-only proof for Mission evidence reconciliation and authenticated
+  GitHub CI ingestion. It proves a 1/1 reconciled Mission assertion, accepted
+  Mission/WorkOrder/Task states, a signature-valid `pull_request.edited`
+  delivery, exact head `478e531b6c62ec552597e540a3205fb645560a2e`, and
+  automatic WorkOrder/Attempt correlation without repair commands.
 
-Both pull requests were created by the private Mission Control GitHub App, have
-all nine repository checks passing, and remain open and unmerged. The App is
-installed only on `jaydubya818/MissionControl` with Metadata read, Checks read,
-Contents write, and Pull requests write.
+All three proof pull requests were created by the private Mission Control GitHub
+App, completed all nine repository checks successfully, and were closed
+unmerged after evidence capture. The App is installed only on
+`jaydubya818/MissionControl` with Metadata read, Checks read, Contents write, and
+Pull requests write.
+
+The production implementation did not merge through those proof artifacts. It
+landed through [implementation PR #67](https://github.com/jaydubya818/MissionControl/pull/67),
+with recovery and review hardening in
+[PR #71](https://github.com/jaydubya818/MissionControl/pull/71) and the final
+exact-Attempt review package in
+[PR #80](https://github.com/jaydubya818/MissionControl/pull/80). Governed
+production-release automation landed separately in
+[PR #82](https://github.com/jaydubya818/MissionControl/pull/82).
 
 See the [durable worker and GitHub publication contract](docs/software-factory/durable-codex-github-pr.md)
 and the [complete browser evidence report](docs/testing/evidence/real-codex-github-pr-golden-path/README.md)
 for persisted identifiers, screenshots, state coverage, and deterministic test
 results.
 
-Merge remains a human decision in V1. Governed deployment and production
-verification follow in V1.1. Additional Git providers and hundred-agent scaling
-remain deferred until overnight recovery and the single-repository path are
-operationally hardened.
+Merge and production promotion remain human decisions. The first governed
+production qualification is tracked in
+[todo 040](todos/040-in-progress-p0-qualify-production-automation.md).
+Additional Git providers, remote sandbox enforcement, and hundred-agent scaling
+remain deferred until the single-repository release path is operationally
+qualified.
 
 ## Operator surfaces
 
