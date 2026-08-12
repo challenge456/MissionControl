@@ -17,6 +17,7 @@ import {
   resolveFlag,
   type FlagRow,
 } from "./lib/flags";
+import { COMPANY_PERMISSIONS, requireWorkspaceAccess } from "./lib/companyAccess";
 
 async function loadRowsForKey(
   ctx: { db: any },
@@ -65,6 +66,14 @@ export const setFlag = mutation({
       throw new Error(
         `Invalid flag key "${args.key}" — expected dot-separated lowercase segments, e.g. "ui.shell.v2"`
       );
+    }
+    if (args.key.startsWith("control-plane.")) {
+      if (!args.projectId) throw new Error("Control-plane flags must be scoped to a workspace.");
+      const project = await ctx.db.get(args.projectId);
+      if (!project?.tenantId) throw new Error("Workspace company assignment is incomplete.");
+      await requireWorkspaceAccess(ctx, project.tenantId, project._id, {
+        permission: COMPANY_PERMISSIONS.MANAGE_WORKSPACES,
+      });
     }
 
     const now = Date.now();

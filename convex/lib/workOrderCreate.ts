@@ -31,7 +31,12 @@ export async function createWorkOrderRecord(ctx: any, args: any) {
       .query("workOrders")
       .withIndex("by_idempotency", (q: any) => q.eq("idempotencyKey", args.idempotencyKey))
       .first();
-    if (existing) return { workOrder: existing, created: false };
+    if (existing) {
+      if (existing.projectId !== args.projectId || existing.missionId !== args.missionId) {
+        throw new Error("Idempotency key is already bound to another delivery scope");
+      }
+      return { workOrder: existing, created: false };
+    }
   }
 
   const project = args.projectId ? await ctx.db.get(args.projectId) : null;
@@ -83,6 +88,22 @@ export async function createWorkOrderRecord(ctx: any, args: any) {
     now,
   });
   const requiredHumanAction = describeInitialReadiness({ state }, acceptance);
+  const repositoryId = args.repositoryId ?? mission?.repositoryId;
+  const owningTeamId = args.owningTeamId ?? mission?.owningTeamId;
+  const ownerMemberId = args.ownerMemberId ?? mission?.ownerMemberId;
+  const codeScopeIds = args.codeScopeIds ?? mission?.codeScopeIds ?? [];
+  const [repositoryConnection, owningTeam, ownerMember] = await Promise.all([
+    repositoryId ? ctx.db.get(repositoryId) : null,
+    owningTeamId ? ctx.db.get(owningTeamId) : null,
+    ownerMemberId ? ctx.db.get(ownerMemberId) : null,
+  ]);
+  if (repositoryConnection && repositoryConnection.projectId !== args.projectId) throw new Error("Repository and WorkOrder workspace scopes must match");
+  if (owningTeam && owningTeam.projectId !== args.projectId) throw new Error("Team and WorkOrder workspace scopes must match");
+  if (ownerMember && ownerMember.projectId && ownerMember.projectId !== args.projectId) throw new Error("Owner and WorkOrder workspace scopes must match");
+  const codeScopes = await Promise.all(codeScopeIds.map((scopeId: any) => ctx.db.get(scopeId)));
+  if (codeScopes.some((scope: any) => !scope || scope.projectId !== args.projectId || (repositoryId && scope.repositoryId !== repositoryId))) {
+    throw new Error("Every code scope must belong to the WorkOrder workspace and repository");
+  }
 
   const workOrderId = await ctx.db.insert("workOrders", {
     tenantId: project?.tenantId,
@@ -99,14 +120,21 @@ export async function createWorkOrderRecord(ctx: any, args: any) {
     desiredOutcome: args.desiredOutcome,
     context: args.context,
     workflowId: args.workflowId,
-    repository: args.repository,
+    repository: repositoryConnection?.repository ?? args.repository,
+    repositoryId,
+    codeScopeIds,
     branchStrategy: args.branchStrategy,
     priority: args.priority ?? 3,
     riskLevel,
     modelComplexity: args.modelComplexity,
     requestedBy: args.requestedBy,
+    requestingOperatorId: args.requestingOperatorId,
     assignedAgent: args.assignedAgent,
-    assignedSquad: args.assignedSquad,
+    assignedSquad: owningTeam?.name ?? args.assignedSquad,
+    owningTeamId,
+    ownerMemberId,
+    executionEnvironment: args.executionEnvironment ?? mission?.executionEnvironment,
+    scopeEnforcementVersion: repositoryId || owningTeamId || ownerMemberId || codeScopeIds.length > 0 ? 1 : undefined,
     acceptanceCriteria: finalCriteria,
     constraints: args.constraints,
     dependencies: args.dependencies,

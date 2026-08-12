@@ -21,6 +21,7 @@ import { StatusBadge } from "./components/factory/badges";
 import { MetricBlock } from "./components/factory/MetricBlock";
 import { WorkspaceRepositoriesPanel } from "./workspace/WorkspaceRepositoriesPanel";
 import { CompanyAccessPanel } from "./workspace/CompanyAccessPanel";
+import { WorkspaceTeamsPanel } from "./workspace/WorkspaceTeamsPanel";
 import {
   Clock3,
   Building2,
@@ -434,6 +435,8 @@ function ProjectDetails({ project }: { project: Doc<"projects"> }) {
           </Card>
 
           <WorkspaceRepositoriesPanel project={project} />
+
+          {project.tenantId ? <WorkspaceTeamsPanel project={project} /> : null}
 
           <Card className="p-5">
             <div className="flex items-center justify-between gap-3">

@@ -79,3 +79,11 @@ export type {
   ExecutorRequest,
   ExecutorResult,
 } from "./executorAdapter";
+
+export {
+  matchesRepositoryGlob,
+  normalizeRepositoryPath,
+  validateChangedFileScope,
+  type RepositoryScope,
+  type RepositoryScopeViolation,
+} from "./repositoryScope";

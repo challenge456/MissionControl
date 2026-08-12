@@ -9,14 +9,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export function HarnessVerifiersView({ projectId }: { projectId: Id<"projects"> | null }): JSX.Element {
-  const verifiers = useQuery(
-    api.context.verifiers.list,
-    projectId ? { projectId, activeOnly: false } : "skip"
-  );
-  const stale = useQuery(
-    api.context.verifiers.ruleDecayCandidates,
-    projectId ? { projectId } : "skip"
-  );
+  const verifiers = useQuery(api.context.verifiers.list, projectId ? {
+    projectId,
+    activeOnly: false,
+  } : "skip");
+  const stale = useQuery(api.context.verifiers.ruleDecayCandidates, projectId ? {
+    projectId,
+  } : "skip");
   const create = useMutation(api.context.verifiers.create);
   const [label, setLabel] = useState("");
   const [invariant, setInvariant] = useState("");

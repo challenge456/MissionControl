@@ -36,6 +36,11 @@ Runtime toggles gating incomplete or risky Software Factory subsystems. Introduc
 | `executor.pi-bridge` | Pi runtime receipt packet ingestion and orchestration dispatch envelope | Factory runtime |
 | `ui.control.stubs` | Preview-only Control nav items (Portfolio, Fleet) | Factory UI S5 |
 | `company.context` | Auth-resolved company selection and company-scoped workspace administration | Company boundary P0 |
+| `control-plane.repository-projection` | Repository connections and governed monorepo code scopes | Company control plane |
+| `control-plane.role-lenses` | My, Team, Workspace, and Company Command Center lenses | Company control plane |
+| `control-plane.company-rollups` | Authorized cross-workspace company portfolio totals | Company control plane |
+| `control-plane.team-authorization` | Record-level Mission and WorkOrder team/owner enforcement | Company control plane |
+| `control-plane.dispatch-scope` | Repository, code-scope, team, owner, environment, and host dispatch checks | Company control plane |
 
 ## Usage
 
@@ -63,6 +68,8 @@ mc flags                       # list all flags with resolved state
 mc flags set ui.shell.v2 on    # enable globally (audited)
 mc flags set ui.shell.v2 off
 ```
+
+The `control-plane.*` flags are a security boundary and cannot be written globally. Set them through `featureFlags:setFlag` with an explicit `projectId` and a workspace-management identity, following the activation order in `docs/operations/company-control-plane-runbook.md`.
 
 **CI / local env override (UI only):**
 

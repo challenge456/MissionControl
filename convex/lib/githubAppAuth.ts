@@ -183,3 +183,102 @@ export async function verifyGithubInstallationSetup(input: {
     lastTokenIssuedAt: Date.now(),
   };
 }
+
+export async function verifyGithubInstallationAccess(input: {
+  installationId: string;
+  repository: string;
+  appId: string;
+  privateKey: string;
+}) {
+  const appJwt = await createGithubAppJwt({ appId: input.appId, privateKey: input.privateKey });
+  type Installation = {
+    id: number;
+    account: { login: string; type?: string };
+    repository_selection: "all" | "selected";
+    permissions: Record<string, "read" | "write" | "admin">;
+    events: string[];
+    created_at: string;
+  };
+  const installations = await githubJson<Installation[]>("https://api.github.com/app/installations?per_page=100", {
+    method: "GET",
+    headers: { Authorization: `Bearer ${appJwt}` },
+  });
+  const orderedInstallations = [...installations].sort((left, right) =>
+    String(left.id) === input.installationId ? -1 : String(right.id) === input.installationId ? 1 : 0
+  );
+
+  for (const installation of orderedInstallations) {
+    const token = await githubJson<{
+      token: string;
+      expires_at: string;
+      permissions: Record<string, "read" | "write" | "admin">;
+      repository_selection: "all" | "selected";
+    }>(`https://api.github.com/app/installations/${installation.id}/access_tokens`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${appJwt}`,
+        "Content-Type": "application/json",
+      },
+    });
+    if (!token.token || !token.expires_at) continue;
+
+    const repositories = await githubJson<{
+      repositories?: Array<{ id: number; full_name: string }>;
+    }>("https://api.github.com/installation/repositories?per_page=100", {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token.token}` },
+    });
+    const target = repositories.repositories?.find(
+      (repository) => repository.full_name.toLowerCase() === input.repository.toLowerCase()
+    );
+    if (!target) continue;
+
+    const permissions: GithubPermissionGrant[] = Object.entries(token.permissions).map(
+      ([name, access]) => ({ name, access })
+    );
+    return {
+      providerRepositoryId: String(target.id),
+      installationId: String(installation.id),
+      accountLogin: installation.account.login,
+      accountType: installation.account.type,
+      repositorySelection: token.repository_selection === "all" ? "ALL" as const : "SELECTED" as const,
+      permissions,
+      subscribedEvents: installation.events,
+      installedAt: Date.parse(installation.created_at),
+      verifiedAt: Date.now(),
+      lastTokenIssuedAt: Date.now(),
+    };
+  }
+  throw new Error("The GitHub App installation does not grant this repository");
+}
+
+export async function mintGithubInstallationToken(input: {
+  installationId: string;
+  providerRepositoryId: string;
+  appId: string;
+  privateKey: string;
+}) {
+  const repositoryId = Number(input.providerRepositoryId);
+  if (!Number.isSafeInteger(repositoryId) || repositoryId <= 0) {
+    throw new Error("GitHub repository provider identity is invalid");
+  }
+  const appJwt = await createGithubAppJwt({ appId: input.appId, privateKey: input.privateKey });
+  const result = await githubJson<{
+    token?: string;
+    expires_at?: string;
+  }>(`https://api.github.com/app/installations/${input.installationId}/access_tokens`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${appJwt}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ repository_ids: [repositoryId] }),
+  });
+  if (!result.token || !result.expires_at) {
+    throw new Error("GitHub installation token could not be issued");
+  }
+  return {
+    token: result.token,
+    expiresAt: Date.parse(result.expires_at),
+  };
+}

@@ -82,6 +82,25 @@ describe("Task governance projection", () => {
   it("accepts a Work Order from the selected workspace", () => {
     expect(taskWorkOrderLinkError(projectId, workOrder())).toBeNull();
   });
+
+  it("projects the repository code scope needed for governed Task dispatch", () => {
+    const projection = projectTask(
+      task({ workOrderId }),
+      workOrder({
+        repositoryId: "repository-a",
+        codeScopeIds: ["scope-docs"],
+        executionEnvironment: "LOCAL",
+      }),
+      null,
+      []
+    );
+
+    expect(projection.parentDelivery).toMatchObject({
+      repositoryId: "repository-a",
+      codeScopeIds: ["scope-docs"],
+      executionEnvironment: "LOCAL",
+    });
+  });
 });
 
 describe("Ungoverned transition policy", () => {

@@ -2,7 +2,7 @@
 
 ## Status
 
-**Implemented and locally verified. GitHub CI/merge evidence is the release gate.**
+**Complete, CI-verified, merged to `main`, and post-merge measured.**
 
 Mission Control now connects completed research output, approved isolated
 implementation, PR-head evaluation, and evidence-driven improvement proposals
@@ -22,7 +22,7 @@ original approval ID and digest, and a truthful zero-recommendation clean stop.
 | Outer CI/review/merge | Implemented — signed webhook, per-head history, correction block, explicit merge record |
 | Meta quality feedback | Implemented — real deduplicated signals create approval-gated work |
 | Research graph | Working |
-| End-to-end closed loop | Locally verified; repository PR/CI is the final release gate |
+| End-to-end closed loop | Verified — failed and passing heads retained, approved merge recorded, WorkOrder accepted, measurement met |
 
 ## Delivered Sequence
 
@@ -53,11 +53,19 @@ meta loop drives quality.
 - Live meta journey: failed run `a8a5m2hy` created one suggestion
   `zd792pzksd3mfwxncpf7xs0hq58bprxt`; duplicate delivery retained one item;
   acceptance created Task `wh7fazap3ct6hzfc12ttgmp1kd8bqe7f` and WorkOrder
-  `yh7aygkkxryzj7ft65yq6czec58bq3ys` in `AWAITING_APPROVAL`.
+  `yh7aygkkxryzj7ft65yq6czec58bq3ys`; the WorkOrder is now `DONE` after
+  implementation and merge approvals, PRs #56/#57, 9/9 GitHub checks, and two
+  passing post-merge receipts.
+- Outer-loop recovery retained failed head `f954c57`, passed corrected head
+  `b216428`, and recorded merge `0a4ebdb` without bypassing approval.
+- Meta measurement: baseline 0, result 1, target 1 successful governed
+  recovery; suggestion `zd792pzksd3mfwxncpf7xs0hq58bprxt` is `EFFECTIVE`.
 - Screenshots:
   `docs/testing/evidence/three-loop-engineering-audit/phase-0/research-lab-projected-cycle.png`
   and
   `docs/testing/evidence/three-loop-engineering-audit/phase-4/unified-loop-engineering.png`.
+- Final completed documentation screenshot:
+  `docs/testing/evidence/three-loop-engineering-audit/phase-5/final-docs-and-measurement.png`.
 
 ## Critical Acceptance
 

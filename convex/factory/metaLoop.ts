@@ -6,12 +6,13 @@ import { v } from "convex/values";
 import { action, internalMutation, mutation, query } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
-import { sanitizeMetaSignalText } from "../lib/metaLoopSignals";
+import { buildMetaMeasurement, sanitizeMetaSignalText } from "../lib/metaLoopSignals";
 import {
   FACTORY_PERMISSIONS,
   requireWorkspacePermission,
   type FactoryPermission,
 } from "../lib/companyAccess";
+import { requireFactoryActionWithAudit } from "../lib/factoryActionAuthorization";
 
 const kindArg = v.union(
   v.literal("VERIFIER"),
@@ -146,7 +147,7 @@ export const applyResolution = internalMutation({
     reason: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const { suggestion: row } = await requireSuggestionPermission(
+    const { suggestion: row, access } = await requireSuggestionPermission(
       ctx,
       args.suggestionId,
       FACTORY_PERMISSIONS.IMPROVE
@@ -187,10 +188,11 @@ export const resolve = action({
     if (!suggestion) throw new Error("Suggestion not found");
     if (suggestion.status !== "OPEN") throw new Error("Only open suggestions can be resolved");
     if (!suggestion.projectId) throw new Error("A workspace-scoped suggestion is required");
-    const authorization = await ctx.runQuery(
-      internal.companyContext.authorizeFactoryAction,
-      { projectId: suggestion.projectId, permission: FACTORY_PERMISSIONS.APPROVE }
-    );
+    const authorization = await requireFactoryActionWithAudit(ctx, {
+      projectId: suggestion.projectId,
+      permission: FACTORY_PERMISSIONS.APPROVE,
+      operation: "META_LOOP_RESOLVE",
+    });
     const actorId = authorization.actorId;
     if (args.action === "DISMISS") {
       const reason = args.reason?.trim();
@@ -369,14 +371,15 @@ export const recordMeasurement = mutation({
     const { suggestion: row, access } = await requireSuggestionPermission(
       ctx,
       args.suggestionId,
-      FACTORY_PERMISSIONS.APPROVE
+      FACTORY_PERMISSIONS.IMPROVE
     );
     if (!row.workOrderId) throw new Error("Measurement requires linked governed work");
     if (args.evidenceRefs.length === 0) throw new Error("Measurement evidence is required");
-    const verdict = args.result >= args.target ? "MET" as const : "MISSED" as const;
+    const measurement = buildMetaMeasurement(args);
+    const { verdict } = measurement;
     await ctx.db.patch(row._id, {
       status: verdict === "MET" ? "EFFECTIVE" : "VERIFIED",
-      measurement: { ...args, verdict, measuredAt: Date.now() },
+      measurement,
     });
     if (verdict === "MISSED") {
       const dedupeKey = `${row.dedupeKey ?? row._id}:measurement-missed`;

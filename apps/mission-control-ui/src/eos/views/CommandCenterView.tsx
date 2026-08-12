@@ -39,6 +39,7 @@ import {
 } from "../demoData";
 import { adaptHealthSignals, adaptRecommendations } from "../liveAdapters";
 import type { HealthStatus, HealthSignal, Insight } from "../types";
+import { OperatingControlPlane } from "../components/OperatingControlPlane";
 
 export interface CommandCenterViewProps {
   projectId: Id<"projects">;
@@ -496,6 +497,7 @@ export function CommandCenterView({
 }: CommandCenterViewProps): JSX.Element {
   const [gatewayConfigured, setGatewayConfigured] = useState<boolean | null>(null);
   const showDemoContent = useFlag("ui.navigation.demo-routes");
+  const showOperatingControlPlane = useFlag("control-plane.role-lenses");
 
   useEffect(() => {
     let cancelled = false;
@@ -598,6 +600,10 @@ export function CommandCenterView({
         />
 
         {showDemoContent ? <PageProvenanceNote /> : null}
+
+        {showOperatingControlPlane ? (
+          <OperatingControlPlane projectId={projectId} onNavigate={onNavigate} />
+        ) : null}
 
         <FactorySchematicOverview
           onNavigate={onNavigate}

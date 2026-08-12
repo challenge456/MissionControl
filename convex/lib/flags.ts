@@ -56,6 +56,11 @@ export const KNOWN_FLAGS: FlagDefinition[] = [
   { key: "ui.navigation.demo-routes", description: "Show explicitly demo-only routes and EOS demo tour controls", defaultEnabled: false },
   { key: "model-routing.enabled", description: "Enforce workspace model routing decisions at Work Order dispatch", defaultEnabled: false },
   { key: "company.context", description: "Company account selection and company-scoped workspace administration", defaultEnabled: false },
+  { key: "control-plane.repository-projection", description: "Use repository connections and code scopes as the authoritative source projection", defaultEnabled: false },
+  { key: "control-plane.team-authorization", description: "Enforce team membership and stable delivery ownership", defaultEnabled: false },
+  { key: "control-plane.role-lenses", description: "Enable My, Team, Workspace, and Company Command Center lenses", defaultEnabled: false },
+  { key: "control-plane.dispatch-scope", description: "Enforce repository and code-scope policy at dispatch", defaultEnabled: false },
+  { key: "control-plane.company-rollups", description: "Enable authorized cross-workspace Company Command Center projections", defaultEnabled: false },
 ];
 
 const KNOWN_FLAG_MAP: Map<string, FlagDefinition> = new Map(

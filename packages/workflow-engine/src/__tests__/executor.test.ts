@@ -513,7 +513,7 @@ describe("WorkflowExecutor reliability", () => {
     expect(first).toMatch(/^sha256:[0-9a-f]{64}$/);
   });
 
-  it("leaves Loop Engineering projection to the server-owned completion handoff", async () => {
+  it("projects completed Loop Engineering output exactly once at the completion handoff", async () => {
     const mutation = vi.fn().mockResolvedValue({ success: true });
     const action = vi.fn().mockResolvedValue({ projected: true });
     const executor = executorWithClient({ mutation, action });
@@ -525,17 +525,17 @@ describe("WorkflowExecutor reliability", () => {
       workflowId: "loop-engineering",
     });
 
-    expect(action).not.toHaveBeenCalled();
+    expect(action).toHaveBeenCalledTimes(1);
+    expect(action.mock.calls[0][1]).toEqual({ workflowRunId: "workflow-run-id" });
     expect(mutation).toHaveBeenCalledTimes(2);
-    expect(mutation.mock.calls[0][1]).toEqual({
-      runId: "run-123",
-      status: "COMPLETED",
-    });
   });
 
-  it("does not expose projection failure recording through the external executor", async () => {
+  it("records an actionable projection failure without falsifying the completed run", async () => {
     const mutation = vi.fn().mockResolvedValue({ success: true });
-    const action = vi.fn().mockRejectedValue(new Error("approval digest mismatch"));
+    const action = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("approval digest mismatch"))
+      .mockResolvedValueOnce({ recorded: true });
     const executor = executorWithClient({ mutation, action });
 
     await executor.completeRun({
@@ -545,7 +545,10 @@ describe("WorkflowExecutor reliability", () => {
       workflowId: "loop-engineering",
     });
 
-    expect(action).not.toHaveBeenCalled();
-    expect(mutation).toHaveBeenCalledTimes(2);
+    expect(action).toHaveBeenCalledTimes(2);
+    expect(action.mock.calls[1][1]).toEqual({
+      workflowRunId: "workflow-run-id",
+      error: "approval digest mismatch",
+    });
   });
 });

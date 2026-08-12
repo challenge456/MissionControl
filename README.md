@@ -1,8 +1,15 @@
 # Mission Control
 
-**Agent orchestration platform for AI squads.**
+## AI Software Factory for governed autonomous delivery
 
-Mission Control manages autonomous agents: task lifecycle, workflows, approvals, team coordination, and the Software Factory operator shell.
+Mission Control turns AI coding agents into a governed, measurable software
+delivery system. It coordinates human intent, repository access, plans,
+WorkOrders, execution agents, policy, evidence, pull requests, and release
+decisions without surrendering human authority.
+
+> Mission Control is not another coding assistant. It is the control plane that
+> makes autonomous software delivery bounded, inspectable, recoverable, and
+> reviewable.
 
 ## Software Factory: governed recursive self-improvement
 
@@ -36,268 +43,635 @@ appropriate human decision.
 
 ---
 
-## Quick Start (normal development)
+![Mission Control Command Center showing portfolio metrics and ranked exceptions](docs/software-factory/screenshots/readme/mission-control-command-center.png)
+
+*The Command Center turns a large delivery portfolio into a ranked queue of
+decisions, blockers, and evidence—not a wall of agent activity.*
+
+## Contents
+
+- [Why software factories and Mission Control matter](#why-software-factories-and-mission-control-matter)
+- [Project status](#project-status)
+- [The delivery contract](#the-delivery-contract)
+- [How the factory works](#how-the-factory-works)
+- [What is implemented](#what-is-implemented)
+- [Live golden-path proof](#live-golden-path-proof)
+- [Operator surfaces](#operator-surfaces)
+- [System architecture](#system-architecture)
+- [Local development](#local-development)
+- [Verification](#verification)
+- [Security model](#security-model)
+- [Product and architecture documents](#product-and-architecture-documents)
+
+## Why software factories and Mission Control matter
+
+AI-assisted development begins as a one-to-one interaction: one developer asks
+one agent to make a change, watches the result, and reviews the diff. That model
+can improve individual throughput, but it does not become a reliable delivery
+system simply by opening more agent sessions.
+
+As developers begin supervising tens or hundreds of agents across multiple
+repositories and products, the bottleneck moves from code generation to
+coordination. The operator can no longer keep every plan, branch, permission,
+dependency, retry, validation result, and release decision in working memory.
+More agents without a control plane create more unfinished work, conflicting
+changes, review pressure, cost, and risk.
+
+A chat interface scales conversations. A software factory scales governed work.
+
+### Coding agent, software factory, and Mission Control
+
+These are three different layers:
+
+| Layer | Primary responsibility | What it must not decide alone |
+|---|---|---|
+| **Coding agent** | Execute a bounded task, use approved tools, report events, and produce artifacts | Product intent, its own authority, acceptance, merge, or release |
+| **Software Factory** | Freeze the repository, workflow, executor, policy, budget, verifier, and recovery contract used to produce changes repeatedly | Whether a business outcome is worth pursuing or whether its own output is acceptable |
+| **Mission Control** | Coordinate Missions and Factories across projects; route attention, enforce governance, retain lineage, and present evidence to human operators | Product judgment, risk acceptance, or irreversible decisions reserved for people |
+
+The Factory is the production system for a repository. Mission Control is the
+portfolio-level operating system that lets a human direct many Factories without
+managing every agent interaction manually.
+
+### What breaks when agent fleets grow
+
+| Control problem | Without a control plane | Mission Control response |
+|---|---|---|
+| **Intent** | Prompts drift away from the approved outcome | Versioned Missions, plans, WorkOrders, and acceptance criteria |
+| **Concurrency** | Agents collide on branches, files, migrations, and shared dependencies | Repository and code-scope bindings, dependency-aware dispatch, and one active mutating Attempt per repository |
+| **Authority** | Broad credentials and ambient permissions make every worker overpowered | Server-side authorization, named capabilities, short-lived provider credentials, and risk-tiered approvals |
+| **Context** | Each agent receives a different or stale picture of the system | Frozen execution envelopes, versioned workflows, exact revisions, and durable source references |
+| **Verification** | Workers mark themselves done and weak results move downstream | Independent receipts mapped to acceptance criteria, with pass, fail, stale, conflicting, and waived states |
+| **Human attention** | Developers poll chats and logs until supervision becomes the bottleneck | Exception-first queues that rank blockers, pending decisions, failed evidence, and remediation |
+| **Cost and capacity** | Retries and parallel work consume budgets invisibly | Attempt, runtime, and cost budgets plus provider-capacity and scheduler signals |
+| **Continuity** | A process restart or lost chat destroys operational state | Durable Tasks, Attempts, events, leases, receipts, and idempotent commands |
+| **Accountability** | It is difficult to explain who authorized a change or why it shipped | End-to-end lineage from intent through plan, execution, PR, approval, release, and production evidence |
+
+### The developer becomes an operator
+
+At fleet scale, the human role changes. Developers spend less time driving each
+keystroke and more time setting intent, defining constraints, reviewing
+exceptions, making risk decisions, and accepting evidence. Agents own bounded
+execution, iteration, validation support, recovery, and evidence collection.
+
+Mission Control is designed so one operator can quickly answer:
+
+- What outcome matters most right now?
+- Which work is blocked, and what exact decision or evidence will unblock it?
+- Which agent may change which repository and code scope?
+- What changed relative to the approved plan?
+- Which acceptance criteria passed, failed, became stale, or were waived?
+- How much time, cost, and retry budget remains?
+- Can the work be paused, cancelled, replayed, or recovered safely?
+- What is actually ready for human review, merge, or release?
+
+This repository is designed for that future operating model, but it does **not**
+claim that the current V1 has been production load-tested with hundreds of live
+agents. The current foundation instead proves one complete, browser-operable,
+repository-backed golden path with durable evidence and safe recovery. Correct
+control primitives come before fleet-size claims.
+
+## Project status
+
+Mission Control is in active V1 development.
+
+The governed factory foundation is implemented: repository identity, GitHub App
+readiness, immutable Factory versions, activation gates, signed service
+commands, the `codex/v1` executor contract, and exact execution bindings are in
+the codebase and covered by automated tests.
+
+The real Codex-to-GitHub pull-request golden path is implemented and proven
+against this repository. A private, repository-scoped GitHub App created real
+pull requests through just-in-time installation tokens after the durable worker
+claimed a bound Attempt, ran `codex/v1`, enforced the approved changed-file
+scope, pushed the server-owned branch, and persisted the exact lineage. Browser
+proof covers cancellation, immutable retries, failure, success, refresh,
+process restart, and idempotent PR reconciliation.
+
+This closes the single-path V1 proof; it does not make a broad production-scale
+claim. Durable overnight recovery, unified review evidence, deployment
+verification, and final browser hardening remain before production rollout or
+hundred-agent scaling.
+
+| Capability | Status |
+|---|---|
+| Mission planning and human plan approval | Implemented |
+| Governed WorkOrders, Tasks, Attempts, and evidence records | Implemented |
+| GitHub App identity, least-privilege readiness, signed webhooks, and replay ledger | Implemented |
+| Immutable Factory configuration, readiness assessment, and activation | Implemented |
+| Signed service commands and durable command receipts | Implemented |
+| `codex/v1` executor adapter with sandbox, events, health, and cancellation | Implemented |
+| Dispatch preflight and immutable execution envelope | Implemented |
+| Durable Codex worker through exact GitHub pull request | Implemented and browser-proven |
+| Governed deployment and production verification | V1.1 |
+| FDE engagement workspace and additional connectors | Post-V1 |
+
+The original repository baseline, approved implementation sequence, and live
+proof are recorded in the
+[existing-system assessment](docs/mission-control-existing-system-assessment.md),
+[V1 program plan](docs/plans/2026-08-02-feat-ai-software-factory-v1-program-plan.md),
+[completed golden-path todo](todos/024-ready-p1-real-codex-github-pr-golden-path.md),
+and [browser evidence report](docs/testing/evidence/real-codex-github-pr-golden-path/README.md).
+
+## The delivery contract
+
+Mission Control uses one authoritative hierarchy:
+
+```text
+Company
+└── Workspace
+    └── Repository
+        └── Active Factory version
+            └── Mission
+                └── Approved Plan
+                    └── WorkOrder
+                        └── Task
+                            └── Attempt / WorkflowRun
+                                ├── ordered events
+                                ├── artifacts and changed files
+                                └── verification receipts
+
+Pull Request → Merge → Deployment → Activation → Production Verification
+```
+
+Each layer has a separate responsibility:
+
+- A **Mission** captures the intended outcome, constraints, sources, budget,
+  stop condition, and acceptance criteria.
+- A **Plan** is versioned, reviewable, and must be approved before material
+  implementation begins.
+- A **WorkOrder** is the governed delivery and acceptance contract released
+  from that plan.
+- A **Task** is a bounded operational unit inside a WorkOrder.
+- An **Attempt** is one immutable execution try against an exact WorkOrder
+  revision and Factory version.
+- **Evidence** proves or disproves acceptance criteria. A worker report does not
+  prove completion.
+- Pull request, merge, deployment, activation, and production verification are
+  distinct states. None silently implies the next.
+
+## How the factory works
+
+```mermaid
+flowchart LR
+    H["Human intent"] --> M["Mission"]
+    M --> P["Versioned plan"]
+    P --> A{"Human approval"}
+    A -->|approved| W["Governed WorkOrders"]
+    A -->|revise| P
+
+    F["Active Factory version"] --> G{"Dispatch preflight"}
+    GH["Verified GitHub App"] --> G
+    W --> G
+
+    G -->|blocked| X["Root blocker + remediation"]
+    G -->|ready| T["Tasks + bound Attempts"]
+    T --> C["codex/v1 executor"]
+    C --> E["Events + artifacts + receipts"]
+    E --> V{"Independent validation"}
+    V -->|failed| R["Bounded correction"]
+    R --> T
+    V -->|passed| PR["Review-ready PR package"]
+    PR --> D{"Human decision"}
+```
+
+Before a Mission-linked Attempt exists, dispatch revalidates the exact active
+Factory version, configuration digest, repository and GitHub access, workflow,
+executor, policy, verifiers, host, budget, recovery controls, branch/worktree,
+and allowed tools. A blocked check returns one actionable root cause without
+creating a run.
+
+## What is implemented
+
+### 1. Company, workspace, and repository boundaries
+
+The control plane models:
+
+`Company → Workspace → Repository → Code Scope`
+
+Repository identity is portable and separate from a developer's local checkout.
+Monorepos can define repository-relative code scopes, owning teams, execution
+environments, review requirements, and overlap policy. Local execution uses a
+separate host binding.
+
+Authorization is resolved server-side. The browser does not decide which
+company, workspace, repository, team, or delivery record an operator may act on.
+
+### 2. Mission and plan governance
+
+The Mission workspace supports draft, planning, proposal, rejection, revision,
+approval, WorkOrder release, execution, validation, acceptance, cancellation,
+and supersession states. Approved plans retain assertions, WorkOrder blueprints,
+dependencies, risk, cost, rollback, and independent-validation requirements.
+
+Task completion does not accept a WorkOrder, and WorkOrder completion does not
+accept a Mission.
+
+### 3. GitHub App trust boundary
+
+GitHub is the only V1 Git provider. Mission Control records the App installation
+identity and capability evidence for an exact workspace repository. It checks:
+
+- repository installation identity;
+- exact least-privilege permissions;
+- required webhook subscriptions;
+- verification freshness; and
+- connection degradation, suspension, removal, or revocation.
+
+Webhook HMAC is validated against the untouched request body before parsing.
+Every GitHub delivery GUID is recorded in a replay-aware ledger, and duplicates
+cannot repeat PR, CI, review, or improvement-loop effects. Installation tokens,
+OAuth tokens, App private keys, client secrets, and webhook secrets are never
+stored in product records.
+
+See [GitHub App Connection and Webhook Contract](docs/security/github-app-connection.md).
+
+### 4. Versioned Factory configuration
+
+A Software Factory is a thin, repository-bound configuration aggregate. It
+references existing platform records instead of creating a second execution
+system.
+
+Each immutable Factory version freezes:
+
+- repository;
+- workflow version;
+- executor adapter and version;
+- governance policy;
+- environment;
+- cost, runtime, and attempt budgets;
+- independent verifiers;
+- GREEN, YELLOW, or RED risk boundary; and
+- pause, resume, cancel, and retry posture.
+
+Readiness checks GitHub, repository access, workflow, `codex/v1`, policy,
+budget, verifiers, sandbox host, and recovery controls. Activation requires a
+current passing assessment for the exact configuration digest. Material changes
+create a new version and leave the previous version auditable.
+
+The UI lives under **Settings → Workspaces & Repositories**.
+
+### 5. Human and service authority separation
+
+Human actions, service commands, GitHub webhooks, and internal scheduler work use
+different trust boundaries.
+
+The orchestration service signs outbound commands with a replay-resistant HMAC
+envelope containing the service identity, named capability, workspace,
+repository, command ID, issue/expiry time, and exact payload digest. Convex
+retains accepted, denied, failed, succeeded, and replayed command receipts
+without storing credentials or command bodies.
+
+Public clients cannot claim `SYSTEM` or `AGENT` authority to dispatch work.
+
+See [Service Command Authentication](docs/security/service-command-authentication.md).
+
+### 6. Codex executor adapter
+
+V1 supports one production executor contract: `codex/v1`. Deterministic fake
+adapters are test fixtures only.
+
+The adapter provides:
+
+- capability discovery;
+- configuration validation;
+- low-confidence cost/runtime estimates;
+- ordered execution events;
+- read-only and workspace-write isolation;
+- repository-relative allowed paths;
+- bounded timeouts;
+- cancellation;
+- explicit no-resume semantics for V1;
+- health reporting; and
+- bounded, redacted diagnostics.
+
+The adapter executes an already-approved Attempt. It cannot approve a plan,
+widen repository scope, activate a Factory, validate its own work, merge a PR,
+or release software.
+
+See [Executor Adapter Contract](docs/architecture/executor-adapter-contract.md).
+
+### 7. Governed execution envelope
+
+Every Mission-linked WorkflowRun can retain the exact Factory version and
+digest, repository, host, executor, policy, environment, branch, worktree,
+allowed tools, WorkOrder revision, and model-routing lineage used at dispatch.
+
+Dispatch is idempotent and enforces one active mutating Attempt per repository
+across Missions. Read-only work may coexist when policy allows it. Historical
+runs without the new binding remain visibly marked as legacy rather than being
+presented as governed.
+
+### 8. Evidence and operator control
+
+Mission Control already retains WorkOrder events, Attempt events, run artifacts,
+approval decisions, verification receipts, PR/CI evidence, audit activity, and
+release records. Operator surfaces prioritize required decisions, failed or
+stale evidence, blockers, and remediation before routine agent activity.
+
+The evidence model distinguishes pass, fail, stale, unknown, waived,
+conflicting, and not-applicable states. A more compact unified end-to-end review
+package remains a follow-on usability improvement.
+
+## Live golden-path proof
+
+The completed browser-operated path is:
+
+`Mission → approved Plan → WorkOrder → Task → Attempt → evidence → commit → pull request → operator acceptance`
+
+![Validated Mission with complete assertion coverage](docs/testing/evidence/real-codex-github-pr-golden-path/mission-validated-pr-61.png)
+
+*The recovered Mission reached `Validated` with 1/1 assertion coverage after
+the worker receipt, structured handoff, WorkOrder acceptance, and final operator
+decision were recorded through the browser.*
+
+Two App-authored pull requests prove complementary parts of the path:
+
+- [PR #61](https://github.com/jaydubya818/MissionControl/pull/61) is the clean,
+  recovered Mission proof. It binds the approved Mission hierarchy to branch
+  `mc/8aw15s8c7z3d`, commit
+  `2fd0a5a0773560b05174776857545d7cd3bc5f95`, the exact changed file, and the
+  review-ready PR. The Mission, WorkOrder, and Task reached their accepted
+  terminal states.
+- [PR #62](https://github.com/jaydubya818/MissionControl/pull/62) preserves the
+  cancellation, two failed retries, and successful fourth Attempt. It proves
+  immutable retry history, approved verification-command execution, exact file
+  scope, process-restart reconciliation, and duplicate-PR prevention.
+
+Both pull requests were created by the private Mission Control GitHub App, have
+all nine repository checks passing, and remain open and unmerged. The App is
+installed only on `jaydubya818/MissionControl` with Metadata read, Checks read,
+Contents write, and Pull requests write.
+
+See the [durable worker and GitHub publication contract](docs/software-factory/durable-codex-github-pr.md)
+and the [complete browser evidence report](docs/testing/evidence/real-codex-github-pr-golden-path/README.md)
+for persisted identifiers, screenshots, state coverage, and deterministic test
+results.
+
+Merge remains a human decision in V1. Governed deployment and production
+verification follow in V1.1. Additional Git providers and hundred-agent scaling
+remain deferred until overnight recovery and the single-repository path are
+operationally hardened.
+
+## Operator surfaces
+
+The EOS V2 shell uses a route-maturity registry. Live routes are available by
+default; Preview and Demo routes remain labeled and can be hidden.
+
+The screenshots below use the deterministic `sf-demo` fixture. Counts,
+timestamps, names, and outcomes are demonstration data—not measured production
+throughput or a claim of 100-agent load validation.
+
+### Governed execution queue
+
+![Mission Control Work Orders showing approval, verification, and dispatch state](docs/software-factory/screenshots/readme/mission-control-work-orders.png)
+
+Work Orders turn approved intent into an executable contract. The operator can
+filter by repository, state, risk, assignment, requestor, and verification;
+inspect automation lineage; and see the next action before dispatching or
+accepting work.
+
+### Approval and audit trail
+
+![Mission Control audit surface showing change and approval records](docs/software-factory/screenshots/readme/mission-control-audit.png)
+
+The audit surface retains lifecycle changes, approvals, denials, deployment
+events, and policy decisions so a high-volume agent fleet remains explainable
+after the fact.
+
+| Route | Operator job | Maturity |
+|---|---|---|
+| `/v2/command-center` | Triage decisions, blockers, risk, and delivery attention | Live |
+| `/v2/missions` | Define outcomes and manage Mission planning | Live |
+| `/v2/mission-detail` | Inspect plan, WorkOrders, execution, and acceptance | Live |
+| `/v2/control-work-orders` | Govern, dispatch, verify, and accept WorkOrders | Live |
+| `/v2/tasks` | Inspect operational Tasks and Attempts | Live |
+| `/v2/projects` | Configure workspaces, repositories, GitHub App readiness, code scopes, and Factory versions | Live |
+| `/v2/audit` | Review approvals and audit history | Live |
+| `/v2/harness-loops` | Inspect governed improvement-loop evidence | Live |
+| `/v2/trace-inspector` | Inspect detailed execution lineage | Preview |
+
+## System architecture
+
+```mermaid
+flowchart TB
+    UI["React operator UI"] -->|typed queries and mutations| CX["Convex control plane"]
+    CLI["mc CLI"] --> CX
+
+    GH["GitHub App + webhooks"] -->|signed HTTP ingress| HTTP["Convex HTTP actions"]
+    HTTP --> CX
+
+    ORCH["Hono orchestration service"] -->|signed service commands| SC["Convex service-command boundary"]
+    SC --> CX
+    ORCH --> ADAPTER["codex/v1 adapter"]
+    ADAPTER --> CODEX["Codex CLI in attempt worktree"]
+
+    CX --> DB[("Convex durable state")]
+    DB --> UI
+
+    subgraph "Authoritative records"
+      M["Missions + Plans"]
+      W["WorkOrders + Tasks"]
+      R["WorkflowRuns + Events"]
+      E["Artifacts + Receipts + Approvals"]
+      F["Factory Versions + Readiness"]
+    end
+
+    CX --- M
+    CX --- W
+    CX --- R
+    CX --- E
+    CX --- F
+```
+
+Convex is the source of truth. The Hono service hosts orchestration and executor
+integration; it does not own a competing delivery lifecycle. Product data is
+accessed through Convex queries, mutations, actions, internal functions, and
+HTTP actions—there is no separate Express REST backend.
+
+## Repository map
+
+| Path | Responsibility |
+|---|---|
+| `apps/mission-control-ui/` | React operator application and EOS V2 shell |
+| `apps/orchestration-server/` | Hono ingress, service-command client, agent coordination, and `codex/v1` runtime |
+| `apps/workflow-executor/` | Standalone executor for versioned workflow graphs |
+| `convex/` | Authoritative schema, domain commands, policies, GitHub ingress, evidence, and projections |
+| `packages/workflow-engine/` | Workflow execution and executor-adapter contracts |
+| `packages/policy-engine/` | Policy evaluation primitives |
+| `packages/agent-runtime/` | Agent lifecycle and heartbeat behavior |
+| `packages/context-*` | Context routing, manifests, activation, and tooling |
+| `workflows/` | Versioned YAML workflow definitions |
+| `scripts/mc` | Mission Control CLI |
+| `docs/` | Product doctrine, architecture, security contracts, plans, and verification evidence |
+
+## Technology
+
+- React 18, TypeScript, Vite, Tailwind CSS 4, and shadcn/ui
+- Convex for durable state, typed server functions, scheduled work, and HTTP
+  ingress
+- Hono for the orchestration service
+- pnpm workspaces and Turborepo
+- Vitest for unit and contract tests
+- Playwright and Axe for browser and accessibility checks
+- Codex CLI as the approved V1 execution runtime
+
+## Local development
+
+### Prerequisites
+
+- Node.js 18 or newer
+- pnpm 9 or newer
+- A Convex development deployment
+
+### First-time setup
 
 ```bash
-# 1. Clone and setup
 git clone https://github.com/jaydubya818/MissionControl.git
 cd MissionControl
 pnpm install
-
-# 2. Configure environment (required for the UI to load data)
 cp .env.example .env.local
-# Edit .env.local: set CONVEX_URL and VITE_CONVEX_URL.
-# Run `npx convex dev` once and paste the deployment URL into both variables.
-
-# 3. Start development (from repo root)
-pnpm run dev                    # Starts Convex + UI together → http://localhost:5173
-pnpm run dev:ui                 # UI only (needs VITE_CONVEX_URL in .env.local)
-pnpm run dev:orchestration      # Orchestration server (http://localhost:4100), optional
+npx convex dev
 ```
 
-If **http://localhost:5173** doesn't load: (1) Run `pnpm run dev` from the repo root so both Convex and the UI start. (2) If you see "Convex is not configured", add `VITE_CONVEX_URL` to `.env.local` (same value as `CONVEX_URL`) and restart the dev server.
+On first use, Convex creates or connects a development deployment. Copy the
+generated `CONVEX_URL` to `VITE_CONVEX_URL` in `.env.local`, then start the
+normal development stack:
 
-For detailed run commands, see [docs/guides/RUN.md](docs/guides/RUN.md).
+```bash
+pnpm run dev
+```
 
----
+Open [http://localhost:5173](http://localhost:5173), or the next port printed by
+Vite if 5173 is already in use.
 
-## Software Factory Demo (local, end-to-end)
+### Deterministic Software Factory demo
 
-The full v2 operator experience — EOS Command Center, context registry, knowledge graph, kanban, QC, approvals — runs from **this repo** with feature flags.
-
-**Canonical URL:** [http://localhost:5199/v2/command-center](http://localhost:5199/v2/command-center)
-
-### Quick start (main repo — recommended)
-
-**Terminal 1 — backend + graph executor + UI (one command)**
+The supported demo runs from the main repository and starts Convex, the
+workflow executor, and the V2 operator UI:
 
 ```bash
 pnpm run dev:demo
 ```
 
-Or split across three terminals:
+In a second terminal:
 
 ```bash
-# Terminal 1
-npx convex dev
-
-# Terminal 2 (after Convex is ready)
-pnpm run dev:workflow-executor
-
-# Terminal 3
-pnpm run dev:demo:ui
+pnpm run convex:seed:demo:force
 ```
 
-**Seed demo data** (from repo root, with Convex running):
+Open
+[http://localhost:5199/v2/command-center](http://localhost:5199/v2/command-center)
+and select **Software Factory Demo** (`sf-demo`). This is a deterministic local
+operator demo; the separate live GitHub PR proof is documented above.
 
-```bash
-pnpm run convex:seed:demo          # ~380 Atlas Checkout rows (sf-demo)
-pnpm run import:knowledge-graph:demo   # optional: Memory → Graph tab
-```
-
-Open [http://localhost:5199/v2/command-center](http://localhost:5199/v2/command-center). Select workspace **Software Factory Demo**.
-
-Required env: `.env.local` with `CONVEX_URL` / `VITE_CONVEX_URL` (created by `npx convex dev` on first run). The demo command idempotently installs the built-in workflow definitions before starting the executor. Without the executor, dispatched Graph Engineering runs remain safely queued.
-
-### Legacy: git worktree demo
-
-Older setups used separate worktrees (`sf-19-ui-migration` + `sf-90-demo`). Main repo now includes EOS + registry; worktrees are optional for branch isolation only.
-
-```
-┌─────────────────────────────────────┐     ┌──────────────────────────────────┐
-│  UI  (port 5199)                    │     │  Backend  (port 3210)            │
-│  ~/worktrees/sf-19-ui-migration     │────▶│  ~/worktrees/sf-90-demo          │
-│  Vite + v2 feature flags            │     │  npx convex dev                  │
-└─────────────────────────────────────┘     │  seedFactoryDemo (~380 rows)     │
-                                            └──────────────────────────────────┘
-```
-
-Both worktrees share the same local Convex deployment (`http://127.0.0.1:3210`). The demo narrative is **Atlas Checkout** under project **Software Factory Demo** (slug `sf-demo`).
-
-### Prerequisites: git worktrees
-
-The demo requires two worktrees checked out alongside your main clone:
-
-| Worktree | Branch | Purpose |
-|----------|--------|---------|
-| `~/worktrees/sf-19-ui-migration` | `sf/19-ui-v2-migration` | v2 shell + registry UI |
-| `~/worktrees/sf-90-demo` | `sf/90-demo-seed` | Demo Convex functions + seed |
-
-Create them once (adjust paths as needed):
-
-```bash
-git worktree add ~/worktrees/sf-19-ui-migration sf/19-ui-v2-migration
-git worktree add ~/worktrees/sf-90-demo sf/90-demo-seed
-cd ~/worktrees/sf-19-ui-migration && pnpm install
-cd ~/worktrees/sf-90-demo && pnpm install
-```
-
-Each worktree needs its own `.env.local` with `CONVEX_URL` and `VITE_CONVEX_URL` pointing at `http://127.0.0.1:3210` (created automatically by `npx convex dev` on first run).
-
-### Run the demo (two terminals)
-
-**Terminal 1 — backend (keep running)**
-
-```bash
-cd ~/worktrees/sf-90-demo && npx convex dev
-```
-
-Wait for `Convex functions ready!` before opening the UI.
-
-**Terminal 2 — UI with v2 flags**
-
-```bash
-cd ~/worktrees/sf-19-ui-migration
-set -a; source .env.local; set +a
-VITE_FLAG_UI_SHELL_V2=true VITE_FLAG_CONTEXT_REGISTRY=true VITE_FLAG_EOS_COMMAND_CENTER_PREVIEW=true \
-  pnpm --filter mission-control-ui exec vite --port 5199 --strictPort
-```
-
-Open [http://localhost:5199/v2/command-center](http://localhost:5199/v2/command-center) (EOS nav) or [http://localhost:5199/v2/home](http://localhost:5199/v2/home) (classic Overview). The workspace selector should show **Software Factory Demo**.
-
-### Seed and reset demo data
-
-Run these from the **`sf-90-demo` worktree** (or use `pnpm run convex:seed:demo` from main):
-
-```bash
-cd ~/worktrees/sf-90-demo
-
-./scripts/mc demo seed      # seed (~380 rows); force-reseeds if already present
-./scripts/mc demo status    # row counts per table
-./scripts/mc demo clear     # remove ONLY sf-demo-tagged rows
-```
-
-Equivalents:
-
-```bash
-pnpm run demo:seed          # same as mc demo seed
-pnpm run demo:clear
-npx convex run seedFactoryDemo:run '{"force":true}'
-npx convex run seedFactoryDemo:status
-npx convex run seedFactoryDemo:clear '{}'
-```
-
-`clear` never touches functional (non-demo) data. Demo rows are tagged `seedTag=sf-demo` and removable in one command. See [docs/software-factory/DEMO.md](docs/software-factory/DEMO.md) for the full seed inventory.
-
-**Knowledge graph (Memory → Graph tab):** import Agentic-KB Graphify output once per backend:
+Optional knowledge graph import:
 
 ```bash
 pnpm run import:knowledge-graph:demo
 ```
 
-Requires a local `~/Agentic-KB` clone (or set `AGENTIC_KB_PATH`). Then open [/v2/memory](http://localhost:5199/v2/memory) → **Graph**.
+See [Run the demo](docs/site/get-started/run-the-demo.md) and
+[Run Commands](docs/guides/RUN.md).
 
-**Health check:**
+## Production-bound configuration
+
+Local demo mode does not require live GitHub credentials. A real GitHub App
+connection requires the server-side variables documented in
+[GitHub App Connection and Webhook Contract](docs/security/github-app-connection.md),
+including the App identity, OAuth client, private key, webhook secret, and
+Mission Control callback URL.
+
+Authenticated orchestration additionally requires:
+
+- `ORCHESTRATION_API_TOKEN` for inbound Hono requests;
+- `MISSION_CONTROL_SERVICE_COMMAND_SECRET` in orchestration and Convex;
+- optional matching `MISSION_CONTROL_SERVICE_ID`; and
+- a valid `CODEX_EXECUTABLE` path when the bundled default is unavailable.
+
+Secrets must remain server-side and must never use a `VITE_` prefix.
+
+## Built-in workflows
+
+The repository includes six YAML workflow definitions:
+
+- `feature-dev`
+- `bug-fix`
+- `code-review`
+- `security-audit`
+- `quality-audit`
+- `loop-engineering`
+
+They are installed into the versioned workflow catalog and snapshotted onto
+Attempts so later catalog edits do not rewrite execution history.
+
+## Verification
+
+Run the same primary checks used by CI:
 
 ```bash
-cd ~/worktrees/sf-90-demo && npx convex run seedFactoryDemo:status '{}'
-# expect: "seeded": true, "totalRows": ~380, "projectSlug": "sf-demo"
+pnpm run typecheck
+pnpm run test
+pnpm run lint
+pnpm run build
 ```
 
-### Demo pages worth clicking
+Critical browser checks:
 
-| URL | What you'll see |
-|-----|-----------------|
-| [/v2/home](http://localhost:5199/v2/home) | Overview — agents working, in progress, approvals, blocked, spend |
-| [/v2/analytics](http://localhost:5199/v2/analytics) | KPIs, bars, heatmap |
-| [/v2/skills](http://localhost:5199/v2/skills) | Context registry (6 demo packages) |
-| [/v2/tasks](http://localhost:5199/v2/tasks) | Kanban across all 9 task states |
-| [/v2/memory](http://localhost:5199/v2/memory) → Graph | Agentic-KB knowledge graph (222 nodes after import) |
-| Audit, QC Dashboard, Agents | All populated with Atlas Checkout narrative data |
+```bash
+pnpm run test:e2e:critical
+```
 
-After seeding, expect Overview metrics like **5 agents working / 4 in progress / 3 pending approvals / 2 blocked**.
+CI also runs a smoke test, a public Convex runtime-contract guard, skill-quality
+gates, unit/contract suites, and the UI build. The hosted E2E job currently
+depends on live Convex infrastructure and is non-blocking; production release
+evidence must therefore include an explicit local or isolated-environment
+browser run.
 
-### Critical caveats
+## Security model
 
-1. **Do not run `pnpm run dev` from the main checkout while the demo backend is up.** Both use the same local Convex instance on port `3210`. Whichever `convex dev` process wins redeploys its branch's functions and can break the other.
-2. **The backend is ephemeral.** If `convex dev` stops, the UI shows skeleton/pulse loaders forever — it looks like "no data". Fix: restart Terminal 1, then hard-refresh the browser (`⌘⇧R`).
-3. **Use port 5199 for the demo UI.** Port `5173` may be an unrelated project. Port `5180` (main checkout vite) may also show v2 + data if demo seed enabled global feature flags, but `5199` is the intended sf-19 UI with registry evals.
-4. **`mc demo` lives in the sf-90-demo worktree only.** Running `./scripts/mc demo seed` from the main checkout will fail with "Unknown command: demo".
-5. **Demo seed enables global feature flags** (`ui.shell.v2`, `context.registry`, etc.). `mc demo clear` removes demo rows but leaves those flags enabled.
+- Human, service, scheduler, webhook, and GitHub installation identities remain
+  separate.
+- Sensitive actions enforce company, workspace, repository, delivery-record,
+  and named-permission scope server-side.
+- Factory activation and Mission dispatch fail closed on missing or stale
+  evidence.
+- External webhook delivery is signed, deduplicated, and replay-aware.
+- Service commands are signed, scoped, short-lived, and replay-resistant.
+- Installation tokens and service credentials are not stored in product
+  records.
+- Repository mutation is constrained to an attempt worktree and approved
+  repository-relative paths.
+- The worker that creates a material change cannot be the only validator.
+- Merge remains human-only in V1.
 
-### Troubleshooting the demo
+Security and governance contracts:
 
-| Symptom | Likely cause | Fix |
-|---------|--------------|-----|
-| Skeleton loaders, no numbers | Convex backend down | `cd ~/worktrees/sf-90-demo && npx convex dev` |
-| Old shell, no `/v2/*` routes | Wrong port or flags off | Use `:5199` with `VITE_FLAG_UI_SHELL_V2=true` |
-| Empty tables, v2 shell loads | Demo not seeded | `./scripts/mc demo seed` from sf-90-demo |
-| Intermittent breakage | Two `convex dev` processes fighting | Kill extra processes; keep only sf-90-demo backend |
-| "Unknown command: demo" | Ran from main checkout | `cd ~/worktrees/sf-90-demo` first |
+- [Human and Service Authorization Matrix](docs/security/human-service-authorization-matrix.md)
+- [GitHub App Connection](docs/security/github-app-connection.md)
+- [Service Command Authentication](docs/security/service-command-authentication.md)
+- [Evidence Retention Policy](docs/security/evidence-retention-policy.md)
 
----
-
-## Architecture
-
-- **UI:** React 18 + TypeScript + Vite → http://localhost:5173 (dev) or http://localhost:5199 (demo)
-- **Backend:** Convex (serverless functions + database; no Express, no REST API)
-- **Orchestration:** Hono server (coordinator loop + agent runtime) → http://localhost:4100
-- **CLI:** `mc` command (see `scripts/mc`). Diagnostics: `./scripts/mc-doctor.sh`
-- **Monorepo:** pnpm workspaces + Turborepo (`apps/`, `packages/`, `convex/`)
-
-## Operator control plane
-
-Mission Control separates human authorization from agent execution. Operators
-review exceptions in **Governance → Approvals**, make a reasoned decision, open
-the governed WorkOrder to dispatch it, and inspect independent receipts before
-acceptance. **Intelligence → Operator Evals** pressure-tests this workflow with
-fixed scenarios, durability variants, and human calibration.
+## Product and architecture documents
 
 - [Mission Control North Star](docs/product/mission-control-north-star.md)
-- [Operator control-plane guide](docs/site/operator-control-plane/overview.md)
-- [Integrated validation evidence](docs/validation/2026-07-31-integrated-control-plane-evidence.md)
+- [V1 Product Strategy](docs/product/mission-control-v1-product-strategy.md)
+- [Existing-System Assessment](docs/mission-control-existing-system-assessment.md)
+- [AI Software Factory V1 Program Plan](docs/plans/2026-08-02-feat-ai-software-factory-v1-program-plan.md)
+- [V1 Product Decisions](docs/decisions/ai-software-factory-v1-decisions.md)
+- [Company, Workspace, and Repository Control Plane](docs/architecture/company-workspace-repository-control-plane.md)
+- [Executor Adapter Contract](docs/architecture/executor-adapter-contract.md)
+- [Graph Engineering](docs/software-factory/GRAPH_ENGINEERING.md)
+- [Loop Engineering](docs/software-factory/LOOP_ENGINEERING.md)
 
-## CLI Usage
+## Product doctrine
 
-```bash
-mc doctor              # Health check
-mc status              # System status
-mc run feature-dev     # Start workflow
-mc tasks INBOX         # List tasks
-mc claim               # Claim next task
-mc flags list          # Feature flags
-mc skill lint          # Lint SKILL.md files
-```
+Mission Control optimizes for approved-plan-to-review-ready-PR time, evidence
+completeness, first-pass validation, bounded recovery, operator attention, cost
+per accepted WorkOrder, and developer trust.
 
-Demo-specific commands (`mc demo seed|clear|status`) are available in the `sf-90-demo` worktree only.
-
-## Workflows
-
-- **feature-dev:** Plan → Implement → Test → PR
-- **bug-fix:** Triage → Fix → Verify → PR
-- **security-audit:** Scan → Prioritize → Fix → Verify
-- **code-review:** Analyze → Security → Style → Approve
-
-## Key Features
-
-- Multi-agent workflows (YAML-defined)
-- Task state machine (INBOX → ASSIGNED → IN_PROGRESS → REVIEW → NEEDS_APPROVAL → BLOCKED → DONE → CANCELED)
-- Auto-approval for LOW risk tasks; human approval for YELLOW/RED
-- Software Factory v2 operator shell (feature-flagged: `ui.shell.v2`)
-- Context registry and manifest locking (`context.registry`)
-- Work order delivery control plane (`delivery.workorders`)
-- Governed deterministic skill automations with bounded adapters and independent receipts
-- Complexity-aware model routing with operating-lane pools and local-inference safeguards
-- Persona-tested operator approval flows with durable evaluation evidence
-- Graph Engineering cycles with version-pinned DAG execution, explicit dispatch, and run inspection
-- Structured logging, exponential backoff, idempotency keys on creates
-
-## Documentation
-
-- [Run Commands](docs/guides/RUN.md) — Local dev setup and seeding
-- [Software Factory Demo](docs/software-factory/DEMO.md) — Full demo seed inventory
-- [Creating Plugins](docs/CREATING_PLUGINS.md) — Skills, rules, and registry packages ([Tessl model](https://docs.tessl.io/create/creating-plugins))
-- [Context Manifests](docs/CONTEXT_MANIFESTS.md) — Lock and install context packages
-- [Feature Flags](docs/FEATURE_FLAGS.md) — Flag keys and env overrides
-- [Runbook](docs/MISSION_CONTROL_RUNBOOK.md) — Operations, E2E, CI
-- [Troubleshooting](docs/guides/TROUBLESHOOTING.md) — Diagnostics and common fixes
-- [Setup Guide](docs/BOOT_CONTRACT.md)
-- [Workflows](docs/WORKFLOWS.md)
-- [Graph Engineering](docs/software-factory/GRAPH_ENGINEERING.md) — Governed graph lifecycle, dispatch, execution, and evidence
-- [Model Routing Operations](docs/software-factory/MODEL_ROUTING_OPERATIONS.md) — Lane pools, complexity policy, and operational safeguards
-- [Skill Automations](docs/site/skill-automations/overview.md) — Candidate assessment, governance, execution, and receipts
-- [Product North Star](docs/product/mission-control-north-star.md) — Product hierarchy and operator principles
-- [PRD](docs/PRD_V2.md) — Product requirements and roadmap
+Agent activity, token count, lines generated, and PR volume are not success
+metrics.
 
 ## License
 
