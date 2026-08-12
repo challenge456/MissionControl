@@ -177,6 +177,17 @@ new governed retry. Authenticated operators and tools can enumerate pending
 Factory review checkpoints with `GET /approval-decisions?projectId=...`; the
 executor still has no self-approval authority.
 
+This implementation landed in [PR #72](https://github.com/jaydubya818/MissionControl/pull/72)
+with green smoke, typecheck, lint, unit, build, E2E, and preview checks.
+
+The same-Attempt continuation was also exercised live across a full
+orchestration-process restart. The persisted verified candidate resumed only
+after browser approval, consumed a candidate-bound publication permit, and was
+published by the repository-scoped GitHub App as [PR #73](https://github.com/jaydubya818/MissionControl/pull/73).
+The generated canary PR passed every check and was closed unmerged after the
+proof was captured. The audit IDs, event counts, and screenshots are recorded in
+[`docs/testing/evidence/pr-72-human-review-resume/`](docs/testing/evidence/pr-72-human-review-resume/README.md).
+
 This closes the single-repository delivery and review proof; it does not make a
 broad production-scale claim. Unified review evidence, governed staging, and
 human-approved production-release automation are implemented. The first
