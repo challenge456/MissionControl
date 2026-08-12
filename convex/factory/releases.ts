@@ -15,6 +15,7 @@ import {
   factoryReleaseBoundLineageIssue,
   factoryReleaseEvidenceReplayMatches,
   factoryReleaseMergeIdentityIssue,
+  factoryReleaseRedeploymentIssue,
   factoryReleaseTransitionAllowed,
   normalizeCommitSha,
   validateFactoryReleaseVerificationUrls,
@@ -395,6 +396,7 @@ export const recordStagingDeployment = mutation({
       state: "DEPLOYED",
       deploymentProvider: provider,
       providerDeploymentId,
+      deploymentAttemptCount: 1,
       ...urls.urls,
       deployedAt: now,
       blockingIssue: undefined,
@@ -421,6 +423,128 @@ export const recordStagingDeployment = mutation({
       actorType: "HUMAN",
       actorId: access.actorId,
       idempotencyKey: `factory-release:${release._id}:work-order:deployed`,
+    });
+    return { recorded: true as const, release: await ctx.db.get(release._id) };
+  },
+});
+
+/**
+ * Replace only the active provider receipt after an independently recorded
+ * verification failure. Prior deployment and verification evidence stays
+ * immutable; the new receipt must name a different provider deployment for
+ * the same approved merge commit.
+ */
+export const recordStagingRedeployment = mutation({
+  args: {
+    releaseId: v.id("factoryReleases"),
+    commitSha: v.string(),
+    provider: v.string(),
+    providerDeploymentId: v.string(),
+    deploymentUrl: v.string(),
+    provenanceUrl: v.string(),
+    smokeUrl: v.string(),
+    healthUrl: v.string(),
+    idempotencyKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const release = await requireRelease(ctx, args.releaseId);
+    const access = await requireWorkspacePermission(
+      ctx,
+      release.projectId,
+      FACTORY_PERMISSIONS.IMPROVE,
+    );
+    const commitSha = normalizeCommitSha(args.commitSha);
+    if (!commitSha || commitSha !== release.mergeCommitSha) {
+      throw new Error("Redeployment receipt must name the same exact approved merge commit.");
+    }
+    const provider = args.provider.trim();
+    const providerDeploymentId = args.providerDeploymentId.trim();
+    if (!provider || provider.length > 80 || !providerDeploymentId || providerDeploymentId.length > 200) {
+      throw new Error("Redeployment provider and provider deployment ID are required.");
+    }
+    const recoveryIssue = factoryReleaseRedeploymentIssue({
+      state: release.state,
+      verificationAttemptCount: release.verificationAttemptCount,
+      blockingIssue: release.blockingIssue,
+      currentProviderDeploymentId: release.providerDeploymentId,
+      nextProviderDeploymentId: providerDeploymentId,
+    });
+    if (recoveryIssue) throw new Error(`Staging redeployment is blocked (${recoveryIssue}).`);
+    const environment = await ctx.db.get(release.environmentId);
+    if (!environment || environment.type !== "staging") {
+      throw new Error("Factory release redeployment is staging-only.");
+    }
+    const urls = validateFactoryReleaseVerificationUrls({
+      urls: {
+        deploymentUrl: args.deploymentUrl,
+        provenanceUrl: args.provenanceUrl,
+        smokeUrl: args.smokeUrl,
+        healthUrl: args.healthUrl,
+      },
+      allowedOrigins: factoryReleaseAllowedOrigins(environment.metadata),
+      allowLocalhost: localVerificationAllowed(),
+    });
+    if ("reason" in urls) throw new Error(`Redeployment verification URLs are unsafe (${urls.reason}).`);
+    const priorProviderDeploymentId = release.providerDeploymentId!;
+    const deploymentAttempt = (release.deploymentAttemptCount ?? 1) + 1;
+    const summary = `${provider} reported recovery staging deployment ${providerDeploymentId}`;
+    const evidenceMetadata = {
+      origin: urls.origin,
+      provider,
+      provenanceUrl: urls.urls.provenanceUrl,
+      smokeUrl: urls.urls.smokeUrl,
+      healthUrl: urls.urls.healthUrl,
+      replacesProviderDeploymentId: priorProviderDeploymentId,
+      deploymentAttempt: String(deploymentAttempt),
+    };
+    const duplicate = await ctx.db.query("factoryReleaseEvidence")
+      .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", args.idempotencyKey))
+      .first();
+    if (duplicate) {
+      if (duplicate.releaseId !== release._id || !factoryReleaseEvidenceReplayMatches(duplicate, {
+        kind: "DEPLOYMENT",
+        subjectSha: release.mergeCommitSha,
+        providerRef: providerDeploymentId,
+        evidenceUrl: urls.urls.deploymentUrl,
+        summary,
+        metadata: evidenceMetadata,
+      })) {
+        throw new Error("Redeployment idempotency key is bound to different evidence.");
+      }
+      return { recorded: false as const, release };
+    }
+    const now = Date.now();
+    await ctx.db.patch(release._id, {
+      deploymentProvider: provider,
+      providerDeploymentId,
+      deploymentAttemptCount: deploymentAttempt,
+      ...urls.urls,
+      redeployedAt: now,
+      blockingIssue: undefined,
+      requiredHumanAction: "Run independent provenance, smoke, and health verification for the recovery deployment.",
+      updatedAt: now,
+    });
+    await appendEvidence(ctx, release, {
+      kind: "DEPLOYMENT",
+      status: "INFO",
+      subjectSha: release.mergeCommitSha,
+      providerRef: providerDeploymentId,
+      evidenceUrl: urls.urls.deploymentUrl,
+      summary,
+      actorType: "HUMAN",
+      actorId: access.actorId,
+      idempotencyKey: args.idempotencyKey,
+      metadata: evidenceMetadata,
+    });
+    await syncWorkOrder(ctx, release, {
+      state: "AWAITING_VERIFICATION",
+      verificationStatus: "PENDING",
+      blockingIssue: undefined,
+      requiredHumanAction: "Run independent staging verification for the recovery deployment.",
+      summary: `Recovery deployment ${providerDeploymentId} recorded for ${release.mergeCommitSha.slice(0, 12)}`,
+      actorType: "HUMAN",
+      actorId: access.actorId,
+      idempotencyKey: `factory-release:${release._id}:work-order:redeployed:${deploymentAttempt}`,
     });
     return { recorded: true as const, release: await ctx.db.get(release._id) };
   },
