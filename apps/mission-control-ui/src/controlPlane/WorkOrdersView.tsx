@@ -566,9 +566,10 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                   receipt={latestWorkOrderReceipt}
                   verificationRuns={selected.verificationRuns ?? []}
                   onInspect={(workflowRunId, receiptId) => {
-                    setInspectorRunId(workflowRunId as Id<"workflowRuns">);
-                    setInspectorReceiptId(receiptId as Id<"verificationReceipts">);
-                    setInspectorCriterionId(null);
+                    openRunInspector({
+                      runId: workflowRunId as Id<"workflowRuns">,
+                      receiptId: receiptId as Id<"verificationReceipts">,
+                    });
                   }}
                 />
 
