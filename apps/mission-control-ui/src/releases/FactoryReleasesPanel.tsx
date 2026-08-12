@@ -27,6 +27,9 @@ import {
   factoryReleaseCounts,
   factoryReleaseNextAction,
   factoryReleaseTone,
+  factoryProductionNextAction,
+  factoryProductionReleaseTone,
+  type FactoryProductionReleaseState,
   type FactoryReleaseState,
 } from "./factoryReleaseModel";
 
@@ -212,10 +215,10 @@ export function FactoryReleasesPanel({ projectId }: { projectId: Id<"projects"> 
     <section aria-labelledby="factory-releases-title" className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="registry-kicker">V1 golden path · staging only</div>
+          <div className="registry-kicker">V1 golden path · staging qualified production</div>
           <h2 id="factory-releases-title" className="mt-1 text-[18px] font-semibold text-ink">Governed factory releases</h2>
           <p className="mt-1 max-w-3xl text-[12.5px] leading-5 text-ink-muted">
-            Track the exact GitHub merge through human deployment approval, provider receipt, independent staging proof, and rollback. Production rollout is disabled.
+            Track the exact GitHub merge through staging qualification, separate production approval, staged deployment, independent proof, promotion, and rollback.
           </p>
         </div>
         <StatusBadge tone="info">MERGED → DEPLOYED → VERIFIED / ROLLED BACK</StatusBadge>
@@ -254,6 +257,7 @@ export function FactoryReleasesPanel({ projectId }: { projectId: Id<"projects"> 
               const configuredOrigin = allowedOrigin(environment?.metadata);
               const nextAction = factoryReleaseNextAction(release as Parameters<typeof factoryReleaseNextAction>[0]);
               const verificationFailed = release.state === "DEPLOYED" && Boolean(release.blockingIssue);
+              const productionState = release.productionState as FactoryProductionReleaseState | undefined;
               return (
                 <Card key={release._id} className={verificationFailed ? "border-err/40 p-4" : "p-4"}>
                   <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -263,6 +267,11 @@ export function FactoryReleasesPanel({ projectId }: { projectId: Id<"projects"> 
                         <StatusBadge tone={release.deploymentApprovalStatus === "APPROVED" ? "success" : "warning"}>
                           deploy approval {release.deploymentApprovalStatus.toLowerCase()}
                         </StatusBadge>
+                        {productionState ? (
+                          <StatusBadge tone={factoryProductionReleaseTone(productionState)}>
+                            production {productionState.toLowerCase()}
+                          </StatusBadge>
+                        ) : null}
                         <span className="text-[11px] text-ink-muted">{environment?.name ?? "Unknown staging environment"}</span>
                       </div>
                       <h3 className="mt-2 text-[15px] font-semibold text-ink">{workOrder?.title ?? "Factory WorkOrder"}</h3>
@@ -270,7 +279,21 @@ export function FactoryReleasesPanel({ projectId }: { projectId: Id<"projects"> 
                         <span>head {shortSha(release.sourceHeadSha)}</span>
                         <span>merge {shortSha(release.mergeCommitSha)}</span>
                         {release.providerDeploymentId ? <span>deployment {release.providerDeploymentId}</span> : null}
+                        {release.productionProviderDeploymentId ? <span>production {release.productionProviderDeploymentId}</span> : null}
                       </div>
+                      {release.state === "VERIFIED" ? (
+                        <div className="mt-3 rounded-lg border border-line bg-surface-2 p-3">
+                          <div className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-ink-muted">Production control</div>
+                          <p className="mt-1 text-[12.5px] text-ink-secondary">
+                            {factoryProductionNextAction({
+                              state: productionState,
+                              blockingIssue: release.productionBlockingIssue,
+                              requiredHumanAction: release.productionRequiredHumanAction,
+                            })}
+                          </p>
+                          {release.productionBlockingIssue ? <p className="mt-1 text-[11.5px] text-err">{release.productionBlockingIssue}</p> : null}
+                        </div>
+                      ) : null}
                       <div className={verificationFailed ? "mt-3 rounded-lg border border-err/30 bg-err-soft p-3" : "mt-3 rounded-lg border border-line bg-surface-2 p-3"}>
                         <div className="flex items-start gap-2">
                           {verificationFailed ? <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-err" /> : <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-registry-accent" />}

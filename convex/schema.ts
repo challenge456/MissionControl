@@ -281,6 +281,14 @@ const factoryReleaseState = v.union(
   v.literal("ROLLED_BACK")
 );
 
+const factoryProductionReleaseState = v.union(
+  v.literal("ELIGIBLE"),
+  v.literal("DEPLOYED"),
+  v.literal("VERIFIED"),
+  v.literal("PROMOTED"),
+  v.literal("ROLLED_BACK")
+);
+
 const factoryReleaseEvidenceKind = v.union(
   v.literal("MERGE"),
   v.literal("DEPLOYMENT_APPROVAL"),
@@ -288,7 +296,14 @@ const factoryReleaseEvidenceKind = v.union(
   v.literal("PROVENANCE"),
   v.literal("SMOKE_TEST"),
   v.literal("HEALTH_CHECK"),
-  v.literal("ROLLBACK")
+  v.literal("ROLLBACK"),
+  v.literal("PRODUCTION_APPROVAL"),
+  v.literal("PRODUCTION_DEPLOYMENT"),
+  v.literal("PRODUCTION_PROVENANCE"),
+  v.literal("PRODUCTION_SMOKE_TEST"),
+  v.literal("PRODUCTION_HEALTH_CHECK"),
+  v.literal("PRODUCTION_PROMOTION"),
+  v.literal("PRODUCTION_ROLLBACK")
 );
 
 const contextPackageType = v.union(
@@ -6188,6 +6203,32 @@ export default defineSchema({
     blockingIssue: v.optional(v.string()),
     requiredHumanAction: v.optional(v.string()),
     verificationAttemptCount: v.number(),
+    productionEnvironmentId: v.optional(v.id("environments")),
+    productionState: v.optional(factoryProductionReleaseState),
+    productionApprovalStatus: v.optional(v.union(
+      v.literal("PENDING"),
+      v.literal("APPROVED")
+    )),
+    productionApprovedBy: v.optional(v.string()),
+    productionApprovedAt: v.optional(v.number()),
+    productionApprovalRationale: v.optional(v.string()),
+    productionDeploymentProvider: v.optional(v.string()),
+    productionProviderDeploymentId: v.optional(v.string()),
+    productionDeploymentUrl: v.optional(v.string()),
+    productionProvenanceUrl: v.optional(v.string()),
+    productionSmokeUrl: v.optional(v.string()),
+    productionHealthUrl: v.optional(v.string()),
+    productionDeployedAt: v.optional(v.number()),
+    productionVerifiedAt: v.optional(v.number()),
+    productionVerificationAttemptCount: v.optional(v.number()),
+    productionPromotedAt: v.optional(v.number()),
+    productionPromotionProviderRef: v.optional(v.string()),
+    productionPromotionUrl: v.optional(v.string()),
+    productionRolledBackAt: v.optional(v.number()),
+    productionRestoredCommitSha: v.optional(v.string()),
+    productionRollbackProviderRef: v.optional(v.string()),
+    productionBlockingIssue: v.optional(v.string()),
+    productionRequiredHumanAction: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

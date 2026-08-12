@@ -7,6 +7,7 @@ import {
   factoryReleaseBoundLineageIssue,
   factoryReleaseEvidenceReplayMatches,
   factoryReleaseMergeIdentityIssue,
+  factoryProductionReleaseTransitionAllowed,
   factoryReleaseRedeploymentIssue,
   factoryReleaseTransitionAllowed,
   factoryReleaseVerificationHeaders,
@@ -24,6 +25,16 @@ describe("factory release state and evidence", () => {
     expect(factoryReleaseTransitionAllowed("DEPLOYED", "ROLLED_BACK")).toBe(true);
     expect(factoryReleaseTransitionAllowed("VERIFIED", "ROLLED_BACK")).toBe(true);
     expect(factoryReleaseTransitionAllowed("ROLLED_BACK", "DEPLOYED")).toBe(false);
+  });
+
+  it("allows only the staged production verify, promote, or rollback sequence", () => {
+    expect(factoryProductionReleaseTransitionAllowed("ELIGIBLE", "DEPLOYED")).toBe(true);
+    expect(factoryProductionReleaseTransitionAllowed("ELIGIBLE", "PROMOTED")).toBe(false);
+    expect(factoryProductionReleaseTransitionAllowed("DEPLOYED", "VERIFIED")).toBe(true);
+    expect(factoryProductionReleaseTransitionAllowed("DEPLOYED", "ROLLED_BACK")).toBe(true);
+    expect(factoryProductionReleaseTransitionAllowed("VERIFIED", "PROMOTED")).toBe(true);
+    expect(factoryProductionReleaseTransitionAllowed("PROMOTED", "ROLLED_BACK")).toBe(true);
+    expect(factoryProductionReleaseTransitionAllowed("ROLLED_BACK", "DEPLOYED")).toBe(false);
   });
 
   it("accepts only full commit identities", () => {
@@ -175,6 +186,18 @@ describe("factory release state and evidence", () => {
       providerDeploymentId: "dep-42",
       provenance: { commitSha: "b".repeat(40), deploymentId: "dep-42", environment: "staging" },
     })).toEqual({ passed: false, reason: "provenance-sha-mismatch" });
+    expect(evaluateFactoryReleaseProvenance({
+      mergeCommitSha: mergeSha,
+      providerDeploymentId: "dep-42",
+      provenance: { commitSha: mergeSha, deploymentId: "dep-42", environment: "production" },
+      expectedEnvironment: "production",
+    })).toEqual({ passed: true });
+    expect(evaluateFactoryReleaseProvenance({
+      mergeCommitSha: mergeSha,
+      providerDeploymentId: "dep-42",
+      provenance: { commitSha: mergeSha, deploymentId: "dep-42", environment: "staging" },
+      expectedEnvironment: "production",
+    })).toEqual({ passed: false, reason: "provenance-environment-mismatch" });
   });
 
   it("accepts only an exact idempotent evidence replay", () => {

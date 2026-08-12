@@ -1,4 +1,5 @@
 export type FactoryReleaseState = "MERGED" | "DEPLOYED" | "VERIFIED" | "ROLLED_BACK";
+export type FactoryProductionReleaseState = "ELIGIBLE" | "DEPLOYED" | "VERIFIED" | "PROMOTED" | "ROLLED_BACK";
 
 export interface FactoryReleaseVerificationUrls {
   deploymentUrl: string;
@@ -32,11 +33,26 @@ const TRANSITIONS: Record<FactoryReleaseState, FactoryReleaseState[]> = {
   ROLLED_BACK: [],
 };
 
+const PRODUCTION_TRANSITIONS: Record<FactoryProductionReleaseState, FactoryProductionReleaseState[]> = {
+  ELIGIBLE: ["DEPLOYED"],
+  DEPLOYED: ["VERIFIED", "ROLLED_BACK"],
+  VERIFIED: ["PROMOTED", "ROLLED_BACK"],
+  PROMOTED: ["ROLLED_BACK"],
+  ROLLED_BACK: [],
+};
+
 export function factoryReleaseTransitionAllowed(
   from: FactoryReleaseState,
   to: FactoryReleaseState,
 ): boolean {
   return TRANSITIONS[from].includes(to);
+}
+
+export function factoryProductionReleaseTransitionAllowed(
+  from: FactoryProductionReleaseState,
+  to: FactoryProductionReleaseState,
+): boolean {
+  return PRODUCTION_TRANSITIONS[from].includes(to);
 }
 
 export function factoryReleaseRedeploymentIssue(input: {
@@ -321,6 +337,7 @@ export function evaluateFactoryReleaseProvenance(input: {
   mergeCommitSha: string;
   providerDeploymentId: string;
   provenance: unknown;
+  expectedEnvironment?: "staging" | "production";
 }): { passed: true } | { passed: false; reason: string } {
   const mergeCommitSha = normalizeCommitSha(input.mergeCommitSha);
   if (!mergeCommitSha) return { passed: false, reason: "merge-sha-invalid" };
@@ -334,7 +351,7 @@ export function evaluateFactoryReleaseProvenance(input: {
   if (String(provenance.deploymentId ?? "") !== input.providerDeploymentId) {
     return { passed: false, reason: "provenance-deployment-mismatch" };
   }
-  if (provenance.environment !== "staging") {
+  if (provenance.environment !== (input.expectedEnvironment ?? "staging")) {
     return { passed: false, reason: "provenance-environment-mismatch" };
   }
   return { passed: true };
