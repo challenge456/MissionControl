@@ -1,10 +1,8 @@
 import type { AuthConfig } from "convex/server";
 
-// Clerk issuer URLs are public deployment configuration. Keep the non-routable
-// placeholder until the Product Owner supplies the Clerk application issuer;
-// referencing an unset Convex env variable would make legacy deployments fail
-// compilation before the staged authentication rollout is enabled.
-const clerkIssuerDomain = "https://clerk-not-configured.invalid";
+// Clerk issuer URLs are public deployment configuration. This must match the
+// Clerk application that provides VITE_CLERK_PUBLISHABLE_KEY to the browser.
+const clerkIssuerDomain = "https://dear-sunbird-98.clerk.accounts.dev";
 
 export default {
   providers: [
