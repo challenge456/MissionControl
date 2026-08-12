@@ -15,6 +15,7 @@ const child = spawn(process.execPath, [artifact], {
   cwd: repositoryRoot,
   env: {
     ...process.env,
+    CONVEX_URL: process.env.CONVEX_URL ?? "http://127.0.0.1:3210",
     ORCHESTRATION_DISABLE_STARTUP: "1",
   },
   stdio: ["ignore", "pipe", "pipe"],
