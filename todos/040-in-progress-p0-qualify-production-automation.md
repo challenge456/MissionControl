@@ -52,3 +52,17 @@ Execute `docs/plans/2026-08-11-feat-three-staging-release-production-automation-
   provider ingestion, and immutable manual-Codex attempt binding.
 - Passed lint/typecheck, all package and UI tests, 506 Convex tests, the app
   build, and Vercel's Preview build with both API functions packaged.
+
+### 2026-08-11 — Release 1 failed closed; Release 2 recovery opened
+
+- Merged PR #78 and recorded exact merge
+  `0157d38805d7a1fa977723faa34adaf2ef0d3b75` as Release 1.
+- Human-approved and deployed Vercel Preview
+  `dpl_HpFJkqkg9zEyoiLyjWgzH6NvUjLN`; independent verification preserved a
+  failed provenance result because CLI deployments omit runtime
+  `VERCEL_GIT_COMMIT_SHA` even when Vercel deployment metadata contains it.
+- Kept Release 1 in `DEPLOYED` with its failed evidence; it does not count
+  toward the three-release production gate.
+- Opened WorkOrder `h97j42dy2d479wg2vh5s3275bn8ca772`, inbox Task `MCF-003`,
+  and Codex Attempt `tn772b1kdqv9a9g7sznx39tdq98casmy` for a constrained
+  recovery receipt and Git-integration staging dispatch.

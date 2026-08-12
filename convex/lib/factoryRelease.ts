@@ -31,6 +31,24 @@ export function factoryReleaseTransitionAllowed(
   return TRANSITIONS[from].includes(to);
 }
 
+export function factoryReleaseRedeploymentIssue(input: {
+  state: FactoryReleaseState;
+  verificationAttemptCount: number;
+  blockingIssue?: string;
+  currentProviderDeploymentId?: string;
+  nextProviderDeploymentId: string;
+}): string | undefined {
+  if (input.state !== "DEPLOYED") return "release-not-deployed";
+  if (input.verificationAttemptCount < 1 || !input.blockingIssue) {
+    return "failed-verification-required";
+  }
+  if (!input.currentProviderDeploymentId) return "current-deployment-missing";
+  if (input.currentProviderDeploymentId === input.nextProviderDeploymentId) {
+    return "deployment-receipt-unchanged";
+  }
+  return undefined;
+}
+
 export function factoryReleaseMergeIdentityIssue(input: {
   prState?: string;
   verifiedLineage: boolean;

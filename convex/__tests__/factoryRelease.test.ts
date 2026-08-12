@@ -6,6 +6,7 @@ import {
   factoryReleaseBoundLineageIssue,
   factoryReleaseEvidenceReplayMatches,
   factoryReleaseMergeIdentityIssue,
+  factoryReleaseRedeploymentIssue,
   factoryReleaseTransitionAllowed,
   normalizeCommitSha,
   validateFactoryReleaseVerificationUrls,
@@ -26,6 +27,30 @@ describe("factory release state and evidence", () => {
   it("accepts only full commit identities", () => {
     expect(normalizeCommitSha(mergeSha.toUpperCase())).toBe(mergeSha);
     expect(normalizeCommitSha("abc123")).toBeNull();
+  });
+
+  it("allows a different redeployment receipt only after failed verification", () => {
+    const failedDeployment = {
+      state: "DEPLOYED" as const,
+      verificationAttemptCount: 1,
+      blockingIssue: "provenance-sha-mismatch",
+      currentProviderDeploymentId: "dep-1",
+      nextProviderDeploymentId: "dep-2",
+    };
+    expect(factoryReleaseRedeploymentIssue(failedDeployment)).toBeUndefined();
+    expect(factoryReleaseRedeploymentIssue({
+      ...failedDeployment,
+      verificationAttemptCount: 0,
+      blockingIssue: undefined,
+    })).toBe("failed-verification-required");
+    expect(factoryReleaseRedeploymentIssue({
+      ...failedDeployment,
+      nextProviderDeploymentId: "dep-1",
+    })).toBe("deployment-receipt-unchanged");
+    expect(factoryReleaseRedeploymentIssue({
+      ...failedDeployment,
+      state: "VERIFIED",
+    })).toBe("release-not-deployed");
   });
 
   it("requires configured, same-origin HTTPS verification endpoints", () => {
