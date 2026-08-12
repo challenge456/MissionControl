@@ -14,7 +14,9 @@
 
     /* These compiler options are required by Convex */
     "target": "ESNext",
-    "lib": ["ES2021", "dom"],
+    "lib": ["ES2021", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "typeRoots": ["../node_modules/@types"],
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
     "isolatedModules": true,

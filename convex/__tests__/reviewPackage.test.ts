@@ -49,6 +49,29 @@ describe("unified review package", () => {
     expect(review.identity.headSha).toBe("head");
   });
 
+  it("ignores WorkOrder-level receipts when projecting criterion evidence", () => {
+    const review = buildReviewPackage({
+      ...base,
+      receipts: [
+        ...base.receipts,
+        {
+          _id: "receipt-overall",
+          status: "PASSED",
+          verifier: "verification-engine",
+          linkedRunArtifactIds: ["artifact-overall"],
+          workOrderRevisionNumber: 2,
+          recordedAt: 99,
+        },
+      ],
+    });
+
+    expect(review.status).toBe("READY");
+    expect(review.criteria[0]).toMatchObject({
+      receiptId: "receipt-1",
+      status: "PASS",
+    });
+  });
+
   it("fails closed for stale evidence, policy deviation, or mismatched CI head", () => {
     const review = buildReviewPackage({
       ...base,

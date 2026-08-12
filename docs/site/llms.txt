@@ -21,6 +21,7 @@ get-started/run-the-demo.md — pnpm dev:demo, convex:seed:demo:force, page walk
 get-started/improve-your-first-skill.md — Import, lint, eval, and publish a registry skill.
 tutorials/tutorials.md — Tutorial index mapped to common agentic development problems.
 tutorials/governing-work-orders.md — WorkOrders, acceptance criteria, verification receipts.
+../software-factory/verification-first-workorder-contract.md — Executable WorkOrder specification, independent verification, evidence envelopes, verdicts, and verification-before-PR enforcement.
 tutorials/setting-up-agentic-code-review.md — Harness change review, merge gates, mutation testing.
 tutorials/improving-a-skill.md — Eval scenarios, baseline vs candidate, meta-loop feedback.
 tutorials/protecting-against-insecure-skills.md — Skill lint, security status, install policies.
