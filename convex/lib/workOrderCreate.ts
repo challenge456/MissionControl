@@ -4,6 +4,7 @@ import {
   evaluateAcceptance,
 } from "./workOrderGovernance";
 import { snapshotRevisionFields } from "./workOrderRevision";
+import { classifyWorkOrderRisk, validateWorkOrderSpecification } from "./workOrderSpecification";
 
 function describeInitialReadiness(
   workOrder: { state: string },
@@ -62,7 +63,10 @@ export async function createWorkOrderRecord(ctx: any, args: any) {
   }
 
   const now = Date.now();
-  const riskLevel = args.riskLevel ?? "MEDIUM";
+  const specification = validateWorkOrderSpecification(args);
+  if (!specification.valid) throw new Error(`WorkOrder specification is invalid (${specification.issues.join("; ")})`);
+  const riskAssessment = classifyWorkOrderRisk(args);
+  const riskLevel = riskAssessment.riskLevel;
   const finalCriteria = args.acceptanceCriteria.map((criterion: any) => ({
     ...criterion,
     status: criterion.status ?? "PENDING",
@@ -135,8 +139,18 @@ export async function createWorkOrderRecord(ctx: any, args: any) {
     ownerMemberId,
     executionEnvironment: args.executionEnvironment ?? mission?.executionEnvironment,
     scopeEnforcementVersion: repositoryId || owningTeamId || ownerMemberId || codeScopeIds.length > 0 ? 1 : undefined,
+    requirements: args.requirements,
     acceptanceCriteria: finalCriteria,
     constraints: args.constraints,
+    positiveConstraints: args.positiveConstraints,
+    negativeConstraints: args.negativeConstraints,
+    dataBoundaries: args.dataBoundaries,
+    changeBudget: args.changeBudget,
+    verificationContract: args.verificationContract,
+    autonomyLevel: args.autonomyLevel,
+    riskReasons: riskAssessment.riskReasons,
+    specificationVersion: 1,
+    specificationValidatedAt: now,
     dependencies: args.dependencies,
     sourceOfTruthRefs: args.sourceOfTruthRefs,
     requiredApprovals: args.requiredApprovals,
@@ -183,7 +197,7 @@ export async function createWorkOrderRecord(ctx: any, args: any) {
     revisionNumber: 1,
     previousRevisionId: undefined,
     status: "APPLIED",
-    changedFields: ["title", "desiredOutcome", "workflowId", "repository", "riskLevel", "acceptanceCriteria"],
+    changedFields: ["title", "desiredOutcome", "workflowId", "repository", "riskLevel", "requirements", "acceptanceCriteria", "changeBudget", "verificationContract"],
     changeSummary: "Initial work order created",
     reason: "Initial creation",
     requestedBy: args.requestedBy,
@@ -226,7 +240,14 @@ export async function createWorkOrderRecord(ctx: any, args: any) {
     summary: `Created work order ${args.title}`,
     idempotencyKey: args.idempotencyKey ? `${args.idempotencyKey}:created` : undefined,
     timestamp: now,
-    metadata: { repository: args.repository, workflowId: args.workflowId },
+    metadata: {
+      repository: args.repository,
+      workflowId: args.workflowId,
+      specificationVersion: 1,
+      riskLevel,
+      riskReasons: riskAssessment.riskReasons,
+      changeBudgetAssigned: Boolean(args.changeBudget),
+    },
   });
 
   return { workOrder: await ctx.db.get(workOrderId), created: true };

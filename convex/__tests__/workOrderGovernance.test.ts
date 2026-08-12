@@ -19,8 +19,10 @@ const approvals = (rows: Partial<ApprovalDecisionLike>[]): ApprovalDecisionLike[
 
 const receipts = (rows: Partial<VerificationReceiptLike>[]): VerificationReceiptLike[] =>
   rows.map((row, index) => ({
+    receiptScope: row.receiptScope,
     acceptanceCriterionId: row.acceptanceCriterionId ?? `ac-${index + 1}`,
     status: row.status ?? "PENDING",
+    verdict: row.verdict,
     waiverApprovalDecisionId: row.waiverApprovalDecisionId,
     _creationTime: row._creationTime ?? index + 1,
     validUntil: row.validUntil,
@@ -134,5 +136,21 @@ describe("work order governance helpers", () => {
 
     expect(result.eligible).toBe(true);
     expect(result.blockingReasons).toEqual([]);
+  });
+
+  it("blocks criterion-complete work when the independent Work Order verdict failed", () => {
+    const result = evaluateAcceptance({
+      riskLevel: "LOW",
+      requiredApprovals: [],
+      approvalDecisions: [],
+      acceptanceCriteria: [{ id: "ac-1", title: "Build passes", status: "PASS" }],
+      verificationReceipts: receipts([
+        { receiptScope: "ACCEPTANCE_CRITERION", acceptanceCriterionId: "ac-1", status: "PASSED", _creationTime: 1 },
+        { receiptScope: "WORK_ORDER", acceptanceCriterionId: undefined, status: "FAILED", verdict: "NOT_VERIFIED", _creationTime: 2 },
+      ]),
+    });
+    expect(result.eligible).toBe(false);
+    expect(result.verificationVerdict).toBe("NOT_VERIFIED");
+    expect(result.blockingReasons).toContain("Work Order verification verdict: NOT_VERIFIED");
   });
 });

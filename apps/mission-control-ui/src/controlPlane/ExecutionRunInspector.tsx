@@ -58,6 +58,7 @@ export function ExecutionRunInspector({
     && ((inspector.run.metadata as { completionMode?: string; receiptPacketKey?: string } | undefined)?.completionMode === "VERIFICATION_ONLY"
       || ((inspector.run.metadata as { receiptPacketKey?: string } | undefined)?.receiptPacketKey
         && (inspector.run.steps ?? []).every((step: any) => step.status === "PENDING")));
+  const verificationRun = inspector?.verificationRuns?.[0];
   const navigateToRecords = (target: EvidenceLineageStage["target"]) => {
     document.getElementById(`run-${target}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
@@ -143,6 +144,38 @@ export function ExecutionRunInspector({
                   </div>
                 </Card>
               ) : null}
+
+              <Card id="run-verification" className="p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-medium text-foreground">Independent verification</div>
+                    <div className="mt-1 text-xs text-muted-foreground">Server-recomputed checks and evidence for the exact candidate revision.</div>
+                  </div>
+                  <Badge variant="outline" className={verificationRun?.verdict === "VERIFIED" ? "border-success/30 text-success" : "border-warning/30 text-warning"}>
+                    {verificationRun?.verdict ?? "NO RECEIPT"}
+                  </Badge>
+                </div>
+                {verificationRun ? (
+                  <>
+                    <div className="mt-4 grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
+                      <Meta label="Candidate" value={verificationRun.candidateRevision} />
+                      <Meta label="Source" value={verificationRun.sourceRevision} />
+                      <Meta label="Requirements" value={`${verificationRun.requirementsPassed} passed / ${verificationRun.requirementsFailed} missing`} />
+                      <Meta label="Evidence envelopes" value={`${inspector.evidenceEnvelopes?.length ?? 0}`} />
+                    </div>
+                    <div className="mt-4 overflow-x-auto rounded-lg border border-[var(--panel-line)]">
+                      <table className="w-full text-left text-xs">
+                        <thead className="border-b border-[var(--panel-line)] text-muted-foreground"><tr><th className="px-3 py-2 font-medium">Check</th><th className="px-3 py-2 font-medium">Status</th><th className="px-3 py-2 font-medium">Evidence</th><th className="px-3 py-2 font-medium">Duration</th></tr></thead>
+                        <tbody className="divide-y divide-[var(--panel-line)]">{verificationRun.checks.map((check: any) => <tr key={check.checkId}><td className="px-3 py-2 text-foreground">{check.name}</td><td className={check.status === "PASS" ? "px-3 py-2 text-success" : "px-3 py-2 text-danger"}>{check.status}</td><td className="px-3 py-2 text-muted-foreground">{check.evidenceIds.length}</td><td className="px-3 py-2 text-muted-foreground">{check.durationMs}ms</td></tr>)}</tbody>
+                      </table>
+                    </div>
+                    <p className="mt-3 text-xs text-muted-foreground">{verificationRun.verdictReasons.join(" ")}</p>
+                    {verificationRun.violations.length ? <div role="alert" className="mt-3 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">{verificationRun.violations.join(" ")}</div> : null}
+                  </>
+                ) : (
+                  <p className="mt-3 text-sm text-warning">No independent verification run is linked. Execution-agent output is not treated as proof.</p>
+                )}
+              </Card>
 
               <Card className="p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">

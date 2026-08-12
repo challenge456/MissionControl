@@ -63,6 +63,15 @@ import {
 import { COMPANY_PERMISSIONS, requireWorkspaceAccess } from "./lib/companyAccess";
 import { assertAuthorizedDeliveryRecord, canAccessDeliveryRecord, requireAuthorizedDeliveryScope } from "./lib/deliveryAuthorization";
 import { combineCodeScopePolicies, validateDispatchScope } from "./lib/softwareFactoryControlPlane";
+import {
+  acceptanceCriterionValidator,
+  changeBudgetValidator,
+  dataBoundaryValidator,
+  negativeConstraintValidator,
+  requirementValidator,
+  verificationContractValidator,
+} from "./lib/workOrderSpecificationValidators";
+import { classifyWorkOrderRisk, validateWorkOrderSpecification } from "./lib/workOrderSpecification";
 
 function generateRunId(): string {
   return Math.random().toString(36).substring(2, 10);
@@ -395,19 +404,7 @@ const verificationReceiptStatus = v.union(
   v.literal("STALE")
 );
 
-const acceptanceCriterion = v.object({
-  id: v.string(),
-  title: v.string(),
-  description: v.optional(v.string()),
-  verificationMethod: v.optional(v.union(
-    v.literal("MANUAL"),
-    v.literal("COMMAND"),
-    v.literal("TEST"),
-    v.literal("CHECKLIST"),
-    v.literal("BROWSER")
-  )),
-  status: verificationStatus,
-});
+const acceptanceCriterion = acceptanceCriterionValidator;
 
 const sourceOfTruthRef = v.object({
   kind: v.union(
@@ -433,8 +430,18 @@ const revisionPatch = v.object({
   requestedBy: v.optional(v.string()),
   assignedAgent: v.optional(v.string()),
   assignedSquad: v.optional(v.string()),
-  acceptanceCriteria: v.optional(v.array(acceptanceCriterion)),
-  constraints: v.optional(v.array(v.string())),
+    acceptanceCriteria: v.optional(v.array(acceptanceCriterion)),
+    constraints: v.optional(v.array(v.string())),
+    requirements: v.optional(v.array(requirementValidator)),
+    positiveConstraints: v.optional(v.array(v.string())),
+    negativeConstraints: v.optional(v.array(negativeConstraintValidator)),
+    dataBoundaries: v.optional(v.array(dataBoundaryValidator)),
+    changeBudget: v.optional(changeBudgetValidator),
+    verificationContract: v.optional(verificationContractValidator),
+    autonomyLevel: v.optional(v.union(
+      v.literal("LEVEL_0"), v.literal("LEVEL_1"), v.literal("LEVEL_2"),
+      v.literal("LEVEL_3"), v.literal("LEVEL_4"), v.literal("LEVEL_5"),
+    )),
   dependencies: v.optional(v.array(v.string())),
   sourceOfTruthRefs: v.optional(v.array(sourceOfTruthRef)),
   requiredApprovals: v.optional(v.array(v.string())),
@@ -576,7 +583,7 @@ async function staleVerificationReceipt(ctx: any, args: { receipt: any; workOrde
     workflowRunId: args.receipt.workflowRunId,
     eventType: "VERIFICATION_STALE",
     actorType: "SYSTEM",
-    summary: `Verification receipt for ${args.receipt.acceptanceCriterionId} became stale`,
+    summary: `Verification receipt for ${args.receipt.acceptanceCriterionId ?? "the Work Order"} became stale`,
     metadata: {
       verificationReceiptId: args.receipt._id,
       acceptanceCriterionId: args.receipt.acceptanceCriterionId,
@@ -866,7 +873,10 @@ function buildGovernanceStatus(args: {
     staleReceipts,
     expiringReceipts,
     requiredReapproval: args.acceptance.missingApprovalTypes.length > 0 || args.acceptance.expiredApprovalTypes.length > 0 || args.acceptance.revokedApprovalTypes.length > 0,
-    requiredReverification: args.acceptance.missingCriteriaIds.length > 0 || args.acceptance.staleCriteriaIds.length > 0 || args.acceptance.failedCriteriaIds.length > 0,
+    requiredReverification: args.acceptance.verificationVerdict !== undefined && args.acceptance.verificationVerdict !== "VERIFIED"
+      || args.acceptance.missingCriteriaIds.length > 0
+      || args.acceptance.staleCriteriaIds.length > 0
+      || args.acceptance.failedCriteriaIds.length > 0,
     blockingReasons: args.acceptance.blockingReasons,
   };
 }
@@ -959,7 +969,14 @@ async function applyRevisionToWorkOrder(ctx: any, args: {
     });
   }
 
-  const nextSnapshot = args.revision.nextSnapshot;
+  const specification = validateWorkOrderSpecification(args.revision.nextSnapshot);
+  if (!specification.valid) throw new Error(`WorkOrder revision specification is invalid (${specification.issues.join("; ")})`);
+  const riskAssessment = classifyWorkOrderRisk(args.revision.nextSnapshot);
+  const nextSnapshot = {
+    ...args.revision.nextSnapshot,
+    riskLevel: riskAssessment.riskLevel,
+    riskReasons: riskAssessment.riskReasons,
+  };
   const nextRequiredApprovals = [...new Set([...(nextSnapshot.requiredApprovals ?? []), ...(args.revision.requiresReapproval ? args.revision.impactedApprovals : [])])];
   const nextState = nextStateAfterRevision({
     currentState: workOrder.state,
@@ -983,6 +1000,16 @@ async function applyRevisionToWorkOrder(ctx: any, args: {
     assignedSquad: nextSnapshot.assignedSquad,
     acceptanceCriteria: nextSnapshot.acceptanceCriteria.map((criterion: any) => ({ ...criterion, status: "PENDING" })),
     constraints: nextSnapshot.constraints,
+    requirements: nextSnapshot.requirements,
+    positiveConstraints: nextSnapshot.positiveConstraints,
+    negativeConstraints: nextSnapshot.negativeConstraints,
+    dataBoundaries: nextSnapshot.dataBoundaries,
+    changeBudget: nextSnapshot.changeBudget,
+    verificationContract: nextSnapshot.verificationContract,
+    autonomyLevel: nextSnapshot.autonomyLevel,
+    riskReasons: nextSnapshot.riskReasons,
+    specificationVersion: (workOrder.specificationVersion ?? 1) + 1,
+    specificationValidatedAt: Date.now(),
     dependencies: nextSnapshot.dependencies,
     sourceOfTruthRefs: nextSnapshot.sourceOfTruthRefs,
     requiredApprovals: nextRequiredApprovals,
@@ -1046,7 +1073,7 @@ export const list = query({
     codeScopeIds: v.optional(v.array(v.id("repositoryCodeScopes"))),
     owningTeamId: v.optional(v.id("scrumTeams")),
     ownerMemberId: v.optional(v.id("orgMembers")),
-    executionEnvironment: v.optional(v.union(v.literal("LOCAL"), v.literal("CLOUD"), v.literal("POLICY_SELECTED"))),
+    executionEnvironment: v.optional(v.union(v.literal("LOCAL"), v.literal("CLOUD"), v.literal("REMOTE"), v.literal("POLICY_SELECTED"))),
     assignedAgent: v.optional(v.string()),
     requestedBy: v.optional(v.string()),
     verificationStatus: v.optional(verificationStatus),
@@ -1104,7 +1131,7 @@ export const get = query({
     const deliveryAccess = await requireAuthorizedDeliveryScope(ctx, workOrder.projectId);
     assertAuthorizedDeliveryRecord(deliveryAccess, workOrder);
 
-    const [executionRuns, events, approvalDecisions, verificationReceipts, revisions, reopenDecisions, supersession, policy, childTaskRows] = await Promise.all([
+    const [executionRuns, events, approvalDecisions, verificationReceipts, revisions, reopenDecisions, supersession, policy, childTaskRows, verificationRuns, evidenceEnvelopes] = await Promise.all([
       ctx.db
         .query("workflowRuns")
         .withIndex("by_work_order", (q) => q.eq("workOrderId", args.workOrderId))
@@ -1123,6 +1150,16 @@ export const get = query({
       resolveGovernancePolicy(ctx, workOrder),
       ctx.db
         .query("tasks")
+        .withIndex("by_work_order", (q) => q.eq("workOrderId", args.workOrderId))
+        .order("desc")
+        .collect(),
+      ctx.db
+        .query("verificationRuns")
+        .withIndex("by_work_order", (q) => q.eq("workOrderId", args.workOrderId))
+        .order("desc")
+        .collect(),
+      ctx.db
+        .query("evidenceEnvelopes")
         .withIndex("by_work_order", (q) => q.eq("workOrderId", args.workOrderId))
         .order("desc")
         .collect(),
@@ -1153,6 +1190,8 @@ export const get = query({
       events,
       approvalDecisions,
       verificationReceipts,
+      verificationRuns,
+      evidenceEnvelopes,
        revisions,
        reopenDecisions,
        supersession,
@@ -1359,6 +1398,16 @@ export const create = mutation({
     assignedSquad: v.optional(v.string()),
     acceptanceCriteria: v.array(acceptanceCriterion),
     constraints: v.optional(v.array(v.string())),
+    requirements: v.optional(v.array(requirementValidator)),
+    positiveConstraints: v.optional(v.array(v.string())),
+    negativeConstraints: v.optional(v.array(negativeConstraintValidator)),
+    dataBoundaries: v.optional(v.array(dataBoundaryValidator)),
+    changeBudget: v.optional(changeBudgetValidator),
+    verificationContract: v.optional(verificationContractValidator),
+    autonomyLevel: v.optional(v.union(
+      v.literal("LEVEL_0"), v.literal("LEVEL_1"), v.literal("LEVEL_2"),
+      v.literal("LEVEL_3"), v.literal("LEVEL_4"), v.literal("LEVEL_5"),
+    )),
     dependencies: v.optional(v.array(v.string())),
     sourceOfTruthRefs: v.optional(v.array(sourceOfTruthRef)),
     requiredApprovals: v.optional(v.array(v.string())),
@@ -1921,8 +1970,18 @@ async function dispatchWorkOrder(ctx: MutationCtx, args: DispatchArgs) {
             title: refreshedWorkOrder.title,
             desiredOutcome: refreshedWorkOrder.desiredOutcome,
             context: refreshedWorkOrder.context,
+            requirements: refreshedWorkOrder.requirements,
             acceptanceCriteria: refreshedWorkOrder.acceptanceCriteria,
             constraints: refreshedWorkOrder.constraints,
+            positiveConstraints: refreshedWorkOrder.positiveConstraints,
+            negativeConstraints: refreshedWorkOrder.negativeConstraints,
+            dataBoundaries: refreshedWorkOrder.dataBoundaries,
+            changeBudget: refreshedWorkOrder.changeBudget,
+            verificationContract: refreshedWorkOrder.verificationContract,
+            autonomyLevel: refreshedWorkOrder.autonomyLevel,
+            riskLevel: refreshedWorkOrder.riskLevel,
+            riskReasons: refreshedWorkOrder.riskReasons,
+            requiredApprovals: refreshedWorkOrder.requiredApprovals,
             sourceOfTruthRefs: refreshedWorkOrder.sourceOfTruthRefs,
           },
           agentBindings: factoryBinding.agentBindings.map((binding: any) => ({
@@ -2891,6 +2950,7 @@ export const recordVerificationReceipt = mutation({
       missionId: workOrder.missionId,
       validationAssertionId: validationAssertion?._id,
       workOrderId: workOrder._id,
+      receiptScope: "ACCEPTANCE_CRITERION",
       acceptanceCriterionId: args.acceptanceCriterionId,
       workflowRunId: run._id,
       idempotencyKey: args.idempotencyKey,
@@ -3199,7 +3259,7 @@ export const requestWorkOrderRevision = mutation({
     const receipts = await listVerificationReceiptsForWorkOrder(ctx, workOrder._id);
     const impactedReceiptIds = impact.requiresReverification
       ? receipts
-          .filter((receipt: any) => receipt.status !== "STALE" && (impact.invalidateAllReceipts || impact.impactedAcceptanceCriteria.includes(receipt.acceptanceCriterionId)))
+          .filter((receipt: any) => receipt.status !== "STALE" && (impact.invalidateAllReceipts || receipt.receiptScope === "WORK_ORDER" || impact.impactedAcceptanceCriteria.includes(receipt.acceptanceCriterionId)))
           .map((receipt: any) => receipt._id)
       : [];
 
@@ -3587,18 +3647,61 @@ export const seedDemo = mutation({
         requestedBy: "Hermes",
         assignedAgent: "Pi",
         assignedSquad: "Software Factory",
+        requirements: [
+          { id: "req-1", title: "Real Work Order queue", description: "The queue renders scoped Work Orders from Convex.", type: "FUNCTIONAL" as const, priority: "MUST" as const },
+          { id: "req-2", title: "Executable detail contract", description: "The selected Work Order exposes acceptance and verification obligations.", type: "FUNCTIONAL" as const, priority: "MUST" as const },
+          { id: "req-3", title: "Evidence-linked attempts", description: "Operators can reach linked execution and independent evidence.", type: "FUNCTIONAL" as const, priority: "MUST" as const },
+        ],
         acceptanceCriteria: [
-          { id: "ac-1", title: "Work queue renders real work orders", verificationMethod: "MANUAL" as const, status: "PASS" as const },
-          { id: "ac-2", title: "Acceptance criteria are visible on detail view", verificationMethod: "MANUAL" as const, status: "PASS" as const },
-          { id: "ac-3", title: "Linked execution runs are visible", verificationMethod: "MANUAL" as const, status: "PASS" as const },
+          { id: "ac-1", title: "Work queue renders real work orders", requirementIds: ["req-1"], requiredEvidence: [{ category: "BROWSER_RESULT" as const, minimumCount: 1, independent: true }], verificationMethod: "BROWSER" as const, status: "PENDING" as const },
+          { id: "ac-2", title: "Acceptance criteria are visible on detail view", requirementIds: ["req-2"], requiredEvidence: [{ category: "BROWSER_RESULT" as const, minimumCount: 1, independent: true }], verificationMethod: "BROWSER" as const, status: "PENDING" as const },
+          { id: "ac-3", title: "Linked execution runs are visible", requirementIds: ["req-3"], requiredEvidence: [{ category: "BROWSER_RESULT" as const, minimumCount: 1, independent: true }], verificationMethod: "BROWSER" as const, status: "PENDING" as const },
         ],
         constraints: ["No broad rewrite", "Keep Convex as source of truth"],
+        positiveConstraints: ["Reuse the existing v2 Work Orders route and operator shell."],
+        negativeConstraints: [
+          { id: "no-schema", type: "NO_SCHEMA_CHANGES" as const, description: "Do not alter the database schema for this UI-only fixture." },
+          { id: "no-secrets", type: "NO_PLAINTEXT_SECRETS" as const, description: "Do not introduce plaintext credentials." },
+          { id: "no-assertion-weakening", type: "NO_ASSERTION_WEAKENING" as const, description: "Do not skip or weaken existing checks." },
+        ],
+        dataBoundaries: [{ id: "auth-boundary", kind: "PROTECTED_FILE" as const, description: "Authentication UI is outside scope.", paths: ["apps/mission-control-ui/src/auth/**"] }],
+        changeBudget: {
+          maxFilesChanged: 8,
+          maxLinesChanged: 500,
+          allowedPaths: ["apps/mission-control-ui/src/controlPlane/**", "docs/testing/**"],
+          deniedPaths: ["convex/schema.ts", "apps/mission-control-ui/src/auth/**", ".github/workflows/**"],
+          allowedCommandClasses: ["TEST" as const, "TYPECHECK" as const],
+          prohibitedCommandClasses: ["DESTRUCTIVE" as const, "PRODUCTION_ACCESS" as const, "SECRETS_ACCESS" as const, "PUBLISH" as const],
+          allowDependencyChanges: false,
+          allowSchemaChanges: false,
+          allowMigrations: false,
+          allowInfrastructureChanges: false,
+        },
+        verificationContract: {
+          schemaVersion: 1,
+          enforcementMode: "ENFORCED" as const,
+          requireHumanReview: false,
+          checks: [{
+            id: "work-orders-browser-smoke",
+            name: "Work Orders browser smoke",
+            category: "INTEGRATION_TEST" as const,
+            verifierId: "factory-command/v1",
+            mandatory: true,
+            acceptanceCriterionIds: ["ac-1", "ac-2", "ac-3"],
+            evidenceCategory: "BROWSER_RESULT" as const,
+            command: { executable: "pnpm", args: ["exec", "playwright", "test", "-c", "playwright.config.ts", "tests/e2e/v2-routes-smoke.e2e.spec.ts"], commandClass: "TEST" as const, timeoutMs: 10 * 60_000 },
+          }],
+        },
+        autonomyLevel: "LEVEL_2" as const,
+        riskReasons: ["Operator-selected high risk for a primary control-plane surface."],
+        specificationVersion: 1,
+        specificationValidatedAt: now,
         sourceOfTruthRefs: [
           { kind: "REPO" as const, label: "MissionControl repo", location: "github.com/jaydubya818/MissionControl" },
           { kind: "DOC" as const, label: "Software factory brief", location: "docs/software-factory/information-architecture.md" },
         ],
         requiredApprovals: ["UI behavior", "Schema change review"],
-        state: "DONE" as const,
+        state: "IN_PROGRESS" as const,
         approvalStatus: "APPROVED" as const,
       },
       {
@@ -3672,6 +3775,16 @@ export const seedDemo = mutation({
         assignedSquad: order.assignedSquad,
         acceptanceCriteria: order.acceptanceCriteria,
         constraints: order.constraints,
+        requirements: (order as any).requirements,
+        positiveConstraints: (order as any).positiveConstraints,
+        negativeConstraints: (order as any).negativeConstraints,
+        dataBoundaries: (order as any).dataBoundaries,
+        changeBudget: (order as any).changeBudget,
+        verificationContract: (order as any).verificationContract,
+        autonomyLevel: (order as any).autonomyLevel,
+        riskReasons: (order as any).riskReasons,
+        specificationVersion: (order as any).specificationVersion,
+        specificationValidatedAt: (order as any).specificationValidatedAt,
         dependencies: order.dependencies,
         sourceOfTruthRefs: order.sourceOfTruthRefs,
         requiredApprovals: order.requiredApprovals,

@@ -22,6 +22,7 @@ export const ConvexQueries = {
     listArtifacts: "workflowRuns:listArtifacts",
   },
   workOrders: {
+    get: "workOrders:get",
     revisionHistory: "workOrders:revisionHistory",
     governanceValidity: "workOrders:governanceValidity",
     listExpiredApprovals: "workOrders:listExpiredApprovals",

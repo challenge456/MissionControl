@@ -52,6 +52,43 @@ export async function listChangedFiles(worktree: string, defaultBranch?: string)
   return Array.from(new Set([...splitNull(tracked.stdout), ...splitNull(untracked.stdout), ...splitNull(committed.stdout)])).sort();
 }
 
+export async function inspectCandidateChange(worktree: string, defaultBranch: string) {
+  const baseReference = await resolveBaseReference(worktree, defaultBranch);
+  const [sourceRevision, candidateRevision, changed, deleted, numstat, diff] = await Promise.all([
+    runGit(worktree, ["rev-parse", baseReference]),
+    runGit(worktree, ["rev-parse", "HEAD"]),
+    runGit(worktree, ["diff", "--name-only", "-z", `${baseReference}...HEAD`]),
+    runGit(worktree, ["diff", "--diff-filter=D", "--name-only", "-z", `${baseReference}...HEAD`]),
+    runGit(worktree, ["diff", "--numstat", `${baseReference}...HEAD`]),
+    runGit(worktree, ["diff", "--no-ext-diff", "--unified=3", `${baseReference}...HEAD`]),
+  ]);
+  let linesAdded = 0;
+  let linesDeleted = 0;
+  for (const line of numstat.stdout.split("\n")) {
+    const [added, removed] = line.split("\t");
+    if (/^\d+$/.test(added ?? "")) linesAdded += Number(added);
+    if (/^\d+$/.test(removed ?? "")) linesDeleted += Number(removed);
+  }
+  return {
+    sourceRevision: sourceRevision.stdout.trim(),
+    candidateRevision: candidateRevision.stdout.trim(),
+    changedFiles: splitNull(changed.stdout).sort(),
+    deletedFiles: splitNull(deleted.stdout).sort(),
+    linesAdded,
+    linesDeleted,
+    diff: diff.stdout,
+  };
+}
+
+export async function assertFactoryCandidateUnchanged(worktree: string, expectedHead: string) {
+  const [head, status] = await Promise.all([
+    runGit(worktree, ["rev-parse", "HEAD"]),
+    runGit(worktree, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]),
+  ]);
+  if (head.stdout.trim() !== expectedHead) throw new Error("Verification changed the candidate commit. Pull-request creation was blocked.");
+  if (status.stdout.length > 0) throw new Error("Verification left repository changes behind. Evidence must be produced from the exact clean candidate commit.");
+}
+
 export async function commitFactoryChanges(input: {
   worktree: string;
   changedFiles: string[];

@@ -7,6 +7,19 @@
 
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import {
+  acceptanceCriterionValidator,
+  changeBudgetValidator,
+  criterionCoverageValidator,
+  dataBoundaryValidator,
+  evidenceCategoryValidator,
+  negativeConstraintValidator,
+  requirementValidator,
+  verificationCheckResultValidator,
+  verificationCheckStatusValidator,
+  verificationContractValidator,
+  verificationVerdictValidator,
+} from "./lib/workOrderSpecificationValidators";
 
 // ============================================================================
 // ENUMS (as union types)
@@ -179,6 +192,21 @@ const runEventType = v.union(
   v.literal("RETRY_STARTED"),
   v.literal("RETRY_COMPLETED"),
   v.literal("HUMAN_INTERVENTION_REQUESTED"),
+  v.literal("SPEC_VALIDATED"),
+  v.literal("RISK_CLASSIFIED"),
+  v.literal("CHANGE_BUDGET_ASSIGNED"),
+  v.literal("COMMAND_REQUESTED"),
+  v.literal("COMMAND_APPROVED"),
+  v.literal("COMMAND_DENIED"),
+  v.literal("CHANGE_BUDGET_EXCEEDED"),
+  v.literal("VERIFICATION_STARTED"),
+  v.literal("VERIFICATION_CHECK_STARTED"),
+  v.literal("VERIFICATION_CHECK_PASSED"),
+  v.literal("VERIFICATION_CHECK_FAILED"),
+  v.literal("EVIDENCE_CREATED"),
+  v.literal("INDEPENDENT_REVIEW_STARTED"),
+  v.literal("VERIFICATION_RECEIPT_CREATED"),
+  v.literal("PULL_REQUEST_CREATED"),
   v.literal("RUN_PAUSED"),
   v.literal("RUN_RESUMED"),
   v.literal("CANCELLATION_REQUESTED"),
@@ -1437,21 +1465,22 @@ export default defineSchema({
     assignedAgent: v.optional(v.string()),
     assignedSquad: v.optional(v.string()),
 
-    acceptanceCriteria: v.array(v.object({
-      id: v.string(),
-      title: v.string(),
-      description: v.optional(v.string()),
-      verificationMethod: v.optional(v.union(
-        v.literal("MANUAL"),
-        v.literal("COMMAND"),
-        v.literal("TEST"),
-        v.literal("CHECKLIST"),
-        v.literal("BROWSER")
-      )),
-      status: verificationStatus,
-    })),
+    requirements: v.optional(v.array(requirementValidator)),
+    acceptanceCriteria: v.array(acceptanceCriterionValidator),
 
     constraints: v.optional(v.array(v.string())),
+    positiveConstraints: v.optional(v.array(v.string())),
+    negativeConstraints: v.optional(v.array(negativeConstraintValidator)),
+    dataBoundaries: v.optional(v.array(dataBoundaryValidator)),
+    changeBudget: v.optional(changeBudgetValidator),
+    verificationContract: v.optional(verificationContractValidator),
+    autonomyLevel: v.optional(v.union(
+      v.literal("LEVEL_0"), v.literal("LEVEL_1"), v.literal("LEVEL_2"),
+      v.literal("LEVEL_3"), v.literal("LEVEL_4"), v.literal("LEVEL_5"),
+    )),
+    riskReasons: v.optional(v.array(v.string())),
+    specificationVersion: v.optional(v.number()),
+    specificationValidatedAt: v.optional(v.number()),
     dependencies: v.optional(v.array(v.string())),
     sourceOfTruthRefs: v.optional(v.array(v.object({
       kind: v.union(
@@ -1676,8 +1705,10 @@ export default defineSchema({
     missionId: v.optional(v.id("missions")),
     validationAssertionId: v.optional(v.id("validationAssertions")),
     workOrderId: v.id("workOrders"),
-    acceptanceCriterionId: v.string(),
+    receiptScope: v.optional(v.union(v.literal("ACCEPTANCE_CRITERION"), v.literal("WORK_ORDER"))),
+    acceptanceCriterionId: v.optional(v.string()),
     workflowRunId: v.id("workflowRuns"),
+    verificationRunId: v.optional(v.id("verificationRuns")),
     idempotencyKey: v.optional(v.string()),
     verificationMethod: v.optional(v.union(
       v.literal("MANUAL"),
@@ -1695,6 +1726,19 @@ export default defineSchema({
     exceptionOrWaiver: v.optional(v.string()),
     waiverApprovalDecisionId: v.optional(v.id("approvalDecisions")),
     linkedRunArtifactIds: v.optional(v.array(v.id("runArtifacts"))),
+    evidenceEnvelopeIds: v.optional(v.array(v.id("evidenceEnvelopes"))),
+    verdict: v.optional(verificationVerdictValidator),
+    verdictReasons: v.optional(v.array(v.string())),
+    checks: v.optional(v.array(verificationCheckResultValidator)),
+    criterionCoverage: v.optional(v.array(criterionCoverageValidator)),
+    requirementsPassed: v.optional(v.number()),
+    requirementsFailed: v.optional(v.number()),
+    violations: v.optional(v.array(v.string())),
+    approvalRequirements: v.optional(v.array(v.string())),
+    riskLevel: v.optional(workOrderRiskLevel),
+    riskReasons: v.optional(v.array(v.string())),
+    sourceRevision: v.optional(v.string()),
+    candidateRevision: v.optional(v.string()),
     workOrderRevisionNumber: v.optional(v.number()),
     validUntil: v.optional(v.number()),
     invalidatedAt: v.optional(v.number()),
@@ -1709,6 +1753,76 @@ export default defineSchema({
     .index("by_mission", ["missionId"])
     .index("by_work_order_criterion", ["workOrderId", "acceptanceCriterionId"])
     .index("by_run", ["workflowRunId"])
+    .index("by_verification_run", ["verificationRunId"])
+    .index("by_work_order_scope", ["workOrderId", "receiptScope"])
+    .index("by_idempotency", ["idempotencyKey"]),
+
+  verificationRuns: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.optional(v.id("projects")),
+    missionId: v.optional(v.id("missions")),
+    workOrderId: v.id("workOrders"),
+    workflowRunId: v.id("workflowRuns"),
+    idempotencyKey: v.string(),
+    engineVersion: v.string(),
+    workOrderRevisionNumber: v.number(),
+    sourceRevision: v.string(),
+    candidateRevision: v.string(),
+    status: v.literal("COMPLETED"),
+    checks: v.array(verificationCheckResultValidator),
+    criterionCoverage: v.array(criterionCoverageValidator),
+    requirementsPassed: v.number(),
+    requirementsFailed: v.number(),
+    violations: v.array(v.string()),
+    approvalRequirements: v.array(v.string()),
+    riskLevel: workOrderRiskLevel,
+    riskReasons: v.array(v.string()),
+    verdict: verificationVerdictValidator,
+    verdictReasons: v.array(v.string()),
+    startedAt: v.number(),
+    completedAt: v.number(),
+    durationMs: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_work_order", ["workOrderId"])
+    .index("by_run", ["workflowRunId"])
+    .index("by_work_order_created", ["workOrderId", "createdAt"])
+    .index("by_idempotency", ["idempotencyKey"]),
+
+  evidenceEnvelopes: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.optional(v.id("projects")),
+    missionId: v.optional(v.id("missions")),
+    workOrderId: v.id("workOrders"),
+    workflowRunId: v.id("workflowRuns"),
+    verificationRunId: v.id("verificationRuns"),
+    idempotencyKey: v.string(),
+    evidenceKey: v.string(),
+    checkId: v.string(),
+    category: evidenceCategoryValidator,
+    result: verificationCheckStatusValidator,
+    summary: v.string(),
+    acceptanceCriterionIds: v.array(v.string()),
+    primaryCriterionId: v.optional(v.string()),
+    producer: v.object({
+      actorType: v.union(v.literal("SYSTEM"), v.literal("SERVICE"), v.literal("AGENT"), v.literal("HUMAN")),
+      actorId: v.string(),
+      role: v.string(),
+      independent: v.boolean(),
+    }),
+    artifactIds: v.array(v.id("runArtifacts")),
+    artifactReferences: v.array(v.string()),
+    sourceRevision: v.string(),
+    candidateRevision: v.string(),
+    contentHash: v.optional(v.string()),
+    provenance: v.union(v.literal("LIVE"), v.literal("SYNTHETIC"), v.literal("DEMO"), v.literal("IMPORTED"), v.literal("LEGACY")),
+    recordedAt: v.number(),
+    metadata: v.optional(v.any()),
+  })
+    .index("by_verification_run", ["verificationRunId"])
+    .index("by_work_order", ["workOrderId"])
+    .index("by_run", ["workflowRunId"])
+    .index("by_work_order_criterion", ["workOrderId", "primaryCriterionId"])
     .index("by_idempotency", ["idempotencyKey"]),
 
   runEvents: defineTable({
@@ -1730,6 +1844,8 @@ export default defineSchema({
     durationMs: v.optional(v.number()),
     retryNumber: v.optional(v.number()),
     verificationReceiptId: v.optional(v.id("verificationReceipts")),
+    verificationRunId: v.optional(v.id("verificationRuns")),
+    evidenceEnvelopeIds: v.optional(v.array(v.id("evidenceEnvelopes"))),
     evidenceArtifactIds: v.optional(v.array(v.id("runArtifacts"))),
     errorCategory: v.optional(v.string()),
     errorSummary: v.optional(v.string()),
@@ -1740,6 +1856,7 @@ export default defineSchema({
     .index("by_run_sequence", ["workflowRunId", "sequenceNumber"])
     .index("by_work_order", ["workOrderId"])
     .index("by_receipt", ["verificationReceiptId"])
+    .index("by_verification_run", ["verificationRunId"])
     .index("by_idempotency", ["idempotencyKey"]),
 
   runArtifacts: defineTable({
