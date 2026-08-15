@@ -87,6 +87,54 @@ export const resolveRepositoryScope = internalQuery({
   },
 });
 
+export const resolveRepositoryBindingScope = internalQuery({
+  args: {
+    projectId: v.id("projects"),
+    repositoryId: v.id("workspaceRepositories"),
+  },
+  handler: async (ctx, args) => {
+    const repository = await ctx.db.get(args.repositoryId);
+    if (!repository || repository.projectId !== args.projectId) {
+      throw new Error("GitHub installation repository scope is unavailable.");
+    }
+    return {
+      projectId: String(args.projectId),
+      repositoryId: String(args.repositoryId),
+    };
+  },
+});
+
+export const resolvePrEvidenceScope = internalQuery({
+  args: {
+    projectId: v.id("projects"),
+    repositoryId: v.id("workspaceRepositories"),
+    workOrderId: v.id("workOrders"),
+    workflowRunId: v.id("workflowRuns"),
+    taskId: v.optional(v.id("tasks")),
+  },
+  handler: async (ctx, args) => {
+    const [repository, workOrder, workflowRun, task] = await Promise.all([
+      ctx.db.get(args.repositoryId),
+      ctx.db.get(args.workOrderId),
+      ctx.db.get(args.workflowRunId),
+      args.taskId ? ctx.db.get(args.taskId) : null,
+    ]);
+    if (!repository || repository.projectId !== args.projectId || repository.status !== "READY") {
+      throw new Error("GitHub PR evidence repository scope is unavailable.");
+    }
+    if (!workOrder || workOrder.projectId !== args.projectId || workOrder.repositoryId !== args.repositoryId) {
+      throw new Error("GitHub PR evidence WorkOrder scope does not match the repository.");
+    }
+    if (!workflowRun || workflowRun.workOrderId !== workOrder._id || workflowRun.repositoryId !== repository._id) {
+      throw new Error("GitHub PR evidence Attempt scope does not match the WorkOrder.");
+    }
+    if (task && (task.projectId !== args.projectId || task.workOrderId !== workOrder._id)) {
+      throw new Error("GitHub PR evidence Task scope does not match the WorkOrder.");
+    }
+    return { projectId: String(args.projectId), repositoryId: String(args.repositoryId) };
+  },
+});
+
 export const claim = internalMutation({
   args: { envelope },
   handler: async (ctx, args) => {
@@ -165,6 +213,72 @@ export const complete = internalMutation({
       reason: args.reason,
       resultReference: args.resultReference,
     });
+  },
+});
+
+export const bindGithubInstallation = action({
+  args: { envelope, payloadJson: v.string() },
+  handler: async (ctx, args): Promise<any> => {
+    const payload = await authorize(ctx, args.envelope, args.payloadJson, "github.installation.bind");
+    const scope = await ctx.runQuery(internal.serviceCommands.resolveRepositoryBindingScope, {
+      projectId: payload.projectId,
+      repositoryId: payload.repositoryId,
+    });
+    const receipt = await claimScoped(ctx, args.envelope, scope);
+    try {
+      const result = await ctx.runMutation(internal.githubAppConnections.upsertInstallation, {
+        repositoryId: payload.repositoryId,
+        providerRepositoryId: payload.providerRepositoryId,
+        installationId: payload.installationId,
+        appId: payload.appId,
+        accountLogin: payload.accountLogin,
+        accountType: payload.accountType,
+        repositorySelection: payload.repositorySelection,
+        permissions: payload.permissions,
+        subscribedEvents: payload.subscribedEvents,
+        status: "CONNECTED",
+        installedAt: payload.installedAt,
+        verifiedAt: payload.verifiedAt,
+        lastTokenIssuedAt: payload.lastTokenIssuedAt,
+      });
+      await ctx.runMutation(internal.serviceCommands.complete, {
+        receiptId: receipt.receiptId,
+        status: result.ready ? "SUCCEEDED" : "FAILED",
+        reason: result.ready ? undefined : "github-installation-capability-not-ready",
+        resultReference: String(result.installationRecordId),
+      });
+      return result;
+    } catch (error) {
+      await fail(ctx, receipt.receiptId, error);
+      throw error;
+    }
+  },
+});
+
+export const ingestGithubPrEvidence = action({
+  args: { envelope, payloadJson: v.string() },
+  handler: async (ctx, args): Promise<any> => {
+    const payload = await authorize(ctx, args.envelope, args.payloadJson, "github.pr-evidence.ingest");
+    const scope = await ctx.runQuery(internal.serviceCommands.resolvePrEvidenceScope, {
+      projectId: payload.projectId,
+      repositoryId: payload.repositoryId,
+      workOrderId: payload.workOrderId,
+      workflowRunId: payload.workflowRunId,
+      taskId: payload.taskId,
+    });
+    const receipt = await claimScoped(ctx, args.envelope, scope);
+    try {
+      const evaluationId = await ctx.runMutation(internal.factory.githubCi.applyCiIngest, payload.evidence);
+      await ctx.runMutation(internal.serviceCommands.complete, {
+        receiptId: receipt.receiptId,
+        status: "SUCCEEDED",
+        resultReference: String(evaluationId),
+      });
+      return { evaluationId, accepted: true };
+    } catch (error) {
+      await fail(ctx, receipt.receiptId, error);
+      throw error;
+    }
   },
 });
 

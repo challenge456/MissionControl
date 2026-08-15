@@ -7,6 +7,7 @@ import {
   shouldPreserveManualPrLineage,
   type PrCheckSignals,
 } from "../lib/harnessPrChecks";
+import { verificationReceiptsInvalidatedByPrHead } from "../lib/githubCiIngest";
 import { ciBlockedHead, ciBlockCanRecover } from "../lib/prEvaluation";
 
 export const applyCiIngest = internalMutation({
@@ -180,6 +181,54 @@ export const applyCiIngest = internalMutation({
       await ctx.db.patch(existing._id, doc);
     }
     const linkedWorkOrderId = doc.workOrderId;
+    if (linkedWorkOrderId && doc.headSha) {
+      const workOrder = await ctx.db.get(linkedWorkOrderId);
+      const receipts = await ctx.db
+        .query("verificationReceipts")
+        .withIndex("by_work_order", (q) => q.eq("workOrderId", linkedWorkOrderId))
+        .collect();
+      const mismatchedReceipts = verificationReceiptsInvalidatedByPrHead(
+        receipts,
+        doc.headSha,
+      );
+      if (workOrder && mismatchedReceipts.length > 0 && !["CANCELED", "SUPERSEDED"].includes(workOrder.state)) {
+        const priorCandidateRevisions = [...new Set(
+          mismatchedReceipts
+            .map((receipt) => receipt.candidateRevision)
+            .filter((candidate): candidate is string => Boolean(candidate))
+        )];
+        for (const receipt of mismatchedReceipts) {
+          await ctx.db.patch(receipt._id, {
+            status: "STALE",
+            invalidatedAt: now,
+            invalidationReason: `pr-head-mismatch:${doc.headSha}`,
+          });
+        }
+        await ctx.db.patch(linkedWorkOrderId, {
+          state: "BLOCKED",
+          blockingIssue: `Verified candidate head does not match pull-request head ${doc.headSha}`,
+          requiredHumanAction: "Create one bounded recovery Attempt and independently reverify the exact pull-request head before acceptance.",
+          updatedAt: now,
+        });
+        await ctx.db.insert("workOrderEvents", {
+          tenantId: workOrder.tenantId,
+          projectId: workOrder.projectId,
+          workOrderId: workOrder._id,
+          workflowRunId: doc.workflowRunId,
+          eventType: "VERIFICATION_STALE",
+          actorType: "SYSTEM",
+          summary: `Pull-request head ${doc.headSha} invalidated evidence for ${priorCandidateRevisions.join(", ")}`,
+          timestamp: now,
+          metadata: {
+            evaluationId: id,
+            prUrl: doc.prUrl,
+            priorCandidateRevisions,
+            observedHeadSha: doc.headSha,
+            invalidatedReceiptIds: mismatchedReceipts.map((receipt) => receipt._id),
+          },
+        });
+      }
+    }
     if (linkedWorkOrderId && doc.ciStatus === "FAIL") {
       const workOrder = await ctx.db.get(linkedWorkOrderId);
       if (workOrder && !["CANCELED", "SUPERSEDED"].includes(workOrder.state)) {

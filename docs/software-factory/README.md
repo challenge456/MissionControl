@@ -28,17 +28,17 @@ below and open a reconciliation change; do not silently choose the newest prose.
 | Product North Star | [Mission Control North Star](../product/mission-control-north-star.md) | Active | Enduring product doctrine and ship gate |
 | V1 scope | [Mission Control V1 Product Strategy](../product/mission-control-v1-product-strategy.md) | Active | Golden path, users, priorities, and non-goals |
 | Core decisions | [AI Software Factory V1 Decisions](../decisions/ai-software-factory-v1-decisions.md) | Accepted | Existing product decisions |
-| Verification decisions | [Verification-First Architecture Decisions](../decisions/verification-first-architecture-decisions.md) | Proposed for acceptance | Verification-specific ownership and boundaries |
+| Verification decisions | [Verification-First Architecture Decisions](../decisions/verification-first-architecture-decisions.md) | Accepted | Verification-specific ownership and boundaries |
 | Authoritative domain | [Domain Contracts](./domain-contracts.md) | Implemented, evolving | Existing Mission, WorkOrder, run, approval, and receipt contracts |
-| Verification domain | [Quality Contract and Verification Domain Contracts](./verification-first-domain-contracts.md) | Current plus proposed | Normative mapping for contracts, runs, evidence, and gate decisions |
+| Verification domain | [Quality Contract and Verification Domain Contracts](./verification-first-domain-contracts.md) | Implemented, evolving | Normative mapping for contracts, runs, evidence, and gate decisions |
 | Verification architecture | [Verification-First AI Software Factory](./verification-first-ai-software-factory.md) | Partial P0 implemented | Current architecture and target evolution |
 | P0 operator contract | [Verification-First WorkOrder Contract](./verification-first-workorder-contract.md) | Implemented | Supported P0 workflow and interfaces |
-| State semantics | [Verification and Gate State Machines](./verification-and-gate-state-machines.md) | Proposed | Cross-record lifecycle and transition rules |
+| State semantics | [Verification and Gate State Machines](./verification-and-gate-state-machines.md) | Accepted | Cross-record lifecycle and transition rules |
 | Security | [Verification Plane Threat Model](../security/verification-plane-threat-model.md) | Proposed | Trust boundaries, abuse paths, and mitigations |
 | Recovery | [Verification Failure, Recovery, and Reconciliation](./verification-failure-recovery-reconciliation.md) | Proposed | Failure ownership, retries, stale events, and operator recovery |
-| V1 verifier set | [V1 Verification Profile](./v1-verification-profile.md) | Proposed | Minimum mandatory checks and risk overlays |
+| V1 verifier set | [V1 Verification Profile](./v1-verification-profile.md) | Accepted | Minimum mandatory checks and risk overlays |
 | Demonstration | [Golden-Path Demonstration Manifest](../validation/verification-first-golden-path-manifest.md) | Draft | Reproducible browser and runtime proof contract |
-| Remaining work | [Verification-First Completion Plan](../plans/2026-08-11-feat-verification-first-completion-plan.md) | Proposed | Work after implemented P0 |
+| Remaining work | [Verification-First Completion Plan](../plans/2026-08-11-feat-verification-first-completion-plan.md) | Accepted, in progress | Work after implemented P0 |
 
 ## Evidence and implementation status
 

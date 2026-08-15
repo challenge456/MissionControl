@@ -5,6 +5,7 @@ export interface FactoryExecutionManifestInput {
   missionId?: string;
   missionPlanId?: string;
   missionPlanVersion?: number;
+  qualityContractDigest?: string;
   workOrderId: string;
   workOrderRevisionNumber: number;
   workOrderRevisionId?: string;
@@ -103,6 +104,7 @@ export function buildFactoryExecutionManifest(input: FactoryExecutionManifestInp
       missionId: input.missionId,
       missionPlanId: input.missionPlanId,
       missionPlanVersion: input.missionPlanVersion,
+      qualityContractDigest: input.qualityContractDigest,
       workOrderId: input.workOrderId,
       workOrderRevisionNumber: input.workOrderRevisionNumber,
       workOrderRevisionId: input.workOrderRevisionId,

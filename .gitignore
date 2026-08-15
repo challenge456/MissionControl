@@ -19,6 +19,8 @@ build/
 .env
 .env.local
 .env.*.local
+*.pem
+*.private-key.pem
 
 # Logs
 logs/

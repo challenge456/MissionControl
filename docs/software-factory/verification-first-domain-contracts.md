@@ -1,8 +1,9 @@
 ---
 title: Quality Contract and Verification Domain Contracts
-status: PROPOSED_NORMATIVE
+status: ACCEPTED_NORMATIVE
 last_verified: 2026-08-11
 baseline_commit: 2b1a7c4
+accepted_on: 2026-08-12
 ---
 
 # Quality Contract and Verification Domain Contracts
@@ -17,7 +18,7 @@ normative recommendation requiring a future reviewed change.
 | --- | --- | --- | --- |
 | Mission | Product/business owner | Versioned through lifecycle | Implemented |
 | Mission Plan | Human plan authority | Immutable after approval; fork to revise | Implemented |
-| Quality Contract | Plan compiler plus human approval | Immutable version and digest | Target; P0 uses WorkOrder contract |
+| Quality Contract projection | Approved Plan plus control-plane compiler | Immutable Plan version and canonical digest | Implemented |
 | WorkOrder specification | Control plane | Versioned; frozen into manifest | Implemented |
 | Change Budget | WorkOrder authority | Changes require governed revision | Implemented |
 | Execution Manifest | Control plane | Immutable after dispatch | Implemented |
@@ -26,34 +27,39 @@ normative recommendation requiring a future reviewed change.
 | Verification Run | Verification plane | Immutable result set after completion | Implemented |
 | Evidence Envelope | Evidence plane | Append-only; supersede or invalidate | Implemented |
 | Verification Receipt | Control plane | Append-only verdict/criterion observation | Implemented |
-| Quality Gate Decision | Policy authority | Append-only, superseding decisions | Target |
+| Quality Gate Decision | Policy authority | Append-only, superseding decisions | V1 implemented; policy aggregation evolving |
 | Verification Proof Package | Read model | Derived, never independent authority | Partial review package exists |
 
-## Quality Contract — target
+## Quality Contract projection — implemented
 
-A Quality Contract compiles one approved Plan revision, active Factory
-Configuration, governance policy, risk assessment, and repository scope into a
-canonical assurance specification.
+A Quality Contract is not a separate aggregate. It is the canonical,
+machine-readable projection of one approved Plan revision and its governed
+Mission intent. The Plan remains the human-owned source of quality authority;
+the projection makes that authority executable and digestible. Each WorkOrder
+freezes that digest with its scoped requirements, and the execution manifest
+adds the active Factory Configuration, governance policy, risk assessment, and
+repository authority. This two-stage compilation prevents environment or
+runtime selection from silently changing the approved quality definition.
 
 Required identity:
 
 ```yaml
 quality_contract:
   schema_version: 1
-  id: qc_...
-  revision: 1
   mission_id: mission_...
   mission_plan_id: plan_...
-  factory_definition_version_id: factory_version_...
-  governance_policy_id: policy_...
-  repository_id: repository_...
+  mission_plan_revision: 3
+  repository: owner/repository
+  repository_branch: main
   canonical_digest: sha256:...
-  status: ACTIVE
+  compiled_at: 0
 ```
 
-It owns Mission-level requirements, assertions, cross-WorkOrder invariants,
-required assurance profiles, approval policy, validity, and projection rules.
-It does not dispatch work or contain runtime results.
+The projection contains Mission-level requirements, assertions,
+cross-WorkOrder invariants, required assurance profiles, approval policy,
+validity, and projection rules. It has no independent mutable status or owner.
+A new approved Plan revision creates a new projection and digest. It does not
+dispatch work or contain runtime results.
 
 ## WorkOrder specification — implemented
 
@@ -138,10 +144,14 @@ Receipts are immutable historical records. A later run creates a new receipt;
 revision, reopen, expiry, or contradictory proof can invalidate reliance while
 retaining the original.
 
-## Quality Gate Decision — target
+## Quality Gate Decision — V1 implemented, target evolving
 
-The gate decision should evaluate the active Quality Contract, WorkOrder
-projection, candidate, current evidence, waivers, approvals, and policy mode.
+V1 creates an append-only gate decision when the server independently
+recomputes a verification packet. The decision binds the active Quality
+Contract digest, WorkOrder revision, execution manifest, exact candidate,
+verification run and receipt, evidence set, and policy mode. Future policy
+aggregation will expand explicit waiver and approval linkage without moving
+decision authority into evidence records.
 
 ```yaml
 quality_gate_decision:
@@ -181,7 +191,7 @@ active contract explicitly permits reuse.
 
 | Action | Required authority |
 | --- | --- |
-| Approve Plan/Quality Contract | Human plan approver |
+| Approve Plan and its Quality Contract projection | Human plan approver |
 | Revise WorkOrder or Change Budget | WorkOrder owner plus policy-required approval |
 | Execute verifier | Registered verifier service identity |
 | Ingest evidence | Authorized service capability; no acceptance authority |
