@@ -3803,6 +3803,7 @@ export default defineSchema({
     workOrderRevisionId: v.optional(v.id("workOrderRevisions")),
     factoryDefinitionVersionId: v.optional(v.id("factoryDefinitionVersions")),
     factoryConfigurationDigest: v.optional(v.string()),
+    primaryTraceId: v.optional(v.id("traces")),
     qualityContractDigest: v.optional(v.string()),
     repositoryId: v.optional(v.id("workspaceRepositories")),
     hostBindingId: v.optional(v.id("workspaceHostBindings")),
@@ -5252,6 +5253,276 @@ export default defineSchema({
   })
     .index("by_run", ["runId"])
     .index("by_project", ["projectId"]),
+
+  // -------------------------------------------------------------------------
+  // OBSERVABILITY, TRACES & EVALS
+  // -------------------------------------------------------------------------
+  // `workflowRuns` remains the Attempt system of record. These tables explain
+  // how an Attempt executed and how its behavior was evaluated; they never
+  // replace verification evidence or acceptance receipts.
+  traces: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.id("projects"),
+    traceKey: v.string(),
+    externalTraceId: v.string(),
+    workOrderId: v.optional(v.id("workOrders")),
+    workflowRunId: v.optional(v.id("workflowRuns")),
+    factoryDefinitionId: v.optional(v.id("factoryDefinitions")),
+    factoryDefinitionVersionId: v.optional(v.id("factoryDefinitionVersions")),
+    purpose: v.union(
+      v.literal("SOFTWARE"),
+      v.literal("VERIFICATION"),
+      v.literal("AUTOMATION"),
+      v.literal("EVALUATION"),
+      v.literal("SYSTEM")
+    ),
+    name: v.string(),
+    status: v.union(
+      v.literal("RUNNING"),
+      v.literal("SUCCESS"),
+      v.literal("FAILED"),
+      v.literal("CANCELED")
+    ),
+    startedAt: v.number(),
+    endedAt: v.optional(v.number()),
+    durationMs: v.optional(v.number()),
+    environment: v.optional(v.string()),
+    executor: v.optional(v.string()),
+    executorVersion: v.optional(v.string()),
+    model: v.optional(v.string()),
+    provider: v.optional(v.string()),
+    tags: v.optional(v.array(v.string())),
+    input: v.optional(v.any()),
+    output: v.optional(v.any()),
+    metadata: v.optional(v.any()),
+    tokenUsage: v.optional(v.object({
+      input: v.optional(v.number()),
+      output: v.optional(v.number()),
+      cached: v.optional(v.number()),
+      total: v.optional(v.number()),
+    })),
+    estimatedCostUsd: v.optional(v.number()),
+    error: v.optional(v.object({
+      code: v.optional(v.string()),
+      message: v.string(),
+    })),
+    humanInterventionCount: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_trace_key", ["traceKey"])
+    .index("by_external_trace_id", ["externalTraceId"])
+    .index("by_attempt", ["workflowRunId"])
+    .index("by_work_order", ["workOrderId"])
+    .index("by_project_started", ["projectId", "startedAt"])
+    .index("by_project_status", ["projectId", "status"])
+    .index("by_factory_version", ["factoryDefinitionVersionId"]),
+
+  traceObservations: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.id("projects"),
+    traceId: v.id("traces"),
+    idempotencyKey: v.string(),
+    externalSpanId: v.string(),
+    parentObservationId: v.optional(v.id("traceObservations")),
+    runEventId: v.optional(v.id("runEvents")),
+    verificationRunId: v.optional(v.id("verificationRuns")),
+    evidenceEnvelopeIds: v.optional(v.array(v.id("evidenceEnvelopes"))),
+    type: v.union(
+      v.literal("SPAN"),
+      v.literal("GENERATION"),
+      v.literal("AGENT"),
+      v.literal("TOOL"),
+      v.literal("RETRIEVAL"),
+      v.literal("EMBEDDING"),
+      v.literal("EVENT"),
+      v.literal("EVALUATOR")
+    ),
+    name: v.string(),
+    startedAt: v.number(),
+    endedAt: v.optional(v.number()),
+    durationMs: v.optional(v.number()),
+    status: v.union(v.literal("RUNNING"), v.literal("SUCCESS"), v.literal("FAILED")),
+    level: v.optional(v.union(
+      v.literal("DEBUG"),
+      v.literal("DEFAULT"),
+      v.literal("WARNING"),
+      v.literal("ERROR")
+    )),
+    input: v.optional(v.any()),
+    output: v.optional(v.any()),
+    metadata: v.optional(v.any()),
+    model: v.optional(v.string()),
+    provider: v.optional(v.string()),
+    promptVersion: v.optional(v.string()),
+    toolName: v.optional(v.string()),
+    tokenUsage: v.optional(v.object({
+      input: v.optional(v.number()),
+      output: v.optional(v.number()),
+      cached: v.optional(v.number()),
+      total: v.optional(v.number()),
+    })),
+    estimatedCostUsd: v.optional(v.number()),
+    error: v.optional(v.object({
+      code: v.optional(v.string()),
+      message: v.string(),
+    })),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_trace", ["traceId"])
+    .index("by_trace_started", ["traceId", "startedAt"])
+    .index("by_trace_idempotency", ["traceId", "idempotencyKey"])
+    .index("by_parent", ["parentObservationId"])
+    .index("by_run_event", ["runEventId"])
+    .index("by_verification_run", ["verificationRunId"]),
+
+  evalDefinitions: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.id("projects"),
+    key: v.string(),
+    name: v.string(),
+    description: v.optional(v.string()),
+    scope: v.union(
+      v.literal("OBSERVATION"),
+      v.literal("TRACE"),
+      v.literal("ATTEMPT"),
+      v.literal("EXPERIMENT")
+    ),
+    evaluatorType: v.union(
+      v.literal("DETERMINISTIC"),
+      v.literal("LLM_JUDGE"),
+      v.literal("HUMAN"),
+      v.literal("EXTERNAL")
+    ),
+    scoreType: v.union(
+      v.literal("NUMERIC"),
+      v.literal("BOOLEAN"),
+      v.literal("CATEGORICAL"),
+      v.literal("TEXT")
+    ),
+    rubric: v.optional(v.string()),
+    configuration: v.optional(v.any()),
+    enabled: v.boolean(),
+    version: v.number(),
+    createdBy: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_key", ["projectId", "key"])
+    .index("by_project_key_version", ["projectId", "key", "version"])
+    .index("by_project_enabled", ["projectId", "enabled"]),
+
+  evalScores: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.id("projects"),
+    evalDefinitionId: v.id("evalDefinitions"),
+    traceId: v.optional(v.id("traces")),
+    observationId: v.optional(v.id("traceObservations")),
+    workflowRunId: v.optional(v.id("workflowRuns")),
+    experimentId: v.optional(v.id("experiments")),
+    experimentVariantId: v.optional(v.id("experimentVariants")),
+    idempotencyKey: v.string(),
+    scoreType: v.union(
+      v.literal("NUMERIC"),
+      v.literal("BOOLEAN"),
+      v.literal("CATEGORICAL"),
+      v.literal("TEXT")
+    ),
+    value: v.union(v.number(), v.boolean(), v.string()),
+    reason: v.optional(v.string()),
+    evaluator: v.object({
+      type: v.union(
+        v.literal("DETERMINISTIC"),
+        v.literal("LLM_JUDGE"),
+        v.literal("HUMAN"),
+        v.literal("EXTERNAL")
+      ),
+      model: v.optional(v.string()),
+      version: v.string(),
+    }),
+    createdBy: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_idempotency", ["idempotencyKey"])
+    .index("by_definition", ["evalDefinitionId"])
+    .index("by_trace", ["traceId"])
+    .index("by_observation", ["observationId"])
+    .index("by_attempt", ["workflowRunId"])
+    .index("by_experiment", ["experimentId"])
+    .index("by_project_created", ["projectId", "createdAt"]),
+
+  evalDatasets: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.id("projects"),
+    name: v.string(),
+    description: v.optional(v.string()),
+    version: v.number(),
+    createdBy: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_name", ["projectId", "name"])
+    .index("by_project_updated", ["projectId", "updatedAt"]),
+
+  evalDatasetItems: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.id("projects"),
+    datasetId: v.id("evalDatasets"),
+    sourceTraceId: v.optional(v.id("traces")),
+    sourceWorkOrderId: v.optional(v.id("workOrders")),
+    sourceWorkflowRunId: v.optional(v.id("workflowRuns")),
+    idempotencyKey: v.string(),
+    input: v.any(),
+    expectedOutcome: v.optional(v.any()),
+    metadata: v.optional(v.any()),
+    createdBy: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_idempotency", ["idempotencyKey"])
+    .index("by_dataset", ["datasetId"])
+    .index("by_source_trace", ["sourceTraceId"]),
+
+  experiments: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.id("projects"),
+    datasetId: v.id("evalDatasets"),
+    datasetVersion: v.number(),
+    name: v.string(),
+    status: v.union(
+      v.literal("DRAFT"),
+      v.literal("RUNNING"),
+      v.literal("COMPLETED"),
+      v.literal("FAILED"),
+      v.literal("CANCELED")
+    ),
+    evalDefinitionIds: v.array(v.id("evalDefinitions")),
+    createdBy: v.string(),
+    createdAt: v.number(),
+    completedAt: v.optional(v.number()),
+    metadata: v.optional(v.any()),
+  })
+    .index("by_project_created", ["projectId", "createdAt"])
+    .index("by_dataset", ["datasetId"]),
+
+  experimentVariants: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.id("projects"),
+    experimentId: v.id("experiments"),
+    name: v.string(),
+    factoryDefinitionVersionId: v.optional(v.id("factoryDefinitionVersions")),
+    executor: v.optional(v.string()),
+    model: v.optional(v.string()),
+    configuration: v.optional(v.any()),
+    sampleSize: v.number(),
+    metrics: v.optional(v.any()),
+    createdAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_experiment", ["experimentId"])
+    .index("by_factory_version", ["factoryDefinitionVersionId"]),
+
 
   memoryConsolidations: defineTable({
     projectId: v.optional(v.id("projects")),

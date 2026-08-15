@@ -239,9 +239,19 @@ export class FactoryAttemptWorker {
       }, controller.signal);
 
       const mappedEvents = executorEvents.map((event) => mapExecutorEvent(claim.runId, event));
+      const traceObservations = mapExecutorObservations({
+        runId: claim.runId,
+        events: executorEvents,
+        model: claim.model ?? manifest.workflow.steps[0]?.modelRoute,
+        promptDigest: `sha256:${createHash("sha256").update(manifest.compiledPrompt).digest("hex")}`,
+        promptVersion: manifest.causation?.factoryDefinitionVersionId
+          ? String(manifest.causation.factoryDefinitionVersionId)
+          : undefined,
+      });
       if (result.status !== "COMPLETED") {
         await report({
           events: mappedEvents,
+          observations: traceObservations,
           terminal: { status: result.status === "CANCELED" ? "CANCELED" : "FAILED", failureReason: result.error ?? "Codex execution failed." },
         });
         this.failedCount += 1;
@@ -252,6 +262,7 @@ export class FactoryAttemptWorker {
       if (structuredResult.status !== "COMPLETED") {
         await report({
           events: mappedEvents,
+          observations: traceObservations,
           artifacts: [structuredResultArtifact(claim, structuredResult)],
           terminal: { status: "FAILED", failureReason: `Codex reported ${structuredResult.status}: ${structuredResult.nextAction}` },
         });
@@ -266,6 +277,7 @@ export class FactoryAttemptWorker {
       if (!scopeResult.ok) {
         await report({
           events: mappedEvents,
+          observations: traceObservations,
           artifacts: [
             structuredResultArtifact(claim, structuredResult),
             {
@@ -284,6 +296,7 @@ export class FactoryAttemptWorker {
       if (scopeResult.changedFiles.length === 0) {
         await report({
           events: mappedEvents,
+          observations: traceObservations,
           artifacts: [structuredResultArtifact(claim, structuredResult)],
           terminal: { status: "FAILED", failureReason: "Codex completed without producing a reviewable code change." },
         });
@@ -332,6 +345,7 @@ export class FactoryAttemptWorker {
         await this.dependencies.assertFactoryCandidateUnchanged(claim.worktree, headSha);
         const verificationReport = await report({
           events: mappedEvents,
+          observations: traceObservations,
           artifacts: baseArtifacts,
           verification: verificationResult,
         });
@@ -360,6 +374,7 @@ export class FactoryAttemptWorker {
         leaseId,
         requirePublicationPermit: true,
         events: verificationResult ? [] : mappedEvents,
+        observations: verificationResult ? [] : traceObservations,
         artifacts: verificationResult ? [] : baseArtifacts,
       });
       this.completedCount += 1;
@@ -406,6 +421,7 @@ export class FactoryAttemptWorker {
     publicationPermit?: { id: string; leaseId: string; validUntil: number };
     requirePublicationPermit?: boolean;
     events?: any[];
+    observations?: any[];
     artifacts?: any[];
   }) {
     const privateKey = this.dependencies.loadGithubAppPrivateKey();
@@ -474,6 +490,7 @@ export class FactoryAttemptWorker {
     };
     await input.report({
       events: input.events ?? [],
+      observations: input.observations ?? [],
       artifacts: [
         ...(input.artifacts ?? []),
         {
@@ -553,6 +570,73 @@ function mapExecutorEvent(runId: string, event: ExecutorEvent) {
     startedAt: event.occurredAt,
     metadata: { executorEventType: event.type, executorSequence: event.sequence, ...(event.metadata ?? {}) },
   };
+}
+
+export function mapExecutorObservations(input: {
+  runId: string;
+  events: ExecutorEvent[];
+  model?: string;
+  promptDigest: string;
+  promptVersion?: string;
+}) {
+  const startedAt = input.events.find((event) => event.type === "EXECUTION_STARTED")?.occurredAt
+    ?? input.events[0]?.occurredAt
+    ?? Date.now();
+  const terminal = [...input.events].reverse().find((event) =>
+    ["EXECUTION_COMPLETED", "EXECUTION_FAILED", "EXECUTION_CANCELED"].includes(event.type)
+  );
+  const failed = terminal?.type === "EXECUTION_FAILED" || terminal?.type === "EXECUTION_CANCELED";
+  const status = terminal ? failed ? "FAILED" : "SUCCESS" : "RUNNING";
+  const agentKey = `codex-agent:${input.runId}`;
+  const generationKey = `codex-generation:${input.runId}:primary`;
+  const observations: any[] = [{
+    idempotencyKey: agentKey,
+    type: "AGENT",
+    name: "Codex implementation agent",
+    startedAt,
+    endedAt: terminal?.occurredAt,
+    status,
+    model: input.model,
+    provider: "openai",
+    promptVersion: input.promptVersion,
+    input: { promptDigest: input.promptDigest },
+    output: terminal ? { summary: terminal.summary } : undefined,
+    error: failed ? { message: terminal?.summary ?? "Codex execution failed." } : undefined,
+    metadata: { adapter: "codex", adapterVersion: "v1" },
+  }, {
+    idempotencyKey: generationKey,
+    parentIdempotencyKey: agentKey,
+    type: "GENERATION",
+    name: input.model ? `${input.model} execution` : "Codex model execution",
+    startedAt,
+    endedAt: terminal?.occurredAt,
+    status,
+    model: input.model,
+    provider: "openai",
+    promptVersion: input.promptVersion,
+    input: { promptDigest: input.promptDigest },
+    output: terminal ? { summary: terminal.summary } : undefined,
+    error: failed ? { message: terminal?.summary ?? "Model execution failed." } : undefined,
+  }];
+  const commandStarts = input.events.filter((event) => event.type === "COMMAND_STARTED");
+  const commandEnds = input.events.filter((event) => event.type === "COMMAND_COMPLETED");
+  commandStarts.forEach((event, index) => {
+    const completed = commandEnds[index];
+    observations.push({
+      idempotencyKey: `codex-tool:${input.runId}:${index + 1}`,
+      parentIdempotencyKey: generationKey,
+      type: "TOOL",
+      name: "Codex CLI",
+      toolName: "codex/v1",
+      startedAt: event.occurredAt,
+      endedAt: completed?.occurredAt,
+      status: completed ? "SUCCESS" : failed ? "FAILED" : "RUNNING",
+      output: completed ? { summary: completed.summary, ...(completed.metadata ?? {}) } : undefined,
+      error: !completed && failed ? { message: terminal?.summary ?? "Codex command did not complete." } : undefined,
+      metadata: { executorSequence: event.sequence },
+    });
+  });
+  return observations;
 }
 
 function parseFactoryResult(output: string) {

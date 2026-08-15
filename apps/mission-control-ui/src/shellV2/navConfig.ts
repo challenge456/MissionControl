@@ -175,7 +175,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { view: "command-center", label: "Command Center", icon: LayoutDashboard },
       { view: "missions", label: "Missions", icon: Target },
-      { view: "trace-inspector", label: "Trace Inspector", icon: GitBranch },
+      { view: "trace-inspector", label: "Observability & Evals", icon: GitBranch },
       { view: "effectiveness", label: "AI Effectiveness", icon: Gauge },
       { view: "factory-health", label: "Legacy Factory Health", icon: CheckCircle2 },
       { view: "readiness", label: "Readiness", icon: Landmark },
