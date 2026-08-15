@@ -78,7 +78,8 @@ gates passed from a branch refreshed onto the exact latest `origin/main`:
 - `git diff --check`: passed.
 
 The release commits on top of `reviewed_code_sha` contain this review record,
-the runtime version bump, aligned operations/todo documentation, and a
+the runtime version bump, aligned operations/todo documentation, direct POSIX
+process-group signaling without an external `/bin/kill` dependency, and a
 Linux-portable process-tree assertion that treats a reparented zombie as
 terminated rather than runnable. GitHub CI and Vercel must still pass on the
 exact pushed head before the PR is changed from draft to ready. This review does

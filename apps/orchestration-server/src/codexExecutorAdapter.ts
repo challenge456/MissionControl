@@ -1,4 +1,4 @@
-import { execFile, execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { constants } from "node:fs";
 import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -212,7 +212,7 @@ async function runCodexProcess(args: Parameters<ProcessRunner>[0]): Promise<{ ex
       if (typeof child.pid !== "number") return;
       if (process.platform !== "win32" && ownedProcessGroupId) {
         try {
-          execFileSync("/bin/kill", [`-${signal.replace(/^SIG/, "")}`, `-${ownedProcessGroupId}`], { stdio: "ignore" });
+          process.kill(-ownedProcessGroupId, signal);
           return;
         } catch {
           // The group may have already exited. Fall back only while the exact
@@ -332,7 +332,7 @@ export function codexChildEnvironment(env: NodeJS.ProcessEnv = process.env): Nod
 export function codexOwnedProcessGroupExists(processGroupId: number) {
   if (process.platform === "win32") return false;
   try {
-    execFileSync("/bin/kill", ["-0", `-${processGroupId}`], { stdio: "ignore" });
+    process.kill(-processGroupId, 0);
     return true;
   } catch {
     return false;
