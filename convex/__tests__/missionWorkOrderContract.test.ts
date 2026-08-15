@@ -60,8 +60,15 @@ describe("Mission WorkOrder contract compiler", () => {
     });
 
     expect(contract.verificationContract).toMatchObject({
+      schemaVersion: 2,
       enforcementMode: "ENFORCED",
-      requireHumanReview: true,
+      requireHumanReview: false,
+      independence: { required: true, minimumBoundary: "SEPARATE_ATTEMPT" },
+      requiredRisks: [{
+        id: "mission:exact-candidate-integrity",
+        severity: "MEDIUM",
+        requiredEvidenceIds: ["mission:independent-verification"],
+      }],
       checks: [{
         verifierId: "factory-command/v1",
         mandatory: true,

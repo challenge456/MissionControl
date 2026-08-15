@@ -317,7 +317,10 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
     && !["DONE", "SUPERSEDED", "CANCELED"].includes(selected.workOrder.state)
     && !selected.executionRuns.some((run) => ["PENDING", "RUNNING", "PAUSED"].includes(run.status))
     && selected.executionRuns[0]?.status === "COMPLETED"
-    && selected.acceptanceEligibility?.eligible;
+    && (selected.currentVerification
+      ? selected.currentVerification.eligible
+        && ["APPROVED", "CONDITIONAL", "NOT_REQUIRED"].includes(selected.workOrder.approvalStatus)
+      : selected.acceptanceSummary?.eligible);
 
   const latestReceiptMap = useMemo(
     () => latestByCriterion((selected?.verificationReceipts ?? []).map((receipt) => ({
@@ -837,9 +840,9 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                       </div>
                     </div>
                     {governanceError ? <div className="mb-3 text-xs text-red-300">{governanceError}</div> : null}
-                    {(selected.acceptanceEligibility?.blockingReasons?.length ?? 0) > 0 ? (
+                    {(selected.currentVerification?.reasons?.length ?? 0) > 0 ? (
                       <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-                        {selected.acceptanceEligibility.blockingReasons.map((reason, index) => (
+                        {selected.currentVerification.reasons.map((reason: string, index: number) => (
                           <li key={`${selected.workOrder._id}-blocker-${index}`}>{reason}</li>
                         ))}
                       </ul>

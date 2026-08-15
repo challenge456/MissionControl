@@ -29,7 +29,8 @@ import {
 import { COMPANY_PERMISSIONS, requireWorkspaceAccess } from "./lib/companyAccess";
 import { assertAuthorizedDeliveryRecord, canAccessDeliveryRecord, requireAuthorizedDeliveryScope } from "./lib/deliveryAuthorization";
 import { evaluateAcceptance } from "./lib/workOrderGovernance";
-import { buildAcceptanceEligibility, loadFactoryAttemptReviewReadModel, workOrderRequiresFactoryReviewPackage } from "./lib/factoryReviewReadModel";
+import { loadFactoryAttemptReviewReadModel } from "./lib/factoryReviewReadModel";
+import { getCurrentVerificationResult } from "./lib/currentVerification";
 
 const missionState = v.union(
   v.literal("DRAFT"), v.literal("PLANNING"), v.literal("AWAITING_PLAN_APPROVAL"),
@@ -240,11 +241,22 @@ async function getMissionDetail(ctx: any, mission: any) {
     })
     .sort((left: any, right: any) => (left.missionSequence ?? 0) - (right.missionSequence ?? 0));
   const executionWorkOrders = await Promise.all(eligibleWorkOrders.map(async (workOrder: any) => {
-    const [childTasks, executionRuns, approvalDecisions, verificationReceipts] = await Promise.all([
+    const [
+      childTasks,
+      executionRuns,
+      approvalDecisions,
+      verificationReceipts,
+      verificationRuns,
+      evidenceEnvelopes,
+      qualityGateDecisions,
+    ] = await Promise.all([
       ctx.db.query("tasks").withIndex("by_work_order", (q: any) => q.eq("workOrderId", workOrder._id)).collect(),
       ctx.db.query("workflowRuns").withIndex("by_work_order", (q: any) => q.eq("workOrderId", workOrder._id)).order("desc").collect(),
       ctx.db.query("approvalDecisions").withIndex("by_work_order", (q: any) => q.eq("workOrderId", workOrder._id)).order("desc").collect(),
       ctx.db.query("verificationReceipts").withIndex("by_work_order", (q: any) => q.eq("workOrderId", workOrder._id)).order("desc").collect(),
+      ctx.db.query("verificationRuns").withIndex("by_work_order", (q: any) => q.eq("workOrderId", workOrder._id)).order("desc").collect(),
+      ctx.db.query("evidenceEnvelopes").withIndex("by_work_order", (q: any) => q.eq("workOrderId", workOrder._id)).order("desc").collect(),
+      ctx.db.query("qualityGateDecisions").withIndex("by_work_order", (q: any) => q.eq("workOrderId", workOrder._id)).order("desc").collect(),
     ]);
     const governanceAcceptance = evaluateAcceptance({
       riskLevel: workOrder.riskLevel,
@@ -264,12 +276,14 @@ async function getMissionDetail(ctx: any, mission: any) {
       executionRuns,
       approvalDecisions,
       verificationReceipts,
-      acceptanceEligibility: buildAcceptanceEligibility({
-        governanceAcceptance,
-        latestRun,
-        factoryRequired: workOrderRequiresFactoryReviewPackage(workOrder, latestRun),
-        reviewPackage: reviewReadModel?.reviewPackage,
-      }),
+      verificationRuns,
+      evidenceEnvelopes,
+      qualityGateDecisions,
+      acceptanceSummary: governanceAcceptance,
+      currentVerification: workOrder.verificationContract?.schemaVersion === 2
+        && workOrder.verificationContract.enforcementMode === "ENFORCED"
+        ? await getCurrentVerificationResult(ctx, workOrder)
+        : null,
       reviewPackage: reviewReadModel?.reviewPackage ?? null,
       latestHandoff: handoffByWorkOrderId.get(String(workOrder._id)) ?? null,
     };

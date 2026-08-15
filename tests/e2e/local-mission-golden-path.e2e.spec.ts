@@ -5,6 +5,9 @@ const workspaceId = process.env.MISSION_GOLDEN_PATH_WORKSPACE_ID ?? "";
 const missionId = process.env.MISSION_GOLDEN_PATH_MISSION_ID ?? "";
 const workOrderId = process.env.MISSION_GOLDEN_PATH_WORK_ORDER_ID ?? "";
 const attemptId = process.env.MISSION_GOLDEN_PATH_ATTEMPT_ID ?? "";
+const verificationAttemptId = process.env.MISSION_GOLDEN_PATH_VERIFICATION_ATTEMPT_ID ?? "";
+const verificationSubjectDigest = process.env.MISSION_GOLDEN_PATH_VERIFICATION_SUBJECT_DIGEST ?? "";
+const verificationPlanId = process.env.MISSION_GOLDEN_PATH_VERIFICATION_PLAN_ID ?? "";
 const failedAttemptId = process.env.MISSION_GOLDEN_PATH_FAILED_ATTEMPT_ID ?? "";
 const candidateSha = process.env.MISSION_GOLDEN_PATH_CANDIDATE_SHA ?? "";
 const previousCandidateSha = process.env.MISSION_GOLDEN_PATH_PREVIOUS_CANDIDATE_SHA ?? "";
@@ -15,6 +18,9 @@ const liveProofConfigured = Boolean(
   && missionId
   && workOrderId
   && attemptId
+  && verificationAttemptId
+  && verificationSubjectDigest
+  && verificationPlanId
   && failedAttemptId
   && candidateSha
   && previousCandidateSha
@@ -42,15 +48,20 @@ test("local Mission golden path exposes exact eligible candidate and recovery li
   await expect(page.getByRole("heading", { name: "Local Mission-to-PR V1 golden path", exact: true })).toBeVisible();
   await page.getByRole("tab", { name: "Execution", exact: true }).click();
   await expect(page.getByText(attemptId, { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(verificationAttemptId, { exact: true }).first()).toBeVisible();
   await expect(page.getByText(candidateSha, { exact: true })).toBeVisible();
-  await expect(page.getByText("codex/v1 · service:orchestration-server|executor:codex/v1|host:local-macos-dev", { exact: true })).toBeVisible();
+  await expect(page.getByText(verificationSubjectDigest, { exact: true })).toBeVisible();
+  await expect(page.getByText(verificationPlanId, { exact: true })).toBeVisible();
+  await expect(page.getByText("Server-derived independence passed", { exact: true })).toBeVisible();
   await expect(page.getByText("3 envelope(s)", { exact: false })).toBeVisible();
   await expect(page.getByText(`#${productPullRequestNumber} · installation 152563527`, { exact: true })).toBeVisible();
   await expect(page.getByText("ELIGIBLE", { exact: true })).toBeVisible();
+  await expect(page.getByText(/ELIGIBLE · non-authoritative projection/)).toBeVisible();
 
   await page.reload();
   await page.getByRole("tab", { name: "Execution", exact: true }).click();
   await expect(page.getByText(candidateSha, { exact: true })).toBeVisible();
+  await expect(page.getByText(verificationAttemptId, { exact: true }).first()).toBeVisible();
   await expect(page.getByText("ELIGIBLE", { exact: true })).toBeVisible();
 
   await page.goto(`${appUrl}/v2/control-work-orders?project=sf-demo&workspace=${workspaceId}&workOrder=${workOrderId}`);

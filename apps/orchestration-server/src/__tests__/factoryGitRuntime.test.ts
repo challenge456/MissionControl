@@ -4,7 +4,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
-import { assertFactoryCandidateUnchanged, commitFactoryChanges, ensureFactoryWorktree, inspectCandidateChange, listChangedFiles } from "../factoryGitRuntime.js";
+import {
+  assertFactoryCandidateUnchanged,
+  commitFactoryChanges,
+  ensureFactoryWorktree,
+  ensureVerificationWorktree,
+  inspectCandidateChange,
+  listChangedFiles,
+} from "../factoryGitRuntime.js";
 
 const execFileAsync = promisify(execFile);
 const cleanup: string[] = [];
@@ -33,6 +40,34 @@ describe("Factory Git runtime", () => {
     const candidate = await inspectCandidateChange(worktree, "main");
     expect(candidate).toMatchObject({ candidateRevision: firstHead, changedFiles: ["apps/ui/App.tsx"], linesAdded: 1, linesDeleted: 1 });
     await expect(assertFactoryCandidateUnchanged(worktree, firstHead)).resolves.toBeUndefined();
+
+    await writeFile(path.join(repository, "README.md"), "moving default branch\n");
+    await git(repository, ["add", "README.md"]);
+    await git(repository, ["commit", "-m", "Advance main"]);
+    const movingBase = await inspectCandidateChange(worktree, "main");
+    expect(movingBase.sourceRevision).not.toBe(candidate.sourceRevision);
+    const exactBase = await inspectCandidateChange(worktree, "main", candidate.sourceRevision);
+    expect(exactBase).toMatchObject({
+      sourceRevision: candidate.sourceRevision,
+      candidateRevision: candidate.candidateRevision,
+      treeRevision: candidate.treeRevision,
+    });
+
+    const verificationWorktree = path.join(repository, ".mission-control", "worktrees", "verification-1");
+    await expect(ensureVerificationWorktree({
+      checkoutRoot: repository,
+      worktree: verificationWorktree,
+      candidateSha: candidate.candidateRevision,
+      treeSha: candidate.treeRevision,
+    })).resolves.toBe(verificationWorktree);
+    await writeFile(path.join(verificationWorktree, "verification-output.tmp"), "untrusted side effect\n");
+    await expect(ensureVerificationWorktree({
+      checkoutRoot: repository,
+      worktree: verificationWorktree,
+      candidateSha: candidate.candidateRevision,
+      treeSha: candidate.treeRevision,
+    })).rejects.toThrow(/does not match the immutable candidate commit and tree/);
+    await rm(path.join(verificationWorktree, "verification-output.tmp"));
 
     await writeFile(path.join(worktree, "verification-output.tmp"), "untrusted side effect\n");
     await expect(assertFactoryCandidateUnchanged(worktree, firstHead)).rejects.toThrow(/left repository changes behind/);

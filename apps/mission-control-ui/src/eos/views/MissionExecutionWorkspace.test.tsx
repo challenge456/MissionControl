@@ -17,16 +17,22 @@ const workOrder = {
     _id: "attempt-1",
     runId: "attempt-failed",
     status: "FAILED",
+    attemptPurpose: "IMPLEMENTATION",
     factoryDefinitionVersionId: "factory-version-7",
     executorAdapter: "codex",
     executorVersion: "v1",
     executionClaimedBy: "local-factory-worker",
     headSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   }],
-  verificationReceipts: [{
-    workflowRunId: "attempt-1",
-    evidenceEnvelopeIds: ["evidence-failure-1"],
+  verificationRuns: [{
+    _id: "verification-run-failed",
+    workflowRunId: "attempt-verifier-1",
+    verificationSubjectDigest: "sha256:subject-failed",
+    verificationPlanId: "verification-plan:failed",
+    independenceValid: true,
   }],
+  evidenceEnvelopes: [{ _id: "evidence-failure-1", verificationRunId: "verification-run-failed" }],
+  qualityGateDecisions: [{ state: "INELIGIBLE" }],
   reviewPackage: {
     status: "BLOCKED",
     identity: {
@@ -37,10 +43,11 @@ const workOrder = {
     },
     gate: { verifier: "service:factory-verifier" },
   },
-  acceptanceEligibility: {
+  currentVerification: {
     eligible: false,
-    reviewPackageStatus: "BLOCKED",
-    blockingReasons: ["Exact-head GitHub CI evidence is bound to another candidate SHA."],
+    current: false,
+    verificationRunId: "verification-run-failed",
+    reasons: ["Exact-head GitHub CI evidence is bound to another candidate SHA."],
   },
 };
 
@@ -70,10 +77,19 @@ describe("Mission execution golden-path projection", () => {
         _id: "attempt-2",
         runId: "attempt-recovered",
         status: "COMPLETED",
+        attemptPurpose: "IMPLEMENTATION",
         headSha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         retryOfWorkflowRunId: "attempt-1",
       }, workOrder.executionRuns[0]],
-      verificationReceipts: [{ workflowRunId: "attempt-2", evidenceEnvelopeIds: ["evidence-pass-2"] }],
+      verificationRuns: [{
+        _id: "verification-run-pass",
+        workflowRunId: "attempt-verifier-2",
+        verificationSubjectDigest: "sha256:subject-pass",
+        verificationPlanId: "verification-plan:pass",
+        independenceValid: true,
+      }],
+      evidenceEnvelopes: [{ _id: "evidence-pass-2", verificationRunId: "verification-run-pass" }],
+      qualityGateDecisions: [{ state: "ELIGIBLE" }],
       reviewPackage: {
         ...workOrder.reviewPackage,
         status: "READY",
@@ -84,10 +100,11 @@ describe("Mission execution golden-path projection", () => {
           pullRequestUrl: "https://github.com/jaydubya818/MissionControl/pull/91",
         },
       },
-      acceptanceEligibility: {
+      currentVerification: {
         eligible: true,
-        reviewPackageStatus: "READY",
-        blockingReasons: [],
+        current: true,
+        verificationRunId: "verification-run-pass",
+        reasons: [],
       },
     };
     render(<MissionExecutionWorkspace
@@ -102,6 +119,6 @@ describe("Mission execution golden-path projection", () => {
     expect(screen.getByText("ELIGIBLE")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /open exact candidate pull request/i })).toHaveAttribute("href", "https://github.com/jaydubya818/MissionControl/pull/91");
     expect(recovered.executionRuns[1].runId).toBe("attempt-failed");
-    expect(workOrder.verificationReceipts[0].evidenceEnvelopeIds).toEqual(["evidence-failure-1"]);
+    expect(workOrder.evidenceEnvelopes[0]._id).toBe("evidence-failure-1");
   });
 });

@@ -65,7 +65,7 @@ import { loadTaskProjections } from "./lib/taskProjection";
 import { snapshotWorkflowDefinition } from "./lib/workflowSnapshot";
 import { buildWorkOrderTaskAuthority } from "./lib/taskAuthority";
 import { buildFactoryExecutionManifest } from "./lib/executionManifest";
-import { buildAcceptanceEligibility, loadFactoryAttemptReviewReadModel, workOrderRequiresFactoryReviewPackage } from "./lib/factoryReviewReadModel";
+import { loadFactoryAttemptReviewReadModel } from "./lib/factoryReviewReadModel";
 import { factoryWorkflowContractIssues } from "./lib/factoryWorkflowContract";
 import { createWorkOrderRecord } from "./lib/workOrderCreate";
 import {
@@ -1548,12 +1548,10 @@ export const get = query({
     const reviewReadModel = latestRun
       ? await loadFactoryAttemptReviewReadModel(ctx, { run: latestRun, workOrder })
       : null;
-    const acceptanceEligibility = buildAcceptanceEligibility({
-      governanceAcceptance: acceptance,
-      latestRun,
-      factoryRequired: workOrderRequiresFactoryReviewPackage(workOrder, latestRun),
-      reviewPackage: reviewReadModel?.reviewPackage,
-    });
+    const currentVerification = workOrder.verificationContract?.schemaVersion === 2
+      && workOrder.verificationContract.enforcementMode === "ENFORCED"
+      ? await getCurrentVerificationResult(ctx, workOrder)
+      : null;
     const childTasks = await loadTaskProjections(
       ctx,
       childTaskRows,
@@ -1577,7 +1575,7 @@ export const get = query({
        governancePolicy: policy,
        governanceStatus,
       acceptanceSummary: acceptance,
-      acceptanceEligibility,
+      currentVerification,
       reviewPackage: reviewReadModel?.reviewPackage ?? null,
       childTasks,
     };
@@ -3986,21 +3984,6 @@ export const accept = mutation({
         metadata: currentVerificationMetadata,
       });
     }
-    const reviewReadModel = await loadFactoryAttemptReviewReadModel(ctx, {
-      run: latestRun,
-      workOrder,
-      now,
-    });
-    const acceptanceEligibility = buildAcceptanceEligibility({
-      governanceAcceptance: acceptance,
-      latestRun,
-      factoryRequired: workOrderRequiresFactoryReviewPackage(workOrder, latestRun),
-      reviewPackage: reviewReadModel.reviewPackage,
-    });
-    if (!acceptanceEligibility.eligible) {
-      throw new Error(`WorkOrder cannot be accepted (${acceptanceEligibility.blockingReasons.join("; ")})`);
-    }
-
     await ctx.db.patch(workOrder._id, {
       state: "DONE",
       acceptedRevisionNumber: workOrder.currentRevisionNumber ?? 1,

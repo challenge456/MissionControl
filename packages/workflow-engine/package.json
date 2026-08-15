@@ -26,6 +26,26 @@
       "types": "./dist/verificationCurrentness.d.ts",
       "import": "./dist/verificationCurrentness.js",
       "default": "./dist/verificationCurrentness.js"
+    },
+    "./verification-subject": {
+      "types": "./dist/verificationSubject.d.ts",
+      "import": "./dist/verificationSubject.js",
+      "default": "./dist/verificationSubject.js"
+    },
+    "./verification-plan": {
+      "types": "./dist/verificationPlan.d.ts",
+      "import": "./dist/verificationPlan.js",
+      "default": "./dist/verificationPlan.js"
+    },
+    "./verification-independence": {
+      "types": "./dist/verificationIndependence.d.ts",
+      "import": "./dist/verificationIndependence.js",
+      "default": "./dist/verificationIndependence.js"
+    },
+    "./verification-decision": {
+      "types": "./dist/verificationDecision.d.ts",
+      "import": "./dist/verificationDecision.js",
+      "default": "./dist/verificationDecision.js"
     }
   },
   "scripts": {

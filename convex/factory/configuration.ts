@@ -103,13 +103,15 @@ async function loadActiveFactoryContext(
   ctx: QueryCtx,
   projectId: Id<"projects">,
   repositoryId: Id<"workspaceRepositories">,
+  purpose: "SOFTWARE" | "VERIFICATION" | "INTELLIGENT_AUTOMATION" = "SOFTWARE",
 ) {
   const repository = await ctx.db.get(repositoryId);
   if (!repository || repository.projectId !== projectId) return null;
-  const definition = await ctx.db.query("factoryDefinitions")
+  const definitions = await ctx.db.query("factoryDefinitions")
     .withIndex("by_repository", (q) => q.eq("repositoryId", repository._id))
-    .filter((q) => q.eq(q.field("status"), "ACTIVE"))
-    .first();
+    .collect();
+  const definition = definitions.find((candidate) => candidate.status === "ACTIVE"
+    && (candidate.purpose ?? "SOFTWARE") === purpose);
   if (!definition?.activeVersionId) return null;
   const version = await ctx.db.get(definition.activeVersionId);
   if (!version || version.factoryDefinitionId !== definition._id) return null;

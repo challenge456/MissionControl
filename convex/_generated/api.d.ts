@@ -146,6 +146,7 @@ import type * as lib_operatorControls from "../lib/operatorControls.js";
 import type * as lib_operatorEvals from "../lib/operatorEvals.js";
 import type * as lib_outputValidation from "../lib/outputValidation.js";
 import type * as lib_piBridgeEnvelope from "../lib/piBridgeEnvelope.js";
+import type * as lib_policyV2Verification from "../lib/policyV2Verification.js";
 import type * as lib_prEvaluation from "../lib/prEvaluation.js";
 import type * as lib_prdParser from "../lib/prdParser.js";
 import type * as lib_qualityContract from "../lib/qualityContract.js";
@@ -417,6 +418,7 @@ declare const fullApi: ApiFromModules<{
   "lib/operatorEvals": typeof lib_operatorEvals;
   "lib/outputValidation": typeof lib_outputValidation;
   "lib/piBridgeEnvelope": typeof lib_piBridgeEnvelope;
+  "lib/policyV2Verification": typeof lib_policyV2Verification;
   "lib/prEvaluation": typeof lib_prEvaluation;
   "lib/prdParser": typeof lib_prdParser;
   "lib/qualityContract": typeof lib_qualityContract;

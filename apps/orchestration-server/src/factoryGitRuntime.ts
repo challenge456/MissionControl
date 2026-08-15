@@ -52,11 +52,15 @@ export async function listChangedFiles(worktree: string, defaultBranch?: string)
   return Array.from(new Set([...splitNull(tracked.stdout), ...splitNull(untracked.stdout), ...splitNull(committed.stdout)])).sort();
 }
 
-export async function inspectCandidateChange(worktree: string, defaultBranch: string) {
-  const baseReference = await resolveBaseReference(worktree, defaultBranch);
-  const [sourceRevision, candidateRevision, changed, deleted, numstat, diff] = await Promise.all([
+export async function inspectCandidateChange(worktree: string, defaultBranch: string, exactBaseRevision?: string) {
+  if (exactBaseRevision && !/^[0-9a-f]{40,64}$/.test(exactBaseRevision)) {
+    throw new Error("Exact candidate base revision is invalid.");
+  }
+  const baseReference = exactBaseRevision ?? await resolveBaseReference(worktree, defaultBranch);
+  const [sourceRevision, candidateRevision, treeRevision, changed, deleted, numstat, diff] = await Promise.all([
     runGit(worktree, ["rev-parse", baseReference]),
     runGit(worktree, ["rev-parse", "HEAD"]),
+    runGit(worktree, ["rev-parse", "HEAD^{tree}"]),
     runGit(worktree, ["diff", "--name-only", "-z", `${baseReference}...HEAD`]),
     runGit(worktree, ["diff", "--diff-filter=D", "--name-only", "-z", `${baseReference}...HEAD`]),
     runGit(worktree, ["diff", "--numstat", `${baseReference}...HEAD`]),
@@ -72,12 +76,43 @@ export async function inspectCandidateChange(worktree: string, defaultBranch: st
   return {
     sourceRevision: sourceRevision.stdout.trim(),
     candidateRevision: candidateRevision.stdout.trim(),
+    treeRevision: treeRevision.stdout.trim(),
     changedFiles: splitNull(changed.stdout).sort(),
     deletedFiles: splitNull(deleted.stdout).sort(),
     linesAdded,
     linesDeleted,
     diff: diff.stdout,
   };
+}
+
+export async function ensureVerificationWorktree(input: {
+  checkoutRoot: string;
+  worktree: string;
+  candidateSha: string;
+  treeSha: string;
+}) {
+  const boundary = assertWorktreeBoundary(input.checkoutRoot, input.worktree);
+  const repositoryRoot = path.resolve((await runGit(boundary.checkoutRoot, ["rev-parse", "--show-toplevel"])).stdout.trim());
+  if (await realpath(repositoryRoot) !== await realpath(boundary.checkoutRoot)) {
+    throw new Error("Verification host checkout root does not match the Git repository root.");
+  }
+  await mkdir(boundary.worktreeRoot, { recursive: true });
+  if (!await exists(boundary.worktree)) {
+    await runGit(boundary.checkoutRoot, ["worktree", "add", "--detach", boundary.worktree, input.candidateSha]);
+  }
+  const [root, head, tree, status] = await Promise.all([
+    runGit(boundary.worktree, ["rev-parse", "--show-toplevel"]),
+    runGit(boundary.worktree, ["rev-parse", "HEAD"]),
+    runGit(boundary.worktree, ["rev-parse", "HEAD^{tree}"]),
+    runGit(boundary.worktree, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]),
+  ]);
+  if (await realpath(path.resolve(root.stdout.trim())) !== await realpath(boundary.worktree)) {
+    throw new Error("Verification worktree is not the frozen attempt-specific root.");
+  }
+  if (head.stdout.trim() !== input.candidateSha || tree.stdout.trim() !== input.treeSha || status.stdout.length > 0) {
+    throw new Error("Verification worktree does not match the immutable candidate commit and tree.");
+  }
+  return boundary.worktree;
 }
 
 export async function assertFactoryCandidateUnchanged(worktree: string, expectedHead: string) {

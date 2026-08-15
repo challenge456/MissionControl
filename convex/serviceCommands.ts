@@ -376,6 +376,7 @@ export const claimFactoryAttempt = action({
         leaseId: payload.leaseId,
         ownerId: args.envelope.serviceId,
         leaseDurationMs: payload.leaseDurationMs,
+        requiredAttemptPurpose: "IMPLEMENTATION",
       });
       await ctx.runMutation(internal.serviceCommands.complete, {
         receiptId: receipt.receiptId,
@@ -404,6 +405,7 @@ export const renewFactoryAttempt = action({
         leaseId: payload.leaseId,
         ownerId: args.envelope.serviceId,
         leaseDurationMs: payload.leaseDurationMs,
+        requiredAttemptPurpose: "IMPLEMENTATION",
       });
       await ctx.runMutation(internal.serviceCommands.complete, {
         receiptId: receipt.receiptId,
@@ -429,6 +431,87 @@ export const reportFactoryAttempt = action({
     const receipt = await claimScoped(ctx, args.envelope, scope);
     try {
       const result = await ctx.runMutation(internal.factory.attempts.reportInternal, {
+        workflowRunId: payload.workflowRunId,
+        leaseId: payload.leaseId,
+        ownerId: args.envelope.serviceId,
+        packet: payload.packet,
+      });
+      await ctx.runMutation(internal.serviceCommands.complete, {
+        receiptId: receipt.receiptId,
+        status: "SUCCEEDED",
+        resultReference: String(payload.workflowRunId),
+      });
+      return result;
+    } catch (error) {
+      await fail(ctx, receipt.receiptId, error);
+      throw error;
+    }
+  },
+});
+
+export const claimVerificationAttempt = action({
+  args: { envelope, payloadJson: v.string() },
+  handler: async (ctx, args): Promise<any> => {
+    const payload = await authorize(ctx, args.envelope, args.payloadJson, "verification:claim");
+    const scope = await ctx.runQuery(internal.factory.attempts.resolveScope, { workflowRunId: payload.workflowRunId });
+    const receipt = await claimScoped(ctx, args.envelope, scope);
+    try {
+      const result = await ctx.runMutation(internal.factory.attempts.claimInternal, {
+        workflowRunId: payload.workflowRunId,
+        leaseId: payload.leaseId,
+        ownerId: args.envelope.serviceId,
+        leaseDurationMs: payload.leaseDurationMs,
+        requiredAttemptPurpose: "VERIFICATION",
+      });
+      await ctx.runMutation(internal.serviceCommands.complete, {
+        receiptId: receipt.receiptId,
+        status: "SUCCEEDED",
+        resultReference: result?.claimed ? String(payload.workflowRunId) : result?.reason,
+      });
+      return result;
+    } catch (error) {
+      await fail(ctx, receipt.receiptId, error);
+      throw error;
+    }
+  },
+});
+
+export const renewVerificationAttempt = action({
+  args: { envelope, payloadJson: v.string() },
+  handler: async (ctx, args): Promise<any> => {
+    const payload = await authorize(ctx, args.envelope, args.payloadJson, "verification:renew");
+    const scope = await ctx.runQuery(internal.factory.attempts.resolveScope, { workflowRunId: payload.workflowRunId });
+    const receipt = await claimScoped(ctx, args.envelope, scope);
+    try {
+      const result = await ctx.runMutation(internal.factory.attempts.renewInternal, {
+        workflowRunId: payload.workflowRunId,
+        leaseId: payload.leaseId,
+        ownerId: args.envelope.serviceId,
+        leaseDurationMs: payload.leaseDurationMs,
+        requiredAttemptPurpose: "VERIFICATION",
+      });
+      await ctx.runMutation(internal.serviceCommands.complete, {
+        receiptId: receipt.receiptId,
+        status: result?.renewed ? "SUCCEEDED" : "FAILED",
+        reason: result?.renewed ? undefined : result?.reason,
+        resultReference: String(payload.workflowRunId),
+      });
+      return result;
+    } catch (error) {
+      await fail(ctx, receipt.receiptId, error);
+      throw error;
+    }
+  },
+});
+
+export const reportVerificationAttempt = action({
+  args: { envelope, payloadJson: v.string() },
+  handler: async (ctx, args): Promise<any> => {
+    const payload = await authorize(ctx, args.envelope, args.payloadJson, "verification:report");
+    const scope = await ctx.runQuery(internal.factory.attempts.resolveScope, { workflowRunId: payload.workflowRunId });
+    const receipt = await claimScoped(ctx, args.envelope, scope);
+    try {
+      const result = await ctx.runMutation(internal.factory.attempts.reportVerificationInternal, {
         workflowRunId: payload.workflowRunId,
         leaseId: payload.leaseId,
         ownerId: args.envelope.serviceId,

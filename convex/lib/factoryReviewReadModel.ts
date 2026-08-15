@@ -13,6 +13,7 @@ export function buildFactoryAttemptReviewReadModel(input: {
   prChecks: any[];
   missionPlan?: any;
   repository?: any;
+  receiptWorkflowRunId?: any;
 }) {
   const orderedEvents = orderRunEvents(input.events);
   const claimEvent = orderedEvents.find((event) => event.eventType === "CHECKPOINT_CREATED"
@@ -37,8 +38,9 @@ export function buildFactoryAttemptReviewReadModel(input: {
   const eventFileChanges = buildFileChanges(orderedEvents);
   const pullRequestArtifact = input.artifacts.find((artifact) => artifact.artifactType === "PULL_REQUEST");
   const codeDiffArtifact = input.artifacts.find((artifact) => artifact.artifactType === "CODE_DIFF");
+  const receiptWorkflowRunId = input.receiptWorkflowRunId ?? input.run._id;
   const exactGateReceipt = input.receipts
-    .filter((receipt) => receipt.receiptScope === "WORK_ORDER" && receipt.workflowRunId === input.run._id)
+    .filter((receipt) => receipt.receiptScope === "WORK_ORDER" && receipt.workflowRunId === receiptWorkflowRunId)
     .sort((left, right) => right.recordedAt - left.recordedAt)[0];
   const publicationLineage = deriveFactoryPublicationLineage({
     pullRequestArtifact,
@@ -87,6 +89,7 @@ export function buildFactoryAttemptReviewReadModel(input: {
     githubAppInstallationId: typeof pullRequestArtifact?.metadata?.installationId === "string"
       ? pullRequestArtifact.metadata.installationId
       : null,
+    receiptWorkflowRunId,
   });
   return {
     run: projectedRun,
@@ -102,22 +105,26 @@ export async function loadFactoryAttemptReviewReadModel(ctx: any, input: {
   workOrder: any;
   now?: number;
 }) {
+  const sourceRun = input.run.attemptPurpose === "VERIFICATION" && input.run.verificationAttemptBinding?.sourceAttemptId
+    ? await ctx.db.get(input.run.verificationAttemptBinding.sourceAttemptId)
+    : input.run;
+  if (!sourceRun) throw new Error("Verification Attempt source lineage is unavailable.");
   const [events, artifacts, receipts, evidenceEnvelopes, prChecks, missionPlan, repository] = await Promise.all([
-    ctx.db.query("runEvents").withIndex("by_run_sequence", (q: any) => q.eq("workflowRunId", input.run._id)).collect(),
-    ctx.db.query("runArtifacts").withIndex("by_run", (q: any) => q.eq("workflowRunId", input.run._id)).collect(),
+    ctx.db.query("runEvents").withIndex("by_run_sequence", (q: any) => q.eq("workflowRunId", sourceRun._id)).collect(),
+    ctx.db.query("runArtifacts").withIndex("by_run", (q: any) => q.eq("workflowRunId", sourceRun._id)).collect(),
     ctx.db.query("verificationReceipts").withIndex("by_run", (q: any) => q.eq("workflowRunId", input.run._id)).collect(),
     ctx.db.query("evidenceEnvelopes").withIndex("by_run", (q: any) => q.eq("workflowRunId", input.run._id)).collect(),
     ctx.db.query("harnessPrChecks").withIndex("by_work_order", (q: any) => q.eq("workOrderId", input.workOrder._id)).collect(),
     input.workOrder.missionPlanId ? ctx.db.get(input.workOrder.missionPlanId) : null,
-    input.run.repositoryId
-      ? ctx.db.get(input.run.repositoryId)
+    sourceRun.repositoryId
+      ? ctx.db.get(sourceRun.repositoryId)
       : input.workOrder.repositoryId
         ? ctx.db.get(input.workOrder.repositoryId)
         : null,
   ]);
   return buildFactoryAttemptReviewReadModel({
     now: input.now ?? Date.now(),
-    run: input.run,
+    run: sourceRun,
     workOrder: input.workOrder,
     events,
     artifacts,
@@ -126,45 +133,6 @@ export async function loadFactoryAttemptReviewReadModel(ctx: any, input: {
     prChecks,
     missionPlan,
     repository,
+    receiptWorkflowRunId: input.run._id,
   });
-}
-
-export function factoryAttemptRequiresReviewPackage(run: any) {
-  return Boolean(
-    run?.factoryDefinitionVersionId
-    || run?.executionManifestDigest
-    || run?.executorAdapter === "codex",
-  );
-}
-
-export function workOrderRequiresFactoryReviewPackage(workOrder: any, run: any) {
-  return Boolean(
-    workOrder?.metadata?.implementationPolicy
-    || factoryAttemptRequiresReviewPackage(run),
-  );
-}
-
-export function buildAcceptanceEligibility(input: {
-  governanceAcceptance: { eligible: boolean; blockingReasons: string[] };
-  latestRun: any;
-  factoryRequired?: boolean;
-  reviewPackage?: { status: "READY" | "BLOCKED" | "INCOMPLETE"; blockers: string[] } | null;
-}) {
-  const requiresReviewPackage = input.factoryRequired === true
-    || factoryAttemptRequiresReviewPackage(input.latestRun);
-  const reviewBlockers = requiresReviewPackage
-    ? input.reviewPackage?.status === "READY"
-      ? []
-      : input.reviewPackage?.blockers ?? ["Factory review package is unavailable."]
-    : [];
-  const blockingReasons = [...new Set([
-    ...input.governanceAcceptance.blockingReasons,
-    ...reviewBlockers,
-  ])];
-  return {
-    eligible: input.governanceAcceptance.eligible && reviewBlockers.length === 0,
-    requiresReviewPackage,
-    reviewPackageStatus: requiresReviewPackage ? input.reviewPackage?.status ?? "INCOMPLETE" : "NOT_REQUIRED",
-    blockingReasons,
-  } as const;
 }

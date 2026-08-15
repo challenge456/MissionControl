@@ -58,6 +58,7 @@ export async function createOrReusePullRequest(input: {
   body: string;
   token: string;
   headSha: string;
+  draft?: boolean;
   fetchImpl?: typeof fetch;
 }) {
   const [owner] = input.repository.split("/");
@@ -82,7 +83,7 @@ export async function createOrReusePullRequest(input: {
         body: input.body.slice(0, 60_000),
         head: input.branch,
         base: input.base,
-        draft: false,
+        draft: input.draft === true,
       }),
     },
     input.fetchImpl
@@ -138,6 +139,7 @@ function normalizePullRequest(
     url: pull.html_url as string,
     nodeId: typeof pull.node_id === "string" ? pull.node_id : undefined,
     headSha: pull.head.sha,
+    draft: pull.draft === true,
     reused,
   };
 }

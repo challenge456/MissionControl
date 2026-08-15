@@ -21,7 +21,7 @@ describe("Mission assertion evidence policy", () => {
     expect(assertionEvidenceCanSatisfy({
       missionRole: "WORKER",
       requiresIndependentValidation: true,
-      factoryIndependentVerification: true,
+      serverDerivedIndependentVerification: true,
     })).toBe(true);
   });
 

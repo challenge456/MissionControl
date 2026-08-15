@@ -70,6 +70,7 @@ export interface FactoryExecutionManifestInput {
   routedModel?: string;
   maxRuntimeMinutes: number;
   initialContext: unknown;
+  harnessIsolation?: "WORKSPACE_WRITE" | "DETACHED_READ_ONLY";
 }
 
 export function buildFactoryExecutionManifest(input: FactoryExecutionManifestInput) {
@@ -147,7 +148,7 @@ export function buildFactoryExecutionManifest(input: FactoryExecutionManifestInp
     harness: {
       adapter: "codex",
       version: "v1",
-      isolation: "WORKSPACE_WRITE",
+      isolation: input.harnessIsolation ?? "WORKSPACE_WRITE",
       timeoutMs: input.maxRuntimeMinutes * 60_000,
       completionContract: "factory-result/v1",
       pullRequestAuthority: "CONTROL_PLANE_ONLY",

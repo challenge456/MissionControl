@@ -125,6 +125,20 @@ describe("server-derived verification independence", () => {
     expect(result.reasons.join(" ")).toMatch(/reused the builder worktree|builder root/);
   });
 
+  it("rejects caller-authored roots that do not match the authoritative Attempt worktrees", () => {
+    const input = validInput();
+    const spoofed = {
+      ...input.isolation,
+      verifierRoot: "/tmp/spoofed-verifier",
+      sourceRoot: "/tmp/spoofed-builder",
+    };
+    const { rootBindingDigest: _oldDigest, ...binding } = spoofed;
+    input.isolation = { ...spoofed, rootBindingDigest: verificationIsolationBindingDigest(binding) };
+    const result = deriveVerificationIndependence(input);
+    expect(result.passed).toBe(false);
+    expect(result.reasons.join(" ")).toMatch(/authoritative Verification Attempt worktree|authoritative source Attempt worktree/);
+  });
+
   it("does not treat the local Docker canary as Verification Factory independence", () => {
     const input = validInput();
     input.isolation.mode = "LOCAL_DOCKER_CANARY";

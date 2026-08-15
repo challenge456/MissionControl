@@ -133,6 +133,16 @@ export function deriveVerificationIndependence(input: VerificationIndependenceIn
     && normalizePath(input.sourceAttempt.worktree) === normalizePath(input.verificationAttempt.worktree)) {
     reasons.push("Verification reused the builder worktree.");
   }
+  if (input.verificationAttempt.worktree
+    && (!input.isolation.verifierRoot
+      || normalizePath(input.isolation.verifierRoot) !== normalizePath(input.verificationAttempt.worktree))) {
+    reasons.push("Verification isolation does not name the authoritative Verification Attempt worktree.");
+  }
+  if (input.sourceAttempt.worktree
+    && (!input.isolation.sourceRoot
+      || normalizePath(input.isolation.sourceRoot) !== normalizePath(input.sourceAttempt.worktree))) {
+    reasons.push("Verification isolation does not name the authoritative source Attempt worktree.");
+  }
   if (input.isolation.sourceRoot && input.isolation.verifierRoot
     && normalizePath(input.isolation.sourceRoot) === normalizePath(input.isolation.verifierRoot)) {
     reasons.push("Verification isolation attestation points at the builder root.");

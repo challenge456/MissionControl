@@ -1,5 +1,5 @@
 ---
-status: complete
+status: ready
 priority: p1
 issue_id: "043"
 tags: [missions, software-factory, work-orders, verification, github-app, browser, v1]
@@ -25,14 +25,17 @@ behind exe.dev `max_vms: 0` and do not create a parallel VM or acceptance path.
 ## Acceptance Criteria
 
 - [x] Mission plan release produces an enforced, bounded, independently
-      verified WorkOrder contract.
-- [x] One immutable candidate SHA is verified before GitHub App publication.
+      verified WorkOrder contract using Verification Contract v2.
+- [x] One immutable draft-PR candidate SHA is published, emits
+      `CANDIDATE_READY`, and is then verified by a separate Verification
+      Attempt against a frozen Verification Plan.
 - [x] Durable evidence, exact PR/CI lineage, and acceptance eligibility are
       visible from the browser and authoritative after refresh.
-- [x] `workOrders.accept` rejects mismatched or incomplete Factory lineage.
+- [x] `workOrders.accept` remains the sole acceptance boundary and consumes the
+      canonical exact-current policy-v2 evaluator.
 - [x] A safe mismatch persists failure evidence; a retry creates a new Attempt
       and corrected independently verified candidate without rewriting history.
-- [x] Full repository and browser validation passes.
+- [ ] Full repository and policy-v2 live browser validation passes.
 - [x] Draft PR #95 is opened; it is not merged automatically.
 
 ## Work Log
@@ -58,9 +61,9 @@ behind exe.dev `max_vms: 0` and do not create a parallel VM or acceptance path.
 
 - Most lifecycle components are already production-shaped. The core defect is
   compilation and acceptance integration, not missing execution machinery.
-- Independent validation can be proven by executor/verifier identity separation
-  on the exact Attempt; a redundant second coding WorkOrder is not inherently
-  more independent.
+- Independent validation requires a separate purpose-bound Verification
+  Attempt, Factory Version, invocation, lease, capability, and isolated exact
+  subject. Worker-authored identity claims are presentation data only.
 - Remote provider work is unrelated and remains gated at exe.dev `max_vms: 0`.
 
 ### 2026-08-15 - Integrated lifecycle and live browser gate
@@ -70,8 +73,8 @@ behind exe.dev `max_vms: 0` and do not create a parallel VM or acceptance path.
 **Actions:**
 
 - Compiled approved Mission intent into the existing bounded Factory WorkOrder
-  contract and made exact-candidate review eligibility authoritative at
-  `workOrders.accept`.
+  contract. This initial implementation used policy-v1 review eligibility and
+  was later superseded by the merged policy-v2 authority described below.
 - Added immutable candidate mismatch evidence plus corrected retry coverage,
   preserving the historical Attempt packets and PR attribution.
 - Created Mission `w1736wgsxhbt2r1cpjzp6ssnmd8ch2e4`, released WorkOrder
@@ -161,3 +164,39 @@ behind exe.dev `max_vms: 0` and do not create a parallel VM or acceptance path.
 - The local Mission-to-PR V1 golden path is complete. No WorkOrder acceptance,
   product PR merge, remote VM creation, paid-capacity change, or remote provider
   integration was performed by this completion pass.
+
+### 2026-08-15 - Policy-v2 architecture reconciliation
+
+**By:** Codex
+
+**Actions:**
+
+- Merged current `origin/main` into PR #95 after PRs #98/#94 established the
+  canonical Verification Factory domain.
+- Removed PR #95's parallel acceptance helper, worker-authored independence
+  authority, duplicate currentness calculation, and policy-v1 path for new
+  Mission WorkOrders.
+- Preserved the browser Mission-to-PR workflow and GitHub App candidate
+  publication, but changed the governed order to draft PR / exact SHA,
+  `CANDIDATE_READY`, separate Verification Attempt, frozen Verification Plan,
+  server-derived independence, canonical exact-current evaluation, and a
+  non-authoritative Quality Gate audit projection.
+- Kept `workOrders.accept` as the sole acceptance mutation. No automatic
+  acceptance or merge path was introduced.
+
+**Status:**
+
+- Runtime contract v22, all 574 Convex tests, all 256 UI tests, all 136 workflow
+  engine tests, all 60 orchestration tests (one intentional integration skip),
+  lint, TypeScript, skill lint, production build, and orchestration startup
+  smoke pass on the reconciled branch.
+- The real-backend golden-path spec now requires a distinct policy-v2
+  Verification Attempt, exact Verification Subject digest, and frozen
+  Verification Plan ID. It correctly skips because the historical live proof
+  was produced by policy v1 and must not be relabeled as policy-v2 evidence.
+- The repository's backend-free critical browser suite still reproduces the
+  inherited current-main loading/landmark baseline (nine failures); no
+  Observability/Evals shell behavior was changed to conceal it.
+- The todo remains `ready`, not `complete`, until updated GitHub CI is green and
+  a truthful live policy-v2 browser proof supplies real Attempt, subject, plan,
+  evidence, and product-PR lineage IDs.

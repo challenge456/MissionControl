@@ -82,6 +82,8 @@ export function compileMissionWorkOrderContract(input: {
   if (allowedPaths.length === 0) {
     throw new Error("Mutating Mission WorkOrders require at least one approved repository code scope");
   }
+  const verificationCheckId = "mission:independent-verification";
+  const candidateRiskId = "mission:exact-candidate-integrity";
 
   return {
     requirements,
@@ -129,10 +131,10 @@ export function compileMissionWorkOrderContract(input: {
       allowInfrastructureChanges: false,
     },
     verificationContract: {
-      schemaVersion: 1,
+      schemaVersion: 2,
       enforcementMode: "ENFORCED" as const,
       checks: [{
-        id: "mission:independent-verification",
+        id: verificationCheckId,
         name: "Mission independent candidate verification",
         category: verification.category,
         verifierId: "factory-command/v1",
@@ -146,7 +148,18 @@ export function compileMissionWorkOrderContract(input: {
           timeoutMs: verification.timeoutMs,
         },
       }],
-      requireHumanReview: true,
+      requiredRisks: [{
+        id: candidateRiskId,
+        description: "The published candidate may differ from the exact immutable subject independently verified for acceptance.",
+        severity: input.blueprint.riskLevel,
+        source: "HUMAN_APPROVED" as const,
+        requiredEvidenceIds: [verificationCheckId],
+      }],
+      requireHumanReview: false,
+      independence: {
+        required: true,
+        minimumBoundary: "SEPARATE_ATTEMPT" as const,
+      },
     },
     requiredApprovals: unique([...input.blueprint.requiredApprovals, "HUMAN_REVIEW"]),
     autonomyLevel: "LEVEL_2" as const,
@@ -155,6 +168,7 @@ export function compileMissionWorkOrderContract(input: {
       independentVerification: {
         subject: "IMMUTABLE_CANDIDATE_SHA",
         verifierId: "factory-command/v1",
+        minimumBoundary: "SEPARATE_ATTEMPT",
       },
     },
   };

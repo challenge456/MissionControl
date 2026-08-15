@@ -41,6 +41,7 @@ type ReceiptLike = {
   candidateRevision?: string;
   verdict?: string;
   verdictReasons?: string[];
+  independenceValid?: boolean;
   workOrderRevisionNumber?: number;
   validUntil?: number;
   invalidatedAt?: number;
@@ -233,6 +234,7 @@ export function buildReviewPackage(input: {
     currentRevisionNumber?: number;
     acceptanceCriteria?: CriterionLike[];
     constraints?: string[];
+    verificationContract?: { schemaVersion?: number };
   } | null;
   receipts?: ReceiptLike[];
   evidenceEnvelopes?: EvidenceEnvelopeLike[];
@@ -242,11 +244,14 @@ export function buildReviewPackage(input: {
   rollbackApproach?: string | null;
   expectedRepository?: string | null;
   githubAppInstallationId?: string | null;
+  receiptWorkflowRunId?: string;
 }) {
   const workflowRunId = input.run._id ?? input.run.runId;
+  const receiptWorkflowRunId = input.receiptWorkflowRunId ?? workflowRunId;
+  const policyV2 = input.workOrder?.verificationContract?.schemaVersion === 2;
   const frozenRevision = input.run.workOrderRevisionNumber ?? input.workOrder?.currentRevisionNumber;
   const criteria = (input.workOrder?.acceptanceCriteria ?? []).map((criterion) => {
-    const receipt = latestReceipt(input.receipts ?? [], criterion.id, workflowRunId);
+    const receipt = latestReceipt(input.receipts ?? [], criterion.id, receiptWorkflowRunId);
     const baseStatus = criterionStatus(receipt, {
       now: input.now,
       workOrderRevisionNumber: frozenRevision,
@@ -254,7 +259,7 @@ export function buildReviewPackage(input: {
       sourceRevision: input.run.executionBaseSha,
       candidateRevision: input.run.headSha,
     });
-    const evidenceIntegrityIssue = independentEvidenceIntegrityIssue({
+    const evidenceIntegrityIssue = policyV2 ? null : independentEvidenceIntegrityIssue({
       receipt,
       evidenceEnvelopes: input.evidenceEnvelopes ?? [],
       workflowRunId,
@@ -285,7 +290,7 @@ export function buildReviewPackage(input: {
     };
   });
 
-  const gateReceipt = latestGateReceipt(input.receipts ?? [], workflowRunId);
+  const gateReceipt = latestGateReceipt(input.receipts ?? [], receiptWorkflowRunId);
   const gateSubjectIssue = subjectIntegrityIssue(gateReceipt, {
     workOrderRevisionNumber: frozenRevision,
     sourceRevision: input.run.executionBaseSha,
@@ -295,7 +300,9 @@ export function buildReviewPackage(input: {
     ?? (gateReceipt && !gateReceipt.verificationRunId ? "Verification-run identity is missing from the WorkOrder gate." : null)
     ?? (gateReceipt && !gateReceipt.verifier?.trim() ? "Verifier identity is missing from the WorkOrder gate." : null)
     ?? (gateReceipt && !hasEvidence(gateReceipt) ? "Durable evidence is missing from the WorkOrder gate." : null)
-    ?? receiptIntegrityIssue(gateReceipt, input.run.executionClaimedBy);
+    ?? (policyV2
+      ? gateReceipt?.independenceValid === true ? null : "Canonical server-derived verifier independence is missing."
+      : receiptIntegrityIssue(gateReceipt, input.run.executionClaimedBy));
   const gateStale = Boolean(gateReceipt?.invalidatedAt
     || gateReceipt?.status === "STALE"
     || (gateReceipt?.validUntil && gateReceipt.validUntil <= input.now)
@@ -365,7 +372,7 @@ export function buildReviewPackage(input: {
   if (input.run.executionManifestDigest && !input.githubAppInstallationId?.trim()) {
     blockers.push("GitHub App installation identity is missing from the Factory publication lineage.");
   }
-  if (input.run.executionManifestDigest && !input.run.executionClaimedBy?.trim()) {
+  if (!policyV2 && input.run.executionManifestDigest && !input.run.executionClaimedBy?.trim()) {
     blockers.push("Factory executor identity is missing; verifier independence cannot be established.");
   }
   if (!exactPrCheck) {
