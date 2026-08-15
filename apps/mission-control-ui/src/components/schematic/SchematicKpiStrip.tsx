@@ -19,8 +19,9 @@ export function SchematicKpiStrip({
     <div
       className={cn(
         "grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6",
-        className
+        className,
       )}
+      role="group"
       aria-label="Factory metrics"
     >
       {kpis.map((kpi) => (
@@ -31,14 +32,16 @@ export function SchematicKpiStrip({
           <b
             className={cn(
               "block text-[19px] font-semibold tabular-nums leading-none",
-              kpi.money ? "text-ok" : "text-ink"
+              kpi.money ? "text-ok" : "text-ink",
             )}
           >
             {typeof kpi.value === "number" && kpi.money
               ? formatMoney(kpi.value)
               : kpi.value}
           </b>
-          <span className="mt-1 block text-[11.5px] text-ink-secondary">{kpi.label}</span>
+          <span className="mt-1 block text-[11.5px] text-ink-secondary">
+            {kpi.label}
+          </span>
         </div>
       ))}
     </div>
