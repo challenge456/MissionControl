@@ -10,7 +10,7 @@ import { validateChangedFileScope } from "./factoryPathScope.js";
 import { createOrReusePullRequest, loadGithubAppPrivateKey, mintInstallationToken } from "./githubAppRuntime.js";
 import { executeIndependentVerification } from "./factoryVerification.js";
 
-const LEASE_DURATION_MS = 60_000;
+export const FACTORY_ATTEMPT_LEASE_DURATION_MS = 120_000;
 const HEARTBEAT_INTERVAL_MS = 20_000;
 const MAX_RESULT_BYTES = 64_000;
 
@@ -149,7 +149,7 @@ export class FactoryAttemptWorker {
       {
       workflowRunId: run._id,
       leaseId,
-      leaseDurationMs: LEASE_DURATION_MS,
+      leaseDurationMs: FACTORY_ATTEMPT_LEASE_DURATION_MS,
       },
     );
     if (!claim?.claimed) return;
@@ -167,7 +167,7 @@ export class FactoryAttemptWorker {
             {
             workflowRunId: run._id,
             leaseId,
-            leaseDurationMs: LEASE_DURATION_MS,
+            leaseDurationMs: FACTORY_ATTEMPT_LEASE_DURATION_MS,
             },
           );
           if (!result?.renewed) throw new Error(`Attempt lease renewal rejected (${result?.reason ?? "unknown"}).`);

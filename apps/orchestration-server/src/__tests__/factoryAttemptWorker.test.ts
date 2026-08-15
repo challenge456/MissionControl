@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CodexV1ExecutorAdapter } from "../codexExecutorAdapter.js";
 import {
+  FACTORY_ATTEMPT_LEASE_DURATION_MS,
   FactoryAttemptWorker,
   factoryRunQueryArgs,
   matchesWorkerScope,
@@ -38,6 +39,11 @@ afterEach(async () => {
 });
 
 describe("FactoryAttemptWorker verification-first lifecycle", () => {
+  it("keeps the renewable Attempt lease beyond the publication safety window", () => {
+    expect(FACTORY_ATTEMPT_LEASE_DURATION_MS).toBe(120_000);
+    expect(FACTORY_ATTEMPT_LEASE_DURATION_MS).toBeGreaterThan(60_000);
+  });
+
   it("claims only the repository bound by the documented durable-worker configuration", () => {
     const scope = { projectId: "project-1", repositoryId: "repository-1" };
     expect(matchesWorkerScope({ projectId: "project-1", repositoryId: "repository-1" }, scope)).toBe(true);
