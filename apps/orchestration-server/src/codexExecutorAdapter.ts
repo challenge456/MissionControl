@@ -10,6 +10,7 @@ import type {
   ExecutorEstimate,
   ExecutorEvent,
   ExecutorHealth,
+  ExecutorProcessObserver,
   ExecutorRequest,
   ExecutorResult,
 } from "@mission-control/workflow-engine";
@@ -21,6 +22,8 @@ type ProcessRunner = (args: {
   timeoutMs: number;
   signal: AbortSignal;
   outputPath: string;
+  onSpawn?: (pid: number) => Promise<void> | void;
+  onExit?: (pid: number, exitCode?: number) => Promise<void> | void;
 }) => Promise<{ exitCode: number; output: string; diagnostics?: string }>;
 
 export class CodexV1ExecutorAdapter implements ExecutorAdapter {
@@ -82,7 +85,8 @@ export class CodexV1ExecutorAdapter implements ExecutorAdapter {
   async execute(
     request: ExecutorRequest,
     emit: (event: ExecutorEvent) => Promise<void> | void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    processObserver?: ExecutorProcessObserver,
   ): Promise<ExecutorResult> {
     const issues = this.validateConfiguration(request);
     if (issues.length) {
@@ -120,6 +124,8 @@ export class CodexV1ExecutorAdapter implements ExecutorAdapter {
         timeoutMs: request.timeoutMs,
         signal: controller.signal,
         outputPath,
+        onSpawn: (pid) => processObserver?.started({ pid, startedAt: Date.now() }),
+        onExit: (pid, exitCode) => processObserver?.terminated({ pid, exitCode, terminatedAt: Date.now() }),
       });
       await send("COMMAND_COMPLETED", "Codex CLI command completed.", { exitCode: result.exitCode });
       if (result.exitCode !== 0) throw new Error(result.diagnostics || `Codex exited with status ${result.exitCode}.`);
@@ -186,6 +192,7 @@ function commandArguments(request: ExecutorRequest, outputPath: string): string[
 
 async function runCodexProcess(args: Parameters<ProcessRunner>[0]): Promise<{ exitCode: number; output: string; diagnostics?: string }> {
   return await new Promise((resolve, reject) => {
+    let startedNotification: Promise<void> = Promise.resolve();
     const child = execFile(args.executable, args.argv, {
       cwd: args.cwd,
       timeout: args.timeoutMs,
@@ -193,6 +200,8 @@ async function runCodexProcess(args: Parameters<ProcessRunner>[0]): Promise<{ ex
       maxBuffer: 20 * 1024 * 1024,
       env: process.env,
     }, async (error, stdout, stderr) => {
+      await startedNotification;
+      if (typeof child.pid === "number") await args.onExit?.(child.pid, typeof (error as any)?.code === "number" ? (error as any).code : error ? 1 : 0);
       if (error && args.signal.aborted) return reject(error);
       const output = await readFile(args.outputPath, "utf8").catch(() => stdout || "");
       resolve({
@@ -201,6 +210,7 @@ async function runCodexProcess(args: Parameters<ProcessRunner>[0]): Promise<{ ex
         diagnostics: error ? redact(stderr || error.message) : undefined,
       });
     });
+    if (typeof child.pid === "number") startedNotification = Promise.resolve(args.onSpawn?.(child.pid));
     // `codex exec` appends piped stdin to an explicit prompt. `execFile` opens
     // a stdin pipe by default, so close it immediately or the CLI waits
     // indefinitely for EOF before it starts the model request.

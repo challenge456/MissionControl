@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { internalMutation, internalQuery } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { activeLeaseMatches, deriveFactoryPublicationLineage, evaluateAttemptClaim, factoryAttemptMutationIsAuthorized, renewAttemptLease } from "../lib/factoryAttempt";
+import { factoryWorkerEligibility } from "../lib/factoryWorkerRuntime";
 import {
   PUBLICATION_SAFETY_WINDOW_MS,
   validatePublicationPermit,
@@ -65,19 +66,15 @@ export const claimInternal = internalMutation({
     leaseId: v.string(),
     ownerId: v.string(),
     leaseDurationMs: v.number(),
+    workerId: v.optional(v.string()),
+    workerSessionId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const run = await ctx.db.get(args.workflowRunId);
     if (!run) throw new Error("Factory attempt not found.");
-    const decision = evaluateAttemptClaim({
-      status: run.status,
-      lease: run.lease,
-      leaseId: args.leaseId,
-      ownerId: args.ownerId,
-      leaseDurationMs: args.leaseDurationMs,
-      now: Date.now(),
-    });
-    if (!decision.ok) return { claimed: false as const, reason: decision.reason };
+    if (run.cancellationRequestedAt) {
+      return { claimed: false as const, reason: "cancellation-requested", disposition: "CANCELLED" as const };
+    }
     if (
       !run.projectId || !run.repositoryId || !run.workOrderId
       || !run.factoryDefinitionVersionId || !run.factoryConfigurationDigest
@@ -117,6 +114,71 @@ export const claimInternal = internalMutation({
     if (!installation || installation.status !== "CONNECTED" || installation.projectId !== run.projectId) {
       throw new Error("Factory attempt GitHub App installation is not connected.");
     }
+
+    const now = Date.now();
+    let worker: { workerId: string; sessionId: string; generation: number } | undefined;
+    if (host.workerRuntime && !args.workerId && !args.workerSessionId) {
+      return { claimed: false as const, reason: "worker-session-identity-required" };
+    }
+    if (args.workerId || args.workerSessionId) {
+      if (!args.workerId || !args.workerSessionId || host.hostId !== args.workerId) {
+        return { claimed: false as const, reason: "worker-identity-mismatch" };
+      }
+      const runningAttempts = await ctx.db.query("workflowRuns")
+        .withIndex("by_repository_status", (q) => q.eq("repositoryId", repository._id).eq("status", "RUNNING"))
+        .collect();
+      const activeSessionLeaseCount = runningAttempts.filter((candidate) => {
+        const lease = candidate.lease;
+        return Boolean(
+          lease
+          && lease.workerId === args.workerId
+          && lease.workerSessionId === args.workerSessionId
+          && lease.expiresAt > now
+        );
+      }).length;
+      const manifest = run.executionManifest as any;
+      const eligibility = factoryWorkerEligibility({
+        worker: {
+          workerId: host.hostId,
+          status: host.status,
+          dirty: host.dirty,
+          capacity: host.capacity,
+          workerRuntime: host.workerRuntime ? {
+            ...host.workerRuntime,
+            repositoryAccess: host.workerRuntime.repositoryAccess.map((item) => ({
+              ...item,
+              repositoryId: String(item.repositoryId),
+            })),
+          } : undefined,
+        },
+        requirements: {
+          repositoryId: String(repository._id),
+          executor: { adapter: run.executorAdapter, version: run.executorVersion },
+          isolation: manifest.harness?.isolation,
+          sandboxCapabilities: manifest.harness?.requiredCapabilities ?? [],
+          executionBackend: manifest.harness?.executionBackend,
+        },
+        activeSessionLeaseCount,
+        now,
+      });
+      if (!eligibility.eligible || eligibility.sessionId !== args.workerSessionId) {
+        return { claimed: false as const, reason: eligibility.eligible ? "worker-session-mismatch" : eligibility.reason };
+      }
+      worker = { workerId: eligibility.workerId, sessionId: eligibility.sessionId, generation: eligibility.generation };
+      if (run.lease && run.lease.expiresAt <= now && !run.factoryContinuation) {
+        return await failLostAttempt(ctx, run, "The prior worker lease expired without a recoverable publication checkpoint.");
+      }
+    }
+    const decision = evaluateAttemptClaim({
+      status: run.status,
+      lease: run.lease,
+      leaseId: args.leaseId,
+      ownerId: args.ownerId,
+      worker,
+      leaseDurationMs: args.leaseDurationMs,
+      now,
+    });
+    if (!decision.ok) return { claimed: false as const, reason: decision.reason };
 
     let publicationCheckpoint: any;
     if (["READY_TO_PUBLISH", "PUBLICATION_AUTHORIZED"].includes(run.factoryContinuation?.status ?? "")) {
@@ -212,6 +274,9 @@ export const claimInternal = internalMutation({
     await ctx.db.patch(run._id, {
       status: "RUNNING",
       lease: decision.lease,
+      runtimeDisposition: decision.reclaimed ? "RECOVERABLE" : undefined,
+      runtimeDispositionReason: decision.reclaimed ? "Immutable publication checkpoint reclaimed after lease expiry." : undefined,
+      runtimeReconciledAt: decision.reclaimed ? now : undefined,
       executionPhase: publicationCheckpoint ? "PUBLISHING" : run.executionPhase,
       factoryContinuation: continuationPatch,
     });
@@ -230,6 +295,9 @@ export const claimInternal = internalMutation({
       metadata: {
         leaseId: args.leaseId,
         expiresAt: decision.lease.expiresAt,
+        workerId: decision.lease.workerId,
+        workerSessionId: decision.lease.workerSessionId,
+        workerGeneration: decision.lease.workerGeneration,
         executionManifestDigest: run.executionManifestDigest,
       },
     });
@@ -249,12 +317,19 @@ export const claimInternal = internalMutation({
         allowedTools: run.allowedTools,
         executionManifestDigest: run.executionManifestDigest,
       },
-      output: { ownerId: args.ownerId, leaseId: args.leaseId },
+      output: {
+        ownerId: args.ownerId,
+        leaseId: args.leaseId,
+        workerId: decision.lease.workerId,
+        workerSessionId: decision.lease.workerSessionId,
+        workerGeneration: decision.lease.workerGeneration,
+      },
       metadata: { configurationSnapshot: true, secretValuesIncluded: false },
     });
     return {
       claimed: true as const,
       reclaimed: decision.reclaimed,
+      previousLease: decision.reclaimed ? run.lease : undefined,
       workflowRunId: run._id,
       runId: run.runId,
       lease: decision.lease,
@@ -285,12 +360,21 @@ export const authorizePublicationInternal = internalMutation({
     leaseId: v.string(),
     ownerId: v.string(),
     candidateRevision: v.string(),
+    workerId: v.optional(v.string()),
+    workerSessionId: v.optional(v.string()),
+    workerGeneration: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
     const run = await ctx.db.get(args.workflowRunId);
     if (!run || !factoryAttemptMutationIsAuthorized(run)
-      || !activeLeaseMatches({ lease: run.lease, leaseId: args.leaseId, ownerId: args.ownerId, now })) {
+      || !activeLeaseMatches({
+        lease: run.lease,
+        leaseId: args.leaseId,
+        ownerId: args.ownerId,
+        worker: mutationWorkerIdentity(args),
+        now,
+      })) {
       throw new Error("Factory publication authorization requires the active matching lease.");
     }
     if (!run.workOrderId) throw new Error("Factory publication requires a WorkOrder-bound Attempt.");
@@ -405,6 +489,9 @@ export const renewInternal = internalMutation({
     leaseId: v.string(),
     ownerId: v.string(),
     leaseDurationMs: v.number(),
+    workerId: v.optional(v.string()),
+    workerSessionId: v.optional(v.string()),
+    workerGeneration: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const run = await ctx.db.get(args.workflowRunId);
@@ -415,6 +502,7 @@ export const renewInternal = internalMutation({
       lease: run.lease,
       leaseId: args.leaseId,
       ownerId: args.ownerId,
+      worker: mutationWorkerIdentity(args),
       leaseDurationMs: args.leaseDurationMs,
       now: Date.now(),
     });
@@ -429,12 +517,21 @@ export const reportInternal = internalMutation({
     workflowRunId: v.id("workflowRuns"),
     leaseId: v.string(),
     ownerId: v.string(),
+    workerId: v.optional(v.string()),
+    workerSessionId: v.optional(v.string()),
+    workerGeneration: v.optional(v.number()),
     packet: v.any(),
   },
   handler: async (ctx, args) => {
     const run = await ctx.db.get(args.workflowRunId);
     if (!run || !factoryAttemptMutationIsAuthorized(run)
-      || !activeLeaseMatches({ lease: run.lease, leaseId: args.leaseId, ownerId: args.ownerId, now: Date.now() })) {
+      || !activeLeaseMatches({
+        lease: run.lease,
+        leaseId: args.leaseId,
+        ownerId: args.ownerId,
+        worker: mutationWorkerIdentity(args),
+        now: Date.now(),
+      })) {
       throw new Error("Factory attempt report requires the active matching lease.");
     }
     const packet = args.packet && typeof args.packet === "object" ? args.packet : {};
@@ -621,6 +718,13 @@ export const reportInternal = internalMutation({
         steps,
         lease: undefined,
         executionPhase: "TERMINAL",
+        runtimeDisposition: terminal.status === "CANCELED"
+          ? "CANCELLED"
+          : terminal.status === "FAILED"
+            ? "FAILED"
+            : undefined,
+        runtimeDispositionReason: terminal.status === "COMPLETED" ? undefined : failureReason,
+        runtimeReconciledAt: terminal.status === "COMPLETED" ? undefined : completedAt,
         ...publicationLineage.patch,
         factoryContinuation: run.factoryContinuation
           ? {
@@ -669,6 +773,71 @@ export const reportInternal = internalMutation({
     };
   },
 });
+
+function mutationWorkerIdentity(args: {
+  workerId?: string;
+  workerSessionId?: string;
+  workerGeneration?: number;
+}) {
+  if (args.workerId === undefined && args.workerSessionId === undefined && args.workerGeneration === undefined) return undefined;
+  if (!args.workerId || !args.workerSessionId || !Number.isSafeInteger(args.workerGeneration) || args.workerGeneration! < 1) {
+    throw new Error("Factory attempt mutation requires the complete worker lease identity.");
+  }
+  return {
+    workerId: args.workerId,
+    sessionId: args.workerSessionId,
+    generation: args.workerGeneration!,
+  };
+}
+
+async function failLostAttempt(ctx: any, run: any, reason: string) {
+  const now = Date.now();
+  await ctx.db.patch(run._id, {
+    status: "FAILED",
+    completedAt: now,
+    failureReason: reason,
+    lease: undefined,
+    executionPhase: "TERMINAL",
+    runtimeDisposition: "LOST",
+    runtimeDispositionReason: reason,
+    runtimeReconciledAt: now,
+    steps: reconcileTerminalWorkflowSteps(run.steps, "FAILED", reason, now),
+  });
+  await insertEvent(ctx, run, {
+    idempotencyKey: `factory-worker-lost:${run.runId}:${run.lease?.leaseId ?? "unowned"}`,
+    eventType: "RUN_FAILED",
+    workflowStep: run.steps[run.currentStepIndex]?.stepId,
+    actor: "service:factory-control-plane",
+    status: "FAILED",
+    startedAt: now,
+    endedAt: now,
+    errorCategory: "FACTORY_WORKER_LOST",
+    errorSummary: reason,
+    commandSummary: "Worker ownership lost; replacement Attempt lineage required",
+    metadata: {
+      disposition: "LOST",
+      priorLeaseId: run.lease?.leaseId,
+      priorWorkerId: run.lease?.workerId,
+      priorWorkerSessionId: run.lease?.workerSessionId,
+      workspaceCleanup: "PRESERVE_FOR_OPERATOR_INSPECTION",
+    },
+  });
+  await finishAttemptTrace(ctx, run, { status: "FAILED", completedAt: now, failureReason: reason });
+  if (run.workOrderId) {
+    await ctx.scheduler.runAfter(0, internal.workOrders.syncExecutionOutcome, {
+      workflowRunId: run._id,
+      eventType: "RUN_FAILED",
+      summary: reason,
+    });
+  }
+  return {
+    claimed: false as const,
+    reason: "worker-lease-lost-new-attempt-required",
+    disposition: "LOST" as const,
+    retryRequired: true as const,
+    terminal: true as const,
+  };
+}
 
 async function failInvalidPublicationContinuation(ctx: any, run: any, reason: string) {
   const now = Date.now();

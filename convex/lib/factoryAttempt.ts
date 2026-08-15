@@ -4,10 +4,23 @@ export const MAX_FACTORY_LEASE_MS = 120_000;
 export interface AttemptLease {
   leaseId: string;
   ownerId: string;
+  workerId?: string;
+  workerSessionId?: string;
+  workerGeneration?: number;
   claimedAt: number;
   heartbeatAt: number;
   expiresAt: number;
 }
+
+export interface FactoryAttemptWorkerIdentity {
+  workerId: string;
+  sessionId: string;
+  generation: number;
+}
+
+export type FactoryAttemptDisposition = "RETRYABLE" | "LOST" | "CANCELLED" | "FAILED" | "RECOVERABLE";
+
+export type FactoryExecutorProcessState = "NOT_STARTED" | "RUNNING" | "TERMINATED" | "UNKNOWN";
 
 type PublicationArtifactLike = {
   artifactType?: string;
@@ -95,6 +108,7 @@ export function evaluateAttemptClaim(input: {
   lease?: AttemptLease;
   leaseId: string;
   ownerId: string;
+  worker?: FactoryAttemptWorkerIdentity;
   leaseDurationMs: number;
   now: number;
 }) {
@@ -105,6 +119,12 @@ export function evaluateAttemptClaim(input: {
   }
   if (!input.leaseId.trim() || !input.ownerId.trim()) {
     return { ok: false as const, reason: "lease-identity-invalid" };
+  }
+  if (input.worker && (!input.worker.workerId.trim()
+    || !input.worker.sessionId.trim()
+    || !Number.isSafeInteger(input.worker.generation)
+    || input.worker.generation < 1)) {
+    return { ok: false as const, reason: "worker-identity-invalid" };
   }
   if (!["PENDING", "RUNNING"].includes(input.status)) {
     return { ok: false as const, reason: "attempt-not-claimable" };
@@ -119,6 +139,9 @@ export function evaluateAttemptClaim(input: {
     lease: {
       leaseId: input.leaseId,
       ownerId: input.ownerId,
+      workerId: input.worker?.workerId,
+      workerSessionId: input.worker?.sessionId,
+      workerGeneration: input.worker?.generation,
       claimedAt,
       heartbeatAt: input.now,
       expiresAt: input.now + input.leaseDurationMs,
@@ -130,10 +153,12 @@ export function renewAttemptLease(input: {
   lease?: AttemptLease;
   leaseId: string;
   ownerId: string;
+  worker?: FactoryAttemptWorkerIdentity;
   leaseDurationMs: number;
   now: number;
 }) {
-  if (!input.lease || input.lease.leaseId !== input.leaseId || input.lease.ownerId !== input.ownerId) {
+  if (!input.lease || input.lease.leaseId !== input.leaseId || input.lease.ownerId !== input.ownerId
+    || !leaseWorkerMatches(input.lease, input.worker)) {
     return { ok: false as const, reason: "lease-mismatch" };
   }
   if (input.lease.expiresAt <= input.now) {
@@ -158,12 +183,80 @@ export function activeLeaseMatches(input: {
   lease?: AttemptLease;
   leaseId: string;
   ownerId: string;
+  worker?: FactoryAttemptWorkerIdentity;
   now: number;
 }) {
   return Boolean(
     input.lease
     && input.lease.leaseId === input.leaseId
     && input.lease.ownerId === input.ownerId
+    && leaseWorkerMatches(input.lease, input.worker)
     && input.lease.expiresAt > input.now
   );
+}
+
+export function releaseAttemptLease(input: {
+  lease?: AttemptLease;
+  leaseId: string;
+  ownerId: string;
+  worker?: FactoryAttemptWorkerIdentity;
+  now: number;
+}) {
+  if (!activeLeaseMatches(input)) return { ok: false as const, reason: "lease-mismatch-or-expired" };
+  return {
+    ok: true as const,
+    releasedLeaseId: input.leaseId,
+    releasedAt: input.now,
+  };
+}
+
+/**
+ * Reconciliation never converts a missing executor into successful history.
+ * Only the immutable publication checkpoint is recoverable on another worker
+ * session. Interrupted execution requires a replacement Attempt.
+ */
+export function classifyFactoryAttemptReconciliation(input: {
+  status: string;
+  cancellationRequestedAt?: number;
+  lease?: AttemptLease;
+  currentWorkerSessionId?: string;
+  processState: FactoryExecutorProcessState;
+  hasPublicationCheckpoint: boolean;
+  now: number;
+}): { disposition: FactoryAttemptDisposition; action: "NONE" | "RESUME_PUBLICATION" | "CREATE_REPLACEMENT_ATTEMPT" | "FINALIZE_CANCELLED" | "FINALIZE_FAILED" } {
+  if (input.cancellationRequestedAt) {
+    return { disposition: "CANCELLED", action: "FINALIZE_CANCELLED" };
+  }
+  if (!["PENDING", "RUNNING"].includes(input.status)) {
+    return { disposition: input.status === "FAILED" ? "FAILED" : "RECOVERABLE", action: "NONE" };
+  }
+  if (input.hasPublicationCheckpoint) {
+    return { disposition: "RECOVERABLE", action: "RESUME_PUBLICATION" };
+  }
+  const leaseExpired = !input.lease || input.lease.expiresAt <= input.now;
+  const sessionChanged = Boolean(
+    input.lease?.workerSessionId
+    && input.currentWorkerSessionId
+    && input.lease.workerSessionId !== input.currentWorkerSessionId
+  );
+  if (input.processState === "RUNNING" && !leaseExpired && !sessionChanged) {
+    return { disposition: "RECOVERABLE", action: "NONE" };
+  }
+  if (input.processState === "NOT_STARTED" && leaseExpired) {
+    return { disposition: "RETRYABLE", action: "CREATE_REPLACEMENT_ATTEMPT" };
+  }
+  if (leaseExpired || sessionChanged || input.processState === "TERMINATED" || input.processState === "UNKNOWN") {
+    return { disposition: "LOST", action: "CREATE_REPLACEMENT_ATTEMPT" };
+  }
+  return { disposition: "FAILED", action: "FINALIZE_FAILED" };
+}
+
+function leaseWorkerMatches(lease: AttemptLease, worker: FactoryAttemptWorkerIdentity | undefined) {
+  // Legacy leases did not carry a worker session. They remain fenced by the
+  // unique lease ID and service owner until they naturally terminate.
+  if (!lease.workerId && !lease.workerSessionId && lease.workerGeneration === undefined) return true;
+  return Boolean(worker
+    && lease.workerId === worker.workerId
+    && lease.workerSessionId === worker.sessionId
+    && lease.workerGeneration === worker.generation);
 }

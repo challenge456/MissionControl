@@ -38,9 +38,11 @@ describe("Factory host reporting", () => {
       repository: "jaydubya818/MissionControl",
       checkoutRoot: await realpath(repository),
       observedBranch: "main",
+      baseBranch: "main",
       dirty: false,
     });
     expect(clean.observedCommit).toMatch(/^[0-9a-f]{40}$/);
+    expect(clean.baseCommit).toBe(clean.observedCommit);
 
     await writeFile(path.join(repository, "README.md"), "dirty\n");
     expect((await inspectFactoryCheckout(repository)).dirty).toBe(true);

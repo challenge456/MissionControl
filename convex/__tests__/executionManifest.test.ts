@@ -16,8 +16,12 @@ const input: FactoryExecutionManifestInput = {
   repositoryId: "repository-1",
   repository: "sellerfi/sandbox",
   defaultBranch: "main",
+  baseSha: "a".repeat(40),
   branch: "mc/work-order-1",
   worktree: "/tmp/worktrees/work-order-1",
+  executor: { adapter: "codex", version: "v1" },
+  executionBackend: "persistent-worker",
+  sandboxProfile: { isolation: "WORKSPACE_WRITE", requiredCapabilities: ["workspace-write", "git-worktree"] },
   workflow: {
     workflowId: "implementation",
     version: 4,
@@ -65,8 +69,15 @@ describe("Factory execution manifest", () => {
       modelRoute: "gpt-5",
     });
     expect(result.manifest.repository).toMatchObject({
+      baseSha: "a".repeat(40),
       allowedPaths: ["apps/ui/**"],
       excludedPaths: ["apps/ui/generated/**"],
+    });
+    expect(result.manifest.harness).toMatchObject({
+      adapter: "codex",
+      version: "v1",
+      executionBackend: "persistent-worker",
+      requiredCapabilities: ["git-worktree", "workspace-write"],
     });
     expect(result.manifest.intent).toMatchObject({ title: "Add the buyer gate", acceptanceCriterionIds: ["ac-1"] });
     expect(result.manifest.workOrderSpecification).toMatchObject({ riskLevel: "MEDIUM", acceptanceCriteria: [{ id: "ac-1" }] });
@@ -94,5 +105,9 @@ describe("Factory execution manifest", () => {
 
   it("fails closed when a workflow agent has no approved binding", () => {
     expect(() => buildFactoryExecutionManifest({ ...input, agentBindings: [] })).toThrow(/missing agent binding/);
+  });
+
+  it("fails closed when a mutable branch is supplied instead of an exact base SHA", () => {
+    expect(() => buildFactoryExecutionManifest({ ...input, baseSha: "origin/main" })).toThrow(/immutable full base SHA/);
   });
 });

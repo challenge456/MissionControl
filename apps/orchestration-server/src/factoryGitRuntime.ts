@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { assertWorktreeBoundary } from "./factoryPathScope.js";
+import { ensureFactoryWorkspaceOwnership, type FactoryWorkspaceOwner } from "./factoryWorkspaceOwnership.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -11,19 +12,31 @@ export async function ensureFactoryWorktree(input: {
   checkoutRoot: string;
   worktree: string;
   branch: string;
-  defaultBranch: string;
+  baseSha: string;
+  ownership?: FactoryWorkspaceOwner;
 }) {
   const boundary = assertWorktreeBoundary(input.checkoutRoot, input.worktree);
   assertFactoryBranch(input.branch);
   const repositoryRoot = path.resolve((await runGit(boundary.checkoutRoot, ["rev-parse", "--show-toplevel"])).stdout.trim());
   if (await realpath(repositoryRoot) !== await realpath(boundary.checkoutRoot)) throw new Error("Factory host checkout root does not match the Git repository root.");
+  if (!/^[a-f0-9]{40,64}$/i.test(input.baseSha)
+    || !await gitSucceeds(boundary.checkoutRoot, ["cat-file", "-e", `${input.baseSha}^{commit}`])) {
+    throw new Error("Factory worktree requires the exact frozen base commit to exist locally.");
+  }
   await mkdir(boundary.worktreeRoot, { recursive: true });
+  const worktreeExists = await exists(boundary.worktree);
+  if (input.ownership) {
+    await ensureFactoryWorkspaceOwnership({ owner: input.ownership, allowCreate: !worktreeExists });
+  }
 
-  if (await exists(boundary.worktree)) {
+  if (worktreeExists) {
     const existingRoot = path.resolve((await runGit(boundary.worktree, ["rev-parse", "--show-toplevel"])).stdout.trim());
     const existingBranch = (await runGit(boundary.worktree, ["branch", "--show-current"])).stdout.trim();
     if (await realpath(existingRoot) !== await realpath(boundary.worktree) || existingBranch !== input.branch) {
       throw new Error("Existing Factory worktree does not match the frozen attempt branch.");
+    }
+    if (!await gitSucceeds(boundary.worktree, ["merge-base", "--is-ancestor", input.baseSha, "HEAD"])) {
+      throw new Error("Existing Factory worktree does not descend from the frozen base commit.");
     }
     return boundary.worktree;
   }
@@ -31,36 +44,35 @@ export async function ensureFactoryWorktree(input: {
   const localBranchExists = await gitSucceeds(boundary.checkoutRoot, ["show-ref", "--verify", "--quiet", `refs/heads/${input.branch}`]);
   if (localBranchExists) {
     await runGit(boundary.checkoutRoot, ["worktree", "add", boundary.worktree, input.branch]);
+    if (!await gitSucceeds(boundary.worktree, ["merge-base", "--is-ancestor", input.baseSha, "HEAD"])) {
+      throw new Error("Existing Factory branch does not descend from the frozen base commit.");
+    }
     return boundary.worktree;
   }
-  const remoteBase = `refs/remotes/origin/${input.defaultBranch}`;
-  const base = await gitSucceeds(boundary.checkoutRoot, ["show-ref", "--verify", "--quiet", remoteBase])
-    ? `origin/${input.defaultBranch}`
-    : input.defaultBranch;
-  await runGit(boundary.checkoutRoot, ["worktree", "add", "-b", input.branch, boundary.worktree, base]);
+  await runGit(boundary.checkoutRoot, ["worktree", "add", "-b", input.branch, boundary.worktree, input.baseSha]);
   return boundary.worktree;
 }
 
-export async function listChangedFiles(worktree: string, defaultBranch?: string) {
+export async function listChangedFiles(worktree: string, baseSha?: string) {
   const [tracked, untracked, committed] = await Promise.all([
     runGit(worktree, ["diff", "--name-only", "-z", "HEAD"]),
     runGit(worktree, ["ls-files", "--others", "-z", "--exclude-standard"]),
-    defaultBranch
-      ? runGit(worktree, ["diff", "--name-only", "-z", `${await resolveBaseReference(worktree, defaultBranch)}...HEAD`])
+    baseSha
+      ? runGit(worktree, ["diff", "--name-only", "-z", `${baseSha}...HEAD`])
       : Promise.resolve({ stdout: "", stderr: "" }),
   ]);
   return Array.from(new Set([...splitNull(tracked.stdout), ...splitNull(untracked.stdout), ...splitNull(committed.stdout)])).sort();
 }
 
-export async function inspectCandidateChange(worktree: string, defaultBranch: string) {
-  const baseReference = await resolveBaseReference(worktree, defaultBranch);
+export async function inspectCandidateChange(worktree: string, baseSha: string) {
+  if (!/^[a-f0-9]{40,64}$/i.test(baseSha)) throw new Error("Candidate inspection requires the frozen full base SHA.");
   const [sourceRevision, candidateRevision, changed, deleted, numstat, diff] = await Promise.all([
-    runGit(worktree, ["rev-parse", baseReference]),
+    runGit(worktree, ["rev-parse", baseSha]),
     runGit(worktree, ["rev-parse", "HEAD"]),
-    runGit(worktree, ["diff", "--name-only", "-z", `${baseReference}...HEAD`]),
-    runGit(worktree, ["diff", "--diff-filter=D", "--name-only", "-z", `${baseReference}...HEAD`]),
-    runGit(worktree, ["diff", "--numstat", `${baseReference}...HEAD`]),
-    runGit(worktree, ["diff", "--no-ext-diff", "--unified=3", `${baseReference}...HEAD`]),
+    runGit(worktree, ["diff", "--name-only", "-z", `${baseSha}...HEAD`]),
+    runGit(worktree, ["diff", "--diff-filter=D", "--name-only", "-z", `${baseSha}...HEAD`]),
+    runGit(worktree, ["diff", "--numstat", `${baseSha}...HEAD`]),
+    runGit(worktree, ["diff", "--no-ext-diff", "--unified=3", `${baseSha}...HEAD`]),
   ]);
   let linesAdded = 0;
   let linesDeleted = 0;
@@ -184,10 +196,4 @@ async function exists(candidate: string) {
 
 function splitNull(value: string) {
   return value.split("\0").map((item) => item.trim()).filter(Boolean);
-}
-
-async function resolveBaseReference(worktree: string, defaultBranch: string) {
-  return await gitSucceeds(worktree, ["show-ref", "--verify", "--quiet", `refs/remotes/origin/${defaultBranch}`])
-    ? `origin/${defaultBranch}`
-    : defaultBranch;
 }

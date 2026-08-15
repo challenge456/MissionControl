@@ -87,17 +87,23 @@ printf '%s' 'Codex started after EOF.' > "$output"
 
     try {
       const adapter = new CodexV1ExecutorAdapter(executable);
+      const started = vi.fn();
+      const terminated = vi.fn();
       const result = await adapter.execute({
         ...request,
         repositoryRoot,
         workingDirectory: repositoryRoot,
         timeoutMs: 2_000,
-      }, () => undefined);
+      }, () => undefined, undefined, { started, terminated });
 
       expect(result).toMatchObject({
         status: "COMPLETED",
         output: "Codex started after EOF.",
       });
+      expect(started).toHaveBeenCalledOnce();
+      expect(terminated).toHaveBeenCalledOnce();
+      expect(terminated.mock.calls[0][0].pid).toBe(started.mock.calls[0][0].pid);
+      expect(terminated.mock.calls[0][0].exitCode).toBe(0);
     } finally {
       await rm(repositoryRoot, { recursive: true, force: true });
     }

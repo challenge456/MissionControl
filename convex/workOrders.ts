@@ -2357,8 +2357,15 @@ async function dispatchWorkOrder(
           repositoryId: String(factoryBinding.repository._id),
           repository: factoryBinding.repository.repository,
           defaultBranch: factoryBinding.repository.defaultBranch,
+          baseSha: factoryBinding.baseSha,
           branch: factoryBinding.branch,
           worktree: factoryBinding.worktree,
+          executor: factoryBinding.version.executor,
+          executionBackend: factoryBinding.executionBackend,
+          sandboxProfile: {
+            isolation: "WORKSPACE_WRITE",
+            requiredCapabilities: ["git-worktree", "workspace-write"],
+          },
           workflow: workflowSnapshot as any,
           workOrder: {
             title: refreshedWorkOrder.title,
@@ -2435,6 +2442,7 @@ async function dispatchWorkOrder(
       isMutating: refreshedWorkOrder.isMutating ?? true,
       executionManifest: executionManifest?.manifest,
       executionManifestDigest: executionManifest?.digest,
+      executionBaseSha: factoryBinding?.baseSha,
       parentTaskId: selectedTask?._id ?? refreshedWorkOrder.legacyTaskId,
       status: "PENDING",
       currentStepIndex: 0,
@@ -2972,7 +2980,15 @@ async function resolveFactoryDispatchBinding(
     ),
     policyReady: Boolean(policy?.active && (!policy.projectId || policy.projectId === workOrder.projectId)),
     verifiersReady: verifiers.length > 0 && verifiers.every((item) => item?.active && item.projectId === workOrder.projectId),
-    hostReady: Boolean(host && host.status === "READY" && !host.dirty && now - host.checkedAt <= 24 * 60 * 60 * 1_000),
+    hostReady: Boolean(
+      host
+      && host.status === "READY"
+      && !host.dirty
+      && now - host.checkedAt <= 24 * 60 * 60 * 1_000
+      && host.baseBranch === repository?.defaultBranch
+      && typeof host.baseCommit === "string"
+      && /^[a-f0-9]{40,64}$/i.test(host.baseCommit)
+    ),
     budgetReady: validFactoryBudget(version.budget),
     recoveryReady: codexV1RecoveryReady(version.recovery),
     worktreeProvided: Boolean(args.worktree?.trim() || host?.checkoutRoot?.trim()),
@@ -2981,10 +2997,15 @@ async function resolveFactoryDispatchBinding(
   });
   if (!result.ok) throw new Error(`Factory dispatch blocked (${result.blocker}): ${result.remediation}`);
   if (!repository || !host) throw new Error("Factory dispatch blocked (binding-missing): Reassess Factory readiness.");
+  if (!host.baseCommit || host.baseBranch !== repository.defaultBranch) {
+    throw new Error("Factory dispatch blocked (base-revision-missing): Refresh the worker checkout attestation.");
+  }
   return {
     version,
     repository,
     host,
+    baseSha: host.baseCommit,
+    executionBackend: host.workerRuntime?.executionBackends[0] ?? "persistent-worker",
     branch: args.branch?.trim() || `mc/${String(workOrder._id).slice(-12)}`,
     worktree: args.worktree?.trim() || `${host.checkoutRoot.replace(/\/+$/, "")}/.mission-control/worktrees/${String(workOrder._id).slice(-12)}`,
     allowedTools: Array.isArray(workflow.metadata?.allowedTools) ? workflow.metadata.allowedTools.filter((item: unknown): item is string => typeof item === "string") : [],

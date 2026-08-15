@@ -76,6 +76,7 @@ export type {
   ExecutorEvent,
   ExecutorEventType,
   ExecutorHealth,
+  ExecutorProcessObserver,
   ExecutorRequest,
   ExecutorResult,
 } from "./executorAdapter.js";
