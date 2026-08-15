@@ -118,10 +118,16 @@ export function evaluateCurrentVerificationEligibility(input: {
   if (!input.qualityContractDigest) return denied("Current WorkOrder has no approved Plan Quality Contract digest.");
   if (!input.verificationContractDigest) return denied("Current WorkOrder has no persisted verification contract digest.");
   const source = [...input.sourceAttempts]
-    .filter((attempt) => attempt.candidateReadyAt && attempt.status === "COMPLETED"
+    .filter((attempt) => attempt.candidateReadyAt
       && (attempt.attemptPurpose === "IMPLEMENTATION" || attempt.attemptPurpose === "AUTOMATION"))
     .sort((left, right) => (right.candidateReadyAt ?? 0) - (left.candidateReadyAt ?? 0))[0];
-  if (!source?.verificationSubject) return denied("No completed current source Attempt has an immutable Verification Subject.");
+  if (!source) return denied("No current source Attempt has published a candidate-ready Verification Subject.");
+  if (source.status !== "COMPLETED") {
+    return denied(`Newest candidate-ready source Attempt is ${source.status}; older passing candidates cannot be reused.`, {
+      sourceAttemptId: source.id,
+    });
+  }
+  if (!source.verificationSubject) return denied("Current source Attempt has no immutable Verification Subject.");
   const subject = source.verificationSubject;
   if (!verifyVerificationSubjectIdentity(subject)) {
     return denied("Current source Attempt Verification Subject identity is not canonical.");

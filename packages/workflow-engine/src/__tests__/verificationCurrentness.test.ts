@@ -27,7 +27,6 @@ function gitSubject(
     kind: "GIT_CANDIDATE",
     workOrderId: "wo-1",
     workOrderRevisionNumber: 1,
-    qualityContractDigest,
     verificationContractDigest: contractDigest,
     sourceAttemptId,
     repositoryId: "repo-1",
@@ -59,6 +58,7 @@ function fixture(subject: VerificationSubject = gitSubject(), sourceReadyAt = 10
   return {
     workOrderId: "wo-1",
     workOrderRevisionNumber: 1,
+    qualityContractDigest,
     verificationContractDigest: contractDigest,
     sourceAttempts: [{
       id: subject.sourceAttemptId,
@@ -190,6 +190,7 @@ describe("exact-current verification acceptance eligibility", () => {
         ...receipt,
         decisionInputDigest: `sha256:${"2".repeat(64)}`,
       })),
+    });
     const wrongEvidence = evaluateCurrentVerificationEligibility({
       ...data,
       verificationEvidence: data.verificationEvidence.map((evidence) => ({
@@ -218,7 +219,7 @@ describe("exact-current verification acceptance eligibility", () => {
       ...data,
       sourceAttempts: [
         ...data.sourceAttempts,
-        { id: "source-b", repositoryId: candidateB.repositoryId, attemptPurpose: "IMPLEMENTATION", status: "COMPLETED", candidateReadyAt: 900, verificationSubject: candidateB },
+        { id: "source-b", repositoryId: candidateB.repositoryId, attemptPurpose: "IMPLEMENTATION", status: "COMPLETED", candidateReadyAt: 900, qualityContractDigest, verificationSubject: candidateB },
       ],
       providerHeads: [{ ...data.providerHeads[0], headSha: candidateB.candidateSha, syncedAt: 901 }],
     });
@@ -239,6 +240,29 @@ describe("exact-current verification acceptance eligibility", () => {
     expect(result.eligible).toBe(false);
     expect(result.verificationAttemptId).toBe("verify-b");
     expect(result.reasons.join(" ")).toContain("older passing results cannot be reused");
+  });
+
+  it("does not fall back to an older pass while a newer candidate-ready source Attempt is incomplete", () => {
+    const data = fixture();
+    const newerSubject = gitSubject("source-b", "c".repeat(40));
+    const result = evaluateCurrentVerificationEligibility({
+      ...data,
+      sourceAttempts: [
+        ...data.sourceAttempts,
+        {
+          id: "source-b",
+          repositoryId: newerSubject.repositoryId,
+          attemptPurpose: "IMPLEMENTATION" as const,
+          status: "FAILED",
+          candidateReadyAt: 900,
+          qualityContractDigest,
+          verificationSubject: newerSubject,
+        },
+      ],
+    });
+    expect(result.eligible).toBe(false);
+    expect(result.sourceAttemptId).toBe("source-b");
+    expect(result.reasons.join(" ")).toContain("older passing candidates cannot be reused");
   });
 
   it("fails closed for legacy attempts, receipts, and producer independence flags", () => {
@@ -283,7 +307,7 @@ describe("exact-current verification acceptance eligibility", () => {
     } as any);
     const stale = evaluateCurrentVerificationEligibility({
       ...passing,
-      sourceAttempts: [...passing.sourceAttempts, { id: "automation-b", attemptPurpose: "AUTOMATION", status: "COMPLETED", candidateReadyAt: 900, verificationSubject: changed }],
+      sourceAttempts: [...passing.sourceAttempts, { id: "automation-b", attemptPurpose: "AUTOMATION", status: "COMPLETED", candidateReadyAt: 900, qualityContractDigest, verificationSubject: changed }],
     });
     expect(stale.eligible).toBe(false);
     expect(stale.sourceAttemptId).toBe("automation-b");
