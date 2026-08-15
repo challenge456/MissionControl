@@ -20,6 +20,11 @@ import { buildReviewPackage } from "./lib/reviewPackage";
 import { deriveFactoryPublicationLineage } from "./lib/factoryAttempt";
 import { getEffectiveOperatorControl } from "./lib/operatorControls";
 import {
+  automationDesignValidator,
+  automationOutputSnapshotValidator,
+  traceContextValidator,
+} from "./lib/workOrderSpecificationValidators";
+import {
   evaluateWorkflowClaim,
   workflowHeartbeatDirective,
   workflowLeaseMatches,
@@ -41,6 +46,9 @@ function generateRunId(): string {
 const runEventType = v.union(
   v.literal("RUN_STARTED"),
   v.literal("EXECUTION_CLAIMED"),
+  v.literal("EXECUTION_HEARTBEAT"),
+  v.literal("STALE_RUN_RECOVERED"),
+  v.literal("RUN_QUARANTINED"),
   v.literal("CANCELLATION_REQUESTED"),
   v.literal("POLICY_DEVIATION"),
   v.literal("PULL_REQUEST_CREATED"),
@@ -54,6 +62,30 @@ const runEventType = v.union(
   v.literal("RETRY_STARTED"),
   v.literal("RETRY_COMPLETED"),
   v.literal("HUMAN_INTERVENTION_REQUESTED"),
+  v.literal("SPEC_VALIDATED"),
+  v.literal("RISK_CLASSIFIED"),
+  v.literal("CHANGE_BUDGET_ASSIGNED"),
+  v.literal("COMMAND_REQUESTED"),
+  v.literal("COMMAND_APPROVED"),
+  v.literal("COMMAND_DENIED"),
+  v.literal("CHANGE_BUDGET_EXCEEDED"),
+  v.literal("VERIFICATION_STARTED"),
+  v.literal("VERIFICATION_ATTEMPT_DISPATCHED"),
+  v.literal("VERIFICATION_PLAN_CREATED"),
+  v.literal("VERIFICATION_SUBJECT_ATTESTED"),
+  v.literal("VERIFICATION_CHECK_STARTED"),
+  v.literal("VERIFICATION_CHECK_PASSED"),
+  v.literal("VERIFICATION_CHECK_FAILED"),
+  v.literal("VERIFICATION_REQUIREMENT_PASSED"),
+  v.literal("VERIFICATION_REQUIREMENT_FAILED"),
+  v.literal("VERIFICATION_COMPLETED"),
+  v.literal("VERIFICATION_EXECUTION_FAILED"),
+  v.literal("VERIFICATION_BLOCKED"),
+  v.literal("VERIFICATION_REQUIRES_HUMAN_REVIEW"),
+  v.literal("EVIDENCE_CREATED"),
+  v.literal("INDEPENDENT_REVIEW_STARTED"),
+  v.literal("VERIFICATION_RECEIPT_CREATED"),
+  v.literal("CANDIDATE_READY"),
   v.literal("RUN_PAUSED"),
   v.literal("RUN_RESUMED"),
   v.literal("RUN_FAILED"),
@@ -72,6 +104,8 @@ const runArtifactType = v.union(
   v.literal("PULL_REQUEST"),
   v.literal("CHECKPOINT"),
   v.literal("STRUCTURED_OUTPUT"),
+  v.literal("AUTOMATION_DESIGN"),
+  v.literal("AUTOMATION_OUTPUT_SNAPSHOT"),
   v.literal("OTHER")
 );
 
@@ -105,6 +139,7 @@ async function insertRunEvent(ctx: any, args: {
   evidenceArtifactIds?: any[];
   errorCategory?: string;
   errorSummary?: string;
+  traceContext?: { traceId?: string; spanId?: string; parentSpanId?: string };
   metadata?: any;
 }) {
   if (args.idempotencyKey) {
@@ -141,6 +176,7 @@ async function insertRunEvent(ctx: any, args: {
     evidenceArtifactIds: args.evidenceArtifactIds,
     errorCategory: args.errorCategory,
     errorSummary: args.errorSummary,
+    traceContext: args.traceContext,
     metadata: args.metadata,
   });
   const event = await ctx.db.get(eventId);
@@ -176,6 +212,8 @@ async function insertRunArtifact(ctx: any, args: {
   producingEventId?: any;
   retentionPolicy?: string;
   sensitivity?: string;
+  automationDesign?: any;
+  automationOutputSnapshot?: any;
   metadata?: any;
 }) {
   if (args.idempotencyKey) {
@@ -204,6 +242,8 @@ async function insertRunArtifact(ctx: any, args: {
     producingEventId: args.producingEventId,
     retentionPolicy: args.retentionPolicy,
     sensitivity: args.sensitivity,
+    automationDesign: args.automationDesign,
+    automationOutputSnapshot: args.automationOutputSnapshot,
     createdAt: Date.now(),
     metadata: args.metadata,
   });
@@ -1066,6 +1106,7 @@ export const recordEvent = mutation({
     evidenceArtifactIds: v.optional(v.array(v.id("runArtifacts"))),
     errorCategory: v.optional(v.string()),
     errorSummary: v.optional(v.string()),
+    traceContext: v.optional(traceContextValidator),
     metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
@@ -1113,6 +1154,7 @@ export const recordEventInternal = internalMutation({
     evidenceArtifactIds: v.optional(v.array(v.id("runArtifacts"))),
     errorCategory: v.optional(v.string()),
     errorSummary: v.optional(v.string()),
+    traceContext: v.optional(traceContextValidator),
     metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
@@ -1143,6 +1185,8 @@ export const createArtifact = mutation({
     producingEventId: v.optional(v.id("runEvents")),
     retentionPolicy: v.optional(v.string()),
     sensitivity: v.optional(v.string()),
+    automationDesign: v.optional(automationDesignValidator),
+    automationOutputSnapshot: v.optional(automationOutputSnapshotValidator),
     metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {

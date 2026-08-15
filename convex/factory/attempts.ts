@@ -19,8 +19,8 @@ import {
 } from "../lib/observabilityPersistence";
 import {
   qualityGateEvidenceSetDigest,
-  qualityGateStateForVerdict,
-  qualityGateSubjectDigest,
+  legacyQualityGateStateForVerdict,
+  legacyQualityGateSubjectDigest,
 } from "../lib/qualityGateDecision";
 
 const EVENT_TYPES = new Set([
@@ -30,15 +30,18 @@ const EVENT_TYPES = new Set([
   "SPEC_VALIDATED", "RISK_CLASSIFIED", "CHANGE_BUDGET_ASSIGNED",
   "COMMAND_REQUESTED", "COMMAND_APPROVED", "COMMAND_DENIED", "CHANGE_BUDGET_EXCEEDED",
   "VERIFICATION_STARTED", "VERIFICATION_CHECK_STARTED", "VERIFICATION_CHECK_PASSED",
-  "VERIFICATION_CHECK_FAILED", "EVIDENCE_CREATED", "INDEPENDENT_REVIEW_STARTED",
-  "VERIFICATION_RECEIPT_CREATED", "PULL_REQUEST_CREATED",
+  "VERIFICATION_CHECK_FAILED", "VERIFICATION_ATTEMPT_DISPATCHED", "VERIFICATION_PLAN_CREATED",
+  "VERIFICATION_SUBJECT_ATTESTED", "VERIFICATION_REQUIREMENT_PASSED", "VERIFICATION_REQUIREMENT_FAILED",
+  "VERIFICATION_COMPLETED", "VERIFICATION_EXECUTION_FAILED", "VERIFICATION_BLOCKED",
+  "VERIFICATION_REQUIRES_HUMAN_REVIEW", "EVIDENCE_CREATED", "INDEPENDENT_REVIEW_STARTED",
+  "VERIFICATION_RECEIPT_CREATED", "CANDIDATE_READY", "PULL_REQUEST_CREATED",
   "RUN_PAUSED", "RUN_RESUMED", "RUN_FAILED", "RUN_COMPLETED",
 ]);
 
 const ARTIFACT_TYPES = new Set([
   "CODE_DIFF", "TEST_OUTPUT", "BUILD_OUTPUT", "LOG_BUNDLE", "SCREENSHOT",
   "GENERATED_DOCUMENT", "VERIFICATION_EVIDENCE", "PULL_REQUEST", "CHECKPOINT",
-  "STRUCTURED_OUTPUT", "OTHER",
+  "STRUCTURED_OUTPUT", "AUTOMATION_DESIGN", "AUTOMATION_OUTPUT_SNAPSHOT", "OTHER",
 ]);
 export const resolveScope = internalQuery({
   args: { workflowRunId: v.id("workflowRuns") },
@@ -493,6 +496,8 @@ export const reportInternal = internalMutation({
         producer: `service:${args.ownerId}`,
         retentionPolicy: optionalText(artifact.retentionPolicy, 200),
         sensitivity: optionalText(artifact.sensitivity, 100),
+        automationDesign: artifact.automationDesign,
+        automationOutputSnapshot: artifact.automationOutputSnapshot,
         createdAt: Date.now(),
         metadata: {
           ...(artifact.metadata ?? {}),
@@ -752,6 +757,7 @@ async function insertEvent(ctx: any, run: any, event: any) {
     evidenceArtifactIds: event.evidenceArtifactIds,
     errorCategory: optionalText(event.errorCategory, 200),
     errorSummary: optionalText(event.errorSummary, 2_000),
+    traceContext: event.traceContext,
     metadata: event.metadata,
   });
   const inserted = await ctx.db.get(eventId);
@@ -763,6 +769,9 @@ async function persistVerificationPacket(ctx: any, run: any, packet: any, ownerI
   if (!run.workOrderId) throw new Error("Verification requires a WorkOrder-bound Factory attempt.");
   const workOrder = await ctx.db.get(run.workOrderId);
   if (!workOrder) throw new Error("Verification WorkOrder not found.");
+  if (workOrder.verificationContract?.schemaVersion === 2) {
+    throw new Error("Policy-v2 verification requires a separate subject-bound Verification Attempt; legacy inline factoryContinuation and producer independence flags cannot satisfy it.");
+  }
   if ((workOrder.currentRevisionNumber ?? 1) !== (run.workOrderRevisionNumber ?? 1)) {
     throw new Error("Verification packet is stale because the WorkOrder revision changed.");
   }
@@ -928,13 +937,17 @@ async function persistVerificationPacket(ctx: any, run: any, packet: any, ownerI
     idempotencyKey: `${idempotencyKey}:quality-gate`,
     workOrderRevisionNumber: workOrder.currentRevisionNumber ?? 1,
     candidateRevision: result.candidateRevision,
-    subjectDigest: qualityGateSubjectDigest({
+    subjectDigest: legacyQualityGateSubjectDigest({
       workOrderId: String(workOrder._id),
       workOrderRevisionNumber: workOrder.currentRevisionNumber ?? 1,
       executionManifestDigest: run.executionManifestDigest,
       qualityContractDigest: workOrder.qualityContractDigest,
       candidateRevision: result.candidateRevision,
     }),
+    verificationContractDigest: workOrder.verificationContractDigest,
+    verificationSubjectDigest: run.verificationSubject?.digest,
+    sourceAttemptId: run.verificationSubject?.sourceAttemptId,
+    verificationAttemptId: run.attemptPurpose === "VERIFICATION" ? run._id : undefined,
     qualityContractDigest: workOrder.qualityContractDigest,
     executionManifestDigest: run.executionManifestDigest,
     evidenceSetDigest: qualityGateEvidenceSetDigest({
@@ -943,7 +956,7 @@ async function persistVerificationPacket(ctx: any, run: any, packet: any, ownerI
       evidenceEnvelopeIds: allEvidenceIds.map(String),
     }),
     governancePolicyId: workOrder.governancePolicyId,
-    state: qualityGateStateForVerdict(result.verdict),
+    state: legacyQualityGateStateForVerdict(result.verdict),
     mode: "ENFORCED",
     reasons: result.verdictReasons,
     blockingFindingIds: result.violations,
@@ -953,6 +966,7 @@ async function persistVerificationPacket(ctx: any, run: any, packet: any, ownerI
       engineVersion: result.engineVersion,
       serverRecomputed: true,
       verificationVerdict: result.verdict,
+      subjectIdentityMode: run.verificationSubject?.digest ? "POLICY_V2" : "LEGACY_V1",
     },
   });
 

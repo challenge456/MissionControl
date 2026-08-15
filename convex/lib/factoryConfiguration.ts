@@ -1,4 +1,5 @@
 export interface FactoryConfigurationInput {
+  purpose: "SOFTWARE" | "VERIFICATION" | "INTELLIGENT_AUTOMATION";
   repositoryId: string;
   workflowId: string;
   executor: { adapter: string; version: string };

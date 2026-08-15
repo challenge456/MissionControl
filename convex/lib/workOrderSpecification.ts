@@ -7,10 +7,14 @@ export function validateWorkOrderSpecification(input: any) {
   const criteria = input.acceptanceCriteria ?? [];
   const constraints = input.negativeConstraints ?? [];
   const checks = input.verificationContract?.checks ?? [];
+  const requiredRisks = input.verificationContract?.schemaVersion === 2
+    ? input.verificationContract.requiredRisks ?? []
+    : [];
   validateUniqueIds(requirements, "requirement", issues);
   validateUniqueIds(criteria, "acceptance criterion", issues);
   validateUniqueIds(constraints, "negative constraint", issues);
   validateUniqueIds(checks, "verification check", issues);
+  validateUniqueIds(requiredRisks, "required verification risk", issues);
   const requirementIds = new Set(requirements.map((item: any) => item.id));
   const criterionIds = new Set(criteria.map((item: any) => item.id));
   for (const requirement of requirements) {
@@ -33,6 +37,14 @@ export function validateWorkOrderSpecification(input: any) {
       issues.push(`Verification check ${check.id} has an invalid command or timeout.`);
     }
   }
+  const mandatoryCheckIds = new Set(checks.filter((check: any) => check.mandatory).map((check: any) => check.id));
+  for (const risk of requiredRisks) {
+    if (!risk.description?.trim()) issues.push(`Required verification risk ${risk.id || "<missing>"} needs a description.`);
+    if (!(risk.requiredEvidenceIds ?? []).length) issues.push(`Required verification risk ${risk.id} needs at least one required evidence mapping.`);
+    for (const evidenceId of risk.requiredEvidenceIds ?? []) {
+      if (!mandatoryCheckIds.has(evidenceId)) issues.push(`Required verification risk ${risk.id} references unknown or optional evidence ${evidenceId}.`);
+    }
+  }
   if (input.verificationContract?.enforcementMode === "ENFORCED") {
     if (!input.changeBudget) issues.push("An enforced verification contract requires a change budget.");
     if (input.verificationContract.requireHumanReview && !(input.requiredApprovals ?? []).length) {
@@ -42,6 +54,9 @@ export function validateWorkOrderSpecification(input: any) {
       if (!checks.some((check: any) => check.mandatory && check.acceptanceCriterionIds?.includes(criterion.id))) {
         issues.push(`Acceptance criterion ${criterion.id} is not mapped to a mandatory verification check.`);
       }
+    }
+    if (input.verificationContract.schemaVersion === 2 && input.verificationContract.independence?.required !== true) {
+      issues.push("An enforced policy-v2 verification contract requires separate-Attempt independence.");
     }
   }
   if (input.changeBudget) {

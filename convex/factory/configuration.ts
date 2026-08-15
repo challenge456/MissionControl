@@ -25,6 +25,7 @@ const recovery = v.object({
   resume: v.boolean(),
 });
 const riskBoundary = v.union(v.literal("GREEN"), v.literal("YELLOW"), v.literal("RED"));
+const factoryPurpose = v.union(v.literal("SOFTWARE"), v.literal("VERIFICATION"), v.literal("INTELLIGENT_AUTOMATION"));
 
 export const list = query({
   args: { projectId: v.id("projects") },
@@ -185,7 +186,7 @@ export const getActiveForWorkOrder = query({
 });
 
 export const create = mutation({
-  args: { repositoryId: v.id("workspaceRepositories"), name: v.string() },
+  args: { repositoryId: v.id("workspaceRepositories"), name: v.string(), purpose: v.optional(factoryPurpose) },
   handler: async (ctx, args) => {
     const repository = await ctx.db.get(args.repositoryId);
     if (!repository) throw new Error("Repository connection is unavailable or unauthorized.");
@@ -194,16 +195,18 @@ export const create = mutation({
       repository.projectId,
       FACTORY_PERMISSIONS.MANAGE_AUTOMATION
     );
-    const existing = await ctx.db.query("factoryDefinitions")
+    const purpose = args.purpose ?? "SOFTWARE";
+    const existingDefinitions = await ctx.db.query("factoryDefinitions")
       .withIndex("by_repository", (q) => q.eq("repositoryId", repository._id))
-      .filter((q) => q.neq(q.field("status"), "ARCHIVED"))
-      .first();
+      .collect();
+    const existing = existingDefinitions.find((definition) => definition.status !== "ARCHIVED" && (definition.purpose ?? "SOFTWARE") === purpose);
     if (existing) return existing._id;
     const now = Date.now();
     return await ctx.db.insert("factoryDefinitions", {
       tenantId: repository.tenantId,
       projectId: repository.projectId,
       repositoryId: repository._id,
+      purpose,
       name: args.name.trim() || `${repository.displayName} Factory`,
       status: "DRAFT",
       latestVersion: 0,
@@ -289,6 +292,7 @@ export const createVersion = mutation({
     }
 
     const configuration: FactoryConfigurationInput = {
+      purpose: definition.purpose ?? "SOFTWARE",
       repositoryId: String(repository._id),
       workflowId: String(workflow._id),
       executor: args.executor,
@@ -318,6 +322,7 @@ export const createVersion = mutation({
       version,
       configurationDigest,
       repositoryId: repository._id,
+      purpose: definition.purpose ?? "SOFTWARE",
       workflowId: workflow._id,
       executor: args.executor,
       codeScopeIds: args.codeScopeIds,

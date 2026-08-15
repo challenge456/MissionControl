@@ -22,7 +22,7 @@ import {
   type PrCheckSignals,
 } from "../lib/harnessPrChecks";
 import { computeMergeGates } from "../lib/mergeGates";
-import { fetchPullRequestCi } from "../lib/githubCiIngest";
+import { fetchPullRequestCi, githubPrAttestationExpiresAt } from "../lib/githubCiIngest";
 import { mintGithubInstallationToken } from "../lib/githubAppAuth";
 import { buildFileChanges } from "../lib/runInspector";
 import { mergeAuthoritySatisfied } from "../lib/prEvaluation";
@@ -861,6 +861,8 @@ async function ingestPullRequestEvidence(
       internal.factory.githubCi.applyCiIngest,
       {
       projectId: lineage.projectId,
+      repositoryId: binding.repositoryId,
+      installationId: binding.installationId,
       workOrderId: lineage.workOrderId,
       workflowRunId: lineage.workflowRunId,
       taskId: lineage.taskId,
@@ -883,6 +885,11 @@ async function ingestPullRequestEvidence(
       signals: payload.signals,
       sourceRef: payload.headSha,
       sourceEventId: args.sourceEventId,
+      provider: "GITHUB",
+      providerRepositoryId: binding.providerRepositoryId,
+      providerPullRequestId: payload.providerPullRequestId,
+      draft: payload.draft,
+      attestationExpiresAt: githubPrAttestationExpiresAt(Date.now()),
       }
     );
 
