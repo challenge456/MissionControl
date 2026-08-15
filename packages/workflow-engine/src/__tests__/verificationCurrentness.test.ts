@@ -1,17 +1,33 @@
 import { describe, expect, it } from "vitest";
 import { evaluateCurrentVerificationEligibility } from "../verificationCurrentness.js";
 import { verificationContractDigest } from "../verificationIdentity.js";
-import { createAutomationVerificationSubject, createGitVerificationSubject, type VerificationSubject } from "../verificationSubject.js";
+import {
+  createAutomationVerificationSubject,
+  createGitVerificationSubject,
+  type GitVerificationSubject,
+  type VerificationSubject,
+} from "../verificationSubject.js";
 
 const now = 10_000;
-const contractDigest = verificationContractDigest({ schemaVersion: 2, checks: ["api"] });
+const qualityContractDigest = `sha256:${"9".repeat(64)}`;
+const contractDigest = verificationContractDigest(
+  { schemaVersion: 2, checks: ["api"] },
+  qualityContractDigest,
+);
+const planDigest = `sha256:${"e".repeat(64)}`;
+const decisionInputDigest = `sha256:${"f".repeat(64)}`;
 
-function gitSubject(sourceAttemptId = "source-a", candidateSha = "a".repeat(40)) {
+function gitSubject(
+  sourceAttemptId = "source-a",
+  candidateSha = "a".repeat(40),
+  pullRequestOverrides: Partial<GitVerificationSubject["pullRequest"]> = {},
+) {
   return createGitVerificationSubject({
     version: 1,
     kind: "GIT_CANDIDATE",
     workOrderId: "wo-1",
     workOrderRevisionNumber: 1,
+    qualityContractDigest,
     verificationContractDigest: contractDigest,
     sourceAttemptId,
     repositoryId: "repo-1",
@@ -27,6 +43,7 @@ function gitSubject(sourceAttemptId = "source-a", candidateSha = "a".repeat(40))
       headRef: "candidate",
       headSha: candidateSha,
       draftAtPublication: true,
+      ...pullRequestOverrides,
     },
   });
 }
@@ -49,9 +66,17 @@ function fixture(subject: VerificationSubject = gitSubject(), sourceReadyAt = 10
       attemptPurpose: subject.kind === "AUTOMATION_RUN" ? "AUTOMATION" as const : "IMPLEMENTATION" as const,
       status: "COMPLETED",
       candidateReadyAt: sourceReadyAt,
+      qualityContractDigest,
       verificationSubject: subject,
     }],
-    verificationAttempts: [{ id: "verify-a", attemptPurpose: "VERIFICATION" as const, status: "COMPLETED", createdAt: 200, verificationAttemptBinding: tuple }],
+    verificationAttempts: [{
+      id: "verify-a",
+      attemptPurpose: "VERIFICATION" as const,
+      status: "COMPLETED",
+      createdAt: 200,
+      qualityContractDigest,
+      verificationAttemptBinding: tuple,
+    }],
     verificationResults: [{
       id: "result-a",
       workflowRunId: "verify-a",
@@ -60,7 +85,8 @@ function fixture(subject: VerificationSubject = gitSubject(), sourceReadyAt = 10
       verdict: "VERIFIED" as const,
       independenceValid: true,
       verificationPlanId: "plan-a",
-      verificationPlanDigest: `sha256:${"e".repeat(64)}`,
+      verificationPlanDigest: planDigest,
+      decisionInputDigest,
       createdAt: 300,
       completedAt: 301,
     }],
@@ -69,17 +95,33 @@ function fixture(subject: VerificationSubject = gitSubject(), sourceReadyAt = 10
       verificationRunId: "result-a",
       verificationAttemptId: "verify-a",
       verificationPlanId: "plan-a",
-      verificationPlanDigest: `sha256:${"e".repeat(64)}`,
+      verificationPlanDigest: planDigest,
       verificationSubjectId: subject.subjectId,
+      evidenceEnvelopeIds: ["evidence-a"],
       ...tuple,
       status: "PASSED" as const,
       verdict: "VERIFIED" as const,
       independenceValid: true,
+      decisionInputDigest,
       recordedAt: 400,
       validUntil: now + 1,
     }],
+    verificationEvidence: [{
+      id: "evidence-a",
+      workflowRunId: "verify-a",
+      verificationRunId: "result-a",
+      verificationAttemptId: "verify-a",
+      verificationSubjectId: subject.subjectId,
+      verificationPlanId: "plan-a",
+      verificationPlanDigest: planDigest,
+      ...tuple,
+      recordedAt: 350,
+    }],
     providerHeads: subject.kind === "GIT_CANDIDATE" ? [{
       provider: "GITHUB" as const,
+      repositoryId: subject.repositoryId,
+      installationId: "installation-1",
+      sourceAttemptId: subject.sourceAttemptId,
       providerRepositoryId: subject.providerRepositoryId,
       providerPullRequestId: subject.pullRequest.providerPullRequestId,
       pullRequestNumber: subject.pullRequest.number,
@@ -97,7 +139,7 @@ function fixture(subject: VerificationSubject = gitSubject(), sourceReadyAt = 10
 describe("exact-current verification acceptance eligibility", () => {
   it("allows only the exact current software tuple with GitHub PR lineage", () => {
     const result = evaluateCurrentVerificationEligibility(fixture());
-    expect(result).toMatchObject({ eligible: true, current: true, sourceAttemptId: "source-a", verificationAttemptId: "verify-a" });
+    expect(result, result.reasons.join(" ")).toMatchObject({ eligible: true, current: true, sourceAttemptId: "source-a", verificationAttemptId: "verify-a" });
   });
 
   it("requires an exact source repository and an expiring trusted GitHub projection", () => {
@@ -112,6 +154,52 @@ describe("exact-current verification acceptance eligibility", () => {
     });
     expect(wrongRepository.eligible).toBe(false);
     expect(noProjectionTtl.eligible).toBe(false);
+  });
+
+  it("does not treat mutable draft readiness as candidate identity", () => {
+    const data = fixture();
+    data.providerHeads[0].draft = false;
+    const result = evaluateCurrentVerificationEligibility(data);
+    expect(result.eligible, result.reasons.join(" ")).toBe(true);
+  });
+
+
+  it("requires the trusted App projection to carry exact repository and source-Attempt lineage", () => {
+    const data = fixture();
+    const wrongRepository = evaluateCurrentVerificationEligibility({
+      ...data,
+      providerHeads: data.providerHeads.map((projection) => ({ ...projection, repositoryId: "repo-other" })),
+    });
+    const wrongAttempt = evaluateCurrentVerificationEligibility({
+      ...data,
+      providerHeads: data.providerHeads.map((projection) => ({ ...projection, sourceAttemptId: "source-other" })),
+    });
+    expect(wrongRepository.eligible).toBe(false);
+    expect(wrongAttempt.eligible).toBe(false);
+  });
+
+  it("fails closed when Quality Contract, decision input, or evidence lineage is substituted", () => {
+    const data = fixture();
+    const wrongQualityContract = evaluateCurrentVerificationEligibility({
+      ...data,
+      qualityContractDigest: `sha256:${"1".repeat(64)}`,
+    });
+    const wrongDecisionInput = evaluateCurrentVerificationEligibility({
+      ...data,
+      verificationReceipts: data.verificationReceipts.map((receipt) => ({
+        ...receipt,
+        decisionInputDigest: `sha256:${"2".repeat(64)}`,
+      })),
+    const wrongEvidence = evaluateCurrentVerificationEligibility({
+      ...data,
+      verificationEvidence: data.verificationEvidence.map((evidence) => ({
+        ...evidence,
+        sourceAttemptId: "source-other",
+      })),
+    });
+    expect(wrongQualityContract.eligible).toBe(false);
+    expect(wrongDecisionInput.eligible).toBe(false);
+    expect(wrongEvidence.eligible).toBe(false);
   });
 
   it("keeps a historical pass but makes it ineligible after WorkOrder revision or contract change", () => {

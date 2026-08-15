@@ -1,10 +1,11 @@
 ---
 title: V1 Verification Profile
-status: PROPOSED_FOR_ACCEPTANCE
+status: ACCEPTED
 last_verified: 2026-08-11
 baseline_commit: 2b1a7c4
 profile_id: mission-control-v1-verified-pr
 profile_version: 1
+accepted_on: 2026-08-12
 ---
 
 # V1 Verification Profile

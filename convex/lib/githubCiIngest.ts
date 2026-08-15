@@ -11,9 +11,11 @@ export interface GithubCheckRun {
 export interface GithubCiPayload {
   prUrl: string;
   prNumber: number;
+  providerPullRequestId: string;
   repoFullName: string;
   branch?: string;
   title?: string;
+  draft: boolean;
   prState: "OPEN" | "CLOSED" | "MERGED";
   mergeActor?: string;
   mergedAt?: number;
@@ -46,6 +48,22 @@ export interface GithubPullRequestLineage {
   workOrderId: string;
   workflowRunId: string;
   taskId: string;
+}
+
+export interface CandidateBoundVerificationReceipt {
+  status: string;
+  candidateRevision?: string;
+}
+
+export function verificationReceiptsInvalidatedByPrHead<
+  T extends CandidateBoundVerificationReceipt,
+>(receipts: T[], observedHeadSha: string): T[] {
+  return receipts.filter(
+    (receipt) =>
+      receipt.status !== "STALE"
+      && Boolean(receipt.candidateRevision)
+      && receipt.candidateRevision !== observedHeadSha,
+  );
 }
 
 export function canonicalGithubPullRequestUrl(owner: string, repo: string, prNumber: number) {
@@ -87,6 +105,11 @@ export function parseMissionControlPullRequestLineage(
 }
 
 const GITHUB_REQUEST_TIMEOUT_MS = 15_000;
+export const GITHUB_PR_ATTESTATION_TTL_MS = 15 * 60_000;
+
+export function githubPrAttestationExpiresAt(now: number): number {
+  return now + GITHUB_PR_ATTESTATION_TTL_MS;
+}
 
 async function fetchFromGitHub(
   url: string,
@@ -177,8 +200,10 @@ export async function fetchPullRequestCi(
     throw new Error(`GitHub PR lookup failed (${prRes.status})`);
   }
   const pr = (await prRes.json()) as {
+    id?: number;
     title?: string;
     body?: string | null;
+    draft?: boolean;
     state?: "open" | "closed";
     merged?: boolean;
     merged_at?: string | null;
@@ -191,6 +216,9 @@ export async function fetchPullRequestCi(
   const headSha = pr.head?.sha;
   if (!headSha) {
     throw new Error("PR head SHA missing");
+  }
+  if (!Number.isSafeInteger(pr.id) || Number(pr.id) < 1) {
+    throw new Error("PR provider identity missing");
   }
 
   const checksRes = await fetchFromGitHub(
@@ -236,9 +264,11 @@ export async function fetchPullRequestCi(
   return {
     prUrl,
     prNumber,
+    providerPullRequestId: String(pr.id),
     repoFullName: `${owner}/${repo}`,
     branch: pr.head?.ref,
     title: pr.title,
+    draft: pr.draft === true,
     prState: pr.merged ? "MERGED" : pr.state === "open" ? "OPEN" : "CLOSED",
     ...mergeEvidence,
     headSha,

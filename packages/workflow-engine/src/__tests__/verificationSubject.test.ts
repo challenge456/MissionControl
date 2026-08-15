@@ -46,20 +46,31 @@ describe("Verification Subject identity", () => {
     expect(verificationSha256Hex("abc")).toBe("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
   });
 
+  it("binds the verification contract to approved Plan quality lineage", () => {
+    const contract = { schemaVersion: 2, checks: ["unit"] };
+    expect(verificationContractDigest(contract, `sha256:${"a".repeat(64)}`))
+      .not.toBe(verificationContractDigest(contract, `sha256:${"b".repeat(64)}`));
+    expect(verificationContractDigest(contract))
+      .toBe(verificationContractDigest(contract));
+  });
+
   it("binds exact Git commit, tree, WorkOrder, contract, source Attempt, repository, and PR identity", () => {
     const first = gitSubject();
-    const repeat = gitSubject({ pullRequest: { ...gitSubject().pullRequest, url: "https://github.com/example/repo/pull/91?display=files" } });
+    const changedUrl = gitSubject({ pullRequest: { ...gitSubject().pullRequest, url: "https://github.com/example/repo/pull/91?display=files" } });
+    const changedNumber = gitSubject({ pullRequest: { ...gitSubject().pullRequest, number: 92 } });
     const changedCandidate = gitSubject({
       candidateSha: SHA_B,
       pullRequest: { ...gitSubject().pullRequest, headSha: SHA_B },
     });
     expect(first.digest).toMatch(/^sha256:[0-9a-f]{64}$/);
-    expect(repeat.digest).toBe(first.digest);
+    expect(changedUrl.digest).toBe(first.digest);
+    expect(changedNumber.digest).not.toBe(first.digest);
     expect(changedCandidate.digest).not.toBe(first.digest);
   });
 
   it("rejects mutable or mismatched GitHub PR lineage", () => {
-    expect(() => gitSubject({ pullRequest: { ...gitSubject().pullRequest, draftAtPublication: false } })).toThrow(/draft pull request/);
+    expect(gitSubject({ pullRequest: { ...gitSubject().pullRequest, draftAtPublication: false } }).digest)
+      .toBe(gitSubject().digest);
     expect(() => gitSubject({ pullRequest: { ...gitSubject().pullRequest, headSha: SHA_B } })).toThrow(/matching pull-request head/);
   });
 

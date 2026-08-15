@@ -6,6 +6,7 @@ import {
   isSupportedPullRequestWebhookAction,
   mapCheckRunsToSignals,
   parseMissionControlPullRequestLineage,
+  verificationReceiptsInvalidatedByPrHead,
   verifyGithubWebhookSignature,
 } from "../lib/githubCiIngest";
 import { buildFileTreeFromPaths } from "../lib/fileTree";
@@ -113,6 +114,24 @@ describe("githubCiIngest", () => {
       merged_at: "2026-08-11T20:15:30Z",
       merge_commit_sha: "b".repeat(40),
     })).toEqual({});
+  });
+
+  it("invalidates only non-stale verification receipts bound to another PR head", () => {
+    const receipts = [
+      { id: "matching", status: "PASSED", candidateRevision: "head-current" },
+      { id: "mismatched", status: "PASSED", candidateRevision: "head-prior" },
+      { id: "historical", status: "STALE", candidateRevision: "head-oldest" },
+      { id: "unbound", status: "PASSED" },
+    ];
+
+    expect(
+      verificationReceiptsInvalidatedByPrHead(receipts, "head-current"),
+    ).toEqual([receipts[1]]);
+    expect(receipts[2]).toEqual({
+      id: "historical",
+      status: "STALE",
+      candidateRevision: "head-oldest",
+    });
   });
 });
 

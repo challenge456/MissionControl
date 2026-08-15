@@ -1,15 +1,16 @@
 ---
 title: Verification-First Architecture Decisions
-status: PROPOSED_FOR_ACCEPTANCE
+status: ACCEPTED
 date: 2026-08-11
 baseline_commit: 2b1a7c4
+accepted_on: 2026-08-12
 ---
 
 # Verification-First Architecture Decisions
 
-This ADR set records the decisions that future verification work must preserve.
-P0 implementation already embodies several decisions; acceptance makes their
-ownership explicit and identifies the remaining target boundary.
+This ADR set records the accepted decisions that verification work must
+preserve. P0 implementation already embodies several decisions; acceptance
+makes their ownership explicit and identifies the remaining target boundary.
 
 ## VF-001 — Preserve the authoritative delivery hierarchy
 
@@ -26,22 +27,30 @@ and execution try; they never replace either.
 ## VF-002 — Treat the approved Plan as top-level quality authority
 
 **Decision:** The approved Plan revision and validation assertions are the
-human-owned source for a future canonical Quality Contract. WorkOrder
-requirements, constraints, Change Budget, and verifier requirements are scoped
-projections.
+human-owned Quality Contract. The control plane compiles a versioned,
+canonically digested projection from that Plan and freezes the applicable
+requirements, constraints, Change Budget, and verifier requirements into each
+WorkOrder. The execution manifest binds that digest to the selected Factory,
+policy, repository, and runtime authority.
 
-**Current state:** P0 freezes the WorkOrder specification into the execution
-manifest. Compilation of a separate Plan-level Quality Contract digest remains
-future work.
+**Current state:** Plan approval compiles and persists the canonical projection
+and digest on the immutable Plan revision. Released WorkOrders inherit the
+digest, and dispatch freezes it into the execution manifest with the selected
+Factory, policy, repository, and runtime authority.
 
-**Rejected:** Allowing each WorkOrder or executor to redefine “done.”
+**Rejected:** A separate Quality Contract aggregate with an independent
+lifecycle. It would create a second source of quality authority and require
+additional reconciliation with the approved Plan. Also rejected: allowing each
+WorkOrder or executor to redefine “done.”
 
 ## VF-003 — Separate observations from decisions
 
 **Decision:** `evidenceEnvelopes` and criterion receipts preserve observations.
 `verificationRuns` group applied methods. A server-owned WorkOrder receipt
-records the P0 verdict. The future cross-policy Quality Gate Decision must be a
-distinct explainable decision rather than a mutable property of evidence.
+records the V1 verdict. A distinct append-only `qualityGateDecisions` record
+binds the subject and evidence-set digests to an explainable decision. Broader
+cross-policy aggregation remains an explicit evolution of that record rather
+than a mutable property of evidence.
 
 **Reason:** A valid observation can be stale, contradicted, out of scope, or
 insufficient under current policy.

@@ -1,9 +1,10 @@
 ---
 title: Verification-First Software Factory Completion Plan
-status: PROPOSED
+status: ACCEPTED_IN_PROGRESS
 date: 2026-08-11
 baseline_commit: 2b1a7c4
 owner: Mission Control Engineering
+accepted_on: 2026-08-12
 ---
 
 # Verification-First Software Factory Completion Plan

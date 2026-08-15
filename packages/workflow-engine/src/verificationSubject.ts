@@ -32,7 +32,7 @@ export type GitVerificationSubject = SubjectIdentity & {
     baseRef: string;
     headRef: string;
     headSha: string;
-    draftAtPublication: true;
+    draftAtPublication: boolean;
   };
 };
 
@@ -69,8 +69,8 @@ export function createGitVerificationSubject(input: GitSubjectInput): GitVerific
   if (!SHA.test(input.candidateSha) || !SHA.test(input.treeSha) || input.pullRequest.headSha !== input.candidateSha) {
     throw new Error("Git verification subject requires exact lowercase commit/tree SHA lineage and a matching pull-request head.");
   }
-  if (!Number.isSafeInteger(input.pullRequest.number) || input.pullRequest.number < 1 || input.pullRequest.draftAtPublication !== true) {
-    throw new Error("Git verification subject requires an exact draft pull request.");
+  if (!Number.isSafeInteger(input.pullRequest.number) || input.pullRequest.number < 1) {
+    throw new Error("Git verification subject requires an exact pull request identity.");
   }
   const digest = verificationDigest("verification-subject/git/v1", {
     version: input.version,
@@ -83,10 +83,23 @@ export function createGitVerificationSubject(input: GitSubjectInput): GitVerific
     provider: input.provider,
     providerRepositoryId: input.providerRepositoryId,
     providerPullRequestId: input.pullRequest.providerPullRequestId,
+    providerPullRequestNumber: input.pullRequest.number,
     candidateSha: input.candidateSha,
     treeSha: input.treeSha,
   });
   return { ...input, subjectId: `verification-subject:${digest.slice("sha256:".length)}`, digest };
+}
+
+export function verifyVerificationSubjectIdentity(subject: VerificationSubject): boolean {
+  const { subjectId, digest, ...input } = subject;
+  try {
+    const rebuilt = input.kind === "GIT_CANDIDATE"
+      ? createGitVerificationSubject(input)
+      : createAutomationVerificationSubject(input);
+    return rebuilt.subjectId === subjectId && rebuilt.digest === digest;
+  } catch {
+    return false;
+  }
 }
 
 export function createAutomationVerificationSubject(input: AutomationSubjectInput): AutomationVerificationSubject {

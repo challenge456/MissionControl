@@ -1382,6 +1382,8 @@ export default defineSchema({
     releasedAt: v.optional(v.number()),
     releasedWorkOrderIds: v.optional(v.array(v.id("workOrders"))),
     materializationVersion: v.optional(v.number()),
+    qualityContractProjection: v.optional(v.any()),
+    qualityContractDigest: v.optional(v.string()),
     assertions: v.optional(v.array(v.object({
       assertionId: v.string(),
       title: v.string(),
@@ -1499,6 +1501,8 @@ export default defineSchema({
     projectId: v.optional(v.id("projects")),
     missionId: v.optional(v.id("missions")),
     missionPlanId: v.optional(v.id("missionPlans")),
+    missionPlanRevision: v.optional(v.number()),
+    qualityContractDigest: v.optional(v.string()),
     missionSequence: v.optional(v.number()),
     missionRole: v.optional(v.union(v.literal("WORKER"), v.literal("VALIDATOR"))),
     isMutating: v.optional(v.boolean()),
@@ -1800,6 +1804,7 @@ export default defineSchema({
     verificationContractDigest: v.optional(v.string()),
     verificationPlanId: v.optional(v.string()),
     verificationPlanDigest: v.optional(v.string()),
+    workOrderRevisionNumber: v.optional(v.number()),
     idempotencyKey: v.optional(v.string()),
     verificationMethod: v.optional(v.union(
       v.literal("MANUAL"),
@@ -1832,7 +1837,6 @@ export default defineSchema({
     riskReasons: v.optional(v.array(v.string())),
     sourceRevision: v.optional(v.string()),
     candidateRevision: v.optional(v.string()),
-    workOrderRevisionNumber: v.optional(v.number()),
     validUntil: v.optional(v.number()),
     invalidatedAt: v.optional(v.number()),
     invalidatedByRevisionId: v.optional(v.id("workOrderRevisions")),
@@ -1965,6 +1969,54 @@ export default defineSchema({
     .index("by_work_order", ["workOrderId"])
     .index("by_run", ["workflowRunId"])
     .index("by_work_order_criterion", ["workOrderId", "primaryCriterionId"])
+    .index("by_idempotency", ["idempotencyKey"]),
+
+  qualityGateDecisions: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.optional(v.id("projects")),
+    missionId: v.optional(v.id("missions")),
+    workOrderId: v.id("workOrders"),
+    workflowRunId: v.optional(v.id("workflowRuns")),
+    verificationRunId: v.optional(v.id("verificationRuns")),
+    verificationReceiptId: v.optional(v.id("verificationReceipts")),
+    idempotencyKey: v.string(),
+    workOrderRevisionNumber: v.number(),
+    candidateRevision: v.optional(v.string()),
+    subjectDigest: v.optional(v.string()),
+    verificationContractDigest: v.optional(v.string()),
+    verificationSubjectDigest: v.optional(v.string()),
+    sourceAttemptId: v.optional(v.id("workflowRuns")),
+    verificationAttemptId: v.optional(v.id("workflowRuns")),
+    verificationPlanDigest: v.optional(v.string()),
+    qualityContractDigest: v.optional(v.string()),
+    executionManifestDigest: v.optional(v.string()),
+    evidenceSetDigest: v.optional(v.string()),
+    decisionInputDigest: v.optional(v.string()),
+    governancePolicyId: v.optional(v.id("governancePolicies")),
+    state: v.union(
+      v.literal("ELIGIBLE"),
+      v.literal("INELIGIBLE"),
+      v.literal("UNKNOWN"),
+      v.literal("STALE"),
+      v.literal("WAIVER_REQUIRED"),
+      v.literal("AWAITING_HUMAN"),
+    ),
+    mode: v.union(
+      v.literal("OBSERVE_ONLY"),
+      v.literal("SHADOW"),
+      v.literal("ENFORCED"),
+      v.literal("EMERGENCY_BYPASS"),
+    ),
+    reasons: v.array(v.string()),
+    blockingFindingIds: v.array(v.string()),
+    requiredApprovalIds: v.array(v.id("approvalDecisions")),
+    evaluatedAt: v.number(),
+    metadata: v.optional(v.any()),
+  })
+    .index("by_work_order", ["workOrderId"])
+    .index("by_work_order_evaluated", ["workOrderId", "evaluatedAt"])
+    .index("by_run", ["workflowRunId"])
+    .index("by_verification_run", ["verificationRunId"])
     .index("by_idempotency", ["idempotencyKey"]),
 
   runEvents: defineTable({
@@ -3855,6 +3907,7 @@ export default defineSchema({
     factoryPurpose: v.optional(factoryPurposeValidator),
     attemptPurpose: v.optional(attemptPurposeValidator),
     executorInvocationId: v.optional(v.string()),
+    qualityContractDigest: v.optional(v.string()),
     repositoryId: v.optional(v.id("workspaceRepositories")),
     hostBindingId: v.optional(v.id("workspaceHostBindings")),
     policyEnvelopeId: v.optional(v.id("policyEnvelopes")),
@@ -5869,6 +5922,8 @@ export default defineSchema({
   // -------------------------------------------------------------------------
   harnessPrChecks: defineTable({
     projectId: v.optional(v.id("projects")),
+    repositoryId: v.optional(v.id("workspaceRepositories")),
+    installationId: v.optional(v.string()),
     workOrderId: v.optional(v.id("workOrders")),
     workflowRunId: v.optional(v.id("workflowRuns")),
     taskId: v.optional(v.id("tasks")),

@@ -6,6 +6,7 @@ const input: FactoryExecutionManifestInput = {
   missionId: "mission-1",
   missionPlanId: "plan-1",
   missionPlanVersion: 2,
+  qualityContractDigest: "sha256:quality-contract",
   workOrderId: "work-order-1",
   workOrderRevisionNumber: 3,
   taskId: "task-1",
@@ -52,7 +53,11 @@ describe("Factory execution manifest", () => {
   it("freezes causation, agent, model, harness, prompt, and path authority", () => {
     const result = buildFactoryExecutionManifest(input);
     expect(result.digest).toMatch(/^sha256:[a-f0-9]{64}$/);
-    expect(result.manifest.causation).toMatchObject({ missionId: "mission-1", taskId: "task-1" });
+    expect(result.manifest.causation).toMatchObject({
+      missionId: "mission-1",
+      taskId: "task-1",
+      qualityContractDigest: "sha256:quality-contract",
+    });
     expect(result.manifest.workflow.steps[0]).toMatchObject({
       agentVersionId: "agent-version-1",
       promptBundleHash: "prompt-1",

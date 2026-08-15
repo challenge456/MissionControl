@@ -118,6 +118,7 @@ export {
 
 export {
   canonicalVerificationJson,
+  qualityGateEvidenceSetDigest,
   verificationContractDigest,
   verificationDigest,
   verificationSha256Hex,
@@ -129,6 +130,7 @@ export {
   normalizeAttemptPurpose,
   normalizeFactoryPurpose,
   normalizeWorkOrderKind,
+  verifyVerificationSubjectIdentity,
   type AttemptPurpose,
   type AutomationVerificationSubject,
   type FactoryPurpose,
@@ -177,4 +179,5 @@ export {
   type GitProviderHeadProjection,
   type StoredVerificationReceipt,
   type StoredVerificationResult,
+  type StoredVerificationEvidence,
 } from "./verificationCurrentness.js";

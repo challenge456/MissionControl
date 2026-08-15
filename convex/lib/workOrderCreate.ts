@@ -44,12 +44,13 @@ export async function createWorkOrderRecord(ctx: any, args: any) {
   const project = args.projectId ? await ctx.db.get(args.projectId) : null;
   let mission: any = null;
   let missionBlueprint: any = null;
+  let missionPlan: any = null;
   if (args.missionId) {
     mission = await ctx.db.get(args.missionId);
     if (!mission) throw new Error("Mission not found");
     if (mission.projectId !== args.projectId) throw new Error("Mission and WorkOrder project scopes must match");
     if (!args.missionPlanId || !args.missionBlueprintId) throw new Error("Mission WorkOrders require an approved plan and blueprint");
-    const missionPlan = await ctx.db.get(args.missionPlanId);
+    missionPlan = await ctx.db.get(args.missionPlanId);
     if (!missionPlan || missionPlan.missionId !== mission._id || mission.currentPlanId !== missionPlan._id || missionPlan.status !== "APPROVED") {
       throw new Error("Mission WorkOrder must use the current approved plan");
     }
@@ -66,8 +67,9 @@ export async function createWorkOrderRecord(ctx: any, args: any) {
   const now = Date.now();
   const specification = validateWorkOrderSpecification(args);
   if (!specification.valid) throw new Error(`WorkOrder specification is invalid (${specification.issues.join("; ")})`);
+  const qualityContractDigest = args.qualityContractDigest ?? missionPlan?.qualityContractDigest;
   const contractDigest = args.verificationContract?.schemaVersion === 2
-    ? verificationContractDigest(args.verificationContract)
+    ? verificationContractDigest(args.verificationContract, qualityContractDigest)
     : undefined;
   const riskAssessment = classifyWorkOrderRisk(args);
   const riskLevel = riskAssessment.riskLevel;
@@ -118,6 +120,8 @@ export async function createWorkOrderRecord(ctx: any, args: any) {
     projectId: args.projectId,
     missionId: args.missionId,
     missionPlanId: args.missionPlanId,
+    missionPlanRevision: args.missionPlanRevision ?? missionPlan?.revisionNumber,
+    qualityContractDigest,
     missionSequence: missionBlueprint?.sequence,
     missionRole: args.missionId ? (args.missionRole ?? "WORKER") : undefined,
     isMutating: args.missionId ? missionBlueprint?.isMutating : args.isMutating,
@@ -256,6 +260,7 @@ export async function createWorkOrderRecord(ctx: any, args: any) {
       riskLevel,
       riskReasons: riskAssessment.riskReasons,
       changeBudgetAssigned: Boolean(args.changeBudget),
+      qualityContractDigest,
     },
   });
 

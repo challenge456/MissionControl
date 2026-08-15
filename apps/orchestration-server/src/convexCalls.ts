@@ -39,6 +39,8 @@ export const ConvexQueries = {
 
 export const ConvexActions = {
   serviceCommands: {
+    bindGithubInstallation: "serviceCommands:bindGithubInstallation",
+    ingestGithubPrEvidence: "serviceCommands:ingestGithubPrEvidence",
     dispatchWorkOrder: "serviceCommands:dispatchWorkOrder",
     ingestReceiptPacket: "serviceCommands:ingestReceiptPacket",
     claimFactoryAttempt: "serviceCommands:claimFactoryAttempt",

@@ -116,6 +116,57 @@ export const verifyInstallation = action({
   },
 });
 
+export const bindExistingInstallation = action({
+  args: {
+    repositoryId: v.id("workspaceRepositories"),
+    installationId: v.string(),
+  },
+  handler: async (ctx, args): Promise<
+    | { ok: true }
+    | { ok: false; code: "NOT_CONFIGURED" | "VERIFICATION_FAILED" }
+  > => {
+    const repository = await ctx.runQuery(internal.githubAppConnections.getRepositoryForSetup, {
+      repositoryId: args.repositoryId,
+    });
+    await ctx.runQuery(internal.companyContext.authorizeFactoryAction, {
+      projectId: repository.projectId,
+      permission: FACTORY_PERMISSIONS.MANAGE_AUTOMATION,
+    });
+    const appId = process.env.GITHUB_APP_ID;
+    const privateKey = process.env.GITHUB_APP_PRIVATE_KEY;
+    if (!appId || !privateKey) return { ok: false, code: "NOT_CONFIGURED" };
+    const installationId = args.installationId.trim();
+    if (!/^\d+$/.test(installationId)) return { ok: false, code: "VERIFICATION_FAILED" };
+
+    try {
+      const verified = await verifyGithubInstallationAccess({
+        installationId,
+        repository: repository.repository,
+        appId,
+        privateKey,
+      });
+      await ctx.runMutation(internal.githubAppConnections.upsertInstallation, {
+        repositoryId: repository._id,
+        providerRepositoryId: verified.providerRepositoryId,
+        installationId: verified.installationId,
+        appId,
+        accountLogin: verified.accountLogin,
+        accountType: verified.accountType,
+        repositorySelection: verified.repositorySelection,
+        permissions: verified.permissions,
+        subscribedEvents: verified.subscribedEvents,
+        status: "CONNECTED",
+        installedAt: verified.installedAt,
+        verifiedAt: verified.verifiedAt,
+        lastTokenIssuedAt: verified.lastTokenIssuedAt,
+      });
+      return { ok: true };
+    } catch {
+      return { ok: false, code: "VERIFICATION_FAILED" };
+    }
+  },
+});
+
 export const createSetupSession = internalMutation({
   args: {
     repositoryId: v.id("workspaceRepositories"),

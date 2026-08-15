@@ -1,8 +1,9 @@
 ---
 title: Verification and Gate State Machines
-status: PROPOSED_NORMATIVE
+status: ACCEPTED_NORMATIVE
 last_verified: 2026-08-11
 baseline_commit: 2b1a7c4
+accepted_on: 2026-08-12
 ---
 
 # Verification and Gate State Machines
@@ -20,21 +21,24 @@ WorkOrder accepted != pull request merged
 pull request merged != production verified
 ```
 
-## Quality Contract — target
+## Quality Contract projection — implemented lifecycle
 
 ```mermaid
 stateDiagram-v2
-  [*] --> DRAFT
-  DRAFT --> IN_REVIEW
-  IN_REVIEW --> ACTIVE: approved
-  IN_REVIEW --> DRAFT: revision requested
-  ACTIVE --> SUPERSEDED: replacement activated
-  ACTIVE --> WITHDRAWN: authority withdraws
-  ACTIVE --> EXPIRED: validity ends
+  [*] --> PLAN_DRAFT
+  PLAN_DRAFT --> PLAN_IN_REVIEW
+  PLAN_IN_REVIEW --> PLAN_APPROVED: approve exact revision
+  PLAN_IN_REVIEW --> PLAN_DRAFT: revision requested
+  PLAN_APPROVED --> PROJECTION_COMPILED: canonical compilation
+  PROJECTION_COMPILED --> PROJECTION_SUPERSEDED: new Plan approved
+  PROJECTION_COMPILED --> PROJECTION_WITHDRAWN: Plan authority withdrawn
+  PROJECTION_COMPILED --> PROJECTION_EXPIRED: validity ends
 ```
 
-Only an active contract may compile an enforced WorkOrder projection. Editing
-an active contract is prohibited; create a new revision.
+Only an approved Plan and its matching compiled projection may create an
+enforced WorkOrder projection. The compiled Quality Contract has no independent
+editable lifecycle. Change the Plan through a new revision, approve it, and
+compile a new digest.
 
 ## WorkflowRun/Attempt — implemented mapping
 
@@ -107,7 +111,7 @@ stateDiagram-v2
 Stale, superseded, revoked, rejected, and conflicted evidence remains visible.
 State changes append reason, actor, time, and triggering record.
 
-## Quality Gate Decision — target
+## Quality Gate Decision — V1 implemented, target evolution
 
 ```mermaid
 stateDiagram-v2
@@ -123,7 +127,9 @@ stateDiagram-v2
   ELIGIBLE --> INELIGIBLE: revocation or counterevidence
 ```
 
-Every evaluation creates or supersedes a decision. Policy modes are
+V1 appends a decision for every independently recomputed verification packet.
+The broader transition model above is the accepted evolution for expiry,
+waivers, counterevidence, and cross-policy aggregation. Policy modes are
 `OBSERVE_ONLY`, `SHADOW`, `ENFORCED`, and `EMERGENCY_BYPASS`. Only `ENFORCED`
 decisions authorize normal advancement. Emergency bypass requires named human
 authority, exact scope, expiration, compensating controls, and audit.

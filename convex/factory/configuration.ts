@@ -367,9 +367,9 @@ export const assessReadiness = mutation({
       repository && installation?.status === "CONNECTED" && github?.ready &&
       !githubInstallationIsStale(installation.verifiedAt, now)
     );
-    const host = bindings.find((candidate) =>
-      repository && canonicalRepositoryKey(candidate.repository) === canonicalRepositoryKey(repository.repository)
-    );
+    const host = repository
+      ? selectCurrentFactoryHost(bindings, canonicalRepositoryKey(repository.repository), now)
+      : null;
     const checks = [
       check("github", "GitHub App connection", githubReady, now, expiry, "Install or repair the exact least-privilege GitHub App connection."),
       check("repository", "Repository access", repository?.status === "READY", now, expiry, "Validate repository access before activation."),
@@ -396,7 +396,7 @@ export const assessReadiness = mutation({
       check("policy", "Governance policy", Boolean(policy?.active), now, undefined, "Select an active workspace policy envelope."),
       check("budget", "Bounded budget", validFactoryBudget(version.budget), now, undefined, "Set positive V1 limits: cost <= $1,000, runtime <= 480 minutes, attempts <= 3."),
       check("verifiers", "Independent verifiers", verifiers.length > 0 && verifiers.every((item) => item?.active && item.projectId === version.projectId), now, expiry, "Select at least one active workspace verifier."),
-      check("host", "Sandbox host binding", Boolean(host && host.status === "READY" && !host.dirty && now - host.checkedAt <= 24 * 60 * 60 * 1_000), now, expiry, "Report a clean, current READY checkout for this repository."),
+      check("host", "Sandbox host binding", Boolean(host), now, expiry, "Report a clean, current READY checkout for this repository."),
       check("recovery", "Executor-compatible recovery", codexV1RecoveryReady(version.recovery), now, undefined, "Enable cancel and bounded retry; codex/v1 cannot advertise pause or in-process resume."),
     ];
     const status = checks.every((item) => item.status === "VERIFIED") ? "PASS" as const : "BLOCKED" as const;

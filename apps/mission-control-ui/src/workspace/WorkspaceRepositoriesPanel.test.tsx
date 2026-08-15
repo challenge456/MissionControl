@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   backfill: vi.fn(),
   beginInstallation: vi.fn(),
   verifyInstallation: vi.fn(),
+  bindExistingInstallation: vi.fn(),
 }));
 
 vi.mock("../../../../convex/_generated/api", () => ({
@@ -34,6 +35,11 @@ vi.mock("../../../../convex/_generated/api", () => ({
       listDeliveries: "githubAppConnections.listDeliveries",
       beginInstallation: "githubAppConnections.beginInstallation",
       verifyInstallation: "githubAppConnections.verifyInstallation",
+      bindExistingInstallation: "githubAppConnections.bindExistingInstallation",
+    },
+    governancePolicies: {
+      getActiveForProject: "governancePolicies.getActiveForProject",
+      activateVerificationFirstV1: "governancePolicies.activateVerificationFirstV1",
     },
     softwareFactoryControlPlane: {
       listWorkspaceStructure: "control-plane.listWorkspaceStructure",
@@ -48,16 +54,19 @@ vi.mock("convex/react", () => ({
     if (query === "control-plane.listWorkspaceStructure") return mocks.structure;
     if (query === "githubAppConnections.getRepositoryReadiness") return mocks.readiness;
     if (query === "githubAppConnections.listDeliveries") return mocks.deliveries;
+    if (query === "governancePolicies.getActiveForProject") return null;
     return undefined;
   },
   useMutation: (mutation: string) => {
     if (mutation === "projects.setDefaultRepository") return mocks.setDefault;
     if (mutation === "projects.backfillLegacyRepositories") return mocks.backfill;
+    if (mutation === "governancePolicies.activateVerificationFirstV1") return vi.fn();
     return vi.fn();
   },
   useAction: (action: string) => {
     if (action === "githubAppConnections.beginInstallation") return mocks.beginInstallation;
     if (action === "githubAppConnections.verifyInstallation") return mocks.verifyInstallation;
+    if (action === "githubAppConnections.bindExistingInstallation") return mocks.bindExistingInstallation;
     return vi.fn();
   },
 }));
@@ -84,6 +93,7 @@ describe("WorkspaceRepositoriesPanel", () => {
       installUrl: "https://github.com/apps/mission-control/installations/new?state=opaque",
     });
     mocks.verifyInstallation.mockResolvedValue({ ok: true });
+    mocks.bindExistingInstallation.mockResolvedValue({ ok: true });
   });
 
   it("shows a truthful setup state when the workspace has no repository", () => {
@@ -295,5 +305,33 @@ describe("WorkspaceRepositoriesPanel", () => {
       "GitHub App setup is not configured for this environment"
     );
     expect(screen.queryByText(/Request ID secret/)).not.toBeInTheDocument();
+  });
+
+  it("verifies and binds a pre-existing GitHub App installation", async () => {
+    mocks.repositories = [{
+      repositoryId: "repository-1",
+      source: "CONNECTION",
+      repository: "sellerfi/marketplace",
+      displayName: "marketplace",
+      defaultBranch: "main",
+      isDefault: true,
+      status: "CONFIGURED",
+      webhookStatus: "MISSING",
+      scopeCount: 0,
+    }];
+    mocks.readiness = {
+      overall: "MISSING",
+      installation: null,
+      checks: [{ id: "installation", status: "MISSING", label: "GitHub App installation", detail: "Missing" }],
+    };
+    render(<WorkspaceRepositoriesPanel project={project} />);
+
+    fireEvent.change(screen.getByLabelText("Existing GitHub installation ID"), { target: { value: "152563527" } });
+    fireEvent.click(screen.getByRole("button", { name: "Verify and bind installation" }));
+
+    await waitFor(() => expect(mocks.bindExistingInstallation).toHaveBeenCalledWith({
+      repositoryId: "repository-1",
+      installationId: "152563527",
+    }));
   });
 });

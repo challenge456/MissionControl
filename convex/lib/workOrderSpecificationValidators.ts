@@ -202,7 +202,7 @@ export const gitVerificationSubjectValidator = v.object({
     baseRef: v.string(),
     headRef: v.string(),
     headSha: v.string(),
-    draftAtPublication: v.literal(true),
+    draftAtPublication: v.boolean(),
   }),
 });
 

@@ -67,7 +67,10 @@ import { buildWorkOrderTaskAuthority } from "./lib/taskAuthority";
 import { buildFactoryExecutionManifest } from "./lib/executionManifest";
 import { factoryWorkflowContractIssues } from "./lib/factoryWorkflowContract";
 import { createWorkOrderRecord } from "./lib/workOrderCreate";
-import { getCurrentVerificationResult } from "./lib/currentVerification";
+import {
+  appendCurrentVerificationQualityGateDecision,
+  getCurrentVerificationResult,
+} from "./lib/currentVerification";
 import {
   nextTaskAttemptNumbers,
   taskAttemptErrorMessage,
@@ -1332,7 +1335,7 @@ async function applyRevisionToWorkOrder(ctx: any, args: {
     riskReasons: riskAssessment.riskReasons,
   };
   const nextVerificationContractDigest = nextSnapshot.verificationContract?.schemaVersion === 2
-    ? verificationContractDigest(nextSnapshot.verificationContract)
+    ? verificationContractDigest(nextSnapshot.verificationContract, workOrder.qualityContractDigest)
     : undefined;
   const nextRequiredApprovals = [...new Set([...(nextSnapshot.requiredApprovals ?? []), ...(args.revision.requiresReapproval ? args.revision.impactedApprovals : [])])];
   const nextState = nextStateAfterRevision({
@@ -1490,7 +1493,7 @@ export const get = query({
     const deliveryAccess = await requireAuthorizedDeliveryScope(ctx, workOrder.projectId);
     assertAuthorizedDeliveryRecord(deliveryAccess, workOrder);
 
-    const [executionRuns, events, approvalDecisions, verificationReceipts, revisions, reopenDecisions, supersession, policy, childTaskRows, verificationRuns, evidenceEnvelopes] = await Promise.all([
+    const [executionRuns, events, approvalDecisions, verificationReceipts, revisions, reopenDecisions, supersession, policy, childTaskRows, verificationRuns, evidenceEnvelopes, qualityGateDecisions] = await Promise.all([
       ctx.db
         .query("workflowRuns")
         .withIndex("by_work_order", (q) => q.eq("workOrderId", args.workOrderId))
@@ -1519,6 +1522,11 @@ export const get = query({
         .collect(),
       ctx.db
         .query("evidenceEnvelopes")
+        .withIndex("by_work_order", (q) => q.eq("workOrderId", args.workOrderId))
+        .order("desc")
+        .collect(),
+      ctx.db
+        .query("qualityGateDecisions")
         .withIndex("by_work_order", (q) => q.eq("workOrderId", args.workOrderId))
         .order("desc")
         .collect(),
@@ -1551,6 +1559,7 @@ export const get = query({
       verificationReceipts,
       verificationRuns,
       evidenceEnvelopes,
+      qualityGateDecisions,
        revisions,
        reopenDecisions,
        supersession,
@@ -1959,7 +1968,7 @@ async function dispatchWorkOrder(
     }
 
     await expireGovernanceRecordsForWorkOrder(ctx, workOrder);
-    const refreshedWorkOrder = await ctx.db.get(args.workOrderId);
+    let refreshedWorkOrder = await ctx.db.get(args.workOrderId);
     if (!refreshedWorkOrder) throw new Error("WorkOrder not found");
 
     const scopeFlagRows = (await ctx.db
@@ -2034,7 +2043,7 @@ async function dispatchWorkOrder(
           effectiveScope.ownerMemberId ? ctx.db.get(effectiveScope.ownerMemberId) : null,
           Promise.all(effectiveScope.codeScopeIds.map((scopeId) => ctx.db.get(scopeId))),
           args.executorHostId
-            ? ctx.db.query("workspaceHostBindings").withIndex("by_project_host", (q) => q.eq("projectId", refreshedWorkOrder.projectId!).eq("hostId", args.executorHostId!)).first()
+            ? ctx.db.query("workspaceHostBindings").withIndex("by_project_host", (q) => q.eq("projectId", refreshedWorkOrder!.projectId!).eq("hostId", args.executorHostId!)).first()
             : null,
         ]);
         const validCodeScopes = codeScopes.filter((scope): scope is NonNullable<typeof scope> => Boolean(scope));
@@ -2126,6 +2135,12 @@ async function dispatchWorkOrder(
         });
       }
     }
+
+    // Factory preflight must evaluate the exact persisted scope selected by
+    // the operator above, not the WorkOrder snapshot loaded before the scope
+    // receipt and binding were written.
+    refreshedWorkOrder = await ctx.db.get(args.workOrderId);
+    if (!refreshedWorkOrder) throw new Error("WorkOrder not found after dispatch scope binding");
 
     const resolvedWorkflowId = args.workflowId ?? refreshedWorkOrder.workflowId;
     if (!resolvedWorkflowId) {
@@ -2330,7 +2345,8 @@ async function dispatchWorkOrder(
           runId,
           missionId: refreshedWorkOrder.missionId ? String(refreshedWorkOrder.missionId) : undefined,
           missionPlanId: refreshedWorkOrder.missionPlanId ? String(refreshedWorkOrder.missionPlanId) : undefined,
-          missionPlanVersion: missionPlanForDispatch?.version,
+          missionPlanVersion: missionPlanForDispatch?.revisionNumber,
+          qualityContractDigest: refreshedWorkOrder.qualityContractDigest,
           workOrderId: String(refreshedWorkOrder._id),
           workOrderRevisionNumber: refreshedWorkOrder.currentRevisionNumber ?? 1,
           workOrderRevisionId: refreshedWorkOrder.currentRevisionId ? String(refreshedWorkOrder.currentRevisionId) : undefined,
@@ -2406,6 +2422,7 @@ async function dispatchWorkOrder(
       factoryConfigurationDigest: factoryBinding?.version.configurationDigest,
       factoryPurpose: factoryBinding?.version.purpose ?? "SOFTWARE",
       attemptPurpose: refreshedWorkOrder.kind === "AUTOMATION" ? "AUTOMATION" : "IMPLEMENTATION",
+      qualityContractDigest: refreshedWorkOrder.qualityContractDigest,
       repositoryId: factoryBinding?.repository._id,
       hostBindingId: factoryBinding?.host._id,
       policyEnvelopeId: factoryBinding?.version.policyEnvelopeId,
@@ -3823,6 +3840,21 @@ export const accept = mutation({
     const currentVerification = policyV2Enforced
       ? await getCurrentVerificationResult(ctx, workOrder, now)
       : null;
+    const currentVerificationAudit = currentVerification
+      ? await appendCurrentVerificationQualityGateDecision(
+          ctx,
+          workOrder,
+          currentVerification,
+          args.idempotencyKey,
+          now,
+        )
+      : null;
+    const currentVerificationMetadata = currentVerification
+      ? {
+          ...currentVerification,
+          qualityGateDecisionId: currentVerificationAudit ? String(currentVerificationAudit._id) : undefined,
+        }
+      : null;
     if (currentVerification && !currentVerification.eligible) {
       await logWorkOrderEvent(ctx, {
         tenantId: workOrder.tenantId,
@@ -3834,7 +3866,7 @@ export const accept = mutation({
         actorId: args.actorId,
         summary: `Work order is not acceptance eligible: ${currentVerification.reasons.join(" ")}`,
         idempotencyKey: `${args.idempotencyKey}:ineligible`,
-        metadata: currentVerification,
+        metadata: currentVerificationMetadata,
       });
       await logWorkOrderEvent(ctx, {
         tenantId: workOrder.tenantId,
@@ -3846,13 +3878,13 @@ export const accept = mutation({
         actorId: args.actorId,
         summary: `Authorized acceptance was rejected by policy-v2 verification currentness`,
         idempotencyKey: `${args.idempotencyKey}:verification-rejected`,
-        metadata: currentVerification,
+        metadata: currentVerificationMetadata,
       });
       return {
         accepted: false,
         workOrder,
         reason: "verification-ineligible",
-        verification: currentVerification,
+        verification: currentVerificationMetadata,
       };
     }
     const acceptanceRun = currentVerification?.verificationAttemptId
@@ -3862,16 +3894,28 @@ export const accept = mutation({
       throw new Error("WorkOrder acceptance requires a completed execution run");
     }
 
-    const acceptance = evaluateAcceptance({
-      riskLevel: workOrder.riskLevel as any,
-      requiredApprovals: workOrder.requiredApprovals,
-      approvalDecisions,
-      acceptanceCriteria: workOrder.acceptanceCriteria as any,
-      verificationReceipts,
-      now,
-    });
-    if (!acceptance.eligible) {
-      throw new Error(`WorkOrder cannot be accepted (${acceptance.blockingReasons.join("; ")})`);
+    if (policyV2Enforced) {
+      const approvalStatus = deriveApprovalStatus({
+        riskLevel: workOrder.riskLevel as any,
+        requiredApprovals: workOrder.requiredApprovals,
+        approvals: approvalDecisions,
+        now,
+      });
+      if (approvalStatus !== "NOT_REQUIRED" && !approvalStatusSatisfiesRequirement(approvalStatus)) {
+        throw new Error(`WorkOrder cannot be accepted (approval status: ${approvalStatus})`);
+      }
+    } else {
+      const acceptance = evaluateAcceptance({
+        riskLevel: workOrder.riskLevel as any,
+        requiredApprovals: workOrder.requiredApprovals,
+        approvalDecisions,
+        acceptanceCriteria: workOrder.acceptanceCriteria as any,
+        verificationReceipts,
+        now,
+      });
+      if (!acceptance.eligible) {
+        throw new Error(`WorkOrder cannot be accepted (${acceptance.blockingReasons.join("; ")})`);
+      }
     }
     if (currentVerification) {
       await logWorkOrderEvent(ctx, {
@@ -3884,7 +3928,7 @@ export const accept = mutation({
         actorId: "verification-policy-v2",
         summary: "Exact current Verification Result satisfies acceptance eligibility.",
         idempotencyKey: `${args.idempotencyKey}:eligible`,
-        metadata: currentVerification,
+        metadata: currentVerificationMetadata,
       });
     }
 
@@ -4055,7 +4099,7 @@ export const requestWorkOrderRevision = mutation({
     const currentSnapshot = snapshotRevisionFields(workOrder);
     const nextSnapshot = buildRevisionSnapshot({ current: currentSnapshot, patch: args.patch as any });
     const requestedVerificationContractDigest = nextSnapshot.verificationContract?.schemaVersion === 2
-      ? verificationContractDigest(nextSnapshot.verificationContract)
+      ? verificationContractDigest(nextSnapshot.verificationContract, workOrder.qualityContractDigest)
       : undefined;
     const impact = evaluateRevisionImpact({
       current: currentSnapshot,
