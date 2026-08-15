@@ -216,6 +216,8 @@ const runEventType = v.union(
   v.literal("PULL_REQUEST_CREATED"),
   v.literal("RUN_PAUSED"),
   v.literal("RUN_RESUMED"),
+  v.literal("RUN_QUARANTINED"),
+  v.literal("STALE_RUN_RECOVERED"),
   v.literal("CANCELLATION_REQUESTED"),
   v.literal("RUN_CANCELED"),
   v.literal("RUN_FAILED"),
@@ -1356,6 +1358,8 @@ export default defineSchema({
     releasedAt: v.optional(v.number()),
     releasedWorkOrderIds: v.optional(v.array(v.id("workOrders"))),
     materializationVersion: v.optional(v.number()),
+    qualityContractProjection: v.optional(v.any()),
+    qualityContractDigest: v.optional(v.string()),
     assertions: v.optional(v.array(v.object({
       assertionId: v.string(),
       title: v.string(),
@@ -1473,6 +1477,8 @@ export default defineSchema({
     projectId: v.optional(v.id("projects")),
     missionId: v.optional(v.id("missions")),
     missionPlanId: v.optional(v.id("missionPlans")),
+    missionPlanRevision: v.optional(v.number()),
+    qualityContractDigest: v.optional(v.string()),
     missionSequence: v.optional(v.number()),
     missionRole: v.optional(v.union(v.literal("WORKER"), v.literal("VALIDATOR"))),
     isMutating: v.optional(v.boolean()),
@@ -1872,6 +1878,48 @@ export default defineSchema({
     .index("by_work_order", ["workOrderId"])
     .index("by_run", ["workflowRunId"])
     .index("by_work_order_criterion", ["workOrderId", "primaryCriterionId"])
+    .index("by_idempotency", ["idempotencyKey"]),
+
+  qualityGateDecisions: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.optional(v.id("projects")),
+    missionId: v.optional(v.id("missions")),
+    workOrderId: v.id("workOrders"),
+    workflowRunId: v.id("workflowRuns"),
+    verificationRunId: v.id("verificationRuns"),
+    verificationReceiptId: v.id("verificationReceipts"),
+    idempotencyKey: v.string(),
+    workOrderRevisionNumber: v.number(),
+    candidateRevision: v.string(),
+    subjectDigest: v.string(),
+    qualityContractDigest: v.optional(v.string()),
+    executionManifestDigest: v.optional(v.string()),
+    evidenceSetDigest: v.string(),
+    governancePolicyId: v.optional(v.id("governancePolicies")),
+    state: v.union(
+      v.literal("ELIGIBLE"),
+      v.literal("INELIGIBLE"),
+      v.literal("UNKNOWN"),
+      v.literal("STALE"),
+      v.literal("WAIVER_REQUIRED"),
+      v.literal("AWAITING_HUMAN"),
+    ),
+    mode: v.union(
+      v.literal("OBSERVE_ONLY"),
+      v.literal("SHADOW"),
+      v.literal("ENFORCED"),
+      v.literal("EMERGENCY_BYPASS"),
+    ),
+    reasons: v.array(v.string()),
+    blockingFindingIds: v.array(v.string()),
+    requiredApprovalIds: v.array(v.id("approvalDecisions")),
+    evaluatedAt: v.number(),
+    metadata: v.optional(v.any()),
+  })
+    .index("by_work_order", ["workOrderId"])
+    .index("by_work_order_evaluated", ["workOrderId", "evaluatedAt"])
+    .index("by_run", ["workflowRunId"])
+    .index("by_verification_run", ["verificationRunId"])
     .index("by_idempotency", ["idempotencyKey"]),
 
   runEvents: defineTable({
@@ -3756,6 +3804,7 @@ export default defineSchema({
     factoryDefinitionVersionId: v.optional(v.id("factoryDefinitionVersions")),
     factoryConfigurationDigest: v.optional(v.string()),
     primaryTraceId: v.optional(v.id("traces")),
+    qualityContractDigest: v.optional(v.string()),
     repositoryId: v.optional(v.id("workspaceRepositories")),
     hostBindingId: v.optional(v.id("workspaceHostBindings")),
     policyEnvelopeId: v.optional(v.id("policyEnvelopes")),

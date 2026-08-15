@@ -5,6 +5,8 @@ import {
 } from "@mission-control/shared";
 
 export type ServiceCapability =
+  | "github.installation.bind"
+  | "github.pr-evidence.ingest"
   | "workorders.dispatch"
   | "receipts.ingest"
   | "attempts.claim"

@@ -91,6 +91,7 @@ function FactoryVersionEditor({
   const createVerifier = useMutation(api["context/verifiers"].create);
   const createAgentTemplate = useMutation(api["registry/agentTemplates"].createTemplate);
   const createAgentVersion = useMutation(api["registry/agentVersions"].createVersion);
+  const upsertWorkflow = useMutation(api.workflows.upsert);
   const [workflowId, setWorkflowId] = useState("");
   const [policyId, setPolicyId] = useState("");
   const [verifierIds, setVerifierIds] = useState<string[]>([]);
@@ -103,6 +104,184 @@ function FactoryVersionEditor({
   const [pending, setPending] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  const createVerificationPolicy = async () => {
+    setPending("policy");
+    setError("");
+    setMessage("");
+    try {
+      const policy = await createPolicy({
+        projectId,
+        name: "Verification-First V1 Factory Envelope",
+        priority: 100,
+        rules: {
+          defaultDecision: "ALLOW",
+          autonomyTier: 2,
+          requireApprovalOnRisk: ["YELLOW", "RED"],
+          toolPolicies: {
+            shell: "ALLOW",
+            exec: "ALLOW",
+            write_file: "ALLOW",
+            delete_file: "DENY",
+            git_push: "NEEDS_APPROVAL",
+            github_pull_request: "NEEDS_APPROVAL",
+          },
+        },
+        metadata: { source: "factory-configuration", profile: "verification-first-v1" },
+      });
+      if (policy?._id) setPolicyId(policy._id);
+      setMessage("Verification-First V1 policy envelope created and selected.");
+    } catch {
+      setError("The policy envelope could not be created. Confirm governance authority and try again.");
+    } finally {
+      setPending("");
+    }
+  };
+
+  const createIndependentVerifier = async () => {
+    setPending("verifier");
+    setError("");
+    setMessage("");
+    try {
+      const verifierId = await createVerifier({
+        projectId,
+        label: "Verification-First Independent Validator",
+        invariant: "The candidate revision must satisfy every mandatory quality-contract assertion through execution independent from the implementation agent.",
+        globPatterns: ["**/*"],
+        idempotencyKey: `verification-first-v1-${projectId}`,
+      });
+      setVerifierIds([verifierId]);
+      setMessage("Independent verifier created and selected.");
+    } catch {
+      setError("The independent verifier could not be created. Confirm Factory improvement authority and try again.");
+    } finally {
+      setPending("");
+    }
+  };
+
+  const createApprovedAgentVersion = async () => {
+    const workflow = workflows?.find((item) => item._id === workflowId);
+    if (!workflow) return;
+    setPending("agent");
+    setError("");
+    setMessage("");
+    try {
+      const template = agentTemplates.find((item) => item.slug === "verification-first-delivery-agent") ?? await createAgentTemplate({
+          projectId,
+          name: "Verification-First Delivery Agent",
+          slug: "verification-first-delivery-agent",
+          description: "Approved bounded implementation agent for the Verification-First V1 Factory profile.",
+          metadata: { source: "factory-configuration", profile: "verification-first-v1" },
+        });
+      if (!template?._id) throw new Error("Agent template was not created");
+      const now = Date.now();
+      const version = await createAgentVersion({
+        projectId,
+        templateId: template._id,
+        status: "APPROVED",
+        genome: {
+          modelConfig: { provider: "openai", modelId: "gpt-5.6-sol", temperature: 0 },
+          promptBundleHash: "verification-first-v1-prompt-bundle",
+          toolManifestHash: "verification-first-v1-bounded-tools",
+          provenance: { createdBy: "operator", source: "factory-configuration", createdAt: now },
+        },
+        notes: "Approved explicitly for the governed Verification-First V1 delivery profile.",
+        metadata: { profile: "verification-first-v1" },
+      });
+      if (!version?._id) throw new Error("Agent version was not created");
+      setAgentBindings(Object.fromEntries(workflow.agents.map((agent) => [agent.id, version._id])));
+      setMessage("Approved V1 agent version created and bound to the selected workflow.");
+    } catch {
+      setError("The approved agent version could not be created. Confirm registry authority and unique template scope.");
+    } finally {
+      setPending("");
+    }
+  };
+
+  const createVerificationWorkflow = async () => {
+    setPending("workflow");
+    setError("");
+    setMessage("");
+    try {
+      const objectSchema = (properties: Record<string, unknown>, required: string[]) => ({
+        type: "object",
+        properties: { status: { type: "string" }, ...properties },
+        required: ["status", ...required],
+        additionalProperties: false,
+      });
+      const id = await upsertWorkflow({
+        workflowId: `verification-first-v1-${projectId}`,
+        name: "Verification-First V1 Delivery",
+        description: "Structured planning, bounded implementation, independent verification, and policy gating for governed V1 delivery.",
+        topology: "LINEAR",
+        maxConcurrency: 1,
+        agents: [
+          { id: "builder", persona: "Bounded implementation agent" },
+          { id: "independent-verifier", persona: "Independent validation agent" },
+        ],
+        steps: [
+          {
+            id: "plan",
+            agent: "builder",
+            input: "Produce a bounded implementation plan that maps every acceptance criterion to a deterministic check.",
+            expects: "A schema-valid plan and explicit status.",
+            retryLimit: 1,
+            timeoutMinutes: 10,
+            kind: "AGENT",
+            isolation: "READ_ONLY",
+            failurePolicy: "BLOCK",
+            outputSchema: objectSchema({ plan: { type: "array", items: { type: "string" } } }, ["plan"]),
+          },
+          {
+            id: "implement",
+            agent: "builder",
+            input: "Implement only the approved plan inside the frozen repository scope and report the exact candidate revision.",
+            expects: "A schema-valid candidate revision and explicit status.",
+            retryLimit: 1,
+            timeoutMinutes: 60,
+            dependsOn: ["plan"],
+            kind: "AGENT",
+            isolation: "WORKTREE",
+            failurePolicy: "BLOCK",
+            outputSchema: objectSchema({ candidateRevision: { type: "string" } }, ["candidateRevision"]),
+          },
+          {
+            id: "verify",
+            agent: "independent-verifier",
+            input: "Validate the exact candidate revision independently and produce requirement-linked receipts.",
+            expects: "Schema-valid verification receipts bound to the candidate revision.",
+            retryLimit: 1,
+            timeoutMinutes: 30,
+            dependsOn: ["implement"],
+            kind: "VERIFY",
+            isolation: "READ_ONLY",
+            failurePolicy: "BLOCK",
+            outputSchema: objectSchema({ candidateRevision: { type: "string" }, receipts: { type: "array", items: { type: "object" } } }, ["candidateRevision", "receipts"]),
+          },
+          {
+            id: "gate",
+            agent: "independent-verifier",
+            input: "Evaluate immutable verification receipts against the frozen policy envelope and report the governed decision.",
+            expects: "A policy-derived gate decision; publication remains separately authorized.",
+            retryLimit: 0,
+            timeoutMinutes: 5,
+            dependsOn: ["verify"],
+            kind: "GATE",
+            isolation: "READ_ONLY",
+            failurePolicy: "BLOCK",
+          },
+        ],
+        active: true,
+        createdBy: "operator",
+      });
+      setWorkflowId(id);
+      setMessage("Structured Verification-First V1 workflow created and selected.");
+    } catch {
+      setError("The Verification-First workflow could not be created. Confirm automation authority and try again.");
+    } finally {
+      setPending("");
+    }
+  };
 
   const latestVersion = detail?.versions[0];
   const latestAssessment = useMemo(
@@ -256,8 +435,8 @@ function FactoryVersionEditor({
         recovery: { pause: false, cancel: true, retry: true, resume: false },
       });
       setMessage("Immutable Factory version created. Run readiness before activation.");
-    } catch {
-      setError("The Factory version could not be created. Check record scope and numeric limits.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The Factory version could not be created. Check record scope and numeric limits.");
     } finally {
       setPending("");
     }
@@ -312,12 +491,20 @@ function FactoryVersionEditor({
             <option value="">Select workflow</option>
             {workflows.map((item) => <option key={item._id} value={item._id}>{item.name} · v{item.version}</option>)}
           </select>
+          <Button className="mt-2" type="button" variant="outline" size="sm" disabled={Boolean(pending)} onClick={createVerificationWorkflow}>
+            {pending === "workflow" ? "Creating workflow…" : "Create Verification-First workflow"}
+          </Button>
         </label>
         <label className="text-[11.5px] text-ink-muted">Governance policy
           <select className="mt-1 w-full rounded-md border border-line bg-surface-1 px-2 py-2 text-[12px] text-ink" value={policyId} onChange={(event) => setPolicyId(event.target.value)}>
             <option value="">Select policy</option>
             {policies.map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}
           </select>
+          {policies.length === 0 ? (
+            <Button className="mt-2" type="button" variant="outline" size="sm" disabled={Boolean(pending)} onClick={createVerificationPolicy}>
+              {pending === "policy" ? "Creating policy…" : "Create Verification-First policy"}
+            </Button>
+          ) : null}
         </label>
         <label className="text-[11.5px] text-ink-muted">Maximum cost (USD)<Input className="mt-1" type="number" value={maxCostUsd} onChange={(event) => setMaxCostUsd(event.target.value)} /></label>
         <label className="text-[11.5px] text-ink-muted">Maximum runtime (minutes)<Input className="mt-1" type="number" value={maxRuntimeMinutes} onChange={(event) => setMaxRuntimeMinutes(event.target.value)} /></label>
@@ -330,7 +517,14 @@ function FactoryVersionEditor({
         <fieldset className="md:col-span-2">
           <legend className="text-[11.5px] text-ink-muted">Independent verifiers</legend>
           <div className="mt-1 flex flex-wrap gap-2">
-            {verifiers.length === 0 ? <span className="text-[12px] text-warning">No active verifiers available.</span> : verifiers.map((item) => (
+            {verifiers.length === 0 ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[12px] text-warning">No active verifiers available.</span>
+                <Button type="button" variant="outline" size="sm" disabled={Boolean(pending)} onClick={createIndependentVerifier}>
+                  {pending === "verifier" ? "Creating verifier…" : "Create independent verifier"}
+                </Button>
+              </div>
+            ) : verifiers.map((item) => (
               <label key={item._id} className="flex items-center gap-2 rounded border border-line bg-surface-1 px-2 py-1.5 text-[12px] text-ink-secondary">
                 <input type="checkbox" checked={verifierIds.includes(item._id)} onChange={(event) => setVerifierIds((current) => event.target.checked ? [...current, item._id] : current.filter((id) => id !== item._id))} /> {item.label}
               </label>
@@ -350,6 +544,12 @@ function FactoryVersionEditor({
         {selectedWorkflow?.agents.length ? (
           <fieldset className="md:col-span-2">
             <legend className="text-[11.5px] text-ink-muted">Frozen workflow agent versions</legend>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              {versionOptions.agentVersions.length === 0 ? <span className="text-[12px] text-warning">No approved workspace agent versions available.</span> : null}
+              <Button type="button" variant="outline" size="sm" disabled={Boolean(pending)} onClick={createApprovedAgentVersion}>
+                {pending === "agent" ? "Creating agent version…" : "Create approved agent version"}
+              </Button>
+            </div>
             <div className="mt-1 grid gap-2 md:grid-cols-2">
               {selectedWorkflow.agents.map((agent) => (
                 <label key={agent.id} className="text-[11.5px] text-ink-muted">{agent.persona} · {agent.id}
