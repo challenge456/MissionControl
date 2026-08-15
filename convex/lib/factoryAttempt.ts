@@ -83,6 +83,16 @@ export function deriveFactoryPublicationLineage(input: {
   };
 }
 
+export function factoryExecutorIdentity(input: {
+  ownerId: string;
+  executorAdapter: string;
+  executorVersion: string;
+  executorHostId: string;
+}) {
+  const ownerId = input.ownerId.replace(/^service:/, "").trim();
+  return `service:${ownerId}|executor:${input.executorAdapter}/${input.executorVersion}|host:${input.executorHostId}`;
+}
+
 export function factoryAttemptMutationIsAuthorized(run: {
   status: string;
   cancellationRequestedAt?: number;

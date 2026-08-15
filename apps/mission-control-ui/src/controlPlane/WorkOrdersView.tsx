@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../../../convex/_generated/api";
 import type { Doc, Id } from "../../../../convex/_generated/dataModel";
@@ -124,6 +124,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
   const [createRequestKey, setCreateRequestKey] = useState<string | null>(null);
   const [dispatchingId, setDispatchingId] = useState<string | null>(null);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  const [syncingGithubEvidence, setSyncingGithubEvidence] = useState(false);
   const [revisingId, setRevisingId] = useState<string | null>(null);
   const [reopeningId, setReopeningId] = useState<string | null>(null);
   const [supersedingId, setSupersedingId] = useState<string | null>(null);
@@ -223,6 +224,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
   const requestApprovalDecision = useMutation(api.workOrders.requestApprovalDecision);
   const recordVerificationReceipt = useMutation(api.workOrders.recordVerificationReceipt);
   const acceptWorkOrder = useMutation(api.workOrders.accept);
+  const ingestPublicPullRequest = useAction(api.factory.prChecks.ingestPublicPullRequest);
   const requestWorkOrderRevision = useMutation(api.workOrders.requestWorkOrderRevision);
   const approveWorkOrderRevision = useMutation(api.workOrders.approveWorkOrderRevision);
   const reopenWorkOrder = useMutation(api.workOrders.reopenWorkOrder);
@@ -777,6 +779,38 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                           title={selected.workOrder.verificationContract?.enforcementMode === "ENFORCED" ? "Enforced Work Orders require a server-generated independent receipt." : undefined}
                         >
                           Record legacy receipt
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={
+                            syncingGithubEvidence
+                            || !projectId
+                            || !selected.reviewPackage?.identity?.pullRequestUrl
+                            || !selected.executionRuns[0]?._id
+                          }
+                          title="Fetch authoritative GitHub state for this public repository without exposing local credentials."
+                          onClick={async () => {
+                            const prUrl = selected.reviewPackage?.identity?.pullRequestUrl;
+                            const latestRun = selected.executionRuns[0];
+                            if (!projectId || !prUrl || !latestRun?._id) return;
+                            try {
+                              setGovernanceError(null);
+                              setSyncingGithubEvidence(true);
+                              await ingestPublicPullRequest({
+                                prUrl,
+                                projectId,
+                                workOrderId: selected.workOrder._id,
+                                workflowRunId: latestRun._id,
+                              });
+                            } catch (err) {
+                              setGovernanceError(err instanceof Error ? err.message : "GitHub evidence sync failed");
+                            } finally {
+                              setSyncingGithubEvidence(false);
+                            }
+                          }}
+                        >
+                          {syncingGithubEvidence ? "Syncing GitHub CI…" : "Sync exact GitHub CI"}
                         </Button>
                         <Button
                           size="sm"

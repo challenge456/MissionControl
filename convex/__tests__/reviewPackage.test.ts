@@ -173,6 +173,20 @@ describe("unified review package", () => {
     );
   });
 
+  it("keeps the bound executor identity distinct from an independent verifier identity", () => {
+    const review = buildReviewPackage({
+      ...base,
+      run: {
+        ...base.run,
+        executionClaimedBy: "service:orchestration-server|executor:codex/v1|host:local-macos-dev",
+      },
+      receipts: [{ ...base.receipts[0], verifier: "factory-command/v1" }, base.receipts[1]],
+    });
+
+    expect(review.status).toBe("READY");
+    expect(review.criteria[0]).toMatchObject({ status: "PASS", verifier: "factory-command/v1" });
+  });
+
   it("fails closed when Factory executor identity is absent", () => {
     const review = buildReviewPackage({
       ...base,

@@ -1,4 +1,4 @@
-import { deriveFactoryPublicationLineage } from "./factoryAttempt";
+import { deriveFactoryPublicationLineage, factoryExecutorIdentity } from "./factoryAttempt";
 import { buildReviewPackage } from "./reviewPackage";
 import { buildFileChanges, orderRunEvents } from "./runInspector";
 
@@ -15,6 +15,25 @@ export function buildFactoryAttemptReviewReadModel(input: {
   repository?: any;
 }) {
   const orderedEvents = orderRunEvents(input.events);
+  const claimEvent = orderedEvents.find((event) => event.eventType === "CHECKPOINT_CREATED"
+    && event.status === "RUNNING"
+    && event.commandSummary === "Factory attempt lease claimed"
+    && typeof event.actor === "string"
+    && event.actor.startsWith("service:")
+    && event.metadata?.executionManifestDigest === input.run.executionManifestDigest);
+  const recoveredExecutorIdentity = !input.run.executionClaimedBy
+    && input.run.executionManifestDigest
+    && input.run.executorAdapter
+    && input.run.executorVersion
+    && input.run.executorHostId
+    && claimEvent
+      ? factoryExecutorIdentity({
+          ownerId: claimEvent.actor,
+          executorAdapter: input.run.executorAdapter,
+          executorVersion: input.run.executorVersion,
+          executorHostId: input.run.executorHostId,
+        })
+      : undefined;
   const eventFileChanges = buildFileChanges(orderedEvents);
   const pullRequestArtifact = input.artifacts.find((artifact) => artifact.artifactType === "PULL_REQUEST");
   const codeDiffArtifact = input.artifacts.find((artifact) => artifact.artifactType === "CODE_DIFF");
@@ -27,7 +46,11 @@ export function buildFactoryAttemptReviewReadModel(input: {
     verifiedSourceRevision: exactGateReceipt?.sourceRevision,
     completedAt: input.run.completedAt,
   });
-  const projectedRun = { ...input.run, ...publicationLineage.patch };
+  const projectedRun = {
+    ...input.run,
+    ...publicationLineage.patch,
+    executionClaimedBy: input.run.executionClaimedBy ?? recoveredExecutorIdentity,
+  };
   const eventPaths = new Set(eventFileChanges
     .map((change) => change.repositoryPath)
     .filter((path): path is string => Boolean(path)));

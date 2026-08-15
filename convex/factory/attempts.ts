@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { internalMutation, internalQuery } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { activeLeaseMatches, deriveFactoryPublicationLineage, evaluateAttemptClaim, factoryAttemptMutationIsAuthorized, renewAttemptLease } from "../lib/factoryAttempt";
+import { activeLeaseMatches, deriveFactoryPublicationLineage, evaluateAttemptClaim, factoryAttemptMutationIsAuthorized, factoryExecutorIdentity, renewAttemptLease } from "../lib/factoryAttempt";
 import {
   PUBLICATION_SAFETY_WINDOW_MS,
   validatePublicationPermit,
@@ -195,11 +195,24 @@ export const claimInternal = internalMutation({
     const continuationPatch = run.factoryContinuation?.status === "PUBLICATION_AUTHORIZED"
       ? { ...run.factoryContinuation, publicationPermitLeaseId: decision.lease.leaseId }
       : run.factoryContinuation;
+    const claimedAt = Date.now();
     await ctx.db.patch(run._id, {
       status: "RUNNING",
       lease: decision.lease,
       executionPhase: publicationCheckpoint ? "PUBLISHING" : run.executionPhase,
       factoryContinuation: continuationPatch,
+      executionClaimId: args.leaseId,
+      executionClaimedBy: factoryExecutorIdentity({
+        ownerId: args.ownerId,
+        executorAdapter: run.executorAdapter,
+        executorVersion: run.executorVersion,
+        executorHostId: run.executorHostId!,
+      }),
+      executionClaimedAt: run.executionClaimedAt ?? claimedAt,
+      executionHeartbeatAt: claimedAt,
+      executionLeaseExpiresAt: decision.lease.expiresAt,
+      executionAttemptNumber: Math.max(1, (run.executionAttemptNumber ?? 0) + (decision.reclaimed ? 0 : 1)),
+      executionBindingDigest: run.executionManifestDigest,
     });
     await insertEvent(ctx, run, {
       idempotencyKey: `factory-lease:${run.runId}:${args.leaseId}:claimed`,
@@ -386,7 +399,11 @@ export const renewInternal = internalMutation({
       now: Date.now(),
     });
     if (!result.ok) return { renewed: false as const, reason: result.reason };
-    await ctx.db.patch(run._id, { lease: result.lease });
+    await ctx.db.patch(run._id, {
+      lease: result.lease,
+      executionHeartbeatAt: result.lease.heartbeatAt,
+      executionLeaseExpiresAt: result.lease.expiresAt,
+    });
     return { renewed: true as const, lease: result.lease };
   },
 });
