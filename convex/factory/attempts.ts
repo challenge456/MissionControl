@@ -12,6 +12,12 @@ import { approvalExpiresAt, DEFAULT_GOVERNANCE_POLICY, verificationValidUntil } 
 import { reconcileTerminalWorkflowSteps } from "../lib/workflowRunState";
 import { recomputeVerificationPacket } from "../lib/verificationPersistence";
 import {
+  ensureAttemptTrace,
+  finishAttemptTrace,
+  recordRunEventObservation,
+  recordTraceObservation,
+} from "../lib/observabilityPersistence";
+import {
   qualityGateEvidenceSetDigest,
   legacyQualityGateStateForVerdict,
   legacyQualityGateSubjectDigest,
@@ -227,6 +233,25 @@ export const claimInternal = internalMutation({
         executionManifestDigest: run.executionManifestDigest,
       },
     });
+    const trace = await ensureAttemptTrace(ctx, run);
+    await recordTraceObservation(ctx, trace, {
+      idempotencyKey: `executor-selection:${run.runId}:${args.leaseId}`,
+      type: "EVENT",
+      name: "Executor selected",
+      startedAt: Date.now(),
+      endedAt: Date.now(),
+      status: "SUCCESS",
+      input: {
+        adapter: run.executorAdapter,
+        version: run.executorVersion,
+        model: run.model,
+        environment: run.executionEnvironment,
+        allowedTools: run.allowedTools,
+        executionManifestDigest: run.executionManifestDigest,
+      },
+      output: { ownerId: args.ownerId, leaseId: args.leaseId },
+      metadata: { configurationSnapshot: true, secretValuesIncluded: false },
+    });
     return {
       claimed: true as const,
       reclaimed: decision.reclaimed,
@@ -415,7 +440,10 @@ export const reportInternal = internalMutation({
     const packet = args.packet && typeof args.packet === "object" ? args.packet : {};
     const events = Array.isArray(packet.events) ? packet.events : [];
     const artifacts = Array.isArray(packet.artifacts) ? packet.artifacts : [];
-    if (events.length > 100 || artifacts.length > 20) throw new Error("Factory attempt report exceeds packet limits.");
+    const observations = Array.isArray(packet.observations) ? packet.observations : [];
+    if (events.length > 100 || artifacts.length > 20 || observations.length > 200) {
+      throw new Error("Factory attempt report exceeds packet limits.");
+    }
 
     const eventResults = [];
     for (const event of events) {
@@ -429,6 +457,15 @@ export const reportInternal = internalMutation({
           executionManifestDigest: run.executionManifestDigest,
         },
       }));
+    }
+
+    const trace = await ensureAttemptTrace(ctx, run);
+    const observationResults = [];
+    for (const observation of observations) {
+      if (!observation?.idempotencyKey || !observation?.type || !observation?.name) {
+        throw new Error("Factory trace observation is invalid.");
+      }
+      observationResults.push(await recordTraceObservation(ctx, trace, observation));
     }
 
     const artifactResults = [];
@@ -608,6 +645,12 @@ export const reportInternal = internalMutation({
         commandSummary: terminal.status === "COMPLETED" ? "Factory attempt completed with review-ready pull request" : undefined,
         metadata: { leaseId: args.leaseId, executionManifestDigest: run.executionManifestDigest },
       });
+      await finishAttemptTrace(ctx, run, {
+        status: terminal.status,
+        completedAt,
+        failureReason,
+        output: terminal.output,
+      });
       if (run.workOrderId) {
         await ctx.runMutation(internal.workOrders.syncExecutionOutcome, {
           workflowRunId: run._id,
@@ -619,6 +662,7 @@ export const reportInternal = internalMutation({
     return {
       accepted: true,
       eventCount: eventResults.length,
+      observationCount: observationResults.length,
       artifactCount: artifactResults.length,
       verification,
       terminalStatus: terminal?.status,
@@ -662,6 +706,11 @@ async function failInvalidPublicationContinuation(ctx: any, run: any, reason: st
     errorCategory: "PUBLICATION_AUTHORITY_INVALID",
     errorSummary: reason,
     commandSummary: "Invalid human-review publication checkpoint closed",
+  });
+  await finishAttemptTrace(ctx, run, {
+    status: "FAILED",
+    completedAt: now,
+    failureReason: reason,
   });
   if (run.workOrderId) {
     await ctx.scheduler.runAfter(0, internal.workOrders.syncExecutionOutcome, {
@@ -711,7 +760,9 @@ async function insertEvent(ctx: any, run: any, event: any) {
     traceContext: event.traceContext,
     metadata: event.metadata,
   });
-  return { event: await ctx.db.get(eventId), created: true };
+  const inserted = await ctx.db.get(eventId);
+  if (inserted && run.projectId) await recordRunEventObservation(ctx, run, inserted);
+  return { event: inserted, created: true };
 }
 
 async function persistVerificationPacket(ctx: any, run: any, packet: any, ownerId: string, leaseId: string) {
@@ -943,11 +994,56 @@ async function persistVerificationPacket(ctx: any, run: any, packet: any, ownerI
     });
   }
 
+  const trace = await ensureAttemptTrace(ctx, run);
+  const verificationObservationKey = `verification:${verificationRunId}`;
+  await recordTraceObservation(ctx, trace, {
+    idempotencyKey: verificationObservationKey,
+    type: "EVALUATOR",
+    name: "Independent verification",
+    startedAt: result.startedAt,
+    endedAt: result.completedAt,
+    durationMs: result.durationMs,
+    status: result.verdict === "VERIFIED" ? "SUCCESS" : "FAILED",
+    input: {
+      sourceRevision: result.sourceRevision,
+      candidateRevision: result.candidateRevision,
+      workOrderRevisionNumber: workOrder.currentRevisionNumber ?? 1,
+    },
+    output: {
+      verdict: result.verdict,
+      verdictReasons: result.verdictReasons,
+      requirementsPassed: result.requirementsPassed,
+      requirementsFailed: result.requirementsFailed,
+    },
+    verificationRunId,
+    evidenceEnvelopeIds: allEvidenceIds,
+    metadata: { engineVersion: result.engineVersion, acceptanceAuthority: false },
+  });
+  for (const check of checks) {
+    await recordTraceObservation(ctx, trace, {
+      idempotencyKey: `${verificationObservationKey}:check:${check.checkId}`,
+      parentIdempotencyKey: verificationObservationKey,
+      type: check.metadata?.commandClass ? "TOOL" : "EVALUATOR",
+      name: check.name,
+      startedAt: check.startedAt,
+      endedAt: check.completedAt,
+      durationMs: check.durationMs,
+      status: check.status === "PASS" ? "SUCCESS" : "FAILED",
+      toolName: check.metadata?.commandClass ? String(check.metadata.commandClass) : undefined,
+      output: { status: check.status, summary: check.summary },
+      error: check.status === "PASS" ? undefined : { message: check.summary },
+      verificationRunId,
+      evidenceEnvelopeIds: check.evidenceIds,
+      metadata: { category: check.category, mandatory: check.mandatory, acceptanceAuthority: false },
+    });
+  }
+
   await insertEvent(ctx, run, {
     idempotencyKey: `${idempotencyKey}:started`, eventType: "VERIFICATION_STARTED",
     workflowStep: "independent-verification", actor: `service:${ownerId}`, status: "RUNNING",
     startedAt: result.startedAt, verificationRunId,
     commandSummary: `Independent verification started for ${result.candidateRevision.slice(0, 12)}`,
+    metadata: { traceParentObservationKey: verificationObservationKey },
   });
   for (const check of checks) {
     await insertEvent(ctx, run, {
@@ -955,7 +1051,7 @@ async function persistVerificationPacket(ctx: any, run: any, packet: any, ownerI
       eventType: "VERIFICATION_CHECK_STARTED", workflowStep: "independent-verification",
       actor: `service:${ownerId}`, status: "RUNNING", startedAt: check.startedAt,
       verificationRunId, commandSummary: `Started ${check.name}`,
-      metadata: { checkId: check.checkId, category: check.category, mandatory: check.mandatory },
+      metadata: { checkId: check.checkId, category: check.category, mandatory: check.mandatory, traceParentObservationKey: verificationObservationKey },
     });
     if (check.metadata?.commandClass) {
       await insertEvent(ctx, run, {
@@ -980,7 +1076,7 @@ async function persistVerificationPacket(ctx: any, run: any, packet: any, ownerI
       startedAt: check.startedAt, endedAt: check.completedAt, durationMs: check.durationMs,
       verificationRunId, evidenceEnvelopeIds: check.evidenceIds,
       commandSummary: `${check.name}: ${check.summary}`,
-      metadata: { checkId: check.checkId, category: check.category, mandatory: check.mandatory },
+      metadata: { checkId: check.checkId, category: check.category, mandatory: check.mandatory, traceParentObservationKey: verificationObservationKey },
     });
   }
   for (const [evidenceKey, evidenceEnvelopeId] of evidenceIdByKey) {

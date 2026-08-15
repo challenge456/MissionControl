@@ -25,7 +25,7 @@ export const EOS_NAV_GROUPS: NavGroup[] = [
     { view: "control-work-orders" as MainView, label: "Work Orders", icon: ClipboardList },
     { view: "tasks" as MainView, label: "Tasks", icon: ListChecks },
     { view: "factory" as MainView, label: "Factory Board", icon: Wrench },
-    { view: "trace-inspector" as MainView, label: "Execution", icon: GitBranch },
+    { view: "trace-inspector" as MainView, label: "Observability & Evals", icon: GitBranch },
     { view: "code" as MainView, label: "Pipelines", icon: Cog },
     { view: "dag" as MainView, label: "Task Graph", icon: GitBranch },
   ]},
