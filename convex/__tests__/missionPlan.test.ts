@@ -42,6 +42,16 @@ function validPlan(): MissionPlanInput {
         requiredApprovals: [],
         implementationPolicy: {
           allowedCommands: ["pnpm test"],
+          independentVerification: {
+            executable: "pnpm",
+            args: ["test"],
+            category: "UNIT_TEST",
+            commandClass: "TEST",
+            evidenceCategory: "TEST_RESULT",
+            timeoutMs: 1_800_000,
+          },
+          maxFilesChanged: 40,
+          maxLinesChanged: 3_000,
           maxAttempts: 2,
           timeoutMinutes: 30,
           stopCondition: "Stop after tests pass and the pull request is persisted.",
@@ -151,6 +161,16 @@ describe("Mission plan contract", () => {
     const plan = validPlan();
     plan.workOrderBlueprints[0].implementationPolicy = {
       allowedCommands: Array.from({ length: 21 }, (_, index) => `check-${index}`),
+      independentVerification: {
+        executable: "pnpm",
+        args: ["test"],
+        category: "UNIT_TEST",
+        commandClass: "TEST",
+        evidenceCategory: "TEST_RESULT",
+        timeoutMs: 30 * 60_000 + 1,
+      },
+      maxFilesChanged: 0,
+      maxLinesChanged: 100_001,
       maxAttempts: 11,
       timeoutMinutes: 481,
       stopCondition: "Stop after verification.",
@@ -158,8 +178,17 @@ describe("Mission plan contract", () => {
     const codes = validateMissionPlan(plan).map((error) => error.code);
     expect(codes).toEqual(expect.arrayContaining([
       "implementation-verifiers-too-large",
+      "independent-verifier-timeout-invalid",
+      "implementation-max-files-invalid",
+      "implementation-max-lines-invalid",
       "implementation-attempts-invalid",
       "implementation-timeout-invalid",
     ]));
+  });
+
+  it("accepts server-owned independent Factory verification without a redundant Validator WorkOrder", () => {
+    const plan = validPlan();
+    plan.workOrderBlueprints = [plan.workOrderBlueprints[0]];
+    expect(validateMissionPlan(plan)).toEqual([]);
   });
 });

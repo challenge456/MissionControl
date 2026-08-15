@@ -18,24 +18,30 @@ function assertionStatusForReceipt(status: ReceiptStatus): MissionAssertionStatu
 export function assertionEvidenceCanSatisfy(args: {
   missionRole?: string;
   requiresIndependentValidation: boolean;
+  factoryIndependentVerification?: boolean;
 }) {
   return args.missionRole === "VALIDATOR"
     || ((args.missionRole ?? "WORKER") === "WORKER"
-      && !args.requiresIndependentValidation);
+      && (!args.requiresIndependentValidation || args.factoryIndependentVerification === true));
 }
 
 export function missionReceiptMatchesExecution(args: {
   workOrder: { _id: string; missionId?: string; missionRole?: string; currentRevisionNumber?: number };
-  workflowRun: { _id: string; workOrderId?: string; missionId?: string; missionRole?: string; status: string };
-  verificationReceipt: { workflowRunId: string; workOrderRevisionNumber?: number };
+  workflowRun: { _id: string; workOrderId?: string; missionId?: string; missionRole?: string; status: string; executionBaseSha?: string; headSha?: string };
+  verificationReceipt: { workflowRunId: string; workOrderRevisionNumber?: number; status?: string; sourceRevision?: string; candidateRevision?: string };
 }) {
   const role = args.workOrder.missionRole ?? "WORKER";
-  return args.workflowRun.status === "COMPLETED"
+  const terminalStatusMatches = args.verificationReceipt.status && args.verificationReceipt.status !== "PASSED"
+    ? ["COMPLETED", "FAILED"].includes(args.workflowRun.status)
+    : args.workflowRun.status === "COMPLETED";
+  return terminalStatusMatches
     && args.workflowRun.workOrderId === args.workOrder._id
     && args.workflowRun.missionId === args.workOrder.missionId
     && (args.workflowRun.missionRole ?? "WORKER") === role
     && args.verificationReceipt.workflowRunId === args.workflowRun._id
-    && args.verificationReceipt.workOrderRevisionNumber === (args.workOrder.currentRevisionNumber ?? 1);
+    && args.verificationReceipt.workOrderRevisionNumber === (args.workOrder.currentRevisionNumber ?? 1)
+    && (!args.verificationReceipt.sourceRevision || args.verificationReceipt.sourceRevision === args.workflowRun.executionBaseSha)
+    && (!args.verificationReceipt.candidateRevision || args.verificationReceipt.candidateRevision === args.workflowRun.headSha);
 }
 
 async function insertMissionEvent(ctx: any, args: {
@@ -183,9 +189,24 @@ export async function syncMissionValidationReceipt(ctx: any, args: {
   if (args.verificationReceipt.validationAssertionId !== assertion._id) {
     throw new Error("Verification receipt does not bind the linked Mission assertion");
   }
+  const evidenceEnvelopes = await Promise.all(
+    (args.verificationReceipt.evidenceEnvelopeIds ?? []).map((evidenceEnvelopeId: any) => ctx.db.get(evidenceEnvelopeId)),
+  );
+  const factoryIndependentVerification = Boolean(
+    args.verificationReceipt.verificationRunId
+    && args.verificationReceipt.sourceRevision
+    && args.verificationReceipt.candidateRevision
+    && args.workflowRun.executionClaimedBy
+    && args.workflowRun.executionBaseSha === args.verificationReceipt.sourceRevision
+    && args.workflowRun.headSha === args.verificationReceipt.candidateRevision
+    && evidenceEnvelopes.some((evidence: any) => evidence?.producer?.independent === true
+      && evidence.producer.actorId
+      && evidence.producer.actorId !== args.workflowRun.executionClaimedBy),
+  );
   if (!assertionEvidenceCanSatisfy({
     missionRole: args.workOrder.missionRole,
     requiresIndependentValidation: assertion.requiresIndependentValidation,
+    factoryIndependentVerification,
   })) {
     return { synced: false };
   }

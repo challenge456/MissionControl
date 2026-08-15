@@ -9,7 +9,7 @@ describe("Mission assertion evidence policy", () => {
     })).toBe(true);
   });
 
-  it("requires a Validator for independent assertions", () => {
+  it("requires either a Validator or exact Factory-independent verification for independent assertions", () => {
     expect(assertionEvidenceCanSatisfy({
       missionRole: "WORKER",
       requiresIndependentValidation: true,
@@ -18,15 +18,22 @@ describe("Mission assertion evidence policy", () => {
       missionRole: "VALIDATOR",
       requiresIndependentValidation: true,
     })).toBe(true);
+    expect(assertionEvidenceCanSatisfy({
+      missionRole: "WORKER",
+      requiresIndependentValidation: true,
+      factoryIndependentVerification: true,
+    })).toBe(true);
   });
 
   it("requires the exact completed run and current WorkOrder revision", () => {
     const workOrder = { _id: "work-order-1", missionId: "mission-1", missionRole: "WORKER", currentRevisionNumber: 2 };
-    const workflowRun = { _id: "run-2", workOrderId: "work-order-1", missionId: "mission-1", missionRole: "WORKER", status: "COMPLETED" };
-    const verificationReceipt = { workflowRunId: "run-2", workOrderRevisionNumber: 2 };
+    const workflowRun = { _id: "run-2", workOrderId: "work-order-1", missionId: "mission-1", missionRole: "WORKER", status: "COMPLETED", executionBaseSha: "base", headSha: "candidate" };
+    const verificationReceipt = { workflowRunId: "run-2", workOrderRevisionNumber: 2, sourceRevision: "base", candidateRevision: "candidate" };
     expect(missionReceiptMatchesExecution({ workOrder, workflowRun, verificationReceipt })).toBe(true);
     expect(missionReceiptMatchesExecution({ workOrder, workflowRun: { ...workflowRun, _id: "run-3" }, verificationReceipt })).toBe(false);
     expect(missionReceiptMatchesExecution({ workOrder, workflowRun, verificationReceipt: { ...verificationReceipt, workOrderRevisionNumber: 1 } })).toBe(false);
     expect(missionReceiptMatchesExecution({ workOrder, workflowRun: { ...workflowRun, status: "FAILED" }, verificationReceipt })).toBe(false);
+    expect(missionReceiptMatchesExecution({ workOrder, workflowRun, verificationReceipt: { ...verificationReceipt, candidateRevision: "other" } })).toBe(false);
+    expect(missionReceiptMatchesExecution({ workOrder, workflowRun: { ...workflowRun, status: "FAILED" }, verificationReceipt: { ...verificationReceipt, status: "FAILED" } })).toBe(true);
   });
 });

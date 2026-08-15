@@ -12,6 +12,7 @@ const base = {
     branch: "codex/work",
     executionBaseSha: "base",
     headSha: "head",
+    executionClaimedBy: "worker:factory-1",
     executionManifestDigest: "manifest-digest",
     pullRequestUrl: "https://github.com/acme/repo/pull/1",
     pullRequestNumber: 1,
@@ -50,6 +51,14 @@ const base = {
     workOrderRevisionNumber: 2,
     recordedAt: 91,
   }],
+  evidenceEnvelopes: [{
+    _id: "evidence-1",
+    workflowRunId: "run-doc-1",
+    acceptanceCriterionIds: ["criterion-1"],
+    sourceRevision: "base",
+    candidateRevision: "head",
+    producer: { actorId: "factory-command/v1", independent: true },
+  }],
   prChecks: [{
     _id: "check-1",
     workflowRunId: "run-doc-1",
@@ -59,12 +68,14 @@ const base = {
     headSha: "head",
     prState: "OPEN" as const,
     ciStatus: "PASS" as const,
+    source: "GITHUB" as const,
     syncedAt: 95,
   }],
   events: [],
   fileChanges: [{ repositoryPath: "src/feature.ts" }],
   rollbackApproach: "Revert the pull request.",
   expectedRepository: "acme/repo",
+  githubAppInstallationId: "installation-42",
 };
 
 describe("unified review package", () => {
@@ -73,8 +84,15 @@ describe("unified review package", () => {
     expect(review.status).toBe("READY");
     expect(review.criteria[0]).toMatchObject({ status: "PASS", verifier: "validator:ci" });
     expect(review.identity.headSha).toBe("head");
+    expect(review.identity.githubAppInstallationId).toBe("installation-42");
     expect(review.gate).toMatchObject({ status: "PASS", verdict: "VERIFIED", receiptId: "gate-1" });
     expect(review.reviewerFocus).toContain("Touches shared delivery logic");
+  });
+
+  it("requires GitHub App installation identity for Factory publication", () => {
+    const review = buildReviewPackage({ ...base, githubAppInstallationId: null });
+    expect(review.status).toBe("BLOCKED");
+    expect(review.blockers).toContain("GitHub App installation identity is missing from the Factory publication lineage.");
   });
 
   it("ignores WorkOrder-level receipts when projecting criterion evidence", () => {
@@ -116,7 +134,7 @@ describe("unified review package", () => {
     expect(review.blockers).toEqual(expect.arrayContaining([
       "Tests pass: evidence is stale.",
       "1 unresolved policy deviation(s) are recorded.",
-      "Exact Attempt, repository, branch, and head GitHub CI evidence is missing.",
+      "Exact GitHub-sourced Attempt, repository, branch, and head CI evidence is missing.",
     ]));
   });
 
@@ -153,6 +171,36 @@ describe("unified review package", () => {
     expect(review.blockers).toContain(
       "Tests pass: Verifier matches the execution worker; independent verification is required.",
     );
+  });
+
+  it("fails closed when Factory executor identity is absent", () => {
+    const review = buildReviewPackage({
+      ...base,
+      run: { ...base.run, executionClaimedBy: undefined },
+    });
+
+    expect(review.status).toBe("BLOCKED");
+    expect(review.blockers).toEqual(expect.arrayContaining([
+      "Factory executor identity is missing; verifier independence cannot be established.",
+      "Tests pass: Execution worker identity is missing; independent verification cannot be established.",
+    ]));
+  });
+
+  it("rejects Factory receipts whose evidence producer is not independently attributable", () => {
+    const review = buildReviewPackage({
+      ...base,
+      run: { ...base.run, executionClaimedBy: "worker:factory-1" },
+      evidenceEnvelopes: [{
+        ...base.evidenceEnvelopes[0],
+        producer: { actorId: "worker:factory-1", independent: false },
+      }],
+    });
+
+    expect(review.status).toBe("BLOCKED");
+    expect(review.criteria[0]).toMatchObject({
+      status: "UNKNOWN",
+      integrityIssue: "Evidence does not identify an independent producer distinct from the execution worker.",
+    });
   });
 
   it("requires an open pull request and fails closed when provider state is absent", () => {
@@ -255,6 +303,6 @@ describe("unified review package", () => {
 
     expect(review.status).toBe("INCOMPLETE");
     expect(review.ci.status).toBe("MISSING");
-    expect(review.blockers).toContain("Exact Attempt, repository, branch, and head GitHub CI evidence is missing.");
+    expect(review.blockers).toContain("Exact GitHub-sourced Attempt, repository, branch, and head CI evidence is missing.");
   });
 });

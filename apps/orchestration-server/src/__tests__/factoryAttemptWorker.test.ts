@@ -115,13 +115,55 @@ describe("FactoryAttemptWorker verification-first lifecycle", () => {
     expect(fixture.reports.at(-1)?.terminal).toEqual({ status: "COMPLETED" });
     await restartedWorker.stop();
   });
+
+  it("persists a verification mismatch, blocks publication, and recovers with a new immutable Attempt", async () => {
+    const mismatched = await runFixture("VERIFIED", { attempt: 1, dirtyVerification: true });
+    await vi.waitFor(() => expect(mismatched.worker.status().failedCount).toBe(1));
+
+    const failurePacket = mismatched.reports.at(-1);
+    const failureEvidence = failurePacket?.artifacts?.find((artifact: any) => artifact.artifactType === "VERIFICATION_EVIDENCE");
+    expect(failureEvidence).toMatchObject({
+      metadata: {
+        failureClass: "CANDIDATE_INTEGRITY_MISMATCH",
+        candidateRevision: expect.stringMatching(/^[a-f0-9]{40}$/),
+      },
+    });
+    expect(failureEvidence.metadata.checkSummary).toEqual(
+      expect.arrayContaining([expect.objectContaining({ status: "PASS", verifierId: "factory-command/v1" })]),
+    );
+    expect(failurePacket?.terminal).toMatchObject({
+      status: "FAILED",
+      failureReason: expect.stringContaining("Verification left repository changes behind"),
+    });
+    expect(mismatched.createPullRequest).not.toHaveBeenCalled();
+    const historicalPackets = structuredClone(mismatched.reports);
+    await mismatched.worker.stop();
+
+    const recovered = await runFixture("VERIFIED", { attempt: 2 });
+    await vi.waitFor(() => expect(recovered.worker.status().completedCount).toBe(1));
+    const recoveredArtifact = recovered.reports.at(-1)?.artifacts?.find((artifact: any) => artifact.artifactType === "PULL_REQUEST");
+
+    expect(recovered.createPullRequest).toHaveBeenCalledOnce();
+    expect(recoveredArtifact?.metadata).toMatchObject({
+      workflowRunId: "workflow-run-2",
+      headSha: expect.stringMatching(/^[a-f0-9]{40}$/),
+      installationId: "303",
+    });
+    expect(recoveredArtifact?.metadata.headSha).not.toBe(failureEvidence.metadata.candidateRevision);
+    expect(mismatched.reports).toEqual(historicalPackets);
+    await recovered.worker.stop();
+  });
 });
 
 function verifiedSha() {
   return expect.stringMatching(/^[a-f0-9]{40}$/);
 }
 
-async function runFixture(serverVerdict: "VERIFIED" | "NOT_VERIFIED" | "REQUIRES_HUMAN_REVIEW") {
+async function runFixture(
+  serverVerdict: "VERIFIED" | "NOT_VERIFIED" | "REQUIRES_HUMAN_REVIEW",
+  options: { attempt?: number; dirtyVerification?: boolean } = {},
+) {
+  const attempt = options.attempt ?? 1;
   const checkoutRoot = await mkdtemp(path.join(tmpdir(), "mc-verification-first-worker-"));
   cleanup.push(checkoutRoot);
   await git(checkoutRoot, ["init", "-b", "main"]);
@@ -132,11 +174,11 @@ async function runFixture(serverVerdict: "VERIFIED" | "NOT_VERIFIED" | "REQUIRES
   await git(checkoutRoot, ["add", "."]);
   await git(checkoutRoot, ["commit", "-m", "Initial fixture"]);
 
-  const worktree = path.join(checkoutRoot, ".mission-control", "worktrees", "attempt-1");
+  const worktree = path.join(checkoutRoot, ".mission-control", "worktrees", `attempt-${attempt}`);
   const reports: any[] = [];
   const run = {
-    _id: "workflow-run-1",
-    runId: "factory-run-1",
+    _id: `workflow-run-${attempt}`,
+    runId: `factory-run-${attempt}`,
     projectId: "project-1",
     repositoryId: "repository-1",
     factoryDefinitionVersionId: "factory-version-1",
@@ -152,12 +194,12 @@ async function runFixture(serverVerdict: "VERIFIED" | "NOT_VERIFIED" | "REQUIRES
     workOrderId: "work-order-1",
     checkoutRoot,
     worktree,
-    branch: "mc/verification-first-fixture",
+    branch: `mc/verification-first-fixture-${attempt}`,
     defaultBranch: "main",
     repository: "sellerfi/mission-control-fixture",
     providerRepositoryId: "101",
     installation: { appId: "202", installationId: "303" },
-    executionManifest: executionManifest(),
+    executionManifest: executionManifest({ attempt, dirtyVerification: options.dirtyVerification }),
   };
   let lifecycle: "INITIAL" | "PAUSED" | "RESUME" | "COMPLETED" = "INITIAL";
   let verifiedCandidate: { sourceRevision: string; candidateRevision: string } | null = null;
@@ -221,7 +263,10 @@ async function runFixture(serverVerdict: "VERIFIED" | "NOT_VERIFIED" | "REQUIRES
     }),
   } as any;
   const executeCodex = vi.fn(async ({ cwd }: { cwd: string }) => {
-    await writeFile(path.join(cwd, "src", "feature.ts"), "export const verified = true;\n");
+    await writeFile(
+      path.join(cwd, "src", "feature.ts"),
+      `export const verified = true; // corrected Attempt ${attempt}\n`,
+    );
     return {
       exitCode: 0,
       output: JSON.stringify(completedFactoryResult()),
@@ -237,7 +282,7 @@ async function runFixture(serverVerdict: "VERIFIED" | "NOT_VERIFIED" | "REQUIRES
   }));
   const executeVerification = vi.fn(executeIndependentVerification);
   const pushFactoryBranchMock = vi.fn(async (input) => {
-    expect(input.branch).toBe("mc/verification-first-fixture");
+    expect(input.branch).toBe(`mc/verification-first-fixture-${attempt}`);
   });
   const dependencies: FactoryAttemptWorkerDependencies = {
     ensureFactoryWorktree,
@@ -282,10 +327,10 @@ function completedFactoryResult() {
   };
 }
 
-function executionManifest() {
+function executionManifest(options: { attempt?: number; dirtyVerification?: boolean } = {}) {
   return {
     version: "factory-execution-manifest/v1",
-    causation: { workOrderRevisionNumber: 1, sourceIssue: "sellerfi/mission-control-fixture#17" },
+    causation: { workflowRunId: `workflow-run-${options.attempt ?? 1}`, workOrderRevisionNumber: 1, sourceIssue: "sellerfi/mission-control-fixture#17" },
     harness: {
       adapter: "codex",
       version: "v1",
@@ -331,7 +376,14 @@ function executionManifest() {
           mandatory: true,
           acceptanceCriterionIds: ["ac-1"],
           evidenceCategory: "TEST_RESULT",
-          command: { executable: "node", args: ["-e", "console.log('verified')"], commandClass: "TEST", timeoutMs: 5_000 },
+          command: {
+            executable: "node",
+            args: ["-e", options.dirtyVerification
+              ? "require('fs').writeFileSync('src/verifier-touch.ts', 'mismatch')"
+              : "console.log('verified')"],
+            commandClass: "TEST",
+            timeoutMs: 5_000,
+          },
         }],
       },
     },

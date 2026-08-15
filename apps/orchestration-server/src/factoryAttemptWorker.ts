@@ -329,7 +329,21 @@ export class FactoryAttemptWorker {
           repositoryRoot: claim.worktree,
           signal: controller.signal,
         });
-        await this.dependencies.assertFactoryCandidateUnchanged(claim.worktree, headSha);
+        try {
+          await this.dependencies.assertFactoryCandidateUnchanged(claim.worktree, headSha);
+        } catch (error) {
+          const reason = safeError(error);
+          await report({
+            events: mappedEvents,
+            artifacts: [
+              ...baseArtifacts,
+              verificationMismatchArtifact(claim, candidate, verificationResult, reason),
+            ],
+            terminal: { status: "FAILED", failureReason: reason },
+          });
+          this.failedCount += 1;
+          return;
+        }
         const verificationReport = await report({
           events: mappedEvents,
           artifacts: baseArtifacts,
@@ -636,6 +650,38 @@ function structuredResultArtifact(claim: any, result: ReturnType<typeof parseFac
     description: result.summary,
     contentHash: `sha256:${createHash("sha256").update(JSON.stringify(result)).digest("hex")}`,
     metadata: { schema: "factory-result/v1", result },
+  };
+}
+
+function verificationMismatchArtifact(claim: any, candidate: any, verification: any, reason: string) {
+  const checkSummary = (verification?.checks ?? []).map((check: any) => ({
+    checkId: check.checkId,
+    verifierId: check.verifierId,
+    status: check.status,
+    evidence: (check.evidence ?? []).map((item: any) => ({
+      evidenceKey: item.evidenceKey,
+      contentHash: item.contentHash,
+      producer: item.producer,
+    })),
+  }));
+  return {
+    idempotencyKey: `factory:${claim.runId}:verification-candidate-mismatch:${candidate.candidateRevision}`,
+    artifactType: "VERIFICATION_EVIDENCE",
+    name: "Independent verification candidate-integrity failure",
+    description: reason,
+    contentHash: `sha256:${createHash("sha256").update(JSON.stringify({
+      sourceRevision: candidate.sourceRevision,
+      candidateRevision: candidate.candidateRevision,
+      checkSummary,
+      reason,
+    })).digest("hex")}`,
+    metadata: {
+      failureClass: "CANDIDATE_INTEGRITY_MISMATCH",
+      sourceRevision: candidate.sourceRevision,
+      candidateRevision: candidate.candidateRevision,
+      checkSummary,
+      reason,
+    },
   };
 }
 

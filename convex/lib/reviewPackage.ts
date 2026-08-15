@@ -11,6 +11,16 @@ type CriterionLike = {
   id: string;
   title: string;
   verificationMethod?: string;
+  requiredEvidence?: Array<{ independent?: boolean }>;
+};
+
+type EvidenceEnvelopeLike = {
+  _id?: string;
+  workflowRunId?: string;
+  acceptanceCriterionIds?: string[];
+  sourceRevision?: string;
+  candidateRevision?: string;
+  producer?: { actorId?: string; independent?: boolean };
 };
 
 type ReceiptLike = {
@@ -47,6 +57,7 @@ type PrCheckLike = {
   prState?: "OPEN" | "CLOSED" | "MERGED";
   ciStatus?: "PASS" | "FAIL" | "PENDING" | "UNKNOWN";
   ciRunUrl?: string;
+  source?: "CODEGEN" | "WORKFLOW" | "GITHUB" | "MANUAL";
   syncedAt: number;
   changeReviewLenses?: Array<{ id: string; label: string; enabled: boolean; score?: number }>;
 };
@@ -143,6 +154,35 @@ function receiptIntegrityIssue(receipt: ReceiptLike | undefined, executionClaime
   return null;
 }
 
+function independentEvidenceIntegrityIssue(input: {
+  receipt?: ReceiptLike;
+  evidenceEnvelopes: EvidenceEnvelopeLike[];
+  workflowRunId?: string;
+  criterionId: string;
+  executionClaimedBy?: string;
+  sourceRevision?: string;
+  candidateRevision?: string;
+  required: boolean;
+}) {
+  if (!input.required || input.receipt?.status !== "PASSED") return null;
+  if (!input.executionClaimedBy?.trim()) {
+    return "Execution worker identity is missing; independent verification cannot be established.";
+  }
+  const linkedIds = new Set((input.receipt.evidenceEnvelopeIds ?? []).map(String));
+  const linked = input.evidenceEnvelopes.filter((evidence) => linkedIds.has(String(evidence._id))
+    && evidence.workflowRunId === input.workflowRunId
+    && evidence.acceptanceCriterionIds?.includes(input.criterionId)
+    && evidence.sourceRevision === input.sourceRevision
+    && evidence.candidateRevision === input.candidateRevision);
+  if (linked.length === 0) return "Exact-candidate evidence envelope lineage is missing.";
+  if (!linked.some((evidence) => evidence.producer?.independent === true
+    && evidence.producer.actorId
+    && evidence.producer.actorId !== input.executionClaimedBy)) {
+    return "Evidence does not identify an independent producer distinct from the execution worker.";
+  }
+  return null;
+}
+
 function criterionStatus(receipt: ReceiptLike | undefined, input: {
   now: number;
   workOrderRevisionNumber?: number;
@@ -195,28 +235,42 @@ export function buildReviewPackage(input: {
     constraints?: string[];
   } | null;
   receipts?: ReceiptLike[];
+  evidenceEnvelopes?: EvidenceEnvelopeLike[];
   prChecks?: PrCheckLike[];
   events?: EventLike[];
   fileChanges?: Array<{ repositoryPath?: string | null }>;
   rollbackApproach?: string | null;
   expectedRepository?: string | null;
+  githubAppInstallationId?: string | null;
 }) {
   const workflowRunId = input.run._id ?? input.run.runId;
   const frozenRevision = input.run.workOrderRevisionNumber ?? input.workOrder?.currentRevisionNumber;
   const criteria = (input.workOrder?.acceptanceCriteria ?? []).map((criterion) => {
     const receipt = latestReceipt(input.receipts ?? [], criterion.id, workflowRunId);
-    const status = criterionStatus(receipt, {
+    const baseStatus = criterionStatus(receipt, {
       now: input.now,
       workOrderRevisionNumber: frozenRevision,
       executionClaimedBy: input.run.executionClaimedBy,
       sourceRevision: input.run.executionBaseSha,
       candidateRevision: input.run.headSha,
     });
+    const evidenceIntegrityIssue = independentEvidenceIntegrityIssue({
+      receipt,
+      evidenceEnvelopes: input.evidenceEnvelopes ?? [],
+      workflowRunId,
+      criterionId: criterion.id,
+      executionClaimedBy: input.run.executionClaimedBy,
+      sourceRevision: input.run.executionBaseSha,
+      candidateRevision: input.run.headSha,
+      required: Boolean(input.run.executionManifestDigest)
+        || Boolean(criterion.requiredEvidence?.some((requirement) => requirement.independent)),
+    });
+    const status = baseStatus === "PASS" && evidenceIntegrityIssue ? "UNKNOWN" : baseStatus;
     const integrityIssue = subjectIntegrityIssue(receipt, {
       workOrderRevisionNumber: frozenRevision,
       sourceRevision: input.run.executionBaseSha,
       candidateRevision: input.run.headSha,
-    }) ?? receiptIntegrityIssue(receipt, input.run.executionClaimedBy);
+    }) ?? receiptIntegrityIssue(receipt, input.run.executionClaimedBy) ?? evidenceIntegrityIssue;
     return {
       id: criterion.id,
       title: criterion.title,
@@ -240,7 +294,8 @@ export function buildReviewPackage(input: {
   const gateIntegrityIssue = gateSubjectIssue
     ?? (gateReceipt && !gateReceipt.verificationRunId ? "Verification-run identity is missing from the WorkOrder gate." : null)
     ?? (gateReceipt && !gateReceipt.verifier?.trim() ? "Verifier identity is missing from the WorkOrder gate." : null)
-    ?? (gateReceipt && !hasEvidence(gateReceipt) ? "Durable evidence is missing from the WorkOrder gate." : null);
+    ?? (gateReceipt && !hasEvidence(gateReceipt) ? "Durable evidence is missing from the WorkOrder gate." : null)
+    ?? receiptIntegrityIssue(gateReceipt, input.run.executionClaimedBy);
   const gateStale = Boolean(gateReceipt?.invalidatedAt
     || gateReceipt?.status === "STALE"
     || (gateReceipt?.validUntil && gateReceipt.validUntil <= input.now)
@@ -262,7 +317,8 @@ export function buildReviewPackage(input: {
       && check.headSha === input.run.headSha
       && check.workflowRunId === workflowRunId
       && (!input.expectedRepository || check.repoFullName === input.expectedRepository)
-      && (!input.run.branch || check.branch === input.run.branch))
+      && (!input.run.branch || check.branch === input.run.branch)
+      && (!input.run.executionManifestDigest || check.source === "GITHUB"))
     .sort((left, right) => right.syncedAt - left.syncedAt)[0];
   const deviations = (input.events ?? [])
     .filter((event) => event.eventType === "POLICY_DEVIATION")
@@ -306,8 +362,14 @@ export function buildReviewPackage(input: {
   } else if (!pullRequestMatchesRepository(input.run.pullRequestUrl, input.expectedRepository, input.run.pullRequestNumber)) {
     blockers.push("Pull-request URL does not match the expected GitHub repository and PR number.");
   }
+  if (input.run.executionManifestDigest && !input.githubAppInstallationId?.trim()) {
+    blockers.push("GitHub App installation identity is missing from the Factory publication lineage.");
+  }
+  if (input.run.executionManifestDigest && !input.run.executionClaimedBy?.trim()) {
+    blockers.push("Factory executor identity is missing; verifier independence cannot be established.");
+  }
   if (!exactPrCheck) {
-    incomplete.push("Exact Attempt, repository, branch, and head GitHub CI evidence is missing.");
+    incomplete.push("Exact GitHub-sourced Attempt, repository, branch, and head CI evidence is missing.");
   } else {
     if (exactPrCheck.prState === "CLOSED" || exactPrCheck.prState === "MERGED") {
       blockers.push(`Pull request is ${exactPrCheck.prState.toLowerCase()}; an open review candidate is required.`);
@@ -367,6 +429,7 @@ export function buildReviewPackage(input: {
       headSha: input.run.headSha ?? null,
       pullRequestUrl: input.run.pullRequestUrl ?? null,
       pullRequestNumber: input.run.pullRequestNumber ?? null,
+      githubAppInstallationId: input.githubAppInstallationId ?? null,
       executionManifestDigest: input.run.executionManifestDigest ?? null,
     },
     gate: {

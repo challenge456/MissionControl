@@ -65,6 +65,7 @@ import { loadTaskProjections } from "./lib/taskProjection";
 import { snapshotWorkflowDefinition } from "./lib/workflowSnapshot";
 import { buildWorkOrderTaskAuthority } from "./lib/taskAuthority";
 import { buildFactoryExecutionManifest } from "./lib/executionManifest";
+import { buildAcceptanceEligibility, loadFactoryAttemptReviewReadModel, workOrderRequiresFactoryReviewPackage } from "./lib/factoryReviewReadModel";
 import { factoryWorkflowContractIssues } from "./lib/factoryWorkflowContract";
 import { createWorkOrderRecord } from "./lib/workOrderCreate";
 import {
@@ -1520,6 +1521,16 @@ export const get = query({
       now: Date.now(),
     });
     const governanceStatus = buildGovernanceStatus({ workOrder, revisions, approvalDecisions, verificationReceipts, policy, acceptance });
+    const latestRun = executionRuns[0] ?? null;
+    const reviewReadModel = latestRun
+      ? await loadFactoryAttemptReviewReadModel(ctx, { run: latestRun, workOrder })
+      : null;
+    const acceptanceEligibility = buildAcceptanceEligibility({
+      governanceAcceptance: acceptance,
+      latestRun,
+      factoryRequired: workOrderRequiresFactoryReviewPackage(workOrder, latestRun),
+      reviewPackage: reviewReadModel?.reviewPackage,
+    });
     const childTasks = await loadTaskProjections(
       ctx,
       childTaskRows,
@@ -1542,6 +1553,8 @@ export const get = query({
        governancePolicy: policy,
        governanceStatus,
       acceptanceSummary: acceptance,
+      acceptanceEligibility,
+      reviewPackage: reviewReadModel?.reviewPackage ?? null,
       childTasks,
     };
   },
@@ -3103,7 +3116,36 @@ export const syncExecutionOutcome = internalMutation({
 
     await refreshWorkOrderGovernance(ctx, workOrder._id);
 
-    return { synced: true, state: nextState };
+    const missionSyncs: any[] = [];
+    if (workOrder.missionId && ["COMPLETED", "FAILED"].includes(run.status)) {
+      const criterionReceipts = await ctx.db
+        .query("verificationReceipts")
+        .withIndex("by_run", (q: any) => q.eq("workflowRunId", run._id))
+        .filter((q: any) => q.eq(q.field("receiptScope"), "ACCEPTANCE_CRITERION"))
+        .collect();
+      for (const receipt of criterionReceipts) {
+        if (!receipt.acceptanceCriterionId) continue;
+        const assertion = await ctx.db
+          .query("validationAssertions")
+          .withIndex("by_mission_assertion", (q: any) => q
+            .eq("missionId", workOrder.missionId!)
+            .eq("assertionId", receipt.acceptanceCriterionId!))
+          .first();
+        if (!assertion || !assertion.linkedWorkOrderIds.includes(workOrder._id)) continue;
+        if (receipt.validationAssertionId !== assertion._id) {
+          await ctx.db.patch(receipt._id, { validationAssertionId: assertion._id });
+        }
+        const boundReceipt = await ctx.db.get(receipt._id);
+        if (!boundReceipt) continue;
+        missionSyncs.push(await syncMissionValidationReceipt(ctx, {
+          workOrder,
+          workflowRun: run,
+          verificationReceipt: boundReceipt,
+        }));
+      }
+    }
+
+    return { synced: true, state: nextState, missionSyncs };
   },
 });
 
@@ -3812,6 +3854,20 @@ export const accept = mutation({
     });
     if (!acceptance.eligible) {
       throw new Error(`WorkOrder cannot be accepted (${acceptance.blockingReasons.join("; ")})`);
+    }
+    const reviewReadModel = await loadFactoryAttemptReviewReadModel(ctx, {
+      run: latestRun,
+      workOrder,
+      now,
+    });
+    const acceptanceEligibility = buildAcceptanceEligibility({
+      governanceAcceptance: acceptance,
+      latestRun,
+      factoryRequired: workOrderRequiresFactoryReviewPackage(workOrder, latestRun),
+      reviewPackage: reviewReadModel.reviewPackage,
+    });
+    if (!acceptanceEligibility.eligible) {
+      throw new Error(`WorkOrder cannot be accepted (${acceptanceEligibility.blockingReasons.join("; ")})`);
     }
 
     await ctx.db.patch(workOrder._id, {

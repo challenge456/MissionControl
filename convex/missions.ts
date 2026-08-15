@@ -20,12 +20,15 @@ import {
 } from "./lib/missionPlan";
 import { resolveFlag, type FlagRow } from "./lib/flags";
 import { createWorkOrderRecord } from "./lib/workOrderCreate";
+import { compileMissionWorkOrderContract } from "./lib/missionWorkOrderContract";
 import {
   loadMissionExecutionState,
   reconcileMissionAfterHandoff,
 } from "./lib/missionExecution";
 import { COMPANY_PERMISSIONS, requireWorkspaceAccess } from "./lib/companyAccess";
 import { assertAuthorizedDeliveryRecord, canAccessDeliveryRecord, requireAuthorizedDeliveryScope } from "./lib/deliveryAuthorization";
+import { evaluateAcceptance } from "./lib/workOrderGovernance";
+import { buildAcceptanceEligibility, loadFactoryAttemptReviewReadModel, workOrderRequiresFactoryReviewPackage } from "./lib/factoryReviewReadModel";
 
 const missionState = v.union(
   v.literal("DRAFT"), v.literal("PLANNING"), v.literal("AWAITING_PLAN_APPROVAL"),
@@ -69,6 +72,25 @@ const blueprintInput = v.object({
   estimatedCostUsd: v.optional(v.number()),
   implementationPolicy: v.optional(v.object({
     allowedCommands: v.array(v.string()),
+    independentVerification: v.optional(v.object({
+      executable: v.string(),
+      args: v.array(v.string()),
+      category: v.union(
+        v.literal("BUILD"), v.literal("TYPECHECK"), v.literal("UNIT_TEST"),
+        v.literal("INTEGRATION_TEST"), v.literal("CONTRACT_TEST"), v.literal("SECURITY"),
+      ),
+      commandClass: v.union(
+        v.literal("BUILD"), v.literal("TYPECHECK"), v.literal("TEST"),
+        v.literal("LINT"), v.literal("SECURITY_SCAN"), v.literal("DEPENDENCY_SCAN"),
+      ),
+      evidenceCategory: v.union(
+        v.literal("TEST_RESULT"), v.literal("BUILD_RESULT"), v.literal("STATIC_ANALYSIS"),
+        v.literal("SECURITY_SCAN"), v.literal("COMMAND_LOG"), v.literal("BROWSER_RESULT"),
+      ),
+      timeoutMs: v.number(),
+    })),
+    maxFilesChanged: v.optional(v.number()),
+    maxLinesChanged: v.optional(v.number()),
     maxCostUsd: v.optional(v.number()),
     maxAttempts: v.number(),
     timeoutMinutes: v.number(),
@@ -223,12 +245,31 @@ async function getMissionDetail(ctx: any, mission: any) {
       ctx.db.query("approvalDecisions").withIndex("by_work_order", (q: any) => q.eq("workOrderId", workOrder._id)).order("desc").collect(),
       ctx.db.query("verificationReceipts").withIndex("by_work_order", (q: any) => q.eq("workOrderId", workOrder._id)).order("desc").collect(),
     ]);
+    const governanceAcceptance = evaluateAcceptance({
+      riskLevel: workOrder.riskLevel,
+      requiredApprovals: workOrder.requiredApprovals,
+      approvalDecisions,
+      acceptanceCriteria: workOrder.acceptanceCriteria,
+      verificationReceipts,
+      now: Date.now(),
+    });
+    const latestRun = executionRuns[0] ?? null;
+    const reviewReadModel = latestRun
+      ? await loadFactoryAttemptReviewReadModel(ctx, { run: latestRun, workOrder })
+      : null;
     return {
       ...workOrder,
       childTasks,
       executionRuns,
       approvalDecisions,
       verificationReceipts,
+      acceptanceEligibility: buildAcceptanceEligibility({
+        governanceAcceptance,
+        latestRun,
+        factoryRequired: workOrderRequiresFactoryReviewPackage(workOrder, latestRun),
+        reviewPackage: reviewReadModel?.reviewPackage,
+      }),
+      reviewPackage: reviewReadModel?.reviewPackage ?? null,
       latestHandoff: handoffByWorkOrderId.get(String(workOrder._id)) ?? null,
     };
   }));
@@ -831,9 +872,22 @@ export const approvePlan = mutation({
 
     const releasedByBlueprint = new Map<string, any>();
     const workOrders: any[] = [];
+    const codeScopes = (await Promise.all((mission.codeScopeIds ?? []).map((scopeId: any) => ctx.db.get(scopeId))))
+      .filter(Boolean);
     for (const blueprint of [...plan.workOrderBlueprints].sort((left: any, right: any) => left.sequence - right.sequence)) {
-      const linkedAssertions = blueprint.assertionIds.map((assertionId: string) => assertionRows.get(assertionId));
       const dependencies = blueprint.dependsOnBlueprintIds.map((dependencyId: string) => String(releasedByBlueprint.get(dependencyId)?._id ?? dependencyId));
+      const compiledContract = compileMissionWorkOrderContract({
+        blueprint: {
+          ...blueprint,
+          priority: blueprint.priority ?? 3,
+          riskLevel: blueprint.riskLevel ?? "MEDIUM",
+          constraints: blueprint.constraints ?? [],
+          requiredApprovals: blueprint.requiredApprovals ?? [],
+        },
+        assertions: normalizedPlanAssertions(plan),
+        rollbackApproach: plan.rollbackApproach,
+        codeScopes,
+      });
       const result = await createWorkOrderRecord(ctx, {
         projectId: args.projectId,
         missionId: mission._id,
@@ -852,19 +906,20 @@ export const approvePlan = mutation({
         riskLevel: blueprint.riskLevel ?? "MEDIUM",
         modelComplexity: blueprint.modelComplexity,
         requestedBy: operator.actorId,
-        acceptanceCriteria: linkedAssertions.map((assertion: any) => ({
-          id: assertion.assertionId,
-          title: assertion.title,
-          description: `${assertion.passCondition} Evidence: ${assertion.requiredEvidence}`,
-          verificationMethod: assertion.verificationMethod,
-          status: "PENDING",
-        })),
+        requirements: compiledContract.requirements,
+        acceptanceCriteria: compiledContract.acceptanceCriteria,
         constraints: [...(mission.constraints ?? []), ...(blueprint.constraints ?? [])],
+        positiveConstraints: compiledContract.positiveConstraints,
+        negativeConstraints: compiledContract.negativeConstraints,
+        changeBudget: compiledContract.changeBudget,
+        verificationContract: compiledContract.verificationContract,
+        autonomyLevel: compiledContract.autonomyLevel,
         dependencies,
         sourceOfTruthRefs: mission.sourceOfTruthRefs,
-        requiredApprovals: blueprint.requiredApprovals ?? [],
+        requiredApprovals: compiledContract.requiredApprovals,
         state: "READY",
         metadata: {
+          ...compiledContract.metadata,
           approvedWorkflowVersion: blueprint.workflowVersion,
           estimatedCostUsd: blueprint.estimatedCostUsd,
           implementationPolicy: blueprint.implementationPolicy
