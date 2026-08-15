@@ -176,7 +176,8 @@ Lab canary.
 - Removed the temporary canary deployment flag after verification.
 
 **Verification:**
-- Runtime contract: v17 on the local client and backend.
+- Runtime contract: v17 during the canary; v18 after integration with the
+  newer mainline v17 contract.
 - Browser verification: the Research Lab operator modal showed scheduling
   `DISABLED`, mode `NORMAL`, a $10 daily budget, a $5 per-run budget, one
   concurrent run, a 60-second lease, and one stale recovery.

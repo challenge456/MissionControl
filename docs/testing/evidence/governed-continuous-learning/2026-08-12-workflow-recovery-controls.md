@@ -5,8 +5,9 @@
 This was a bounded manual canary in the Software Factory Research Lab workspace
 `sn71gskbdemgf4z1trt9zdmm5h8bde69`. It created no agent Tasks, made no network
 request, dispatched no research graph, changed no repository, and enabled no
-schedule. Runtime contract version 17 is active on both the local client and
-backend.
+schedule. Runtime contract version 17 was active during the drill. After the
+recovery controls were integrated with the newer mainline v17 contract, the
+combined local client and backend contract advanced to version 18.
 
 The temporary canary function was guarded by
 `WORKFLOW_RECOVERY_CANARY_ENABLED=true`; that deployment flag was removed after
