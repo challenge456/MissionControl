@@ -374,7 +374,7 @@ function FactoryVersionEditor({
           status: "APPROVED",
           notes: "Authorized through the browser-governed local Factory baseline.",
           genome: {
-            modelConfig: { provider: "openai", modelId: "gpt-5" },
+            modelConfig: { provider: "openai", modelId: "gpt-5.6-sol" },
             promptBundleHash: "factory-local-human-review-v1",
             toolManifestHash: "factory-local-bounded-tools-v1",
             provenance: {

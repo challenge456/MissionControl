@@ -197,6 +197,9 @@ describe("FactoryConfigurationPanel", () => {
     expect(mocks.createAgentVersion).toHaveBeenCalledWith(expect.objectContaining({
       projectId: "project-1",
       status: "APPROVED",
+      genome: expect.objectContaining({
+        modelConfig: expect.objectContaining({ modelId: "gpt-5.6-sol" }),
+      }),
     }));
     expect(await screen.findByRole("status")).toHaveTextContent("approved LOCAL runner are ready");
   });
