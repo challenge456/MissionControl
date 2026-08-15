@@ -211,6 +211,75 @@ export async function recordTraceObservation(
   return requiredDocument(await ctx.db.get(observationId), "Created observation is unavailable.");
 }
 
+export async function insertEvalScore(ctx: PersistenceCtx, input: {
+  projectId: Id<"projects">;
+  tenantId?: Id<"tenants">;
+  definition: Doc<"evalDefinitions">;
+  traceId?: Id<"traces">;
+  observationId?: Id<"traceObservations">;
+  workflowRunId?: Id<"workflowRuns">;
+  experimentId?: Id<"experiments">;
+  experimentVariantId?: Id<"experimentVariants">;
+  value: number | boolean | string;
+  reason?: string;
+  metadata?: unknown;
+  evaluator: { type: "DETERMINISTIC" | "LLM_JUDGE" | "HUMAN" | "EXTERNAL"; model?: string; version: string };
+  createdBy: string;
+  idempotencyKey: string;
+}) {
+  assertEvalScoreValue(input.definition.scoreType, input.value);
+  if (!input.traceId && !input.observationId && !input.workflowRunId && !input.experimentId) {
+    throw new Error("Eval score requires an attributable target.");
+  }
+  const existing = await ctx.db.query("evalScores")
+    .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", input.idempotencyKey))
+    .first();
+  if (existing) {
+    if (
+      existing.projectId !== input.projectId
+      || existing.evalDefinitionId !== input.definition._id
+      || existing.traceId !== input.traceId
+      || existing.observationId !== input.observationId
+      || existing.workflowRunId !== input.workflowRunId
+      || existing.experimentId !== input.experimentId
+      || existing.experimentVariantId !== input.experimentVariantId
+    ) {
+      throw new Error("Eval score idempotency key is already bound to another target.");
+    }
+    return existing;
+  }
+  const scoreId = await ctx.db.insert("evalScores", {
+    tenantId: input.tenantId,
+    projectId: input.projectId,
+    evalDefinitionId: input.definition._id,
+    traceId: input.traceId,
+    observationId: input.observationId,
+    workflowRunId: input.workflowRunId,
+    experimentId: input.experimentId,
+    experimentVariantId: input.experimentVariantId,
+    idempotencyKey: input.idempotencyKey,
+    scoreType: input.definition.scoreType,
+    value: input.value,
+    reason: optionalString(input.reason, 4_000),
+    metadata: sanitizeTraceValue(input.metadata),
+    evaluator: input.evaluator,
+    createdBy: input.createdBy,
+    createdAt: Date.now(),
+  });
+  const score = await ctx.db.get(scoreId);
+  if (!score) throw new Error("Created eval score is unavailable.");
+  return score;
+}
+
+function assertEvalScoreValue(type: string, value: number | boolean | string) {
+  if (type === "NUMERIC" && typeof value !== "number") throw new Error("Numeric evaluator requires a number.");
+  if (type === "BOOLEAN" && typeof value !== "boolean") throw new Error("Boolean evaluator requires true or false.");
+  if ((type === "CATEGORICAL" || type === "TEXT") && typeof value !== "string") {
+    throw new Error(`${type === "TEXT" ? "Text" : "Categorical"} evaluator requires a string.`);
+  }
+  if (typeof value === "number" && !Number.isFinite(value)) throw new Error("Eval score must be finite.");
+}
+
 async function assertAcyclicObservationParent(
   ctx: PersistenceCtx,
   traceId: Id<"traces">,

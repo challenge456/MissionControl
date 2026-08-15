@@ -11,3 +11,4 @@ export * from "./logger.js";
 export * from "./retry.js";
 export * from "./serviceCommandEnvelope.js";
 export * from "./canonicalDigest.js";
+export * from "./factoryMemorySecurity.js";

@@ -1,13 +1,24 @@
 import {
   evaluateCurrentVerificationEligibility,
-  type CurrentVerificationEligibility,
 } from "@mission-control/workflow-engine/verification-currentness";
+import type { VerificationIdentityTuple } from "@mission-control/workflow-engine";
 import {
   qualityGateProjectionInputDigest,
   qualityGateStateForCurrentEligibility,
 } from "./qualityGateDecision";
 
-export async function getCurrentVerificationResult(ctx: any, workOrder: any, now = Date.now()) {
+export type CurrentVerificationResult = Omit<
+  ReturnType<typeof evaluateCurrentVerificationEligibility>,
+  "exactIdentity"
+> & {
+  exactIdentity?: VerificationIdentityTuple;
+};
+
+export async function getCurrentVerificationResult(
+  ctx: any,
+  workOrder: any,
+  now = Date.now(),
+): Promise<CurrentVerificationResult> {
   const [attempts, results, receipts, evidence, providerHeads, repository, installations] = await Promise.all([
     ctx.db.query("workflowRuns").withIndex("by_work_order", (q: any) => q.eq("workOrderId", workOrder._id)).collect(),
     ctx.db.query("verificationRuns").withIndex("by_work_order", (q: any) => q.eq("workOrderId", workOrder._id)).collect(),
@@ -136,7 +147,7 @@ export async function getCurrentVerificationResult(ctx: any, workOrder: any, now
 export async function appendCurrentVerificationQualityGateDecision(
   ctx: any,
   workOrder: any,
-  current: CurrentVerificationEligibility,
+  current: CurrentVerificationResult,
   idempotencyKey: string,
   now = Date.now(),
 ) {

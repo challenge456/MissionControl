@@ -384,6 +384,9 @@ importers:
       '@mission-control/shared':
         specifier: workspace:*
         version: link:../shared
+      '@mission-control/workflow-engine':
+        specifier: workspace:*
+        version: link:../workflow-engine
     devDependencies:
       typescript:
         specifier: ^5.3.3

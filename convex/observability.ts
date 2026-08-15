@@ -14,6 +14,7 @@ import {
 import {
   ensureAttemptTrace,
   finishAttemptTrace,
+  insertEvalScore,
   recordRunEventObservation,
   recordTraceObservation,
 } from "./lib/observabilityPersistence";
@@ -369,7 +370,7 @@ export const runDurationEvaluator = mutation({
       throw new Error("Duration threshold must match the immutable evaluator definition configuration.");
     }
     const result = evaluateDurationThreshold({ durationMs: trace.durationMs, thresholdMs: args.thresholdMs });
-    const score = await insertScore(ctx, {
+    const score = await insertEvalScore(ctx, {
       projectId: trace.projectId,
       tenantId: trace.tenantId,
       definition,
@@ -428,7 +429,7 @@ export const recordHumanScore = mutation({
       throw new Error("Trace scores require a trace or Attempt evaluator.");
     }
     assertScoreValue(definition.scoreType, args.value);
-    const score = await insertScore(ctx, {
+    const score = await insertEvalScore(ctx, {
       projectId: trace.projectId,
       tenantId: trace.tenantId,
       definition,
@@ -738,7 +739,7 @@ export const recordFixtureJudgeInternal = internalMutation({
       promptVersion: args.rubricVersion,
       metadata: { fixture: true, liveModelCall: false },
     });
-    const score = await insertScore(ctx, {
+    const score = await insertEvalScore(ctx, {
       projectId: trace.projectId,
       tenantId: trace.tenantId,
       definition,
@@ -766,63 +767,6 @@ export const recordFixtureJudgeInternal = internalMutation({
   },
 });
 
-async function insertScore(ctx: MutationCtx, input: {
-  projectId: Id<"projects">;
-  tenantId?: Id<"tenants">;
-  definition: Doc<"evalDefinitions">;
-  traceId?: Id<"traces">;
-  observationId?: Id<"traceObservations">;
-  workflowRunId?: Id<"workflowRuns">;
-  experimentId?: Id<"experiments">;
-  experimentVariantId?: Id<"experimentVariants">;
-  value: number | boolean | string;
-  reason?: string;
-  evaluator: { type: "DETERMINISTIC" | "LLM_JUDGE" | "HUMAN" | "EXTERNAL"; model?: string; version: string };
-  createdBy: string;
-  idempotencyKey: string;
-}) {
-  assertScoreValue(input.definition.scoreType, input.value);
-  if (!input.traceId && !input.observationId && !input.workflowRunId && !input.experimentId) {
-    throw new Error("Eval score requires an attributable target.");
-  }
-  const existing = await ctx.db.query("evalScores")
-    .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", input.idempotencyKey))
-    .first();
-  if (existing) {
-    if (
-      existing.projectId !== input.projectId
-      || existing.evalDefinitionId !== input.definition._id
-      || existing.traceId !== input.traceId
-      || existing.observationId !== input.observationId
-      || existing.workflowRunId !== input.workflowRunId
-      || existing.experimentId !== input.experimentId
-      || existing.experimentVariantId !== input.experimentVariantId
-    ) {
-      throw new Error("Eval score idempotency key is already bound to another target.");
-    }
-    return existing;
-  }
-  const scoreId = await ctx.db.insert("evalScores", {
-    tenantId: input.tenantId,
-    projectId: input.projectId,
-    evalDefinitionId: input.definition._id,
-    traceId: input.traceId,
-    observationId: input.observationId,
-    workflowRunId: input.workflowRunId,
-    experimentId: input.experimentId,
-    experimentVariantId: input.experimentVariantId,
-    idempotencyKey: input.idempotencyKey,
-    scoreType: input.definition.scoreType,
-    value: input.value,
-    reason: optionalString(input.reason, 4_000),
-    evaluator: input.evaluator,
-    createdBy: input.createdBy,
-    createdAt: Date.now(),
-  });
-  const score = await ctx.db.get(scoreId);
-  if (!score) throw new Error("Created eval score is unavailable.");
-  return score;
-}
 
 function objectRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
