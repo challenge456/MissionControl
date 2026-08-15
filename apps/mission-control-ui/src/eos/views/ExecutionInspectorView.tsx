@@ -28,7 +28,7 @@ export function ExecutionInspectorView({
       {tab === "loop" ? (
         <LoopInspectorView projectId={projectId} onNavigate={onNavigate} />
       ) : (
-        <TraceInspectorView onNavigate={onNavigate} />
+        <TraceInspectorView projectId={projectId} onNavigate={onNavigate} />
       )}
     </div>
   );

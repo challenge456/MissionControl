@@ -23,6 +23,10 @@ import {
   workflowHeartbeatDirective,
   workflowLeaseMatches,
 } from "./lib/workflowExecutionControl";
+import {
+  finishAttemptTrace,
+  recordRunEventObservation,
+} from "./lib/observabilityPersistence";
 
 // ============================================================================
 // HELPERS
@@ -138,7 +142,19 @@ async function insertRunEvent(ctx: any, args: {
     errorSummary: args.errorSummary,
     metadata: args.metadata,
   });
-  return { event: await ctx.db.get(eventId), created: true };
+  const event = await ctx.db.get(eventId);
+  const run = await ctx.db.get(args.workflowRunId);
+  if (event && run?.projectId) {
+    await recordRunEventObservation(ctx, run, event);
+    if (["RUN_COMPLETED", "RUN_FAILED", "RUN_CANCELED"].includes(args.eventType)) {
+      await finishAttemptTrace(ctx, run, {
+        status: args.eventType === "RUN_COMPLETED" ? "COMPLETED" : args.eventType === "RUN_CANCELED" ? "CANCELED" : "FAILED",
+        completedAt: args.endedAt ?? Date.now(),
+        failureReason: args.errorSummary ?? run.failureReason,
+      });
+    }
+  }
+  return { event, created: true };
 }
 
 async function insertRunArtifact(ctx: any, args: {

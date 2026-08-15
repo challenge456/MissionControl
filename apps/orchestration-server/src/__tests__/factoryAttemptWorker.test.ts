@@ -64,6 +64,11 @@ describe("FactoryAttemptWorker verification-first lifecycle", () => {
       candidateRevision: expect.any(String),
       sourceRevision: expect.any(String),
     });
+    const observations = fixture.reports.flatMap((packet) => packet.observations ?? []);
+    expect(observations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "AGENT", provider: "openai", status: "SUCCESS" }),
+      expect.objectContaining({ type: "GENERATION", provider: "openai", status: "SUCCESS" }),
+    ]));
     const pullRequestArtifact = fixture.reports.at(-1)?.artifacts?.find((artifact: any) => artifact.artifactType === "PULL_REQUEST");
     expect(pullRequestArtifact?.metadata).toMatchObject({
       sourceRevision: expect.stringMatching(/^[a-f0-9]{40}$/),
