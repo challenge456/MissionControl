@@ -1,6 +1,6 @@
 import { SignInButton, SignOutButton, UserButton, useAuth } from "@clerk/react";
 import { useConvexAuth } from "convex/react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ShieldCheck } from "lucide-react";
 import { AuthRuntimeProvider } from "./AuthRuntimeContext";
 import {
@@ -76,17 +76,19 @@ function ClerkConvexDiagnostic({
 }) {
   const [probe, setProbe] = useState<ClerkConvexTokenProbe | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const probeInput = useRef({ getToken, sessionClaims });
+  probeInput.current = { getToken, sessionClaims };
 
   useEffect(() => {
     let active = true;
     setProbe(null);
-    void probeClerkConvexToken({ getToken, sessionClaims }).then((result) => {
+    void probeClerkConvexToken(probeInput.current).then((result) => {
       if (active) setProbe(result);
     });
     return () => {
       active = false;
     };
-  }, [attempt, getToken, sessionClaims]);
+  }, [attempt]);
 
   return (
     <div className="space-y-3" data-auth-diagnostic={probe?.status ?? "checking"}>
