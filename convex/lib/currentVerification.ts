@@ -144,7 +144,12 @@ export async function appendCurrentVerificationQualityGateDecision(
   const existing = await ctx.db.query("qualityGateDecisions")
     .withIndex("by_idempotency", (q: any) => q.eq("idempotencyKey", projectionKey))
     .first();
-  if (existing) return existing;
+  if (existing) {
+    if (existing.workOrderId !== workOrder._id) {
+      throw new Error("Quality Gate idempotency key is already bound to another WorkOrder.");
+    }
+    return existing;
+  }
 
   const sourceAttempt = current.sourceAttemptId ? await ctx.db.get(current.sourceAttemptId) : null;
   const decisionInput = {

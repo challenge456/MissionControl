@@ -1924,6 +1924,7 @@ export default defineSchema({
     verificationContractDigest: v.optional(v.string()),
     verificationPlanId: v.optional(v.string()),
     verificationPlanDigest: v.optional(v.string()),
+    workOrderRevisionNumber: v.optional(v.number()),
     idempotencyKey: v.string(),
     evidenceKey: v.string(),
     checkId: v.string(),

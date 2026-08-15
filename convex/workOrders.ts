@@ -3807,7 +3807,20 @@ export const accept = mutation({
       .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", `${args.idempotencyKey}:accepted`))
       .first();
     if (existingEvent) {
+      if (existingEvent.workOrderId !== workOrder._id) {
+        throw new Error("Acceptance idempotency key is already bound to another WorkOrder");
+      }
       return { accepted: false, workOrder, reason: "idempotent-replay" };
+    }
+    const existingPolicyV2Rejection = await ctx.db
+      .query("workOrderEvents")
+      .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", `${args.idempotencyKey}:verification-rejected`))
+      .first();
+    if (existingPolicyV2Rejection) {
+      if (existingPolicyV2Rejection.workOrderId !== workOrder._id) {
+        throw new Error("Acceptance idempotency key is already bound to another WorkOrder");
+      }
+      return { accepted: false, workOrder, reason: "idempotent-verification-rejection" };
     }
     if (["DONE", "CANCELED", "DRAFT"].includes(workOrder.state)) {
       throw new Error(`WorkOrder cannot be accepted from ${workOrder.state}`);
