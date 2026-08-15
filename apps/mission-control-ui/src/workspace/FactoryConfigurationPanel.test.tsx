@@ -9,13 +9,18 @@ const mocks = vi.hoisted(() => ({
   policies: [{ _id: "policy-1", name: "Default governance" }],
   verifiers: [{ _id: "verifier-1", label: "Independent review" }],
   versionOptions: {
-    codeScopes: [{ _id: "scope-1", name: "Application" }],
+    codeScopes: [{ _id: "scope-1", name: "Application", includePaths: ["apps/example/**"] }],
     agentVersions: [{ _id: "agent-version-1", version: 2, template: { name: "Implementer" }, modelConfig: { modelId: "gpt-5" } }],
   },
   createFactory: vi.fn(),
   createVersion: vi.fn(),
   assess: vi.fn(),
   activate: vi.fn(),
+  createPolicy: vi.fn(),
+  createVerifier: vi.fn(),
+  agentTemplates: [] as any[],
+  createAgentTemplate: vi.fn(),
+  createAgentVersion: vi.fn(),
 }));
 
 vi.mock("../../../../convex/_generated/api", () => ({
@@ -30,8 +35,10 @@ vi.mock("../../../../convex/_generated/api", () => ({
       activate: "factory.activate",
     },
     workflows: { list: "workflows.list" },
-    "governance/policyEnvelopes": { listPolicyEnvelopes: "policies.list" },
-    "context/verifiers": { list: "verifiers.list" },
+    "governance/policyEnvelopes": { listPolicyEnvelopes: "policies.list", createPolicyEnvelope: "policies.create" },
+    "context/verifiers": { list: "verifiers.list", create: "verifiers.create" },
+    "registry/agentTemplates": { listTemplates: "agentTemplates.list", createTemplate: "agentTemplates.create" },
+    "registry/agentVersions": { createVersion: "agentVersions.create" },
   },
 }));
 
@@ -43,6 +50,7 @@ vi.mock("convex/react", () => ({
     if (query === "workflows.list") return mocks.workflows;
     if (query === "policies.list") return mocks.policies;
     if (query === "verifiers.list") return mocks.verifiers;
+    if (query === "agentTemplates.list") return mocks.agentTemplates;
     return undefined;
   },
   useMutation: (mutation: string) => {
@@ -50,6 +58,10 @@ vi.mock("convex/react", () => ({
     if (mutation === "factory.createVersion") return mocks.createVersion;
     if (mutation === "factory.assessReadiness") return mocks.assess;
     if (mutation === "factory.activate") return mocks.activate;
+    if (mutation === "policies.create") return mocks.createPolicy;
+    if (mutation === "verifiers.create") return mocks.createVerifier;
+    if (mutation === "agentTemplates.create") return mocks.createAgentTemplate;
+    if (mutation === "agentVersions.create") return mocks.createAgentVersion;
     throw new Error(`Unexpected mutation: ${mutation}`);
   },
 }));
@@ -80,10 +92,22 @@ describe("FactoryConfigurationPanel", () => {
   beforeEach(() => {
     mocks.definitions = [];
     mocks.detail = undefined;
+    mocks.workflows = [{ _id: "workflow-1", name: "Mission delivery", version: 1, agents: [{ id: "implementer", persona: "Implementer" }] }];
+    mocks.policies = [{ _id: "policy-1", name: "Default governance" }];
+    mocks.verifiers = [{ _id: "verifier-1", label: "Independent review" }];
+    mocks.agentTemplates = [];
+    mocks.versionOptions = {
+      codeScopes: [{ _id: "scope-1", name: "Application", includePaths: ["apps/example/**"] }],
+      agentVersions: [{ _id: "agent-version-1", version: 2, template: { name: "Implementer" }, modelConfig: { modelId: "gpt-5" } }],
+    };
     mocks.createFactory.mockReset().mockResolvedValue("factory-1");
     mocks.createVersion.mockReset().mockResolvedValue("version-1");
     mocks.assess.mockReset().mockResolvedValue("assessment-1");
     mocks.activate.mockReset().mockResolvedValue({ activeVersionId: "version-1" });
+    mocks.createPolicy.mockReset().mockResolvedValue({ _id: "policy-created" });
+    mocks.createVerifier.mockReset().mockResolvedValue("verifier-created");
+    mocks.createAgentTemplate.mockReset().mockResolvedValue({ _id: "template-created", slug: "factory-local-codex-runner" });
+    mocks.createAgentVersion.mockReset().mockResolvedValue({ _id: "agent-version-created" });
   });
 
   it("creates a draft Factory from the explicit empty state", async () => {
@@ -139,5 +163,38 @@ describe("FactoryConfigurationPanel", () => {
       agentBindings: [{ workflowAgentId: "implementer", agentVersionId: "agent-version-1" }],
       recovery: { pause: false, cancel: true, retry: true, resume: false },
     })));
+  });
+
+  it("creates a browser-governed local baseline when policy and verifier records are missing", async () => {
+    mocks.definitions = [{ _id: "factory-1", repositoryId: "repository-1", status: "DRAFT" }];
+    mocks.detail = { definition: { _id: "factory-1", status: "DRAFT" }, versions: [], assessments: [] };
+    mocks.policies = [];
+    mocks.verifiers = [];
+    mocks.versionOptions = {
+      ...mocks.versionOptions,
+      codeScopes: [{ _id: "scope-1", name: "Application", includePaths: ["apps/example/**"] }],
+      agentVersions: [],
+    };
+    renderPanel();
+
+    fireEvent.click(screen.getByRole("button", { name: "Create local governance baseline" }));
+
+    await waitFor(() => expect(mocks.createPolicy).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: "project-1",
+      rules: expect.objectContaining({ executionEnvironments: ["LOCAL"] }),
+    })));
+    expect(mocks.createVerifier).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: "project-1",
+      globPatterns: ["apps/example/**"],
+    }));
+    expect(mocks.createAgentTemplate).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: "project-1",
+      slug: "factory-local-codex-runner",
+    }));
+    expect(mocks.createAgentVersion).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: "project-1",
+      status: "APPROVED",
+    }));
+    expect(await screen.findByRole("status")).toHaveTextContent("approved LOCAL runner are ready");
   });
 });

@@ -20,8 +20,8 @@ of truth for company access.
 
 1. In Clerk, create or select the Mission Control application and activate the
    Convex integration/JWT template described by Clerk's Convex guide.
-2. Replace the non-routable public placeholder in `convex/auth.config.ts` with
-   the Clerk application's issuer domain:
+2. Configure `convex/auth.config.ts` with the Clerk application's exact issuer
+   domain:
 
    ```ts
    const clerkIssuerDomain = "https://your-clerk-issuer.clerk.accounts.dev";
@@ -41,9 +41,12 @@ of truth for company access.
 The issuer must match the Clerk application that minted the browser token. A
 publishable key alone does not authorize access; Convex validates the token and
 Mission Control then resolves the exact `operators.authId` membership.
-Until the source issuer is configured, Convex trusts only the non-routable
-`https://clerk-not-configured.invalid` placeholder. This preserves legacy
-deployability without creating an authentication bypass.
+
+The current issuer is a Clerk development instance used for internal release
+qualification. It is not the public-production identity boundary. Before a
+public launch, create the production Clerk instance and custom domain, rotate
+the browser to its `pk_live_...` publishable key, update the issuer, and repeat
+the complete governed staging and production verification path.
 
 ## Bootstrap the first owner
 
@@ -82,6 +85,8 @@ Clerk user ID. Provisioning by email alone is deliberately unsupported.
    deactivated.
 7. Set `VITE_AUTH_MODE=clerk` in production and monitor authentication,
    unauthorized-access, and no-membership errors.
+8. Remove the temporary bootstrap variables immediately after the first owner
+   succeeds, then prove that a second bootstrap attempt is denied.
 
 Rollback the UI build to `legacy` mode if Clerk session establishment fails.
 Do not enable anonymous company context as a rollback mechanism.

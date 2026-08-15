@@ -31,6 +31,7 @@ import {
   DEFAULT_WORK_ORDER_FILTERS,
   deriveNextAction,
   filterWorkOrders,
+  parseVerificationArguments,
   summarizeRequiredAttention,
   type WorkOrderQueueFilters,
   type WorkOrderQuickFilter,
@@ -170,6 +171,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
       : "skip"
   );
   const activeFactoryVersionId = activeFactory?.version._id;
+  const activeFactoryHostId = activeFactory?.host?.hostId;
 
   useEffect(() => {
     const requested = searchParams.get("workOrder");
@@ -360,8 +362,13 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
       : selected.workOrder.codeScopeIds ?? []
     : [];
   const activeLocalCodeScopes = (dispatchCodeScopes ?? []).filter((scope) =>
-    scope.active && scope.allowedEnvironments.includes("LOCAL")
+    scope.active
+    && scope.allowedEnvironments.includes("LOCAL")
+    && Boolean(activeFactory?.version.codeScopeIds?.includes(scope._id))
   );
+  const governedFactoryRequired = Boolean(selected?.workOrder.repositoryId || selected?.workOrder.missionId);
+  const factoryScopeMatches = selectedDispatchCodeScopeIds.length > 0
+    && selectedDispatchCodeScopeIds.every((scopeId) => activeFactory?.version.codeScopeIds?.includes(scopeId));
   const verifiedCriteriaCount = selected
     ? Math.max(
         0,
@@ -1029,6 +1036,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                                 [selected.workOrder._id]: scopeId,
                               }))
                             }
+                            disabled={Boolean(selected.workOrder.scopeEnforcementVersion && selected.workOrder.codeScopeIds?.length)}
                           >
                             <SelectTrigger
                               id={`dispatch-scope-${selected.workOrder._id}`}
@@ -1045,7 +1053,9 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                             </SelectContent>
                           </Select>
                           <p className="mt-1.5 text-xs text-muted-foreground">
-                            The worker rejects changed files outside this repository-relative boundary before push.
+                            {selected.workOrder.scopeEnforcementVersion && selected.workOrder.codeScopeIds?.length
+                              ? "This repository-relative boundary was frozen when the WorkOrder was created."
+                              : "The worker rejects changed files outside this repository-relative boundary before push."}
                           </p>
                         </>
                       ) : (
@@ -1096,6 +1106,26 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                         </p>
                       )}
                     </div>
+                    <div className="rounded-lg border border-[var(--panel-line)] bg-background/40 px-3 py-3 md:col-span-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Frozen Factory binding</div>
+                          <div className="mt-1 text-sm text-foreground">
+                            {activeFactory
+                              ? `${activeFactory.repository.repository} · Factory v${activeFactory.version.version}`
+                              : "No active Factory binding"}
+                          </div>
+                        </div>
+                        <Badge variant="outline" className={activeFactory?.readyForBrowserDispatch ? "border-emerald-500/30 text-emerald-300" : "border-amber-500/30 text-amber-300"}>
+                          {activeFactory?.readyForBrowserDispatch ? "Ready" : "Blocked"}
+                        </Badge>
+                      </div>
+                      <div className="mt-2 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
+                        <span>Workflow: <span className="text-foreground/85">{activeFactory?.workflow?.workflowId ?? "Unavailable"}</span></span>
+                        <span>Environment: <span className="text-foreground/85">{selected.workOrder.executionEnvironment ?? "LOCAL"}</span></span>
+                        <span>Host: <span className="text-foreground/85">{activeFactory?.host?.hostId ?? "No current clean host"}</span></span>
+                      </div>
+                    </div>
                     <div className="flex items-end justify-end md:col-span-2">
                     <Button
                       size="sm"
@@ -1115,8 +1145,9 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                             runtime: "Mission Control UI",
                             repositoryId: dispatchRepositoryId,
                             codeScopeIds: selectedDispatchCodeScopeIds,
-                            executionEnvironment: "LOCAL",
-                            factoryDefinitionVersionId: selected.workOrder.missionId
+                            executionEnvironment: selected.workOrder.executionEnvironment ?? "LOCAL",
+                            executorHostId: governedFactoryRequired ? activeFactoryHostId : undefined,
+                            factoryDefinitionVersionId: governedFactoryRequired
                               ? activeFactoryVersionId
                               : undefined,
                           });
@@ -1133,22 +1164,29 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                         !canDispatchSelected ||
                         dispatchingId === selected.workOrder._id ||
                         (selected.childTasks.length > 0 && !selectedDispatchTaskId) ||
-                        (Boolean(selected.workOrder.missionId) && selectedDispatchCodeScopeIds.length === 0) ||
-                        (Boolean(selected.workOrder.missionId) && !activeFactoryVersionId)
+                        (governedFactoryRequired && !factoryScopeMatches) ||
+                        (governedFactoryRequired && !activeFactoryVersionId) ||
+                        (governedFactoryRequired && !activeFactoryHostId) ||
+                        (governedFactoryRequired && !activeFactory?.readyForBrowserDispatch)
                       }
                     >
                       {dispatchingId === selected.workOrder._id ? "Dispatching…" : "Dispatch"}
                     </Button>
                     </div>
                   </div>
-                  {selected.workOrder.missionId && selectedDispatchCodeScopeIds.length === 0 ? (
+                  {governedFactoryRequired && !factoryScopeMatches ? (
                     <div className="mb-3 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
-                      Select the approved code scope before dispatching this Mission WorkOrder.
+                      Select a code scope frozen into the active Factory version before dispatch.
                     </div>
                   ) : null}
-                  {selected.workOrder.missionId && !activeFactoryVersionId ? (
+                  {governedFactoryRequired && !activeFactoryVersionId ? (
                     <div className="mb-3 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
-                      Activate a passing Factory version before dispatching this Mission WorkOrder.
+                      Activate a passing Factory version for this repository before dispatch.
+                    </div>
+                  ) : null}
+                  {governedFactoryRequired && activeFactoryVersionId && !activeFactoryHostId ? (
+                    <div className="mb-3 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
+                      Report a current clean local host binding for this exact repository before dispatch.
                     </div>
                   ) : null}
                   {dispatchError ? (
@@ -1232,6 +1270,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
 
       <CreateWorkOrderDialog
         open={createOpen}
+        projectId={projectId}
         error={error}
         creating={creating}
         onClose={() => {
@@ -1248,8 +1287,13 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
               title: payload.title,
               desiredOutcome: payload.desiredOutcome,
               context: payload.context || undefined,
-              workflowId: payload.workflowId || undefined,
-              repository: payload.repository || undefined,
+              workflowId: payload.workflowId,
+              repository: payload.repository,
+              repositoryId: payload.repositoryId as Id<"workspaceRepositories">,
+              codeScopeIds: [payload.codeScopeId as Id<"repositoryCodeScopes">],
+              owningTeamId: payload.owningTeamId as Id<"scrumTeams">,
+              ownerMemberId: payload.ownerMemberId as Id<"orgMembers">,
+              executionEnvironment: "LOCAL",
               branchStrategy: payload.branchStrategy || undefined,
               priority: Number(payload.priority) as 1 | 2 | 3 | 4,
               riskLevel: payload.riskLevel as "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
@@ -1302,7 +1346,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                   evidenceCategory: payload.evidenceCategory as any,
                   command: {
                     executable: payload.verificationExecutable,
-                    args: payload.verificationArgs.split(/\s+/).filter(Boolean),
+                    args: payload.verificationArgs,
                     commandClass: payload.commandClass as any,
                     timeoutMs: 10 * 60_000,
                   },
@@ -1310,9 +1354,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
               },
               autonomyLevel: "LEVEL_2",
               requiredApprovals: payload.requireHumanReview === "yes" ? ["HUMAN_REVIEW"] : undefined,
-              sourceOfTruthRefs: payload.repository
-                ? [{ kind: "REPO", label: payload.repository, location: `github.com/${payload.repository}` }]
-                : undefined,
+              sourceOfTruthRefs: [{ kind: "REPO", label: payload.repository, location: `github.com/${payload.repository}` }],
               idempotencyKey: createRequestKey ?? undefined,
             });
             if (result.workOrder?._id) selectWorkOrder(result.workOrder._id);
@@ -1516,7 +1558,8 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                   repositoryId: selected.workOrder.repositoryId,
                   codeScopeIds: selected.workOrder.codeScopeIds,
                   executionEnvironment: selected.workOrder.executionEnvironment ?? "LOCAL",
-                  factoryDefinitionVersionId: selected.workOrder.missionId
+                  executorHostId: governedFactoryRequired ? activeFactoryHostId : undefined,
+                  factoryDefinitionVersionId: governedFactoryRequired
                     ? activeFactoryVersionId
                     : undefined,
                 });
@@ -1714,12 +1757,15 @@ function RequestApprovalDialog({
 }) {
   const defaultType = workOrder?.requiredApprovals?.[0] ?? (["HIGH", "CRITICAL"].includes(workOrder?.riskLevel) ? "RISK_REVIEW" : "OPERATOR_REVIEW");
   const [approvalType, setApprovalType] = useState(defaultType);
-  const [requestedAction, setRequestedAction] = useState("Approve protected dispatch or acceptance action");
+  const [requestedAction, setRequestedAction] = useState("Approve protected implementation dispatch");
   const [requestedBy, setRequestedBy] = useState("operator");
   const [workflowRunId, setWorkflowRunId] = useState("");
 
   useEffect(() => {
     setApprovalType(defaultType);
+    setRequestedAction("Approve protected implementation dispatch");
+    setRequestedBy("operator");
+    setWorkflowRunId("");
   }, [defaultType, open]);
 
   return (
@@ -2092,12 +2138,14 @@ function SupersedeWorkOrderDialog({
 
 function CreateWorkOrderDialog({
   open,
+  projectId,
   creating,
   error,
   onClose,
   onCreate,
 }: {
   open: boolean;
+  projectId: Id<"projects"> | null;
   creating: boolean;
   error: string | null;
   onClose: () => void;
@@ -2106,7 +2154,11 @@ function CreateWorkOrderDialog({
     desiredOutcome: string;
     context: string;
     workflowId: string;
+    repositoryId: string;
     repository: string;
+    codeScopeId: string;
+    owningTeamId: string;
+    ownerMemberId: string;
     branchStrategy: string;
     priority: string;
     riskLevel: string;
@@ -2123,15 +2175,25 @@ function CreateWorkOrderDialog({
     evidenceCategory: string;
     commandClass: string;
     verificationExecutable: string;
-    verificationArgs: string;
+    verificationArgs: string[];
     requireHumanReview: string;
   }) => Promise<void>;
 }) {
+  const repositories = useQuery(
+    api.projects.listRepositories,
+    open && projectId ? { projectId } : "skip",
+  );
+  const structure = useQuery(
+    api.softwareFactoryControlPlane.listWorkspaceStructure,
+    open && projectId ? { projectId } : "skip",
+  );
   const [title, setTitle] = useState("");
   const [desiredOutcome, setDesiredOutcome] = useState("");
   const [context, setContext] = useState("");
-  const [workflowId, setWorkflowId] = useState("feature-dev");
-  const [repository, setRepository] = useState("jaydubya818/MissionControl");
+  const [repositoryId, setRepositoryId] = useState("");
+  const [codeScopeId, setCodeScopeId] = useState("");
+  const [owningTeamId, setOwningTeamId] = useState("");
+  const [ownerMemberId, setOwnerMemberId] = useState("");
   const [branchStrategy, setBranchStrategy] = useState("isolated feature branch and worktree");
   const [priority, setPriority] = useState("2");
   const [riskLevel, setRiskLevel] = useState("MEDIUM");
@@ -2147,9 +2209,82 @@ function CreateWorkOrderDialog({
   const [verificationCategory, setVerificationCategory] = useState("TYPECHECK");
   const [evidenceCategory, setEvidenceCategory] = useState("STATIC_ANALYSIS");
   const [commandClass, setCommandClass] = useState("TYPECHECK");
-  const [verificationExecutable, setVerificationExecutable] = useState("pnpm");
-  const [verificationArgs, setVerificationArgs] = useState("--filter mission-control-ui typecheck");
-  const [requireHumanReview, setRequireHumanReview] = useState("no");
+  const [verificationExecutable, setVerificationExecutable] = useState("");
+  const [verificationArgsText, setVerificationArgsText] = useState("[]");
+  const [requireHumanReview, setRequireHumanReview] = useState("yes");
+  const factoryContext = useQuery(
+    api["factory/configuration"].getActiveForRepository,
+    open && projectId && repositoryId
+      ? { projectId, repositoryId: repositoryId as Id<"workspaceRepositories"> }
+      : "skip",
+  );
+  const readyRepositories = (repositories ?? []).filter((repository) => repository.repositoryId && repository.status === "READY");
+  const approvedLocalScopes = (factoryContext?.codeScopes ?? []).filter((scope) =>
+    scope.active && scope.allowedEnvironments.includes("LOCAL")
+  );
+  const selectedRepository = readyRepositories.find((repository) => repository.repositoryId === repositoryId);
+  const selectedScope = approvedLocalScopes.find((scope) => scope._id === codeScopeId);
+  const selectedTeamMemberIds = useMemo(
+    () => new Set((structure?.memberships ?? [])
+      .filter((membership) => membership.active && membership.teamId === owningTeamId)
+      .map((membership) => membership.memberId)),
+    [owningTeamId, structure],
+  );
+  const eligibleOwners = (structure?.members ?? []).filter((member) => member.active && selectedTeamMemberIds.has(member._id));
+  const parsedVerificationArgs = parseVerificationArguments(verificationArgsText);
+  const verificationArgsError = "error" in parsedVerificationArgs ? parsedVerificationArgs.error : null;
+
+  useEffect(() => {
+    if (!open || readyRepositories.length === 0) return;
+    if (!readyRepositories.some((repository) => repository.repositoryId === repositoryId)) {
+      const nextRepository = readyRepositories.find((repository) => repository.isDefault) ?? readyRepositories[0];
+      setRepositoryId(nextRepository.repositoryId ?? "");
+      setCodeScopeId("");
+      setOwningTeamId("");
+      setOwnerMemberId("");
+    }
+  }, [open, readyRepositories, repositoryId]);
+
+  useEffect(() => {
+    if (!open || approvedLocalScopes.length !== 1 || codeScopeId) return;
+    const scope = approvedLocalScopes[0];
+    setCodeScopeId(scope._id);
+    setOwningTeamId(scope.owningTeamId ?? "");
+    setOwnerMemberId("");
+    setAllowedPaths(scope.includePaths.join("\n"));
+    setDeniedPaths([...scope.excludePaths, "convex/schema.ts", ".github/workflows/**", ".env*"].join("\n"));
+  }, [approvedLocalScopes, codeScopeId, open]);
+
+  const configurationIssue = !projectId
+    ? "Select a workspace before creating governed work."
+    : repositories === undefined || structure === undefined || (repositoryId && factoryContext === undefined)
+      ? "Loading governed Factory configuration…"
+      : readyRepositories.length === 0
+        ? "Connect and validate a ready workspace repository first."
+        : !repositoryId
+          ? "Select a ready repository."
+          : !factoryContext
+            ? "Create, assess, and activate a Factory for this repository first."
+            : !factoryContext.workflow?.active
+              ? "Activate the workflow frozen into the Factory version."
+            : !factoryContext.assessment || factoryContext.assessment.status !== "PASS" || factoryContext.assessment.expiresAt <= Date.now()
+              ? "Run a current passing readiness assessment for the active Factory version."
+              : !factoryContext.host
+                ? "Report a current clean local host binding for this repository."
+                : approvedLocalScopes.length === 0
+                  ? "Add a local code scope and include it in a new active Factory version."
+                  : null;
+
+  const chooseScope = (nextScopeId: string) => {
+    const scope = approvedLocalScopes.find((candidate) => candidate._id === nextScopeId);
+    setCodeScopeId(nextScopeId);
+    setOwningTeamId(scope?.owningTeamId ?? "");
+    setOwnerMemberId("");
+    if (scope) {
+      setAllowedPaths(scope.includePaths.join("\n"));
+      setDeniedPaths([...scope.excludePaths, "convex/schema.ts", ".github/workflows/**", ".env*"].join("\n"));
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
@@ -2177,12 +2312,61 @@ function CreateWorkOrderDialog({
 
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <Label>Workflow</Label>
-              <Input aria-label="Workflow" value={workflowId} onChange={(event) => setWorkflowId(event.target.value)} placeholder="feature-dev" />
+              <Label>Repository</Label>
+              <Select value={repositoryId} onValueChange={(nextRepositoryId) => {
+                setRepositoryId(nextRepositoryId);
+                setCodeScopeId("");
+                setOwningTeamId("");
+                setOwnerMemberId("");
+              }}>
+                <SelectTrigger aria-label="Repository"><SelectValue placeholder="Select a ready repository" /></SelectTrigger>
+                <SelectContent>
+                  {readyRepositories.map((repository) => (
+                    <SelectItem key={repository.repositoryId!} value={repository.repositoryId!}>{repository.repository}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>Repository</Label>
-              <Input aria-label="Repository" value={repository} onChange={(event) => setRepository(event.target.value)} placeholder="owner/repo" />
+              <Label>Approved code scope</Label>
+              <Select value={codeScopeId} onValueChange={chooseScope} disabled={!factoryContext}>
+                <SelectTrigger aria-label="Approved code scope"><SelectValue placeholder="Select a Factory-approved scope" /></SelectTrigger>
+                <SelectContent>
+                  {approvedLocalScopes.map((scope) => (
+                    <SelectItem key={scope._id} value={scope._id}>{scope.name} · {scope.includePaths.join(", ")}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="rounded-lg border border-[var(--panel-line)] bg-background/30 px-3 py-2 text-xs text-muted-foreground">
+              <div>Factory: <span className="text-foreground/85">{factoryContext ? `v${factoryContext.version.version}` : "Unavailable"}</span></div>
+              <div className="mt-1">Workflow: <span className="text-foreground/85">{factoryContext?.workflow?.workflowId ?? "Unavailable"}</span></div>
+              <div className="mt-1">Environment / host: <span className="text-foreground/85">LOCAL · {factoryContext?.host?.hostId ?? "No current host"}</span></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Owning team</Label>
+                <Select value={owningTeamId} onValueChange={(teamId) => {
+                  setOwningTeamId(teamId);
+                  setOwnerMemberId("");
+                }} disabled={Boolean(selectedScope?.owningTeamId)}>
+                  <SelectTrigger aria-label="Owning team"><SelectValue placeholder="Select team" /></SelectTrigger>
+                  <SelectContent>
+                    {(structure?.teams ?? []).filter((team) => team.status === "ACTIVE").map((team) => (
+                      <SelectItem key={team._id} value={team._id}>{team.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Accountable owner</Label>
+                <Select value={ownerMemberId} onValueChange={setOwnerMemberId} disabled={!owningTeamId}>
+                  <SelectTrigger aria-label="Accountable owner"><SelectValue placeholder="Select owner" /></SelectTrigger>
+                  <SelectContent>
+                    {eligibleOwners.map((member) => <SelectItem key={member._id} value={member._id}>{member.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label>Branch strategy</Label>
@@ -2259,24 +2443,65 @@ function CreateWorkOrderDialog({
                 <div className="space-y-1.5"><Label>Command class</Label><Select value={commandClass} onValueChange={setCommandClass}><SelectTrigger aria-label="Verification command class"><SelectValue /></SelectTrigger><SelectContent>{["BUILD", "TYPECHECK", "TEST", "LINT", "SECURITY_SCAN", "DEPENDENCY_SCAN"].map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
               </div>
               <div className="grid gap-3 md:grid-cols-[0.6fr_1.4fr]">
-                <div className="space-y-1.5"><Label>Executable</Label><Input aria-label="Verification executable" value={verificationExecutable} onChange={(event) => setVerificationExecutable(event.target.value)} placeholder="pnpm" /></div>
-                <div className="space-y-1.5"><Label>Arguments</Label><Input aria-label="Verification arguments" value={verificationArgs} onChange={(event) => setVerificationArgs(event.target.value)} placeholder="--filter app test" /></div>
+                <div className="space-y-1.5"><Label>Executable</Label><Input aria-label="Verification executable" value={verificationExecutable} onChange={(event) => setVerificationExecutable(event.target.value)} placeholder="node" /></div>
+                <div className="space-y-1.5">
+                  <Label>Arguments (exact JSON argv)</Label>
+                  <Textarea aria-label="Verification arguments" value={verificationArgsText} onChange={(event) => setVerificationArgsText(event.target.value)} rows={5} spellCheck={false} className="font-mono text-xs" />
+                  <p className="text-xs text-muted-foreground">No command is inferred. Enter an executable and exact JSON argv that work inside the clean frozen worktree.</p>
+                  {verificationArgsError ? <p role="alert" className="text-xs text-red-300">{verificationArgsError}</p> : null}
+                </div>
               </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="space-y-1.5"><Label>Evidence category</Label><Select value={evidenceCategory} onValueChange={setEvidenceCategory}><SelectTrigger aria-label="Required evidence category"><SelectValue /></SelectTrigger><SelectContent>{["TEST_RESULT", "BUILD_RESULT", "STATIC_ANALYSIS", "SECURITY_SCAN", "BROWSER_RESULT", "CI_RESULT"].map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
-                <div className="space-y-1.5"><Label>Reserve final advancement for human review</Label><Select value={requireHumanReview} onValueChange={setRequireHumanReview}><SelectTrigger aria-label="Require human review"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="no">No</SelectItem><SelectItem value="yes">Yes — require HUMAN_REVIEW</SelectItem></SelectContent></Select></div>
+                <div className="space-y-1.5"><Label>Human approval gates</Label><Select value={requireHumanReview} onValueChange={setRequireHumanReview}><SelectTrigger aria-label="Require human review"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="no">No additional human gate</SelectItem><SelectItem value="yes">Before dispatch and publication</SelectItem></SelectContent></Select></div>
               </div>
             </div>
           </div>
         </div>
 
+        {configurationIssue ? (
+          <div role="status" className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-sm text-amber-200">
+            {configurationIssue}
+          </div>
+        ) : null}
         {error ? <div className="text-sm text-red-300">{error}</div> : null}
 
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button
-            onClick={() => onCreate({ title, desiredOutcome, context, workflowId, repository, branchStrategy, priority, riskLevel, requestedBy, assignedAgent, requirements, acceptanceCriteria, allowedPaths, deniedPaths, maxFilesChanged, maxLinesChanged, enforcementMode, verificationCategory, evidenceCategory, commandClass, verificationExecutable, verificationArgs, requireHumanReview })}
-            disabled={creating || !title.trim() || !desiredOutcome.trim() || !acceptanceCriteria.trim() || !allowedPaths.trim() || !verificationExecutable.trim() || !verificationArgs.trim() || Number(maxFilesChanged) < 1 || Number(maxLinesChanged) < 1}
+            onClick={() => {
+              if (!selectedRepository?.repositoryId || !factoryContext?.workflow || !parsedVerificationArgs.ok) return;
+              void onCreate({
+                title,
+                desiredOutcome,
+                context,
+                workflowId: factoryContext.workflow.workflowId,
+                repositoryId: selectedRepository.repositoryId,
+                repository: selectedRepository.repository,
+                codeScopeId,
+                owningTeamId,
+                ownerMemberId,
+                branchStrategy,
+                priority,
+                riskLevel,
+                requestedBy,
+                assignedAgent,
+                requirements,
+                acceptanceCriteria,
+                allowedPaths,
+                deniedPaths,
+                maxFilesChanged,
+                maxLinesChanged,
+                enforcementMode,
+                verificationCategory,
+                evidenceCategory,
+                commandClass,
+                verificationExecutable,
+                verificationArgs: parsedVerificationArgs.args,
+                requireHumanReview,
+              });
+            }}
+            disabled={creating || Boolean(configurationIssue) || !codeScopeId || !owningTeamId || !ownerMemberId || !title.trim() || !desiredOutcome.trim() || !acceptanceCriteria.trim() || !allowedPaths.trim() || !verificationExecutable.trim() || !parsedVerificationArgs.ok || Number(maxFilesChanged) < 1 || Number(maxLinesChanged) < 1}
           >
             {creating ? "Creating…" : "Create WorkOrder"}
           </Button>

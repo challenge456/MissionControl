@@ -1,5 +1,5 @@
 ---
-status: in_progress
+status: complete
 priority: p0
 issue_id: "040"
 tags: [software-factory, release, staging, production, vercel, verification]
@@ -12,15 +12,15 @@ Execute `docs/plans/2026-08-11-feat-three-staging-release-production-automation-
 
 ## Acceptance Criteria
 
-- [ ] Staging control plane is bootstrapped without changing the legacy public
+- [x] Staging control plane is bootstrapped without changing the legacy public
       Convex backend.
-- [ ] Release 1 verifies provider-native provenance, smoke, and health.
-- [ ] Release 2 verifies approval-gated provider dispatch and receipt capture.
-- [ ] Release 3 verifies a three-distinct-release production eligibility gate.
-- [ ] Production automation remains disabled until all three releases pass.
-- [ ] Production requires exact human approval, staged deployment, independent
+- [x] Release 1 verifies provider-native provenance, smoke, and health.
+- [x] Release 2 verifies approval-gated provider dispatch and receipt capture.
+- [x] Release 3 verifies a three-distinct-release production eligibility gate.
+- [x] Production automation remains disabled until all three releases pass.
+- [x] Production requires exact human approval, staged deployment, independent
       verification, promotion evidence, and explicit rollback.
-- [ ] Full tests and browser evidence cover the complete golden path.
+- [x] Full tests and browser evidence cover the complete golden path.
 
 ## Work Log
 
@@ -96,3 +96,25 @@ Execute `docs/plans/2026-08-11-feat-three-staging-release-production-automation-
 - Opened WorkOrder `h97qsfwqza28zk8jve1wzyxzth8casyw`, inbox Task `MCF-005`,
   and Codex Attempt `tn74zxnrzg7zmzp3s0pd1z3ey98cb6ya` for governed staged
   production deployment, verification, promotion, and rollback evidence.
+
+### 2026-08-12 — Current-main qualification completed
+
+- Added current-main release `k17ye5t202bep0sefxeehf2fjx8camsf` after PR #84
+  merged at exact commit `59b2ec2bfc91539dbba6fe71237d3cacb04957f8`.
+- Human approval bound that SHA before Vercel staging deployment
+  `dpl_51z4DdbVJDPWbC1JdfB8qQ5HJkwH` was recorded.
+- Independent provenance, smoke, and health checks passed on the first attempt.
+- Production eligibility returned `eligible: true`, `candidateVerified: true`,
+  and five distinct qualifying release IDs.
+- Fresh production approval bound the exact merge before staged deployment
+  `dpl_9rjCjXX6m8FKUPVrMKRZk44fP2DH` was created with domain assignment off.
+- Independent production provenance, smoke, and health passed before promotion.
+- Mission Control recorded immutable promotion evidence, and Vercel reports the
+  same deployment as its current production target.
+- Rollback readiness names provider-resolved deployment
+  `dpl_7BiXeSGrTuVvF2augiugvkHy1BDJ` at commit
+  `623047c705f676e892e45ee1a4199116538a89f3`. No rollback event was fabricated
+  because the promoted candidate passed; an actual rollback remains an explicit
+  human-confirmed transition and would correctly mark the release rolled back.
+- Browser refresh preserved the canary inspector's `READY` state with exact-head
+  CI, accepted criteria, and rollback guidance.

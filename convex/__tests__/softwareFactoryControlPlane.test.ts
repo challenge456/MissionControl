@@ -43,6 +43,19 @@ describe("software factory control plane", () => {
     expect(result.reasonCodes).toEqual(expect.arrayContaining(["REPOSITORY_OUTSIDE_WORKSPACE", "EXECUTION_ENVIRONMENT_NOT_ALLOWED", "APPROVED_HOST_BINDING_REQUIRED"]));
   });
 
+  it("rejects a WorkOrder team outside the selected code-scope ownership", () => {
+    const result = validateDispatchScope({
+      projectId: "workspace-a",
+      repository: { id: "repo-a", projectId: "workspace-a", status: "READY", repository: "sellerfi/marketplace" },
+      codeScopes: [{ id: "scope-a", projectId: "workspace-a", repositoryId: "repo-a", active: true, allowedEnvironments: ["LOCAL"], owningTeamId: "team-a" }],
+      team: { id: "team-b", projectId: "workspace-a", status: "ACTIVE" },
+      owner: { id: "member-a", projectId: "workspace-a", active: true },
+      executionEnvironment: "LOCAL",
+      host: { status: "READY", repository: "sellerfi/marketplace" },
+    });
+    expect(result.reasonCodes).toContain("CODE_SCOPE_TEAM_MISMATCH");
+  });
+
   it("never fabricates confidence when no active WorkOrders exist", () => {
     expect(deliveryConfidence({ activeWorkOrders: 0, blockedWorkOrders: 0, pendingApprovals: 0, failingEvidence: 0, staleEvidence: 0, missingOwnership: 0 })).toMatchObject({ status: "UNKNOWN", score: null });
     expect(deliveryConfidence({ activeWorkOrders: 5, blockedWorkOrders: 1, pendingApprovals: 0, failingEvidence: 0, staleEvidence: 0, missingOwnership: 0 }).score).toBe(96);

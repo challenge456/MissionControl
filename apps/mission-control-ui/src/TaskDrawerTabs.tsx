@@ -559,6 +559,7 @@ function TaskAttemptSection({
     parentDelivery.workOrderId ? { workOrderId: parentDelivery.workOrderId } : "skip"
   );
   const activeFactoryVersionId = activeFactory?.version._id;
+  const activeFactoryHostId = activeFactory?.host?.hostId;
   const [retryReason, setRetryReason] = useState("");
   const [scheduling, setScheduling] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -570,8 +571,12 @@ function TaskAttemptSection({
   );
   const current =
     attempts.length > 0 ? attempts[attempts.length - 1] : null;
-  const factoryReadyForDispatch = !parentDelivery.missionId || Boolean(activeFactoryVersionId);
-  const scopeReadyForDispatch = !parentDelivery.missionId || parentDelivery.codeScopeIds.length > 0;
+  const governedFactoryRequired = Boolean(parentDelivery.missionId || parentDelivery.repositoryId);
+  const factoryReadyForDispatch = !governedFactoryRequired || Boolean(activeFactoryVersionId && activeFactoryHostId && activeFactory?.readyForBrowserDispatch);
+  const scopeReadyForDispatch = !governedFactoryRequired || (
+    parentDelivery.codeScopeIds.length > 0
+    && parentDelivery.codeScopeIds.every((scopeId) => activeFactory?.version.codeScopeIds?.includes(scopeId))
+  );
   const workOrderCanDispatch = [
     "READY",
     "BLOCKED",
@@ -616,9 +621,10 @@ function TaskAttemptSection({
         repositoryId: parentDelivery.repositoryId ?? undefined,
         codeScopeIds: parentDelivery.codeScopeIds,
         executionEnvironment: parentDelivery.executionEnvironment ?? "LOCAL",
+        executorHostId: governedFactoryRequired ? activeFactoryHostId : undefined,
         retryOfWorkflowRunId: retry ? current?._id : undefined,
         retryReason: retry ? retryReason.trim() : undefined,
-        factoryDefinitionVersionId: parentDelivery.missionId
+        factoryDefinitionVersionId: governedFactoryRequired
           ? activeFactoryVersionId
           : undefined,
       });
@@ -670,15 +676,15 @@ function TaskAttemptSection({
           </p>
         ) : null}
 
-        {parentDelivery.missionId && !activeFactoryVersionId ? (
+        {governedFactoryRequired && !factoryReadyForDispatch ? (
           <p className="mt-3 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
-            Activate a passing Factory version for this workspace before starting a Mission Attempt.
+            Activate a passing Factory version and report a current clean host before starting this Attempt.
           </p>
         ) : null}
 
-        {parentDelivery.missionId && parentDelivery.codeScopeIds.length === 0 ? (
+        {governedFactoryRequired && !scopeReadyForDispatch ? (
           <p className="mt-3 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
-            Open the Work Order, select the approved code scope, and dispatch from that governed gate.
+            Open the Work Order and bind a code scope frozen into the active Factory version.
           </p>
         ) : null}
 

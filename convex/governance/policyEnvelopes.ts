@@ -3,6 +3,7 @@ import { mutation, query } from "../_generated/server";
 import { appendChangeRecord } from "../lib/armAudit";
 import { evaluatePolicyEnvelopes } from "../lib/armPolicy";
 import { resolveActiveTenantId } from "../lib/getActiveTenant";
+import { FACTORY_PERMISSIONS, requireWorkspacePermission } from "../lib/companyAccess";
 
 export const createPolicyEnvelope = mutation({
   args: {
@@ -16,6 +17,9 @@ export const createPolicyEnvelope = mutation({
     metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
+    if (args.projectId) {
+      await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.MANAGE_AUTOMATION);
+    }
     const tenantId = await resolveActiveTenantId(
       { db: ctx.db as any },
       {
