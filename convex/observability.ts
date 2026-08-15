@@ -14,6 +14,7 @@ import {
 import {
   ensureAttemptTrace,
   finishAttemptTrace,
+  recordRunEventObservation,
   recordTraceObservation,
 } from "./lib/observabilityPersistence";
 
@@ -49,6 +50,30 @@ const scoreType = v.union(
   v.literal("TEXT")
 );
 
+async function recordActivity(ctx: Pick<MutationCtx, "db">, input: {
+  tenantId?: Id<"tenants">;
+  projectId: Id<"projects">;
+  actorType: "AGENT" | "HUMAN" | "SYSTEM";
+  actorId: string;
+  action: string;
+  description: string;
+  targetType: string;
+  targetId: string;
+  metadata?: unknown;
+}) {
+  await ctx.db.insert("activities", {
+    tenantId: input.tenantId,
+    projectId: input.projectId,
+    actorType: input.actorType,
+    actorId: input.actorId,
+    action: input.action,
+    description: input.description,
+    targetType: input.targetType,
+    targetId: input.targetId,
+    metadata: sanitizeTraceValue(input.metadata),
+  });
+}
+
 export const getWorkspaceDashboard = query({
   args: {
     projectId: v.id("projects"),
@@ -70,6 +95,15 @@ export const getWorkspaceDashboard = query({
       .order("desc")
       .take(500);
     const search = args.search?.trim().toLowerCase();
+    const matchingWorkOrderIds = search
+      ? new Set((await ctx.db.query("workOrders")
+        .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+        .take(1_000))
+        .filter((workOrder) => [workOrder.title, workOrder.desiredOutcome]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(search)))
+        .map((workOrder) => String(workOrder._id)))
+      : new Set<string>();
     const filtered = rows.filter((trace) => {
       if (args.status && trace.status !== args.status) return false;
       if (args.purpose && trace.purpose !== args.purpose) return false;
@@ -77,8 +111,10 @@ export const getWorkspaceDashboard = query({
       if (args.model && trace.model !== args.model) return false;
       if (args.startedAfter !== undefined && trace.startedAt < args.startedAfter) return false;
       if (args.startedBefore !== undefined && trace.startedAt > args.startedBefore) return false;
-      if (search && ![trace.name, trace.executor, trace.model, trace.externalTraceId, ...(trace.tags ?? [])]
-        .filter(Boolean).some((value) => String(value).toLowerCase().includes(search))) return false;
+      if (search
+        && ![trace.name, trace.executor, trace.model, trace.externalTraceId, ...(trace.tags ?? [])]
+          .filter(Boolean).some((value) => String(value).toLowerCase().includes(search))
+        && (!trace.workOrderId || !matchingWorkOrderIds.has(String(trace.workOrderId)))) return false;
       return true;
     }).slice(0, requestedLimit);
 
@@ -225,7 +261,87 @@ export const createEvalDefinitionVersion = mutation({
       createdBy: access.actorId,
       createdAt: Date.now(),
     });
+    await recordActivity(ctx, {
+      tenantId: access.project.tenantId,
+      projectId: args.projectId,
+      actorType: "HUMAN",
+      actorId: access.actorId,
+      action: "EVAL_DEFINITION_VERSION_CREATED",
+      description: `Created ${key} evaluator version ${version}`,
+      targetType: "EVAL_DEFINITION",
+      targetId: String(definitionId),
+      metadata: { key, version, evaluatorType: args.evaluatorType, scoreType: args.scoreType },
+    });
     return await ctx.db.get(definitionId);
+  },
+});
+
+export const backfillAttemptTraces = mutation({
+  args: {
+    projectId: v.id("projects"),
+    limit: v.optional(v.number()),
+    beforeCreationTime: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const access = await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.IMPROVE);
+    const limit = Math.max(1, Math.min(Math.floor(args.limit ?? 5), 10));
+    const runs = await ctx.db.query("workflowRuns")
+      .withIndex("by_project", (q) => args.beforeCreationTime === undefined
+        ? q.eq("projectId", args.projectId)
+        : q.eq("projectId", args.projectId).lt("_creationTime", args.beforeCreationTime))
+      .order("desc")
+      .take(limit);
+    let tracesCreated = 0;
+    let observationsCreated = 0;
+    const truncatedAttemptRunIds: string[] = [];
+
+    for (const run of runs) {
+      const existingTrace = await ctx.db.query("traces")
+        .withIndex("by_attempt", (q) => q.eq("workflowRunId", run._id))
+        .first();
+      const trace = await ensureAttemptTrace(ctx, run);
+      if (!existingTrace) tracesCreated += 1;
+
+      const loadedEvents = await ctx.db.query("runEvents")
+        .withIndex("by_run_sequence", (q) => q.eq("workflowRunId", run._id))
+        .take(101);
+      if (loadedEvents.length > 100) truncatedAttemptRunIds.push(run.runId ?? String(run._id));
+      for (const event of loadedEvents.slice(0, 100)) {
+        const idempotencyKey = `run-event:${event.idempotencyKey ?? event._id}`;
+        const existingObservation = await ctx.db.query("traceObservations")
+          .withIndex("by_trace_idempotency", (q) => q.eq("traceId", trace._id).eq("idempotencyKey", idempotencyKey))
+          .first();
+        await recordRunEventObservation(ctx, run, event);
+        if (!existingObservation) observationsCreated += 1;
+      }
+      if (["COMPLETED", "FAILED", "CANCELED"].includes(run.status)) {
+        await finishAttemptTrace(ctx, run, {
+          status: run.status as "COMPLETED" | "FAILED" | "CANCELED",
+          completedAt: finiteNonNegative(run.completedAt) ?? Date.now(),
+          failureReason: run.failureReason,
+        });
+      }
+    }
+
+    const nextBeforeCreationTime = runs.length === limit ? runs[runs.length - 1]?._creationTime : undefined;
+    await recordActivity(ctx, {
+      tenantId: access.project.tenantId,
+      projectId: args.projectId,
+      actorType: "HUMAN",
+      actorId: access.actorId,
+      action: "OBSERVABILITY_ATTEMPTS_BACKFILLED",
+      description: `Backfilled observability for ${runs.length} Attempts`,
+      targetType: "PROJECT",
+      targetId: String(args.projectId),
+      metadata: { tracesCreated, observationsCreated, truncatedAttemptRunIds, nextBeforeCreationTime },
+    });
+    return {
+      runsScanned: runs.length,
+      tracesCreated,
+      observationsCreated,
+      truncatedAttemptRunIds,
+      ...(nextBeforeCreationTime === undefined ? {} : { nextBeforeCreationTime }),
+    };
   },
 });
 
@@ -239,11 +355,21 @@ export const runDurationEvaluator = mutation({
     const [trace, definition] = await Promise.all([ctx.db.get(args.traceId), ctx.db.get(args.evalDefinitionId)]);
     if (!trace || !definition || trace.projectId !== definition.projectId) throw new Error("Trace evaluator scope is invalid.");
     const access = await requireWorkspacePermission(ctx, trace.projectId, FACTORY_PERMISSIONS.IMPROVE);
-    if (definition.evaluatorType !== "DETERMINISTIC" || definition.scoreType !== "BOOLEAN") {
+    if (!definition.enabled || definition.evaluatorType !== "DETERMINISTIC" || definition.scoreType !== "BOOLEAN") {
       throw new Error("Duration threshold requires a deterministic boolean evaluator definition.");
     }
+    if (definition.scope !== "TRACE" && definition.scope !== "ATTEMPT") {
+      throw new Error("Duration threshold requires a trace or Attempt evaluator definition.");
+    }
+    if (trace.status === "RUNNING" || trace.durationMs === undefined) {
+      throw new Error("Duration threshold requires a terminal trace with a recorded duration.");
+    }
+    const configuredThreshold = finiteNonNegative(objectRecord(definition.configuration).thresholdMs);
+    if (!configuredThreshold || configuredThreshold !== args.thresholdMs) {
+      throw new Error("Duration threshold must match the immutable evaluator definition configuration.");
+    }
     const result = evaluateDurationThreshold({ durationMs: trace.durationMs, thresholdMs: args.thresholdMs });
-    return insertScore(ctx, {
+    const score = await insertScore(ctx, {
       projectId: trace.projectId,
       tenantId: trace.tenantId,
       definition,
@@ -251,10 +377,22 @@ export const runDurationEvaluator = mutation({
       workflowRunId: trace.workflowRunId,
       value: result.value,
       reason: result.reason,
-      evaluator: { type: "DETERMINISTIC", version: `v${definition.version}` },
+      evaluator: { type: "DETERMINISTIC", version: "duration-threshold/v1" },
       createdBy: access.actorId,
-      idempotencyKey: `duration:${trace._id}:${definition._id}:${Date.now()}`,
+      idempotencyKey: `duration:${trace._id}:${definition._id}`,
     });
+    await recordActivity(ctx, {
+      tenantId: trace.tenantId,
+      projectId: trace.projectId,
+      actorType: "HUMAN",
+      actorId: access.actorId,
+      action: "EVAL_SCORE_RECORDED",
+      description: `Recorded ${definition.name} for trace ${trace.externalTraceId}`,
+      targetType: "EVAL_SCORE",
+      targetId: String(score?._id),
+      metadata: { traceId: trace._id, evalDefinitionId: definition._id, definitionVersion: definition.version },
+    });
+    return score;
   },
 });
 
@@ -272,13 +410,25 @@ export const recordHumanScore = mutation({
       ctx.db.get(args.evalDefinitionId),
       args.observationId ? ctx.db.get(args.observationId) : null,
     ]);
-    if (!trace || !definition || trace.projectId !== definition.projectId || (observation && observation.traceId !== trace._id)) {
+    if (
+      !trace
+      || !definition
+      || trace.projectId !== definition.projectId
+      || (args.observationId && !observation)
+      || (observation && observation.traceId !== trace._id)
+    ) {
       throw new Error("Human evaluation target is invalid.");
     }
     const access = await requireWorkspacePermission(ctx, trace.projectId, FACTORY_PERMISSIONS.IMPROVE);
-    if (definition.evaluatorType !== "HUMAN") throw new Error("Selected evaluator is not a human evaluator.");
+    if (!definition.enabled || definition.evaluatorType !== "HUMAN") throw new Error("Selected evaluator is not an enabled human evaluator.");
+    if (observation && definition.scope !== "OBSERVATION") {
+      throw new Error("Observation scores require an observation-scoped evaluator.");
+    }
+    if (!observation && definition.scope !== "TRACE" && definition.scope !== "ATTEMPT") {
+      throw new Error("Trace scores require a trace or Attempt evaluator.");
+    }
     assertScoreValue(definition.scoreType, args.value);
-    return insertScore(ctx, {
+    const score = await insertScore(ctx, {
       projectId: trace.projectId,
       tenantId: trace.tenantId,
       definition,
@@ -291,6 +441,18 @@ export const recordHumanScore = mutation({
       createdBy: access.actorId,
       idempotencyKey: `human:${trace._id}:${observation?._id ?? "trace"}:${definition._id}:${Date.now()}`,
     });
+    await recordActivity(ctx, {
+      tenantId: trace.tenantId,
+      projectId: trace.projectId,
+      actorType: "HUMAN",
+      actorId: access.actorId,
+      action: "EVAL_SCORE_RECORDED",
+      description: `Recorded human score for ${definition.name}`,
+      targetType: "EVAL_SCORE",
+      targetId: String(score?._id),
+      metadata: { traceId: trace._id, observationId: observation?._id, evalDefinitionId: definition._id },
+    });
+    return score;
   },
 });
 
@@ -307,6 +469,7 @@ export const promoteTraceToDataset = mutation({
     if (!trace) throw new Error("Trace not found.");
     const access = await requireWorkspacePermission(ctx, trace.projectId, FACTORY_PERMISSIONS.IMPROVE);
     let dataset = args.datasetId ? await ctx.db.get(args.datasetId) : null;
+    if (args.datasetId && !dataset) throw new Error("Dataset not found.");
     if (dataset && dataset.projectId !== trace.projectId) throw new Error("Dataset belongs to another workspace.");
     if (!dataset) {
       const name = optionalString(args.datasetName, 200) ?? "Software Factory Regression";
@@ -363,6 +526,17 @@ export const promoteTraceToDataset = mutation({
       createdAt: now,
     });
     await ctx.db.patch(dataset._id, { version: dataset.version + 1, updatedAt: now });
+    await recordActivity(ctx, {
+      tenantId: trace.tenantId,
+      projectId: trace.projectId,
+      actorType: "HUMAN",
+      actorId: access.actorId,
+      action: "TRACE_PROMOTED_TO_EVAL_DATASET",
+      description: `Promoted trace ${trace.externalTraceId} into ${dataset.name}`,
+      targetType: "EVAL_DATASET_ITEM",
+      targetId: String(itemId),
+      metadata: { traceId: trace._id, datasetId: dataset._id },
+    });
     return { dataset: await ctx.db.get(dataset._id), item: await ctx.db.get(itemId), created: true };
   },
 });
@@ -385,7 +559,11 @@ export const createExperiment = mutation({
     const access = await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.IMPROVE);
     const dataset = await ctx.db.get(args.datasetId);
     if (!dataset || dataset.projectId !== args.projectId) throw new Error("Experiment dataset is invalid.");
-    if (args.variants.length < 2 || args.variants.length > 8) throw new Error("Experiments require two to eight variants.");
+    if (args.variants.length !== 2) throw new Error("V1 experiments require exactly two variants.");
+    const variantNames = args.variants.map((variant) => variant.name.trim().toLowerCase());
+    if (variantNames.some((name) => !name) || new Set(variantNames).size !== variantNames.length) {
+      throw new Error("Experiment variants require unique names.");
+    }
     if (args.evalDefinitionIds.length < 1 || args.evalDefinitionIds.length > 20) {
       throw new Error("Experiments require one to twenty evaluator definitions.");
     }
@@ -393,8 +571,15 @@ export const createExperiment = mutation({
       throw new Error("Experiment evaluator definitions must be unique.");
     }
     const definitions = await Promise.all(args.evalDefinitionIds.map((id) => ctx.db.get(id)));
-    if (definitions.some((definition) => !definition || definition.projectId !== args.projectId)) {
-      throw new Error("Experiment evaluators must belong to the workspace.");
+    if (definitions.some((definition) => !definition || !definition.enabled || definition.projectId !== args.projectId)) {
+      throw new Error("Experiment evaluators must be enabled and belong to the workspace.");
+    }
+    const factoryVersions = await Promise.all(args.variants.map((variant) =>
+      variant.factoryDefinitionVersionId ? ctx.db.get(variant.factoryDefinitionVersionId) : null
+    ));
+    if (args.variants.some((variant, index) => variant.factoryDefinitionVersionId
+      && (!factoryVersions[index] || factoryVersions[index]!.projectId !== args.projectId))) {
+      throw new Error("Experiment Factory variants must belong to the workspace.");
     }
     const now = Date.now();
     const experimentId = await ctx.db.insert("experiments", {
@@ -423,6 +608,17 @@ export const createExperiment = mutation({
         createdAt: now,
       }));
     }
+    await recordActivity(ctx, {
+      tenantId: access.project.tenantId,
+      projectId: args.projectId,
+      actorType: "HUMAN",
+      actorId: access.actorId,
+      action: "EVAL_EXPERIMENT_CREATED",
+      description: `Created two-variant experiment ${optionalString(args.name, 200) ?? "Factory comparison"}`,
+      targetType: "EVAL_EXPERIMENT",
+      targetId: String(experimentId),
+      metadata: { datasetId: dataset._id, datasetVersion: dataset.version, variantIds, evalDefinitionIds: args.evalDefinitionIds },
+    });
     return { experiment: await ctx.db.get(experimentId), variantIds };
   },
 });
@@ -478,6 +674,13 @@ export const completeDeterministicExperimentInternal = internalMutation({
     const variants = await ctx.db.query("experimentVariants")
       .withIndex("by_experiment", (q) => q.eq("experimentId", experiment._id))
       .collect();
+    const variantIds = new Set(variants.map((variant) => String(variant._id)));
+    if (variants.length !== 2 || args.samples.some((sample) => !variantIds.has(String(sample.variantId)))) {
+      throw new Error("Experiment samples must target the two attributed variants.");
+    }
+    if (variants.some((variant) => !args.samples.some((sample) => sample.variantId === variant._id))) {
+      throw new Error("Every experiment variant requires at least one sample.");
+    }
     const comparison = compareExperimentVariants(variants.map((variant) => ({
       name: variant.name,
       samples: args.samples.filter((sample) => sample.variantId === variant._id),
@@ -487,6 +690,17 @@ export const completeDeterministicExperimentInternal = internalMutation({
       await ctx.db.patch(variants[index]._id, { sampleSize: result.sampleSize, metrics: result.metrics, completedAt: now });
     }
     await ctx.db.patch(experiment._id, { status: "COMPLETED", completedAt: now, metadata: { deterministicFixture: true } });
+    await recordActivity(ctx, {
+      tenantId: experiment.tenantId,
+      projectId: experiment.projectId,
+      actorType: "SYSTEM",
+      actorId: "system:deterministic-experiment",
+      action: "EVAL_EXPERIMENT_COMPLETED",
+      description: `Completed deterministic experiment ${experiment.name}`,
+      targetType: "EVAL_EXPERIMENT",
+      targetId: String(experiment._id),
+      metadata: { comparison },
+    });
     return comparison;
   },
 });
@@ -503,8 +717,12 @@ export const recordFixtureJudgeInternal = internalMutation({
   },
   handler: async (ctx, args) => {
     const [trace, definition] = await Promise.all([ctx.db.get(args.traceId), ctx.db.get(args.evalDefinitionId)]);
-    if (!trace || !definition || definition.projectId !== trace.projectId || definition.evaluatorType !== "LLM_JUDGE") {
+    if (!trace || !definition || definition.projectId !== trace.projectId || !definition.enabled || definition.evaluatorType !== "LLM_JUDGE") {
       throw new Error("Fixture judge scope is invalid.");
+    }
+    if ((args.observationId && definition.scope !== "OBSERVATION")
+      || (!args.observationId && definition.scope !== "TRACE" && definition.scope !== "ATTEMPT")) {
+      throw new Error("Fixture judge definition scope does not match its target.");
     }
     const result = evaluateFixtureJudge(args);
     const evaluatorObservation = await recordTraceObservation(ctx, trace, {
@@ -520,7 +738,7 @@ export const recordFixtureJudgeInternal = internalMutation({
       promptVersion: args.rubricVersion,
       metadata: { fixture: true, liveModelCall: false },
     });
-    return insertScore(ctx, {
+    const score = await insertScore(ctx, {
       projectId: trace.projectId,
       tenantId: trace.tenantId,
       definition,
@@ -533,6 +751,18 @@ export const recordFixtureJudgeInternal = internalMutation({
       createdBy: "system:fixture-judge",
       idempotencyKey: `fixture-judge:${trace._id}:${definition._id}:${result.evaluatorVersion}`,
     });
+    await recordActivity(ctx, {
+      tenantId: trace.tenantId,
+      projectId: trace.projectId,
+      actorType: "SYSTEM",
+      actorId: "system:fixture-judge",
+      action: "EVAL_SCORE_RECORDED",
+      description: `Recorded fixture judge score for ${definition.name}`,
+      targetType: "EVAL_SCORE",
+      targetId: String(score?._id),
+      metadata: { traceId: trace._id, observationId: evaluatorObservation._id, evalDefinitionId: definition._id },
+    });
+    return score;
   },
 });
 
@@ -558,7 +788,20 @@ async function insertScore(ctx: MutationCtx, input: {
   const existing = await ctx.db.query("evalScores")
     .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", input.idempotencyKey))
     .first();
-  if (existing) return existing;
+  if (existing) {
+    if (
+      existing.projectId !== input.projectId
+      || existing.evalDefinitionId !== input.definition._id
+      || existing.traceId !== input.traceId
+      || existing.observationId !== input.observationId
+      || existing.workflowRunId !== input.workflowRunId
+      || existing.experimentId !== input.experimentId
+      || existing.experimentVariantId !== input.experimentVariantId
+    ) {
+      throw new Error("Eval score idempotency key is already bound to another target.");
+    }
+    return existing;
+  }
   const scoreId = await ctx.db.insert("evalScores", {
     tenantId: input.tenantId,
     projectId: input.projectId,
@@ -576,7 +819,9 @@ async function insertScore(ctx: MutationCtx, input: {
     createdBy: input.createdBy,
     createdAt: Date.now(),
   });
-  return await ctx.db.get(scoreId);
+  const score = await ctx.db.get(scoreId);
+  if (!score) throw new Error("Created eval score is unavailable.");
+  return score;
 }
 
 function objectRecord(value: unknown): Record<string, unknown> {

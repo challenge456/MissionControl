@@ -20,7 +20,7 @@ export const ROUTE_CAPABILITIES: Partial<Record<MainView, RouteCapability>> = {
   "control-work-orders": { scope: "workspace", maturity: "live" },
   "control-approvals": { scope: "workspace", maturity: "live" },
   tasks: { scope: "workspace", maturity: "live" },
-  "trace-inspector": { scope: "workspace", maturity: "preview" },
+  "trace-inspector": { scope: "workspace", maturity: "live" },
   agents: { scope: "workspace", maturity: "live" },
   atc: { scope: "workspace", maturity: "live" },
   audit: { scope: "workspace", maturity: "live" },

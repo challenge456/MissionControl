@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Component, useEffect, useMemo, useState, type ErrorInfo, type ReactNode } from "react";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import type { Id } from "../../../../../convex/_generated/dataModel";
@@ -82,7 +82,15 @@ const OBSERVATION_ICON: Record<string, LucideIcon> = {
   EVALUATOR: FlaskConical,
 };
 
-export function TraceInspectorView({ projectId }: TraceInspectorViewProps): JSX.Element {
+export function TraceInspectorView(props: TraceInspectorViewProps): JSX.Element {
+  return (
+    <TraceInspectorErrorBoundary resetKey={String(props.projectId ?? "no-workspace")}>
+      <TraceInspectorContent {...props} />
+    </TraceInspectorErrorBoundary>
+  );
+}
+
+function TraceInspectorContent({ projectId }: TraceInspectorViewProps): JSX.Element {
   const [domainTab, setDomainTab] = useState<DomainTab>("traces");
   const [detailTab, setDetailTab] = useState<DetailTab>("tree");
   const [search, setSearch] = useState("");
@@ -233,10 +241,15 @@ export function TraceInspectorView({ projectId }: TraceInspectorViewProps): JSX.
           ) : (
             <div className="grid min-h-[640px] overflow-hidden rounded-xl border border-line bg-surface-1 xl:grid-cols-[330px_minmax(0,1fr)]">
               <TraceList traces={dashboard.traces} selectedTraceId={selectedTraceId} onSelect={setSelectedTraceId} />
-              {traceDetail === undefined || !traceDetail ? (
+              {traceDetail === undefined ? (
                 <div className="flex items-center justify-center gap-2 p-12 text-[13px] text-ink-muted">
                   <Loader2 size={16} className="animate-spin" aria-hidden /> Loading trace…
                 </div>
+              ) : traceDetail === null ? (
+                <EmptyPanel
+                  title="Trace is no longer available"
+                  body="The selected trace was removed or is outside your workspace access. Select another trace or refresh the workspace."
+                />
               ) : (
                 <TraceDetail
                   detail={traceDetail}
@@ -290,6 +303,44 @@ export function TraceInspectorView({ projectId }: TraceInspectorViewProps): JSX.
       ) : null}
     </div>
   );
+}
+
+class TraceInspectorErrorBoundary extends Component<{
+  children: ReactNode;
+  resetKey: string;
+}, { error: Error | null }> {
+  state = { error: null as Error | null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("Observability & Evals render failure", error, info.componentStack);
+  }
+
+  componentDidUpdate(previous: Readonly<{ children: ReactNode; resetKey: string }>) {
+    if (previous.resetKey !== this.props.resetKey && this.state.error) this.setState({ error: null });
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <section role="alert" className="m-4 rounded-xl border border-err/35 bg-err-soft p-6 sm:m-6">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-err">Observability unavailable</div>
+        <h2 className="mt-2 text-[17px] font-semibold text-ink">Trace data could not be loaded.</h2>
+        <p className="mt-1 max-w-2xl text-[12.5px] leading-relaxed text-ink-secondary">
+          Your persisted execution and verification records are unchanged. Confirm workspace permission and runtime compatibility, then retry.
+        </p>
+        <pre className="mt-3 max-h-32 overflow-auto rounded-lg border border-err/20 bg-surface-1 p-3 font-mono text-[10.5px] text-err">
+          {this.state.error.message || "Unknown observability error"}
+        </pre>
+        <button type="button" onClick={() => this.setState({ error: null })} className="mt-4 h-8 rounded-md bg-action-primary px-3 text-[12px] font-medium text-action-primary-text">
+          Retry
+        </button>
+      </section>
+    );
+  }
 }
 
 function MetricStrip({ metrics }: { metrics: WorkspaceDashboard["metrics"] }) {
@@ -397,7 +448,7 @@ function TraceDetail(props: TraceDetailProps) {
   const { detail } = props;
   const trace = detail.trace;
   return (
-    <main className="min-w-0">
+    <section aria-label="Trace detail" className="min-w-0">
       <header className="border-b border-line px-4 py-4 sm:px-5">
         <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
           <div className="min-w-0">
@@ -438,7 +489,7 @@ function TraceDetail(props: TraceDetailProps) {
         </section>
         <ObservationInspector observation={props.selectedObservation} scores={props.selectedScores} observations={detail.observations} />
       </div>
-    </main>
+    </section>
   );
 }
 

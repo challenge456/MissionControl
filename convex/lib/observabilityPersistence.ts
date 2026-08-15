@@ -134,9 +134,12 @@ export async function recordTraceObservation(
     )
     .first();
   const now = Date.now();
-  const startedAt = finiteNonNegative(observation.startedAt) ?? existing?.startedAt ?? now;
-  const endedAt = finiteNonNegative(observation.endedAt);
-  const status = observation.status ?? (endedAt ? "SUCCESS" : "RUNNING");
+  const startedAt = existing?.startedAt ?? finiteNonNegative(observation.startedAt) ?? now;
+  const endedAt = finiteNonNegative(observation.endedAt) ?? existing?.endedAt;
+  const requestedStatus = observation.status ?? (endedAt ? "SUCCESS" : "RUNNING");
+  const status = existing?.status === "SUCCESS" || existing?.status === "FAILED"
+    ? existing.status
+    : requestedStatus;
   let parentObservationId = observation.parentObservationId;
   const parentIdempotencyKey = observation.parentIdempotencyKey;
   if (!parentObservationId && parentIdempotencyKey) {
@@ -168,8 +171,8 @@ export async function recordTraceObservation(
     runEventId: observation.runEventId ?? existing?.runEventId,
     verificationRunId: observation.verificationRunId ?? existing?.verificationRunId,
     evidenceEnvelopeIds: observation.evidenceEnvelopeIds ?? existing?.evidenceEnvelopeIds,
-    type: observation.type,
-    name: optionalString(observation.name, 300) ?? "Execution observation",
+    type: existing?.type ?? observation.type,
+    name: existing?.name ?? optionalString(observation.name, 300) ?? "Execution observation",
     startedAt,
     endedAt,
     durationMs: finiteNonNegative(observation.durationMs) ?? duration(startedAt, endedAt),

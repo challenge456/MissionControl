@@ -588,6 +588,7 @@ export function mapExecutorObservations(input: {
   const failed = terminal?.type === "EXECUTION_FAILED" || terminal?.type === "EXECUTION_CANCELED";
   const status = terminal ? failed ? "FAILED" : "SUCCESS" : "RUNNING";
   const agentKey = `codex-agent:${input.runId}`;
+  const generationKey = `codex-generation:${input.runId}:primary`;
   const observations: any[] = [{
     idempotencyKey: agentKey,
     type: "AGENT",
@@ -603,7 +604,7 @@ export function mapExecutorObservations(input: {
     error: failed ? { message: terminal?.summary ?? "Codex execution failed." } : undefined,
     metadata: { adapter: "codex", adapterVersion: "v1" },
   }, {
-    idempotencyKey: `codex-generation:${input.runId}:primary`,
+    idempotencyKey: generationKey,
     parentIdempotencyKey: agentKey,
     type: "GENERATION",
     name: input.model ? `${input.model} execution` : "Codex model execution",
@@ -623,7 +624,7 @@ export function mapExecutorObservations(input: {
     const completed = commandEnds[index];
     observations.push({
       idempotencyKey: `codex-tool:${input.runId}:${index + 1}`,
-      parentIdempotencyKey: agentKey,
+      parentIdempotencyKey: generationKey,
       type: "TOOL",
       name: "Codex CLI",
       toolName: "codex/v1",
@@ -631,6 +632,7 @@ export function mapExecutorObservations(input: {
       endedAt: completed?.occurredAt,
       status: completed ? "SUCCESS" : failed ? "FAILED" : "RUNNING",
       output: completed ? { summary: completed.summary, ...(completed.metadata ?? {}) } : undefined,
+      error: !completed && failed ? { message: terminal?.summary ?? "Codex command did not complete." } : undefined,
       metadata: { executorSequence: event.sequence },
     });
   });
