@@ -5,6 +5,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
+import { COMPANY_PERMISSIONS, requireWorkspaceAccess } from "./lib/companyAccess";
 
 // ============================================================================
 // RBAC VALIDATORS
@@ -242,6 +243,15 @@ export const create = mutation({
     metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
+    const project = args.projectId ? await ctx.db.get(args.projectId) : null;
+    if (args.projectId && (!project || !project.tenantId)) {
+      throw new Error("Workspace company assignment is incomplete");
+    }
+    if (project?.tenantId) {
+      await requireWorkspaceAccess(ctx, project.tenantId, project._id, {
+        permission: COMPANY_PERMISSIONS.MANAGE_WORKSPACES,
+      });
+    }
     // Check for duplicate email
     if (args.email) {
       const existing = await ctx.db
@@ -255,6 +265,7 @@ export const create = mutation({
 
     return await ctx.db.insert("orgMembers", {
       ...args,
+      tenantId: project?.tenantId,
       active: true,
       invitedAt: Date.now(),
     });

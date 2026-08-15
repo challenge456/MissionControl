@@ -93,6 +93,13 @@ export function evaluateOperatorGate(args: {
     return { decision: "ALLOW", reason: "Operator control mode is NORMAL" };
   }
 
+  if (mode === "KILLED") {
+    return {
+      decision: "DENY",
+      reason: `System is KILLED. ${operation} is blocked until an authorized operator restores service.`,
+    };
+  }
+
   if (mode === "PAUSED") {
     if (actorType === "HUMAN") {
       return {
@@ -124,13 +131,6 @@ export function evaluateOperatorGate(args: {
     return {
       decision: "ALLOW",
       reason: "System is DRAINING. Non-run operation allowed.",
-    };
-  }
-
-  if (mode === "KILLED") {
-    return {
-      decision: "DENY",
-      reason: `System is KILLED. ${operation} is blocked until an operator explicitly restores normal mode.`,
     };
   }
 

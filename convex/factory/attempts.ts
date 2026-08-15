@@ -11,6 +11,11 @@ import { isApprovalUsable, latestApprovalByType, requiredApprovalTypes } from ".
 import { approvalExpiresAt, DEFAULT_GOVERNANCE_POLICY, verificationValidUntil } from "../lib/workOrderRevision";
 import { reconcileTerminalWorkflowSteps } from "../lib/workflowRunState";
 import { recomputeVerificationPacket } from "../lib/verificationPersistence";
+import {
+  qualityGateEvidenceSetDigest,
+  qualityGateStateForVerdict,
+  qualityGateSubjectDigest,
+} from "../lib/qualityGateDecision";
 
 const EVENT_TYPES = new Set([
   "RUN_STARTED", "STEP_STARTED", "STEP_COMPLETED", "TOOL_CALLED",
@@ -861,6 +866,45 @@ async function persistVerificationPacket(ctx: any, run: any, packet: any, ownerI
     metadata: { engineVersion: result.engineVersion, serverRecomputed: true, leaseId },
   });
 
+  const qualityGateDecisionId = await ctx.db.insert("qualityGateDecisions", {
+    tenantId: run.tenantId,
+    projectId: run.projectId,
+    missionId: run.missionId,
+    workOrderId: workOrder._id,
+    workflowRunId: run._id,
+    verificationRunId,
+    verificationReceiptId,
+    idempotencyKey: `${idempotencyKey}:quality-gate`,
+    workOrderRevisionNumber: workOrder.currentRevisionNumber ?? 1,
+    candidateRevision: result.candidateRevision,
+    subjectDigest: qualityGateSubjectDigest({
+      workOrderId: String(workOrder._id),
+      workOrderRevisionNumber: workOrder.currentRevisionNumber ?? 1,
+      executionManifestDigest: run.executionManifestDigest,
+      qualityContractDigest: workOrder.qualityContractDigest,
+      candidateRevision: result.candidateRevision,
+    }),
+    qualityContractDigest: workOrder.qualityContractDigest,
+    executionManifestDigest: run.executionManifestDigest,
+    evidenceSetDigest: qualityGateEvidenceSetDigest({
+      verificationRunId: String(verificationRunId),
+      verificationReceiptId: String(verificationReceiptId),
+      evidenceEnvelopeIds: allEvidenceIds.map(String),
+    }),
+    governancePolicyId: workOrder.governancePolicyId,
+    state: qualityGateStateForVerdict(result.verdict),
+    mode: "ENFORCED",
+    reasons: result.verdictReasons,
+    blockingFindingIds: result.violations,
+    requiredApprovalIds: [],
+    evaluatedAt: receiptRecordedAt,
+    metadata: {
+      engineVersion: result.engineVersion,
+      serverRecomputed: true,
+      verificationVerdict: result.verdict,
+    },
+  });
+
   for (const coverage of criterionCoverage) {
     await ctx.db.insert("verificationReceipts", {
       tenantId: run.tenantId,
@@ -939,7 +983,7 @@ async function persistVerificationPacket(ctx: any, run: any, packet: any, ownerI
     startedAt: result.startedAt, endedAt: result.completedAt, verificationRunId,
     verificationReceiptId, evidenceEnvelopeIds: allEvidenceIds,
     commandSummary: `Verification verdict: ${result.verdict}`,
-    metadata: { verdictReasons: result.verdictReasons, requirementsPassed: result.requirementsPassed, requirementsFailed: result.requirementsFailed },
+    metadata: { qualityGateDecisionId, verdictReasons: result.verdictReasons, requirementsPassed: result.requirementsPassed, requirementsFailed: result.requirementsFailed },
   });
 
   let humanReview: any;
@@ -957,6 +1001,7 @@ async function persistVerificationPacket(ctx: any, run: any, packet: any, ownerI
   return {
     verificationRunId,
     verificationReceiptId,
+    qualityGateDecisionId,
     verdict: result.verdict,
     verdictReasons: result.verdictReasons,
     paused: Boolean(humanReview),

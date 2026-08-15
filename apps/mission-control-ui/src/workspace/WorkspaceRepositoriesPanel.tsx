@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/components/factory/badges";
 import { AlertTriangle, CheckCircle2, GitBranch, Github, Layers3, Plus, ShieldCheck } from "lucide-react";
 import { FactoryConfigurationPanel } from "./FactoryConfigurationPanel";
+import { GovernancePolicyPanel } from "./GovernancePolicyPanel";
 
 interface WorkspaceRepositoriesPanelProps {
   project: Doc<"projects">;
@@ -217,6 +218,8 @@ export function WorkspaceRepositoriesPanel({ project }: WorkspaceRepositoriesPan
         </div>
       ) : null}
 
+      <GovernancePolicyPanel projectId={project._id} />
+
       {selectedRepository?.repositoryId ? (
         <>
           <GitHubAppReadinessPanel repositoryId={selectedRepository.repositoryId} />
@@ -268,8 +271,10 @@ function GitHubAppReadinessPanel({
   }, [deliveries]);
   const beginInstallation = useAction(api.githubAppConnections.beginInstallation);
   const verifyInstallation = useAction(api.githubAppConnections.verifyInstallation);
+  const bindExistingInstallation = useAction(api.githubAppConnections.bindExistingInstallation);
   const [installPending, setInstallPending] = useState(false);
   const [installError, setInstallError] = useState("");
+  const [installationId, setInstallationId] = useState("");
 
   if (readiness === undefined) {
     return (
@@ -316,6 +321,23 @@ function GitHubAppReadinessPanel({
     }
   };
 
+  const bindExisting = async () => {
+    setInstallPending(true);
+    setInstallError("");
+    try {
+      const result = await bindExistingInstallation({ repositoryId, installationId: installationId.trim() });
+      if (!result.ok) {
+        setInstallError("code" in result && result.code === "NOT_CONFIGURED"
+          ? "GitHub App verification is not configured for this environment. Add the App ID and private key, then try again."
+          : "The installation could not be verified for this exact repository.");
+      }
+    } catch {
+      setInstallError("The installation could not be verified for this exact repository.");
+    } finally {
+      setInstallPending(false);
+    }
+  };
+
   return (
     <section className="mt-5 border-t border-line pt-5" aria-labelledby="github-app-readiness-title">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -339,6 +361,18 @@ function GitHubAppReadinessPanel({
           ) : null}
         </div>
       </div>
+
+      {!readiness.installation ? (
+        <div className="mt-3 flex flex-wrap items-end gap-2 rounded-lg border border-line bg-surface-2 px-3 py-3">
+          <label className="min-w-[220px] flex-1 text-[11.5px] text-ink-muted">
+            Existing GitHub installation ID
+            <Input className="mt-1" inputMode="numeric" value={installationId} onChange={(event) => setInstallationId(event.target.value)} placeholder="12345678" />
+          </label>
+          <Button type="button" variant="outline" size="sm" disabled={installPending || !/^\d+$/.test(installationId.trim())} onClick={bindExisting}>
+            {installPending ? "Verifying…" : "Verify and bind installation"}
+          </Button>
+        </div>
+      ) : null}
 
       <div className="mt-3 grid gap-2 md:grid-cols-2">
         {readiness.checks.map((check) => {

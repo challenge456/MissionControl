@@ -1475,7 +1475,7 @@ export const get = query({
     const deliveryAccess = await requireAuthorizedDeliveryScope(ctx, workOrder.projectId);
     assertAuthorizedDeliveryRecord(deliveryAccess, workOrder);
 
-    const [executionRuns, events, approvalDecisions, verificationReceipts, revisions, reopenDecisions, supersession, policy, childTaskRows, verificationRuns, evidenceEnvelopes] = await Promise.all([
+    const [executionRuns, events, approvalDecisions, verificationReceipts, revisions, reopenDecisions, supersession, policy, childTaskRows, verificationRuns, evidenceEnvelopes, qualityGateDecisions] = await Promise.all([
       ctx.db
         .query("workflowRuns")
         .withIndex("by_work_order", (q) => q.eq("workOrderId", args.workOrderId))
@@ -1504,6 +1504,11 @@ export const get = query({
         .collect(),
       ctx.db
         .query("evidenceEnvelopes")
+        .withIndex("by_work_order", (q) => q.eq("workOrderId", args.workOrderId))
+        .order("desc")
+        .collect(),
+      ctx.db
+        .query("qualityGateDecisions")
         .withIndex("by_work_order", (q) => q.eq("workOrderId", args.workOrderId))
         .order("desc")
         .collect(),
@@ -1536,6 +1541,7 @@ export const get = query({
       verificationReceipts,
       verificationRuns,
       evidenceEnvelopes,
+      qualityGateDecisions,
        revisions,
        reopenDecisions,
        supersession,
@@ -1943,7 +1949,7 @@ async function dispatchWorkOrder(
     }
 
     await expireGovernanceRecordsForWorkOrder(ctx, workOrder);
-    const refreshedWorkOrder = await ctx.db.get(args.workOrderId);
+    let refreshedWorkOrder = await ctx.db.get(args.workOrderId);
     if (!refreshedWorkOrder) throw new Error("WorkOrder not found");
 
     const scopeFlagRows = (await ctx.db
@@ -2018,7 +2024,7 @@ async function dispatchWorkOrder(
           effectiveScope.ownerMemberId ? ctx.db.get(effectiveScope.ownerMemberId) : null,
           Promise.all(effectiveScope.codeScopeIds.map((scopeId) => ctx.db.get(scopeId))),
           args.executorHostId
-            ? ctx.db.query("workspaceHostBindings").withIndex("by_project_host", (q) => q.eq("projectId", refreshedWorkOrder.projectId!).eq("hostId", args.executorHostId!)).first()
+            ? ctx.db.query("workspaceHostBindings").withIndex("by_project_host", (q) => q.eq("projectId", refreshedWorkOrder!.projectId!).eq("hostId", args.executorHostId!)).first()
             : null,
         ]);
         const validCodeScopes = codeScopes.filter((scope): scope is NonNullable<typeof scope> => Boolean(scope));
@@ -2110,6 +2116,12 @@ async function dispatchWorkOrder(
         });
       }
     }
+
+    // Factory preflight must evaluate the exact persisted scope selected by
+    // the operator above, not the WorkOrder snapshot loaded before the scope
+    // receipt and binding were written.
+    refreshedWorkOrder = await ctx.db.get(args.workOrderId);
+    if (!refreshedWorkOrder) throw new Error("WorkOrder not found after dispatch scope binding");
 
     const resolvedWorkflowId = args.workflowId ?? refreshedWorkOrder.workflowId;
     if (!resolvedWorkflowId) {
@@ -2314,7 +2326,8 @@ async function dispatchWorkOrder(
           runId,
           missionId: refreshedWorkOrder.missionId ? String(refreshedWorkOrder.missionId) : undefined,
           missionPlanId: refreshedWorkOrder.missionPlanId ? String(refreshedWorkOrder.missionPlanId) : undefined,
-          missionPlanVersion: missionPlanForDispatch?.version,
+          missionPlanVersion: missionPlanForDispatch?.revisionNumber,
+          qualityContractDigest: refreshedWorkOrder.qualityContractDigest,
           workOrderId: String(refreshedWorkOrder._id),
           workOrderRevisionNumber: refreshedWorkOrder.currentRevisionNumber ?? 1,
           workOrderRevisionId: refreshedWorkOrder.currentRevisionId ? String(refreshedWorkOrder.currentRevisionId) : undefined,
@@ -2386,6 +2399,7 @@ async function dispatchWorkOrder(
       workOrderRevisionId: refreshedWorkOrder.currentRevisionId,
       factoryDefinitionVersionId: factoryBinding?.version._id,
       factoryConfigurationDigest: factoryBinding?.version.configurationDigest,
+      qualityContractDigest: refreshedWorkOrder.qualityContractDigest,
       repositoryId: factoryBinding?.repository._id,
       hostBindingId: factoryBinding?.host._id,
       policyEnvelopeId: factoryBinding?.version.policyEnvelopeId,
