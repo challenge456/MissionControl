@@ -1,34 +1,17 @@
 import {
   evaluateCurrentVerificationEligibility,
 } from "@mission-control/workflow-engine/verification-currentness";
+import type { VerificationIdentityTuple } from "@mission-control/workflow-engine";
 import {
   qualityGateProjectionInputDigest,
   qualityGateStateForCurrentEligibility,
 } from "./qualityGateDecision";
 
-export type CurrentVerificationResult = {
-  eligible: boolean;
-  current: boolean;
-  exactIdentity?: {
-    workOrderId: string;
-    workOrderRevisionNumber: number;
-    verificationContractDigest: string;
-    sourceAttemptId: string;
-    verificationSubjectDigest: string;
-  };
-  sourceAttemptId?: string;
-  candidateRevision?: string;
-  verificationAttemptId?: string;
-  verificationRunId?: string;
-  verificationReceiptId?: string;
-  verificationPlanDigest?: string;
-  evidenceSetDigest?: string;
-  historicalVerdict?:
-    | "VERIFIED"
-    | "NOT_VERIFIED"
-    | "BLOCKED"
-    | "REQUIRES_HUMAN_REVIEW";
-  reasons: string[];
+export type CurrentVerificationResult = Omit<
+  ReturnType<typeof evaluateCurrentVerificationEligibility>,
+  "exactIdentity"
+> & {
+  exactIdentity?: VerificationIdentityTuple;
 };
 
 export async function getCurrentVerificationResult(
