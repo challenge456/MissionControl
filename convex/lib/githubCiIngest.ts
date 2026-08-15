@@ -50,6 +50,48 @@ export interface GithubPullRequestLineage {
   taskId: string;
 }
 
+export type TrustedGithubPrProjection<TRepositoryId = string> = {
+  repositoryId?: TRepositoryId;
+  installationId?: string;
+  provider?: "GITHUB";
+  providerRepositoryId?: string;
+  providerPullRequestId?: string;
+  draft?: boolean;
+  attestationExpiresAt?: number;
+};
+
+/**
+ * Trusted provider currentness is all-or-nothing. An unsigned/public refresh
+ * must clear any prior App attestation instead of inheriting its authority.
+ */
+export function normalizeTrustedGithubPrProjection<TRepositoryId>(
+  input: TrustedGithubPrProjection<TRepositoryId>,
+): TrustedGithubPrProjection<TRepositoryId> {
+  const values = [
+    input.repositoryId,
+    input.installationId,
+    input.provider,
+    input.providerRepositoryId,
+    input.providerPullRequestId,
+    input.draft,
+    input.attestationExpiresAt,
+  ];
+  const hasTrustedProjection = values.some((value) => value !== undefined);
+  if (hasTrustedProjection && values.some((value) => value === undefined)) {
+    throw new Error("Trusted GitHub PR evidence requires one complete repository-scoped App attestation.");
+  }
+  if (hasTrustedProjection) return input;
+  return {
+    repositoryId: undefined,
+    installationId: undefined,
+    provider: undefined,
+    providerRepositoryId: undefined,
+    providerPullRequestId: undefined,
+    draft: undefined,
+    attestationExpiresAt: undefined,
+  };
+}
+
 export interface CandidateBoundVerificationReceipt {
   status: string;
   candidateRevision?: string;

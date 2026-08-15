@@ -7,7 +7,10 @@ import {
   shouldPreserveManualPrLineage,
   type PrCheckSignals,
 } from "../lib/harnessPrChecks";
-import { verificationReceiptsInvalidatedByPrHead } from "../lib/githubCiIngest";
+import {
+  normalizeTrustedGithubPrProjection,
+  verificationReceiptsInvalidatedByPrHead,
+} from "../lib/githubCiIngest";
 import { ciBlockedHead, ciBlockCanRecover } from "../lib/prEvaluation";
 import {
   appendCurrentVerificationQualityGateDecision,
@@ -113,19 +116,15 @@ export const applyCiIngest = internalMutation({
     const changeReviewLenses = buildChangeReviewLenses(signals);
     const mutationTesting = buildMutationTestingReport(signals);
     const now = Date.now();
-    const trustedProjectionValues = [
-      args.repositoryId,
-      args.installationId,
-      args.provider,
-      args.providerRepositoryId,
-      args.providerPullRequestId,
-      args.draft,
-      args.attestationExpiresAt,
-    ];
-    const hasTrustedProjection = trustedProjectionValues.some((value) => value !== undefined);
-    if (hasTrustedProjection && trustedProjectionValues.some((value) => value === undefined)) {
-      throw new Error("Trusted GitHub PR evidence requires one complete repository-scoped App attestation.");
-    }
+    const trustedProjection = normalizeTrustedGithubPrProjection({
+      repositoryId: args.repositoryId,
+      installationId: args.installationId,
+      provider: args.provider,
+      providerRepositoryId: args.providerRepositoryId,
+      providerPullRequestId: args.providerPullRequestId,
+      draft: args.draft,
+      attestationExpiresAt: args.attestationExpiresAt,
+    });
 
     if (args.sourceEventId) {
       const duplicateEvent = await ctx.db.query("harnessPrChecks")
@@ -163,8 +162,8 @@ export const applyCiIngest = internalMutation({
       : args.lineageStatus ?? "LEGACY_UNVERIFIED";
     const doc = {
       projectId: args.projectId,
-      repositoryId: args.repositoryId ?? existing?.repositoryId,
-      installationId: args.installationId ?? existing?.installationId,
+      repositoryId: trustedProjection.repositoryId,
+      installationId: trustedProjection.installationId,
       workOrderId: args.workOrderId ?? (inheritPriorLineage ? existing?.workOrderId ?? previous?.workOrderId : undefined),
       workflowRunId: args.workflowRunId ?? (inheritPriorLineage ? existing?.workflowRunId ?? previous?.workflowRunId : undefined),
       taskId: args.taskId ?? (inheritPriorLineage ? existing?.taskId ?? previous?.taskId : undefined),
@@ -186,12 +185,12 @@ export const applyCiIngest = internalMutation({
       source: "GITHUB" as const,
       sourceRef: args.sourceRef ?? args.headSha,
       sourceEventId: args.sourceEventId,
-      provider: args.provider ?? existing?.provider,
-      providerRepositoryId: args.providerRepositoryId ?? existing?.providerRepositoryId,
-      providerPullRequestId: args.providerPullRequestId ?? existing?.providerPullRequestId,
-      draft: args.draft ?? existing?.draft,
+      provider: trustedProjection.provider,
+      providerRepositoryId: trustedProjection.providerRepositoryId,
+      providerPullRequestId: trustedProjection.providerPullRequestId,
+      draft: trustedProjection.draft,
       headSha: args.headSha,
-      attestationExpiresAt: args.attestationExpiresAt ?? existing?.attestationExpiresAt,
+      attestationExpiresAt: trustedProjection.attestationExpiresAt,
       changeReviewLenses,
       mutationTesting,
       syncedAt: now,
