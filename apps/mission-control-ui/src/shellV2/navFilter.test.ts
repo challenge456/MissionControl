@@ -38,6 +38,7 @@ describe("filterNavGroups", () => {
       "missions",
       "control-work-orders",
       "tasks",
+      "factory",
       "trace-inspector",
       "agents",
       "atc",

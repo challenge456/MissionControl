@@ -12,6 +12,8 @@ import {
   emptyAssertion,
   emptyBlueprint,
   emptyMissionPlan,
+  factoryRecipeIdFromMission,
+  missionPlanFromFactoryRecipe,
   defaultImplementationPolicy,
   missionPlanPayload,
   missionPlanValuesEqual,
@@ -23,6 +25,7 @@ import {
   type MissionPlanValues,
   type MissionPlanWorkflowOption,
 } from "../missionPlanModel";
+import { getFactoryRecipe, resolveRecipeWorkflow } from "../../factoryExperience/recipeCatalog";
 
 const newKey = (action: string) => `ui-mission-plan:${action}:${crypto.randomUUID()}`;
 
@@ -154,15 +157,20 @@ export function MissionPlanWorkspace({
   const enabled = useFlag("missions.plan-release-v1");
   const workflowsQuery = useQuery(api.workflows.list, { activeOnly: true });
   const workflows = useMemo<MissionPlanWorkflowOption[]>(() => (workflowsQuery ?? []).map((workflow: any) => ({ workflowId: workflow.workflowId, name: workflow.name, version: workflow.version })), [workflowsQuery]);
+  const recipeId = factoryRecipeIdFromMission(mission);
+  const recipe = getFactoryRecipe(recipeId);
+  const recipeWorkflow = useMemo(() => resolveRecipeWorkflow(recipeId, workflows), [recipeId, workflows]);
   const orderedPlans = useMemo(() => [...plans].sort((left, right) => right.revisionNumber - left.revisionNumber), [plans]);
   const currentPlan = orderedPlans[0] ?? null;
   const basePlan = currentPlan?.basePlanId ? orderedPlans.find((plan) => plan._id === currentPlan.basePlanId) ?? null : null;
   const initialValues = useMemo(() => {
     const values = currentPlan
       ? planToMissionPlanValues(currentPlan, project?.githubRepo, project?.githubBranch)
-      : emptyMissionPlan(workflows[0]);
+      : recipe
+        ? missionPlanFromFactoryRecipe({ recipe, missionTitle: mission.title, missionObjective: mission.objective, workflow: recipeWorkflow })
+        : emptyMissionPlan(workflows[0]);
     return { ...values, repository: currentPlan?.repository ?? project?.githubRepo, repositoryBranch: currentPlan?.repositoryBranch ?? project?.githubBranch };
-  }, [currentPlan?._id, currentPlan?.draftVersion, project?.githubRepo, project?.githubBranch, workflows[0]?.workflowId]);
+  }, [currentPlan?._id, currentPlan?.draftVersion, mission.objective, mission.title, project?.githubRepo, project?.githubBranch, recipe?.id, recipeWorkflow?.workflowId, workflows[0]?.workflowId]);
   const [values, setValues] = useState<MissionPlanValues>(initialValues);
   const [baseline, setBaseline] = useState<MissionPlanValues>(initialValues);
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "acting" | "error">("idle");
@@ -248,5 +256,5 @@ export function MissionPlanWorkspace({
   }
 
   const editable = !currentPlan || currentPlan.status === "DRAFT";
-  return <div className="space-y-5">{readOnlyNotice}{statusMessage}{editable ? <><ErrorList errors={showValidation ? errors : []} /><PlanEditor values={values} workflows={workflows} errors={showValidation ? errors : []} onChange={(next) => { setValues(next); setStatus("idle"); setMessage(null); }} /><div className="sticky bottom-0 rounded-xl border border-line bg-app/95 p-3 backdrop-blur"><div className="flex flex-wrap items-center justify-between gap-3"><div className="text-xs text-ink-muted">{dirty ? "Unsaved plan changes" : currentPlan ? `Revision ${currentPlan.revisionNumber} saved` : "Plan draft not yet saved"}</div><div className="flex flex-wrap gap-2">{currentPlan ? <Button type="button" variant="outline" onClick={() => setShowAbandon((value) => !value)} disabled={!enabled || status === "saving" || status === "acting"}>Abandon draft</Button> : null}<Button type="button" variant="outline" onClick={save} disabled={!enabled || !dirty || status === "saving"}>{status === "saving" ? "Saving…" : currentPlan ? "Save draft" : "Create plan draft"}</Button><Button type="button" onClick={() => { setShowValidation(true); act("submit"); }} disabled={!enabled || !currentPlan || dirty || status === "acting"}>Submit for approval</Button></div></div>{showAbandon ? <div className="mt-3 grid gap-2 border-t border-line pt-3 sm:grid-cols-[1fr_auto]"><Textarea value={decisionReason} onChange={(event) => setDecisionReason(event.target.value)} placeholder="Reason for returning to Mission definition" /><Button variant="destructive" disabled={!decisionReason.trim() || status === "acting"} onClick={() => act("abandon")}>Confirm abandon</Button></div> : null}</div></> : <section className="rounded-xl border border-line bg-surface-1 p-4"><div className="flex items-center justify-between gap-3"><h3 className="text-[13px] font-semibold text-ink">Revision {currentPlan?.revisionNumber}</h3><StatusBadge tone={planTone(currentPlan?.status ?? "UNKNOWN")}>{currentPlan?.status ?? "Unknown"}</StatusBadge></div></section>}</div>;
+  return <div className="space-y-5">{readOnlyNotice}{statusMessage}{editable ? <>{recipe && !currentPlan ? <div className="rounded-xl border border-info-accent/25 bg-info-soft/35 p-3 text-[12.5px] text-ink-secondary"><span className="font-medium text-ink">Composed from {recipe.name}.</span> {recipeWorkflow ? `Matched active workflow ${recipeWorkflow.name} v${recipeWorkflow.version}.` : "No compatible active workflow matched; select one before saving."} This is an editable draft and still requires normal submission and human approval.</div> : null}<ErrorList errors={showValidation ? errors : []} /><PlanEditor values={values} workflows={workflows} errors={showValidation ? errors : []} onChange={(next) => { setValues(next); setStatus("idle"); setMessage(null); }} /><div className="sticky bottom-0 rounded-xl border border-line bg-app/95 p-3 backdrop-blur"><div className="flex flex-wrap items-center justify-between gap-3"><div className="text-xs text-ink-muted">{dirty ? "Unsaved plan changes" : currentPlan ? `Revision ${currentPlan.revisionNumber} saved` : "Plan draft not yet saved"}</div><div className="flex flex-wrap gap-2">{currentPlan ? <Button type="button" variant="outline" onClick={() => setShowAbandon((value) => !value)} disabled={!enabled || status === "saving" || status === "acting"}>Abandon draft</Button> : null}<Button type="button" variant="outline" onClick={save} disabled={!enabled || !dirty || status === "saving"}>{status === "saving" ? "Saving…" : currentPlan ? "Save draft" : "Create plan draft"}</Button><Button type="button" onClick={() => { setShowValidation(true); act("submit"); }} disabled={!enabled || !currentPlan || dirty || status === "acting"}>Submit for approval</Button></div></div>{showAbandon ? <div className="mt-3 grid gap-2 border-t border-line pt-3 sm:grid-cols-[1fr_auto]"><Textarea value={decisionReason} onChange={(event) => setDecisionReason(event.target.value)} placeholder="Reason for returning to Mission definition" /><Button variant="destructive" disabled={!decisionReason.trim() || status === "acting"} onClick={() => act("abandon")}>Confirm abandon</Button></div> : null}</div></> : <section className="rounded-xl border border-line bg-surface-1 p-4"><div className="flex items-center justify-between gap-3"><h3 className="text-[13px] font-semibold text-ink">Revision {currentPlan?.revisionNumber}</h3><StatusBadge tone={planTone(currentPlan?.status ?? "UNKNOWN")}>{currentPlan?.status ?? "Unknown"}</StatusBadge></div></section>}</div>;
 }

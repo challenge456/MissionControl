@@ -5,6 +5,7 @@ import {
   type MissionPlanInput,
   type MissionPlanValidationError,
 } from "../../../../convex/lib/missionPlan";
+import { getFactoryRecipe, type FactoryRecipe } from "../factoryExperience/recipeCatalog";
 
 export type MissionPlanValues = MissionPlanInput;
 export type MissionPlanError = MissionPlanValidationError;
@@ -33,6 +34,56 @@ export function emptyMissionPlan(workflow?: MissionPlanWorkflowOption): MissionP
     repositoryBranch: undefined,
     workOrderBlueprints: [emptyBlueprint("work-order-1", 1, workflow)],
     assertions: [emptyAssertion("assertion-1")],
+  };
+}
+
+
+export function factoryRecipeIdFromMission(mission: { metadata?: unknown }): string | undefined {
+  if (!mission.metadata || typeof mission.metadata !== "object") return undefined;
+  const factoryExperience = (mission.metadata as Record<string, unknown>).factoryExperience;
+  if (!factoryExperience || typeof factoryExperience !== "object") return undefined;
+  const recipeId = (factoryExperience as Record<string, unknown>).selectedRecipeId;
+  return typeof recipeId === "string" && getFactoryRecipe(recipeId) ? recipeId : undefined;
+}
+
+export function missionPlanFromFactoryRecipe(input: {
+  recipe: FactoryRecipe;
+  missionTitle: string;
+  missionObjective: string;
+  workflow?: MissionPlanWorkflowOption;
+}): MissionPlanValues {
+  const { recipe, missionTitle, missionObjective, workflow } = input;
+  const assertion = emptyAssertion("recipe-verification");
+  assertion.title = `${recipe.name} verification`;
+  assertion.outcome = recipe.verificationLevel;
+  assertion.verificationMethod = recipe.mutatesRepository ? "TEST" : "CHECKLIST";
+  assertion.passCondition = recipe.deterministicGates.join("; ");
+  assertion.requiredEvidence = "Persist the exact verification result and subject identity required by the approved quality contract.";
+
+  const blueprint = emptyBlueprint("delivery", 1, workflow);
+  blueprint.title = `${recipe.name}: ${missionTitle}`;
+  blueprint.desiredOutcome = missionObjective;
+  blueprint.isMutating = recipe.mutatesRepository;
+  blueprint.branchStrategy = recipe.mutatesRepository ? "isolated-worktree" : undefined;
+  blueprint.implementationPolicy = recipe.mutatesRepository
+    ? { ...defaultImplementationPolicy(), maxAttempts: Math.max(1, recipe.maxCorrectiveIterations + 1) }
+    : undefined;
+  blueprint.assertionIds = [assertion.assertionId];
+  blueprint.constraints = [
+    `Use the ${recipe.name} workflow recipe as composition intent.`,
+    "Do not bypass active policy, approval, verification, or acceptance gates.",
+  ];
+
+  return {
+    summary: `${recipe.shortDescription} Desired outcome: ${missionObjective}`,
+    rollbackApproach: recipe.mutatesRepository
+      ? "Preserve the pre-change revision and revert the candidate if the approved validation contract does not pass."
+      : "No repository mutation is authorized by this plan.",
+    estimatedCostUsd: undefined,
+    repository: undefined,
+    repositoryBranch: undefined,
+    workOrderBlueprints: [blueprint],
+    assertions: [assertion],
   };
 }
 
