@@ -616,6 +616,7 @@ export class FactoryAttemptWorker {
       repositoryId: String(input.claim.repositoryId),
       headSha: subject.candidateSha,
       treeSha: subject.treeSha,
+      attestedAt: Date.now(),
     };
     await input.report({
       verification,

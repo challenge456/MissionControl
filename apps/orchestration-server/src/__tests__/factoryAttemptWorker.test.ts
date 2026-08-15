@@ -256,7 +256,14 @@ describe("FactoryAttemptWorker verification-first lifecycle", () => {
       packet: {
         terminal: { status: "COMPLETED" },
         verification: { sourceRevision, candidateRevision: candidateSha },
-        isolation: { mode: "DETACHED_GIT_WORKTREE", headSha: candidateSha, treeSha, initialClean: true, finalSubjectMatch: true },
+        isolation: {
+          mode: "DETACHED_GIT_WORKTREE",
+          headSha: candidateSha,
+          treeSha,
+          initialClean: true,
+          finalSubjectMatch: true,
+          attestedAt: expect.any(Number),
+        },
       },
     });
     expect(dependencies.createOrReusePullRequest).not.toHaveBeenCalled();
