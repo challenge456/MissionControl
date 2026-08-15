@@ -77,7 +77,9 @@ gates passed from a branch refreshed onto the exact latest `origin/main`:
 - orchestration startup smoke: passed;
 - `git diff --check`: passed.
 
-The final release commit contains only this review record, the runtime version
-bump, and aligned operations/todo documentation on top of `reviewed_code_sha`.
-GitHub CI and Vercel must still pass on that exact pushed commit before the PR is
-changed from draft to ready. This review does not authorize automatic merge.
+The release commits on top of `reviewed_code_sha` contain this review record,
+the runtime version bump, aligned operations/todo documentation, and a
+Linux-portable process-tree assertion that treats a reparented zombie as
+terminated rather than runnable. GitHub CI and Vercel must still pass on the
+exact pushed head before the PR is changed from draft to ready. This review does
+not authorize automatic merge.

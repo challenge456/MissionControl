@@ -18,6 +18,21 @@ const request = {
   isolation: "WORKSPACE_WRITE" as const,
 };
 
+async function processCanExecute(pid: number): Promise<boolean> {
+  try {
+    if (process.platform === "linux") {
+      const stat = await readFile(`/proc/${pid}/stat`, "utf8");
+      const stateOffset = stat.lastIndexOf(")") + 2;
+      const state = stat[stateOffset];
+      return state !== "Z" && state !== "X";
+    }
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 describe("CodexV1ExecutorAdapter", () => {
   it("declares the frozen codex/v1 lifecycle and repository mutation capability", () => {
     const adapter = new CodexV1ExecutorAdapter("/tmp/codex", vi.fn() as any);
@@ -108,17 +123,22 @@ wait
         workingDirectory: repositoryRoot,
       }, () => undefined, undefined, { started, terminated });
       await vi.waitFor(() => expect(access(childPidPath)).resolves.toBeUndefined());
-      expect(Number.isSafeInteger(Number(await readFile(childPidPath, "utf8")))).toBe(true);
+      const childPid = Number(await readFile(childPidPath, "utf8"));
+      expect(Number.isSafeInteger(childPid)).toBe(true);
       const processGroupId = started.mock.calls[0][0].pid;
       expect(codexOwnedProcessGroupExists(processGroupId)).toBe(true);
+      expect(await processCanExecute(childPid)).toBe(true);
       expect(await adapter.cancel(request.executionId)).toBe(true);
       await expect(execution).resolves.toMatchObject({ status: "CANCELED" });
       expect(terminated).toHaveBeenCalledWith(expect.objectContaining({ pid: processGroupId }));
-      await vi.waitFor(() => expect(codexOwnedProcessGroupExists(processGroupId)).toBe(false), { timeout: 7_000 });
+      await vi.waitFor(async () => {
+        expect(await processCanExecute(processGroupId)).toBe(false);
+        expect(await processCanExecute(childPid)).toBe(false);
+      }, { timeout: 7_000 });
     } finally {
       await rm(repositoryRoot, { recursive: true, force: true });
     }
-  }, 10_000);
+  }, 15_000);
 
   it("closes the Codex CLI stdin pipe so an explicit prompt can start", async () => {
     const repositoryRoot = await mkdtemp(path.join(tmpdir(), "mc-codex-stdin-"));
