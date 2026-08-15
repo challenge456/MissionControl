@@ -186,7 +186,7 @@ behind exe.dev `max_vms: 0` and do not create a parallel VM or acceptance path.
 
 **Status:**
 
-- Runtime contract v22, all 574 Convex tests, all 256 UI tests, all 136 workflow
+- Runtime contract v23, all 574 Convex tests, all 256 UI tests, all 136 workflow
   engine tests, all 60 orchestration tests (one intentional integration skip),
   lint, TypeScript, skill lint, production build, and orchestration startup
   smoke pass on the reconciled branch.
