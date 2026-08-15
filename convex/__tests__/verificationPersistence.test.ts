@@ -54,4 +54,20 @@ describe("verification packet recomputation", () => {
     };
     expect(recomputeVerificationPacket(constrained, packet({ checks: [policyFailure, ...packet().checks] })).verdict).toBe("BLOCKED");
   });
+
+  it("does not reinterpret producer independent=true as policy-v2 independence", () => {
+    const policyV2 = {
+      ...workOrder,
+      verificationContract: {
+        ...workOrder.verificationContract,
+        schemaVersion: 2,
+        enforcementMode: "ENFORCED",
+        requiredRisks: [],
+        independence: { required: true, minimumBoundary: "SEPARATE_ATTEMPT" },
+      },
+    };
+    const result = recomputeVerificationPacket(policyV2, packet());
+    expect(result.verdict).toBe("NOT_VERIFIED");
+    expect(result.coverage[0].missingEvidence.join(" ")).toContain("independent");
+  });
 });

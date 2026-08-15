@@ -125,6 +125,7 @@ export function buildReviewGate(
 ) {
   return {
     idempotencyKey: reviewGateIdempotencyKey(definition.id, scheduledAt),
+    kind: "AUTOMATION" as const,
     title: `Review automation: ${definition.name}`,
     desiredOutcome: `Review and explicitly dispatch ${definition.workflowId}@${definition.workflowVersion} within the approved automation scope.`,
     context: "Created by a LEVEL_1 Automation. V1 scheduled Automations are restricted to read-only WorkOrders.",

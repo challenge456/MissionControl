@@ -6,6 +6,7 @@ import {
 } from "../lib/factoryConfiguration";
 
 const configuration: FactoryConfigurationInput = {
+  purpose: "SOFTWARE",
   repositoryId: "repository-1",
   workflowId: "workflow-1",
   executor: { adapter: "codex", version: "v1" },
@@ -37,6 +38,12 @@ describe("Factory configuration", () => {
         ...configuration,
         executor: { adapter: "codex", version: "v2" },
       })
+    );
+  });
+
+  it("binds Factory purpose into the immutable configuration digest", () => {
+    expect(factoryConfigurationDigest(configuration)).not.toBe(
+      factoryConfigurationDigest({ ...configuration, purpose: "VERIFICATION" })
     );
   });
 

@@ -12,6 +12,7 @@ export interface FactoryExecutionManifestInput {
   taskId?: string;
   factoryDefinitionVersionId: string;
   factoryConfigurationDigest: string;
+  factoryPurpose: "SOFTWARE" | "VERIFICATION" | "INTELLIGENT_AUTOMATION";
   repositoryId: string;
   repository: string;
   defaultBranch: string;
@@ -112,6 +113,7 @@ export function buildFactoryExecutionManifest(input: FactoryExecutionManifestInp
       workflowRunId: input.runId,
       factoryDefinitionVersionId: input.factoryDefinitionVersionId,
       factoryConfigurationDigest: input.factoryConfigurationDigest,
+      factoryPurpose: input.factoryPurpose,
     },
     repository: {
       repositoryId: input.repositoryId,

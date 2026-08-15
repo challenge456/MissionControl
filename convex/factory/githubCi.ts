@@ -7,12 +7,21 @@ import {
   shouldPreserveManualPrLineage,
   type PrCheckSignals,
 } from "../lib/harnessPrChecks";
-import { verificationReceiptsInvalidatedByPrHead } from "../lib/githubCiIngest";
+import {
+  normalizeTrustedGithubPrProjection,
+  verificationReceiptsInvalidatedByPrHead,
+} from "../lib/githubCiIngest";
 import { ciBlockedHead, ciBlockCanRecover } from "../lib/prEvaluation";
+import {
+  appendCurrentVerificationQualityGateDecision,
+  getCurrentVerificationResult,
+} from "../lib/currentVerification";
 
 export const applyCiIngest = internalMutation({
   args: {
     projectId: v.optional(v.id("projects")),
+    repositoryId: v.optional(v.id("workspaceRepositories")),
+    installationId: v.optional(v.string()),
     workOrderId: v.optional(v.id("workOrders")),
     workflowRunId: v.optional(v.id("workflowRuns")),
     taskId: v.optional(v.id("tasks")),
@@ -81,6 +90,11 @@ export const applyCiIngest = internalMutation({
     ),
     sourceRef: v.optional(v.string()),
     sourceEventId: v.optional(v.string()),
+    provider: v.optional(v.literal("GITHUB")),
+    providerRepositoryId: v.optional(v.string()),
+    providerPullRequestId: v.optional(v.string()),
+    draft: v.optional(v.boolean()),
+    attestationExpiresAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     if (args.releaseDeploymentId) {
@@ -102,6 +116,15 @@ export const applyCiIngest = internalMutation({
     const changeReviewLenses = buildChangeReviewLenses(signals);
     const mutationTesting = buildMutationTestingReport(signals);
     const now = Date.now();
+    const trustedProjection = normalizeTrustedGithubPrProjection({
+      repositoryId: args.repositoryId,
+      installationId: args.installationId,
+      provider: args.provider,
+      providerRepositoryId: args.providerRepositoryId,
+      providerPullRequestId: args.providerPullRequestId,
+      draft: args.draft,
+      attestationExpiresAt: args.attestationExpiresAt,
+    });
 
     if (args.sourceEventId) {
       const duplicateEvent = await ctx.db.query("harnessPrChecks")
@@ -139,6 +162,8 @@ export const applyCiIngest = internalMutation({
       : args.lineageStatus ?? "LEGACY_UNVERIFIED";
     const doc = {
       projectId: args.projectId,
+      repositoryId: trustedProjection.repositoryId,
+      installationId: trustedProjection.installationId,
       workOrderId: args.workOrderId ?? (inheritPriorLineage ? existing?.workOrderId ?? previous?.workOrderId : undefined),
       workflowRunId: args.workflowRunId ?? (inheritPriorLineage ? existing?.workflowRunId ?? previous?.workflowRunId : undefined),
       taskId: args.taskId ?? (inheritPriorLineage ? existing?.taskId ?? previous?.taskId : undefined),
@@ -160,7 +185,12 @@ export const applyCiIngest = internalMutation({
       source: "GITHUB" as const,
       sourceRef: args.sourceRef ?? args.headSha,
       sourceEventId: args.sourceEventId,
+      provider: trustedProjection.provider,
+      providerRepositoryId: trustedProjection.providerRepositoryId,
+      providerPullRequestId: trustedProjection.providerPullRequestId,
+      draft: trustedProjection.draft,
       headSha: args.headSha,
+      attestationExpiresAt: trustedProjection.attestationExpiresAt,
       changeReviewLenses,
       mutationTesting,
       syncedAt: now,
@@ -181,7 +211,9 @@ export const applyCiIngest = internalMutation({
       await ctx.db.patch(existing._id, doc);
     }
     const linkedWorkOrderId = doc.workOrderId;
-    if (linkedWorkOrderId && doc.headSha) {
+    if (linkedWorkOrderId && doc.headSha && doc.provider === "GITHUB"
+      && doc.repositoryId && doc.installationId && doc.providerRepositoryId
+      && doc.providerPullRequestId && doc.attestationExpiresAt) {
       const workOrder = await ctx.db.get(linkedWorkOrderId);
       const receipts = await ctx.db
         .query("verificationReceipts")
@@ -192,17 +224,40 @@ export const applyCiIngest = internalMutation({
         doc.headSha,
       );
       if (workOrder && mismatchedReceipts.length > 0 && !["CANCELED", "SUPERSEDED"].includes(workOrder.state)) {
+        const policyV2Enforced = workOrder.verificationContract?.schemaVersion === 2
+          && workOrder.verificationContract.enforcementMode === "ENFORCED";
         const priorCandidateRevisions = [...new Set(
           mismatchedReceipts
             .map((receipt) => receipt.candidateRevision)
             .filter((candidate): candidate is string => Boolean(candidate))
         )];
-        for (const receipt of mismatchedReceipts) {
-          await ctx.db.patch(receipt._id, {
-            status: "STALE",
-            invalidatedAt: now,
-            invalidationReason: `pr-head-mismatch:${doc.headSha}`,
-          });
+        let staleQualityGateDecisionId: any;
+        if (policyV2Enforced) {
+          const current = await getCurrentVerificationResult(ctx, workOrder, now);
+          const staleDecision = await appendCurrentVerificationQualityGateDecision(
+            ctx,
+            workOrder,
+            {
+              ...current,
+              eligible: false,
+              current: false,
+              reasons: [
+                `Trusted GitHub pull-request head changed to ${doc.headSha}; live eligibility is stale.`,
+                ...current.reasons,
+              ],
+            },
+            `github-pr-head:${id}:${doc.headSha}`,
+            now,
+          );
+          staleQualityGateDecisionId = staleDecision?._id;
+        } else {
+          for (const receipt of mismatchedReceipts) {
+            await ctx.db.patch(receipt._id, {
+              status: "STALE",
+              invalidatedAt: now,
+              invalidationReason: `pr-head-mismatch:${doc.headSha}`,
+            });
+          }
         }
         await ctx.db.patch(linkedWorkOrderId, {
           state: "BLOCKED",
@@ -224,7 +279,10 @@ export const applyCiIngest = internalMutation({
             prUrl: doc.prUrl,
             priorCandidateRevisions,
             observedHeadSha: doc.headSha,
-            invalidatedReceiptIds: mismatchedReceipts.map((receipt) => receipt._id),
+            invalidatedReceiptIds: policyV2Enforced ? [] : mismatchedReceipts.map((receipt) => receipt._id),
+            liveEligibilityInvalidatedReceiptIds: mismatchedReceipts.map((receipt) => receipt._id),
+            staleQualityGateDecisionId,
+            historicalEvidencePreserved: policyV2Enforced,
           },
         });
       }

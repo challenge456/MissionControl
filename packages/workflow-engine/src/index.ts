@@ -115,3 +115,69 @@ export {
   type Verifier,
   type WorkOrderVerificationSpec,
 } from "./verification.js";
+
+export {
+  canonicalVerificationJson,
+  qualityGateEvidenceSetDigest,
+  verificationContractDigest,
+  verificationDigest,
+  verificationSha256Hex,
+} from "./verificationIdentity.js";
+
+export {
+  createAutomationVerificationSubject,
+  createGitVerificationSubject,
+  normalizeAttemptPurpose,
+  normalizeFactoryPurpose,
+  normalizeWorkOrderKind,
+  verifyVerificationSubjectIdentity,
+  type AttemptPurpose,
+  type AutomationVerificationSubject,
+  type FactoryPurpose,
+  type GitVerificationSubject,
+  type VerificationSubject,
+  type WorkOrderKind,
+} from "./verificationSubject.js";
+
+export {
+  assertVerificationPlanImmutable,
+  freezeVerificationPlan,
+  validateVerificationPlanDraft,
+  type DiscoveredVerificationRisk,
+  type RequiredEvidence,
+  type RequiredVerificationRisk,
+  type VerificationPlan,
+  type VerificationPlanContract,
+  type VerificationPlanDraft,
+  type VerificationRequirement,
+} from "./verificationPlan.js";
+
+export {
+  deriveVerificationIndependence,
+  tupleMatches,
+  verificationIsolationBindingDigest,
+  type VerificationIdentityTuple,
+  type VerificationIndependenceInput,
+  type VerificationIndependenceResult,
+} from "./verificationIndependence.js";
+
+export {
+  assertVerificationRunTransition,
+  evaluateVerificationDecision,
+  type VerificationCoverageV2,
+  type VerificationDecisionResult,
+  type VerificationEvidenceInput,
+  type VerificationRunStatus,
+  type VerificationVerdictV2,
+} from "./verificationDecision.js";
+
+export {
+  evaluateCurrentVerificationEligibility,
+  type CurrentVerificationAttempt,
+  type CurrentVerificationEligibility,
+  type CurrentVerificationSourceAttempt,
+  type GitProviderHeadProjection,
+  type StoredVerificationReceipt,
+  type StoredVerificationResult,
+  type StoredVerificationEvidence,
+} from "./verificationCurrentness.js";

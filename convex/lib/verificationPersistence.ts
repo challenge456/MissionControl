@@ -43,7 +43,7 @@ export function recomputeVerificationPacket(workOrder: any, packet: any) {
     if (!raw) return missingCheck(expected);
     const status = CHECK_STATUSES.has(raw.status) ? raw.status : "ERROR";
     const evidence: NormalizedEvidence[] = (Array.isArray(raw.evidence) ? raw.evidence : []).map((item: any): NormalizedEvidence => {
-      const normalized = normalizeEvidence(item, expected, criterionIds);
+      const normalized = normalizeEvidence(item, expected, criterionIds, workOrder.verificationContract.schemaVersion !== 2);
       if (evidenceKeys.has(normalized.evidenceKey)) throw new Error(`Duplicate evidence key: ${normalized.evidenceKey}.`);
       evidenceKeys.add(normalized.evidenceKey);
       allEvidence.push(normalized);
@@ -129,7 +129,7 @@ function addSystemChecks(checks: any[], workOrder: any) {
   return result;
 }
 
-function normalizeEvidence(item: any, check: any, criterionIds: Set<string>): NormalizedEvidence {
+function normalizeEvidence(item: any, check: any, criterionIds: Set<string>, allowLegacyProducerIndependence: boolean): NormalizedEvidence {
   const acceptanceCriterionIds = textArray(item?.acceptanceCriterionIds, 50, 200);
   for (const criterionId of acceptanceCriterionIds) {
     if (!criterionIds.has(criterionId)) throw new Error(`Evidence references unknown criterion ${criterionId}.`);
@@ -147,7 +147,7 @@ function normalizeEvidence(item: any, check: any, criterionIds: Set<string>): No
     producer: {
       id: requiredText(item?.producer?.id, `evidence producer for ${check.id}`, 200),
       role: requiredText(item?.producer?.role, `evidence producer role for ${check.id}`, 200),
-      independent: item?.producer?.independent === true,
+      independent: allowLegacyProducerIndependence && item?.producer?.independent === true,
     },
     contentHash: optionalText(item?.contentHash, 200),
     artifactReferences: textArray(item?.artifactReferences, 20, 2_000),

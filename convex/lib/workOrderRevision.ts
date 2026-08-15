@@ -28,6 +28,7 @@ export interface GovernancePolicyLike {
 }
 
 export interface WorkOrderRevisionSnapshot {
+  kind?: "SOFTWARE_CHANGE" | "VERIFICATION" | "AUTOMATION";
   title: string;
   desiredOutcome: string;
   context?: string;
@@ -56,6 +57,7 @@ export interface WorkOrderRevisionSnapshot {
   dataBoundaries?: any[];
   changeBudget?: any;
   verificationContract?: any;
+  verificationContractDigest?: string;
   autonomyLevel?: string;
   riskReasons?: string[];
   dependencies?: string[];
@@ -123,6 +125,7 @@ function normalizeCriteria(criteria: WorkOrderRevisionSnapshot["acceptanceCriter
 
 export function snapshotRevisionFields(workOrder: any): WorkOrderRevisionSnapshot {
   return {
+    kind: workOrder.kind ?? "SOFTWARE_CHANGE",
     title: workOrder.title,
     desiredOutcome: workOrder.desiredOutcome,
     context: workOrder.context,
@@ -142,6 +145,7 @@ export function snapshotRevisionFields(workOrder: any): WorkOrderRevisionSnapsho
     dataBoundaries: workOrder.dataBoundaries,
     changeBudget: workOrder.changeBudget,
     verificationContract: workOrder.verificationContract,
+    verificationContractDigest: workOrder.verificationContractDigest,
     autonomyLevel: workOrder.autonomyLevel,
     riskReasons: sortStrings(workOrder.riskReasons),
     dependencies: sortStrings(workOrder.dependencies),

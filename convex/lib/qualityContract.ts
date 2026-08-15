@@ -1,4 +1,4 @@
-import { computeCanonicalHash } from "./genomeHash";
+import { canonicalHash } from "@mission-control/shared";
 
 export const QUALITY_CONTRACT_SCHEMA_VERSION = 1;
 
@@ -93,6 +93,6 @@ export function compileApprovedPlanQualityContract(
 
   return {
     projection,
-    digest: `sha256:${computeCanonicalHash(projection)}`,
+    digest: `sha256:${canonicalHash(projection)}`,
   };
 }

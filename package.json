@@ -57,6 +57,8 @@
   },
   "dependencies": {
     "@mission-control/research-adapters": "workspace:*",
+    "@mission-control/shared": "workspace:*",
+    "@mission-control/workflow-engine": "workspace:*",
     "convex": "^1.42.3"
   },
   "devDependencies": {

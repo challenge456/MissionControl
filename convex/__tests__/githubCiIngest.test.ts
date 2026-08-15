@@ -5,6 +5,7 @@ import {
   extractPrFromWebhookEvent,
   isSupportedPullRequestWebhookAction,
   mapCheckRunsToSignals,
+  normalizeTrustedGithubPrProjection,
   parseMissionControlPullRequestLineage,
   verificationReceiptsInvalidatedByPrHead,
   verifyGithubWebhookSignature,
@@ -114,6 +115,32 @@ describe("githubCiIngest", () => {
       merged_at: "2026-08-11T20:15:30Z",
       merge_commit_sha: "b".repeat(40),
     })).toEqual({});
+  });
+
+  it("requires a complete fresh GitHub App projection and clears inherited trust for public refreshes", () => {
+    const trusted = {
+      repositoryId: "repo-1",
+      installationId: "installation-1",
+      provider: "GITHUB" as const,
+      providerRepositoryId: "provider-repo-1",
+      providerPullRequestId: "provider-pr-1",
+      draft: false,
+      attestationExpiresAt: 1234,
+    };
+    expect(normalizeTrustedGithubPrProjection(trusted)).toEqual(trusted);
+    expect(normalizeTrustedGithubPrProjection({})).toEqual({
+      repositoryId: undefined,
+      installationId: undefined,
+      provider: undefined,
+      providerRepositoryId: undefined,
+      providerPullRequestId: undefined,
+      draft: undefined,
+      attestationExpiresAt: undefined,
+    });
+    expect(() => normalizeTrustedGithubPrProjection({
+      repositoryId: "repo-1",
+      installationId: "installation-1",
+    })).toThrow("complete repository-scoped App attestation");
   });
 
   it("invalidates only non-stale verification receipts bound to another PR head", () => {

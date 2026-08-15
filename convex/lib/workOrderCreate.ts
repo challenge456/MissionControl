@@ -5,6 +5,7 @@ import {
 } from "./workOrderGovernance";
 import { snapshotRevisionFields } from "./workOrderRevision";
 import { classifyWorkOrderRisk, validateWorkOrderSpecification } from "./workOrderSpecification";
+import { verificationContractDigest } from "@mission-control/workflow-engine/verification-identity";
 
 function describeInitialReadiness(
   workOrder: { state: string },
@@ -66,6 +67,10 @@ export async function createWorkOrderRecord(ctx: any, args: any) {
   const now = Date.now();
   const specification = validateWorkOrderSpecification(args);
   if (!specification.valid) throw new Error(`WorkOrder specification is invalid (${specification.issues.join("; ")})`);
+  const qualityContractDigest = args.qualityContractDigest ?? missionPlan?.qualityContractDigest;
+  const contractDigest = args.verificationContract?.schemaVersion === 2
+    ? verificationContractDigest(args.verificationContract, qualityContractDigest)
+    : undefined;
   const riskAssessment = classifyWorkOrderRisk(args);
   const riskLevel = riskAssessment.riskLevel;
   const finalCriteria = args.acceptanceCriteria.map((criterion: any) => ({
@@ -116,7 +121,7 @@ export async function createWorkOrderRecord(ctx: any, args: any) {
     missionId: args.missionId,
     missionPlanId: args.missionPlanId,
     missionPlanRevision: args.missionPlanRevision ?? missionPlan?.revisionNumber,
-    qualityContractDigest: args.qualityContractDigest ?? missionPlan?.qualityContractDigest,
+    qualityContractDigest,
     missionSequence: missionBlueprint?.sequence,
     missionRole: args.missionId ? (args.missionRole ?? "WORKER") : undefined,
     isMutating: args.missionId ? missionBlueprint?.isMutating : args.isMutating,
@@ -124,6 +129,7 @@ export async function createWorkOrderRecord(ctx: any, args: any) {
     legacyTaskId: args.legacyTaskId,
     idempotencyKey: args.idempotencyKey,
     title: args.title,
+    kind: args.kind ?? "SOFTWARE_CHANGE",
     desiredOutcome: args.desiredOutcome,
     context: args.context,
     workflowId: args.workflowId,
@@ -150,6 +156,7 @@ export async function createWorkOrderRecord(ctx: any, args: any) {
     dataBoundaries: args.dataBoundaries,
     changeBudget: args.changeBudget,
     verificationContract: args.verificationContract,
+    verificationContractDigest: contractDigest,
     autonomyLevel: args.autonomyLevel,
     riskReasons: riskAssessment.riskReasons,
     specificationVersion: 1,
@@ -187,6 +194,8 @@ export async function createWorkOrderRecord(ctx: any, args: any) {
 
   const initialSnapshot = snapshotRevisionFields({
     ...args,
+    kind: args.kind ?? "SOFTWARE_CHANGE",
+    verificationContractDigest: contractDigest,
     priority: args.priority ?? 3,
     riskLevel,
     acceptanceCriteria: finalCriteria,
@@ -198,6 +207,7 @@ export async function createWorkOrderRecord(ctx: any, args: any) {
     workOrderId,
     idempotencyKey: args.idempotencyKey ? `${args.idempotencyKey}:revision:1` : undefined,
     revisionNumber: 1,
+    verificationContractDigest: contractDigest,
     previousRevisionId: undefined,
     status: "APPLIED",
     changedFields: ["title", "desiredOutcome", "workflowId", "repository", "riskLevel", "requirements", "acceptanceCriteria", "changeBudget", "verificationContract"],
@@ -250,7 +260,7 @@ export async function createWorkOrderRecord(ctx: any, args: any) {
       riskLevel,
       riskReasons: riskAssessment.riskReasons,
       changeBudgetAssigned: Boolean(args.changeBudget),
-      qualityContractDigest: args.qualityContractDigest ?? missionPlan?.qualityContractDigest,
+      qualityContractDigest,
     },
   });
 

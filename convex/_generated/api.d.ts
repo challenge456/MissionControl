@@ -98,6 +98,7 @@ import type * as lib_contextPackages from "../lib/contextPackages.js";
 import type * as lib_contextRegistryGate from "../lib/contextRegistryGate.js";
 import type * as lib_continuousResearchEvidence from "../lib/continuousResearchEvidence.js";
 import type * as lib_continuousResearchProjection from "../lib/continuousResearchProjection.js";
+import type * as lib_currentVerification from "../lib/currentVerification.js";
 import type * as lib_deliveryAuthorization from "../lib/deliveryAuthorization.js";
 import type * as lib_demoSeedExtensions from "../lib/demoSeedExtensions.js";
 import type * as lib_evalFrameworkGate from "../lib/evalFrameworkGate.js";
@@ -368,6 +369,7 @@ declare const fullApi: ApiFromModules<{
   "lib/contextRegistryGate": typeof lib_contextRegistryGate;
   "lib/continuousResearchEvidence": typeof lib_continuousResearchEvidence;
   "lib/continuousResearchProjection": typeof lib_continuousResearchProjection;
+  "lib/currentVerification": typeof lib_currentVerification;
   "lib/deliveryAuthorization": typeof lib_deliveryAuthorization;
   "lib/demoSeedExtensions": typeof lib_demoSeedExtensions;
   "lib/evalFrameworkGate": typeof lib_evalFrameworkGate;
