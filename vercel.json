@@ -4,5 +4,9 @@
   "outputDirectory": "apps/mission-control-ui/dist",
   "installCommand": "corepack enable pnpm && pnpm install --frozen-lockfile",
   "framework": null,
-  "devCommand": "pnpm dev"
+  "devCommand": "pnpm dev",
+  "rewrites": [
+    { "source": "/v2", "destination": "/index.html" },
+    { "source": "/v2/:path*", "destination": "/index.html" }
+  ]
 }
