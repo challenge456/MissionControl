@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createOrReusePullRequest, loadGithubAppPrivateKey } from "../githubAppRuntime.js";
+import {
+  createOrReusePullRequest,
+  fetchGithubPullRequestEvidence,
+  loadGithubAppPrivateKey,
+} from "../githubAppRuntime.js";
 
 describe("GitHub App runtime", () => {
   it("loads the private key from an inline value or an owner-controlled file", () => {
@@ -89,5 +93,46 @@ describe("GitHub App runtime", () => {
     expect(result).toMatchObject({ number: 43, reused: false });
     const createCall = fetchImpl.mock.calls[1];
     expect(JSON.parse(createCall[1].body)).toMatchObject({ head: "mc/work-order-1", base: "main", draft: false });
+  });
+
+  it("fetches an exact App-authenticated PR head and completed CI without returning credentials", async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 105,
+        node_id: "PR_policy_v2_105",
+        number: 105,
+        html_url: "https://github.com/sellerfi/sandbox/pull/105",
+        title: "Policy v2 candidate",
+        state: "open",
+        draft: true,
+        head: { ref: "mc/work-order-1", sha: "candidate-sha" },
+      }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        check_runs: [
+          { name: "Unit Tests", status: "completed", conclusion: "success", html_url: "https://github.com/check/1" },
+          { name: "Security", status: "completed", conclusion: "success", html_url: "https://github.com/check/2" },
+        ],
+      }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      .mockResolvedValueOnce(new Response("+policyVersion\n-old\n", { status: 200 }));
+
+    const result = await fetchGithubPullRequestEvidence({
+      repository: "sellerfi/sandbox",
+      prNumber: 105,
+      token: "installation-token-never-returned",
+      fetchImpl,
+    });
+
+    expect(result).toMatchObject({
+      providerPullRequestId: "PR_policy_v2_105",
+      headSha: "candidate-sha",
+      ciStatus: "PASS",
+      draft: true,
+      diffLineCount: 2,
+      signals: { testPassCount: 1, testFailCount: 0, securityFindingCount: 0 },
+    });
+    expect(JSON.stringify(result)).not.toContain("installation-token-never-returned");
+    expect(fetchImpl.mock.calls.every(([, init]) =>
+      new Headers(init?.headers).get("authorization") === "Bearer installation-token-never-returned"
+    )).toBe(true);
   });
 });

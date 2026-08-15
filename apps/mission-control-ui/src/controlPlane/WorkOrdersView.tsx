@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../../../convex/_generated/api";
 import type { Doc, Id } from "../../../../convex/_generated/dataModel";
@@ -40,6 +40,7 @@ import { ExecutionRunInspector } from "./ExecutionRunInspector";
 import { ReviewEvidencePackage, type ReviewEvidencePackageData } from "./ReviewEvidencePackage";
 import { splitCurrentAndHistoricalRevisions, summarizeRevisionEffects } from "./workOrderLifecycleModel";
 import { CreateTaskModal } from "../CreateTaskModal";
+import { getOrchestrationBaseUrl } from "@/lib/orchestrationUrl";
 
 const RISK_STYLES: Record<string, string> = {
   LOW: "border-emerald-500/30 text-emerald-300",
@@ -224,7 +225,6 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
   const requestApprovalDecision = useMutation(api.workOrders.requestApprovalDecision);
   const recordVerificationReceipt = useMutation(api.workOrders.recordVerificationReceipt);
   const acceptWorkOrder = useMutation(api.workOrders.accept);
-  const ingestPublicPullRequest = useAction(api.factory.prChecks.ingestPublicPullRequest);
   const requestWorkOrderRevision = useMutation(api.workOrders.requestWorkOrderRevision);
   const approveWorkOrderRevision = useMutation(api.workOrders.approveWorkOrderRevision);
   const reopenWorkOrder = useMutation(api.workOrders.reopenWorkOrder);
@@ -789,23 +789,31 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                           disabled={
                             syncingGithubEvidence
                             || !projectId
+                            || !selected.workOrder.repositoryId
                             || !selected.reviewPackage?.identity?.pullRequestUrl
-                            || !selected.executionRuns[0]?._id
+                            || !selected.currentVerification?.sourceAttemptId
                           }
-                          title="Fetch authoritative GitHub state for this public repository without exposing local credentials."
+                          title="Fetch authoritative GitHub state through the repository-scoped App boundary without exposing credentials to the browser."
                           onClick={async () => {
                             const prUrl = selected.reviewPackage?.identity?.pullRequestUrl;
-                            const latestRun = selected.executionRuns[0];
-                            if (!projectId || !prUrl || !latestRun?._id) return;
+                            const repositoryId = selected.workOrder.repositoryId;
+                            const sourceAttemptId = selected.currentVerification?.sourceAttemptId;
+                            if (!projectId || !repositoryId || !prUrl || !sourceAttemptId) return;
                             try {
                               setGovernanceError(null);
                               setSyncingGithubEvidence(true);
-                              await ingestPublicPullRequest({
-                                prUrl,
-                                projectId,
-                                workOrderId: selected.workOrder._id,
-                                workflowRunId: latestRun._id,
+                              const response = await fetch(`${getOrchestrationBaseUrl()}/orchestration/workorders/${selected.workOrder._id}/github-pr-evidence`, {
+                                method: "POST",
+                                headers: { "content-type": "application/json" },
+                                body: JSON.stringify({
+                                  projectId,
+                                  repositoryId,
+                                  workflowRunId: sourceAttemptId,
+                                  prUrl,
+                                }),
                               });
+                              const result = await response.json().catch(() => ({}));
+                              if (!response.ok) throw new Error(result.error ?? "GitHub evidence sync failed");
                             } catch (err) {
                               setGovernanceError(err instanceof Error ? err.message : "GitHub evidence sync failed");
                             } finally {

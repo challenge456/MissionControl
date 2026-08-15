@@ -243,6 +243,7 @@ export async function fetchPullRequestCi(
   }
   const pr = (await prRes.json()) as {
     id?: number;
+    node_id?: string;
     title?: string;
     body?: string | null;
     draft?: boolean;
@@ -259,7 +260,7 @@ export async function fetchPullRequestCi(
   if (!headSha) {
     throw new Error("PR head SHA missing");
   }
-  if (!Number.isSafeInteger(pr.id) || Number(pr.id) < 1) {
+  if (!pr.node_id?.trim()) {
     throw new Error("PR provider identity missing");
   }
 
@@ -306,7 +307,7 @@ export async function fetchPullRequestCi(
   return {
     prUrl,
     prNumber,
-    providerPullRequestId: String(pr.id),
+    providerPullRequestId: pr.node_id,
     repoFullName: `${owner}/${repo}`,
     branch: pr.head?.ref,
     title: pr.title,

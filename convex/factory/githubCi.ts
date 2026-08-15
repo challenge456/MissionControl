@@ -211,10 +211,30 @@ export const applyCiIngest = internalMutation({
       await ctx.db.patch(existing._id, doc);
     }
     const linkedWorkOrderId = doc.workOrderId;
+    let currentWorkOrder: any;
+    let currentQualityGateDecisionId: any;
     if (linkedWorkOrderId && doc.headSha && doc.provider === "GITHUB"
       && doc.repositoryId && doc.installationId && doc.providerRepositoryId
       && doc.providerPullRequestId && doc.attestationExpiresAt) {
-      const workOrder = await ctx.db.get(linkedWorkOrderId);
+      currentWorkOrder = await ctx.db.get(linkedWorkOrderId);
+      const policyV2Enforced = currentWorkOrder?.verificationContract?.schemaVersion === 2
+        && currentWorkOrder.verificationContract.enforcementMode === "ENFORCED";
+      if (policyV2Enforced) {
+        const current = await getCurrentVerificationResult(ctx, currentWorkOrder, now);
+        const decision = await appendCurrentVerificationQualityGateDecision(
+          ctx,
+          currentWorkOrder,
+          current,
+          `github-pr-sync:${id}:${doc.headSha}:${now}`,
+          now,
+        );
+        currentQualityGateDecisionId = decision?._id;
+      }
+    }
+    if (linkedWorkOrderId && doc.headSha && doc.provider === "GITHUB"
+      && doc.repositoryId && doc.installationId && doc.providerRepositoryId
+      && doc.providerPullRequestId && doc.attestationExpiresAt) {
+      const workOrder = currentWorkOrder ?? await ctx.db.get(linkedWorkOrderId);
       const receipts = await ctx.db
         .query("verificationReceipts")
         .withIndex("by_work_order", (q) => q.eq("workOrderId", linkedWorkOrderId))
@@ -231,26 +251,7 @@ export const applyCiIngest = internalMutation({
             .map((receipt) => receipt.candidateRevision)
             .filter((candidate): candidate is string => Boolean(candidate))
         )];
-        let staleQualityGateDecisionId: any;
-        if (policyV2Enforced) {
-          const current = await getCurrentVerificationResult(ctx, workOrder, now);
-          const staleDecision = await appendCurrentVerificationQualityGateDecision(
-            ctx,
-            workOrder,
-            {
-              ...current,
-              eligible: false,
-              current: false,
-              reasons: [
-                `Trusted GitHub pull-request head changed to ${doc.headSha}; live eligibility is stale.`,
-                ...current.reasons,
-              ],
-            },
-            `github-pr-head:${id}:${doc.headSha}`,
-            now,
-          );
-          staleQualityGateDecisionId = staleDecision?._id;
-        } else {
+        if (!policyV2Enforced) {
           for (const receipt of mismatchedReceipts) {
             await ctx.db.patch(receipt._id, {
               status: "STALE",
@@ -281,7 +282,7 @@ export const applyCiIngest = internalMutation({
             observedHeadSha: doc.headSha,
             invalidatedReceiptIds: policyV2Enforced ? [] : mismatchedReceipts.map((receipt) => receipt._id),
             liveEligibilityInvalidatedReceiptIds: mismatchedReceipts.map((receipt) => receipt._id),
-            staleQualityGateDecisionId,
+            staleQualityGateDecisionId: currentQualityGateDecisionId,
             historicalEvidencePreserved: policyV2Enforced,
           },
         });
