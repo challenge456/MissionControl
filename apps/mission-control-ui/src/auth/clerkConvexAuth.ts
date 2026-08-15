@@ -46,4 +46,3 @@ export function useNativeClerkConvexAuth() {
     [fetchAccessToken, isLoaded, isSignedIn],
   );
 }
-

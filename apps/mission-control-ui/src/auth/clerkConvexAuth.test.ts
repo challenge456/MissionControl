@@ -29,4 +29,3 @@ describe("createNativeConvexAccessTokenFetcher", () => {
     ).resolves.toBeNull();
   });
 });
-
