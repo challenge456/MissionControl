@@ -32,7 +32,7 @@ permission checks remain authoritative.
 
 Changing level writes only the browser-local presentation preference. It does
 not mutate a Mission, Plan, WorkOrder, Attempt, policy, evidence record, or
-acceptance decision.
+acceptance decision, and it is not copied into Mission metadata.
 
 ## Recipe catalog
 
@@ -70,6 +70,9 @@ eval, and dataset surfaces.
 - `workOrders.accept` remains the sole WorkOrder acceptance authority.
 - Basic mode hides advanced controls; it does not weaken permission checks on
   their direct routes.
+- Factory Memory retrieval and frozen Context Package evidence remain in
+  **Knowledge → Memory** and full Observability. Advanced Factory Board links
+  to those canonical surfaces instead of duplicating them.
 
 ## Known follow-up work
 

@@ -148,7 +148,6 @@ export function CreateFactoryMissionDialog({
     try {
       createKeyRef.current ??= `ui-mission:${crypto.randomUUID()}`;
       const metadata = factoryExperienceMetadata({
-        level: experienceLevel,
         recommendation,
         selectedRecipeId,
         routingIntent,
@@ -239,7 +238,7 @@ export function CreateFactoryMissionDialog({
                   </option>
                 ) : null}
               </select>
-              <p className="text-[11px] leading-relaxed text-ink-muted">
+              <p className="text-[11px] leading-relaxed text-ink-secondary">
                 This is composition intent only. Repository ID, code scope,
                 owner, and team must still be bound before Plan approval.
               </p>

@@ -43,13 +43,15 @@ describe("CreateFactoryMissionDialog", () => {
       projectId: "project-1",
       metadata: {
         factoryExperience: {
-          uiModeAtCreation: "intermediate",
           recommendedRecipeId: "build-test",
           selectedRecipeId: "build-review",
           operatorOverrodeRecommendation: true,
         },
       },
     });
+    expect(payload.metadata.factoryExperience).not.toHaveProperty(
+      "uiModeAtCreation",
+    );
     expect(payload).not.toHaveProperty("dispatch");
     expect(payload).not.toHaveProperty("approved");
     expect(payload).not.toHaveProperty("accepted");

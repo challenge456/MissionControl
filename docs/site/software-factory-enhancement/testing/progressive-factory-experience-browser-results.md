@@ -2,7 +2,7 @@
 
 Validated on 2026-08-15 from branch
 `codex/progressive-factory-experience-v1`, based on
-`78a090b576810748676336a2afe5cdc19eccc42d`.
+`376505033ac1de56415a33305ba7e20696230d9f` after Factory Memory PR #100.
 
 ## Test fixture
 
@@ -13,6 +13,35 @@ Software Factory demo seed, and two traces written through the existing
 Observability mutations. The fixtures cover success and failure, a human
 approval observation, an agent generation, a code tool call, independent
 verification, cost, duration, a pull request, and acceptance posture.
+
+## Runtime v22 reconciliation
+
+The reconciliation onto Factory Memory main was re-verified headlessly at
+`http://localhost:5203` against the existing Software Factory demo workspace.
+The pass did not create a Mission or mutate delivery state: the draft dialog
+was opened, audited, and canceled.
+
+- Basic, Intermediate, and Advanced changed only the browser-local
+  presentation preference.
+- Advanced linked to the canonical Factory Memory route; its Overview and
+  frozen Context Package tabs loaded without a duplicate memory projection.
+- Observability retained Factory Memory retrieval observations, trace/eval
+  detail, and the WorkOrder deep link.
+- The WorkOrder **Inspect run** action opened the canonical Execution Run
+  Inspector with the exact Attempt-bound frozen Factory context.
+- The critical Playwright suite passed 9/9 tests after adding Factory Board to
+  the live-route matrix and updating the canonical Factory Memory heading.
+- Factory Board retains the shell's single `main` landmark and has no document
+  horizontal overflow at desktop or mobile widths.
+- Desktop Advanced, 390×844 mobile, Factory Memory, and Execution Run
+  Inspector audits reported zero WCAG 2 A/AA violations.
+- The Advanced Mission dialog reported 20 passing rules, zero violations, and
+  zero incomplete checks when scoped to the dialog after correcting one
+  borderline helper-text contrast token.
+
+See the [Advanced Factory Memory link](../../../testing/evidence/progressive-factory-v1/factory-advanced-memory-link-v22.png)
+and [runtime v22 dialog](../../../testing/evidence/progressive-factory-v1/mission-draft-dialog-advanced-v22.png)
+screenshots.
 
 ## Responsive and theme matrix
 
@@ -30,7 +59,7 @@ The Advanced Mission dialog also verified the recommended recipe, visible
 override disclosure, model and executor intent, bounded corrective iterations,
 and the explicit statement that draft creation does not dispatch, approve,
 accept, or merge work. See the
-[dialog screenshot](../../../testing/evidence/progressive-factory-v1/mission-draft-dialog-advanced-light.png).
+[dialog screenshot](../../../testing/evidence/progressive-factory-v1/mission-draft-dialog-advanced-v22.png).
 
 ## Interaction and accessibility
 
@@ -48,7 +77,7 @@ accept, or merge work. See the
 
 ## Runtime boundary
 
-The runtime-contract guard remains at baseline 21. No Convex schema, public
+The runtime-contract guard remains at baseline 22. No Convex schema, public
 function contract, executor, acceptance mutation, trace store, or graph was
 added. The new board projects existing Mission metadata, workflows, traces,
 observations, verification facts, and protected routes.

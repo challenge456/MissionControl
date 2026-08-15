@@ -176,6 +176,10 @@ export function ProgressiveFactoryView({
       pathname: missionDetailPath(missionId),
       search: location.search,
     });
+  const openFactorySurface = (view: string) => {
+    onNavigate?.(view);
+    navigate({ pathname: `/v2/${view}`, search: location.search });
+  };
   return (
     <div className="min-h-0 bg-app pb-10">
       <header className="border-b border-line bg-surface-1 px-4 py-4 sm:px-6">
@@ -197,7 +201,7 @@ export function ProgressiveFactoryView({
         </div>
       </header>
 
-      <main className="mx-auto flex max-w-[1600px] flex-col gap-5 px-4 py-5 sm:px-6">
+      <div className="mx-auto flex max-w-[1600px] flex-col gap-5 px-4 py-5 sm:px-6">
         <section
           className="grid overflow-hidden rounded-xl border border-line bg-surface-1 sm:grid-cols-3"
           aria-label="Factory posture"
@@ -318,7 +322,7 @@ export function ProgressiveFactoryView({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => onNavigate("trace-inspector")}
+                onClick={() => openFactorySurface("trace-inspector")}
               >
                 Open full Observability
               </Button>
@@ -406,10 +410,10 @@ export function ProgressiveFactoryView({
         {level === "advanced" ? (
           <AdvancedFactoryPanel
             definitions={factoryDefinitions}
-            onNavigate={onNavigate}
+            onNavigate={openFactorySurface}
           />
         ) : null}
-      </main>
+      </div>
       <CreateFactoryMissionDialog
         projectId={projectId}
         open={createOpen}
@@ -878,6 +882,7 @@ function AdvancedFactoryPanel({
     { id: "projects", label: "Factory configuration" },
     { id: "model-routing", label: "Model routing" },
     { id: "policies", label: "Policies" },
+    { id: "memory", label: "Factory Memory" },
     { id: "trace-inspector", label: "Observability & evals" },
     { id: "control-work-orders", label: "WorkOrders & evidence" },
   ];
@@ -915,6 +920,11 @@ function AdvancedFactoryPanel({
           </Button>
         ))}
       </div>
+      <p className="mt-3 text-[11px] leading-relaxed text-ink-muted">
+        Factory Memory retrieval and frozen Context Package evidence remain on
+        the canonical Memory and Observability surfaces. Factory Board links to
+        them instead of creating a second memory view.
+      </p>
       <div className="mt-4 flex items-start gap-2 rounded-lg border border-warn/25 bg-warn-soft p-3 text-[11.5px] leading-relaxed text-ink-secondary">
         <TriangleAlert size={14} className="mt-0.5 shrink-0 text-warn" />
         Advanced visibility does not add bypass authority. Direct routes retain

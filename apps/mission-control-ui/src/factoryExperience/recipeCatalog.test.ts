@@ -44,7 +44,6 @@ describe("Factory recipe catalog", () => {
       "Implement a new buyer confidence panel",
     )!;
     const metadata = factoryExperienceMetadata({
-      level: "basic",
       recommendation,
       selectedRecipeId: "full-sdlc",
       repositoryIntent: "jaydubya818/MissionControl",
@@ -53,7 +52,6 @@ describe("Factory recipe catalog", () => {
       recommendedRecipeId: "plan-build-test",
       selectedRecipeId: "full-sdlc",
       operatorOverrodeRecommendation: true,
-      uiModeAtCreation: "basic",
       repositoryIntent: "jaydubya818/MissionControl",
       requestedAt: 1234,
     });

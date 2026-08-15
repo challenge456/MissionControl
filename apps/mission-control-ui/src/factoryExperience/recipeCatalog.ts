@@ -481,7 +481,6 @@ export function resolveRecipeWorkflow<
 }
 
 export function factoryExperienceMetadata(input: {
-  level: FactoryExperienceLevel;
   recommendation: FactoryRecipeRecommendation;
   selectedRecipeId: string;
   routingIntent?: ModelRoutingIntent;
@@ -492,7 +491,6 @@ export function factoryExperienceMetadata(input: {
   if (!recipe) throw new Error("Selected Factory recipe is not available.");
   return {
     schemaVersion: 1,
-    uiModeAtCreation: input.level,
     recommendedRecipeId: input.recommendation.recipeId,
     recommendationRationale: input.recommendation.rationale,
     recommendationSignals: input.recommendation.signals,

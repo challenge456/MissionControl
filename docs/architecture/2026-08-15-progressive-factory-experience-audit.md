@@ -2,8 +2,8 @@
 title: Progressive Software Factory Reference Audit
 status: completed
 date: 2026-08-15
-baseline_commit: 78a090b576810748676336a2afe5cdc19eccc42d
-runtime_contract_baseline: 21
+baseline_commit: 376505033ac1de56415a33305ba7e20696230d9f
+runtime_contract_baseline: 22
 reference: https://github.com/disler/super-simple-software-factory
 ---
 
@@ -153,8 +153,17 @@ pretending missing adapter telemetry exists.
 
 ## Runtime decision
 
-Runtime contract baseline is `21`. The V1 is additive UI composition plus
+Runtime contract baseline is `22`. The V1 is additive UI composition plus
 Mission metadata already allowed by the current contract. It does not add or
 change a Convex schema field, function signature, workflow execution primitive,
 or acceptance API. No runtime-contract bump is expected; the extractor/guard
-must confirm that before the PR is opened.
+must confirm that on every reconciled PR head.
+
+## Factory Memory integration
+
+PR #100 landed first at `376505033ac1de56415a33305ba7e20696230d9f`.
+Its Factory Memory retrieval, graph, frozen Context Package, trace/eval,
+feature-flag, security, and navigation surfaces remain canonical. Progressive
+Factory does not query or reproduce those records. Advanced mode links to
+Factory Memory and full Observability so operators can inspect the canonical
+memory and evidence views without creating a competing projection.

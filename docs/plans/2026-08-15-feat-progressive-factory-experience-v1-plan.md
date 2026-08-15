@@ -3,8 +3,8 @@ title: "feat: Progressive Software Factory Experience V1"
 type: feat
 status: completed
 date: 2026-08-15
-baseline_commit: 78a090b576810748676336a2afe5cdc19eccc42d
-runtime_contract_baseline: 21
+baseline_commit: 376505033ac1de56415a33305ba7e20696230d9f
+runtime_contract_baseline: 22
 related_audit: docs/architecture/2026-08-15-progressive-factory-experience-audit.md
 related_brainstorm: docs/brainstorms/2026-08-15-progressive-factory-experience-v1-brainstorm.md
 ---
@@ -41,7 +41,7 @@ sole WorkOrder acceptance authority.
 ### 2. Canonical Mission and Plan integration
 
 - [x] Reuse one Mission creation dialog from Missions and Factory Board.
-- [x] Persist selected recipe, recommendation rationale, override, UI mode,
+- [x] Persist selected recipe, recommendation rationale, override,
       routing intent, and composition intent inside existing Mission metadata.
 - [x] Resolve the selected recipe to an active existing workflow when a new
       Mission Plan is initialized.
