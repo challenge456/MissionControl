@@ -5,6 +5,14 @@ export interface CodeScopeInput {
   slug: string;
   includePaths: string[];
   excludePaths: string[];
+  approvalPolicy?: string;
+  approvalPolicyDescription?: string;
+}
+
+export const CODE_SCOPE_APPROVAL_POLICIES = ["HUMAN_REVIEW", "RISK_REVIEW"] as const;
+
+export function isCodeScopeApprovalPolicy(value: string): value is (typeof CODE_SCOPE_APPROVAL_POLICIES)[number] {
+  return CODE_SCOPE_APPROVAL_POLICIES.includes(value as (typeof CODE_SCOPE_APPROVAL_POLICIES)[number]);
 }
 
 export interface ExistingCodeScope {
@@ -63,6 +71,9 @@ export function validateCodeScopeInput(input: CodeScopeInput): string | null {
   }
   if (input.excludePaths.some((path) => !normalizeCodePath(path))) {
     return "Excluded paths must be repository-relative and cannot contain '..'.";
+  }
+  if (input.approvalPolicy && !isCodeScopeApprovalPolicy(input.approvalPolicy)) {
+    return "Select a supported code-scope approval gate.";
   }
   return null;
 }

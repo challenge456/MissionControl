@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   canonicalRepositoryKey,
+  CODE_SCOPE_APPROVAL_POLICIES,
   findOverlappingScopes,
   normalizeCodePath,
   normalizeCodePaths,
@@ -59,6 +60,25 @@ describe("workspace repository contracts", () => {
         excludePaths: [],
       })
     ).toContain("include path");
+  });
+
+  it("keeps approval gate identifiers controlled and descriptive guidance separate", () => {
+    expect(CODE_SCOPE_APPROVAL_POLICIES).toEqual(["HUMAN_REVIEW", "RISK_REVIEW"]);
+    expect(validateCodeScopeInput({
+      name: "Buyer portal",
+      slug: "buyer-portal",
+      includePaths: ["apps/buyer-portal"],
+      excludePaths: [],
+      approvalPolicy: "HUMAN_REVIEW",
+      approvalPolicyDescription: "Checkout lead confirms the affected flow.",
+    })).toBeNull();
+    expect(validateCodeScopeInput({
+      name: "Buyer portal",
+      slug: "buyer-portal",
+      includePaths: ["apps/buyer-portal"],
+      excludePaths: [],
+      approvalPolicy: "Both owning team leads approve",
+    })).toBe("Select a supported code-scope approval gate.");
   });
 
   it("reports exact and nested scope overlaps", () => {

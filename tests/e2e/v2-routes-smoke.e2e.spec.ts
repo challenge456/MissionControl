@@ -22,7 +22,7 @@ const ROUTES: Array<{ route: string; heading: string; text?: string | RegExp }> 
   { route: "projects", heading: "Workspaces & Repositories" },
   { route: "model-routing", heading: "Model Routing" },
   { route: "operator-evals", heading: "Operator Evals" },
-  { route: "harness-loops", heading: "Graph Engineering" },
+  { route: "harness-loops", heading: "Loop Engineering" },
   { route: "missions", heading: "Missions" },
 ];
 

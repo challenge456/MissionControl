@@ -85,13 +85,14 @@ export function defaultOperatingLens(input: {
 
 export interface ScopeValidationInput {
   projectId: string;
-  repository?: { id: string; projectId: string; status: string } | null;
+  repository?: { id: string; projectId: string; status: string; repository?: string } | null;
   codeScopes: Array<{
     id: string;
     projectId: string;
     repositoryId: string;
     active: boolean;
     allowedEnvironments: string[];
+    owningTeamId?: string;
   }>;
   team?: { id: string; projectId: string; status: string } | null;
   owner?: { id: string; projectId?: string; active: boolean } | null;
@@ -126,9 +127,17 @@ export function validateDispatchScope(input: ScopeValidationInput): { allowed: b
       !scope.allowedEnvironments.includes(input.executionEnvironment)
     ) reasons.push("EXECUTION_ENVIRONMENT_NOT_ALLOWED");
   }
+  const scopeOwningTeamIds = [...new Set(input.codeScopes.map((scope) => scope.owningTeamId).filter(Boolean))];
+  if (input.team && scopeOwningTeamIds.length > 0 && !scopeOwningTeamIds.includes(input.team.id)) {
+    reasons.push("CODE_SCOPE_TEAM_MISMATCH");
+  }
   if (input.executionEnvironment === "LOCAL") {
     if (!input.host) reasons.push("APPROVED_HOST_BINDING_REQUIRED");
     else if (input.host.status !== "READY") reasons.push("HOST_NOT_READY");
+    else if (
+      input.repository?.repository
+      && input.host.repository.trim().toLowerCase() !== input.repository.repository.trim().toLowerCase()
+    ) reasons.push("HOST_REPOSITORY_MISMATCH");
   }
   return { allowed: reasons.length === 0, reasonCodes: [...new Set(reasons)] };
 }

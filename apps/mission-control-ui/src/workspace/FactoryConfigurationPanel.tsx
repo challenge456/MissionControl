@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
@@ -82,10 +82,15 @@ function FactoryVersionEditor({
   const workflows = useQuery(api.workflows.list, { activeOnly: true });
   const policies = useQuery(api["governance/policyEnvelopes"].listPolicyEnvelopes, { projectId, activeOnly: true });
   const verifiers = useQuery(api["context/verifiers"].list, { projectId, activeOnly: true });
+  const agentTemplates = useQuery(api["registry/agentTemplates"].listTemplates, { projectId, activeOnly: true });
   const versionOptions = useQuery(api["factory/configuration"].getVersionOptions, { projectId, repositoryId });
   const createVersion = useMutation(api["factory/configuration"].createVersion);
   const assess = useMutation(api["factory/configuration"].assessReadiness);
   const activate = useMutation(api["factory/configuration"].activate);
+  const createPolicy = useMutation(api["governance/policyEnvelopes"].createPolicyEnvelope);
+  const createVerifier = useMutation(api["context/verifiers"].create);
+  const createAgentTemplate = useMutation(api["registry/agentTemplates"].createTemplate);
+  const createAgentVersion = useMutation(api["registry/agentVersions"].createVersion);
   const [workflowId, setWorkflowId] = useState("");
   const [policyId, setPolicyId] = useState("");
   const [verifierIds, setVerifierIds] = useState<string[]>([]);
@@ -106,10 +111,116 @@ function FactoryVersionEditor({
       : undefined,
     [detail, latestVersion]
   );
+  const selectedWorkflow = workflows?.find((item) => item._id === workflowId);
+  const defaultAgentVersionId = versionOptions?.agentVersions[0]?._id;
+  const selectedWorkflowAgentKey = selectedWorkflow?.agents.map((agent) => agent.id).join(":") ?? "";
 
-  if (!detail || !workflows || !policies || !verifiers || !versionOptions) {
+  useEffect(() => {
+    if (!selectedWorkflow || !defaultAgentVersionId || selectedWorkflow.agents.length === 0) return;
+    setAgentBindings((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const agent of selectedWorkflow.agents) {
+        if (!next[agent.id]) {
+          next[agent.id] = defaultAgentVersionId;
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [defaultAgentVersionId, selectedWorkflowAgentKey]);
+
+  if (!detail || !workflows || !policies || !verifiers || !agentTemplates || !versionOptions) {
     return <div className="mt-3 h-28 animate-pulse rounded-lg bg-surface-2" aria-label="Loading Factory version editor" />;
   }
+
+  const createLocalGovernanceBaseline = async () => {
+    setPending("baseline");
+    setError("");
+    setMessage("");
+    try {
+      let nextPolicyId = policies.find((item) => item.name === "Local human-review Factory baseline")?._id;
+      if (!nextPolicyId) {
+        const policy = await createPolicy({
+          projectId,
+          name: "Local human-review Factory baseline",
+          priority: 100,
+          rules: {
+            defaultDecision: "NEEDS_APPROVAL",
+            requireApprovalOnRisk: ["GREEN", "YELLOW", "RED"],
+            toolPolicies: {
+              shell: "NEEDS_APPROVAL",
+              exec: "NEEDS_APPROVAL",
+              write_file: "NEEDS_APPROVAL",
+              delete_file: "DENY",
+            },
+            autonomyTier: 1,
+            executionEnvironments: ["LOCAL"],
+          },
+          metadata: { source: "factory.configuration.browser-baseline" },
+        });
+        nextPolicyId = policy?._id;
+      }
+
+      let nextVerifierId = verifiers.find((item) => item.label === "Factory path and verification guard")?._id;
+      if (!nextVerifierId) {
+        nextVerifierId = await createVerifier({
+          projectId,
+          label: "Factory path and verification guard",
+          invariant: "Changes remain inside the approved repository scope and satisfy every declared verification command before publication.",
+          globPatterns: versionOptions.codeScopes.flatMap((scope) => scope.includePaths),
+          idempotencyKey: `factory-browser-baseline:${repositoryId}`,
+        });
+      }
+
+      if (!nextPolicyId || !nextVerifierId) {
+        throw new Error("The governance baseline did not return complete records.");
+      }
+      let nextAgentVersionId = versionOptions.agentVersions.find((version) => version.template.slug === "factory-local-codex-runner")?._id;
+      if (!nextAgentVersionId) {
+        let template = agentTemplates.find((item) => item.slug === "factory-local-codex-runner");
+        if (!template) {
+          template = await createAgentTemplate({
+            projectId,
+            name: "Factory local Codex runner",
+            slug: "factory-local-codex-runner",
+            description: "LOCAL-only agent version for browser-governed Factory WorkOrders.",
+            metadata: { source: "factory.configuration.browser-baseline" },
+          });
+        }
+        if (!template) throw new Error("The local runner template was not created.");
+        const version = await createAgentVersion({
+          projectId,
+          templateId: template._id,
+          status: "APPROVED",
+          notes: "Authorized through the browser-governed local Factory baseline.",
+          genome: {
+            modelConfig: { provider: "openai", modelId: "gpt-5" },
+            promptBundleHash: "factory-local-human-review-v1",
+            toolManifestHash: "factory-local-bounded-tools-v1",
+            provenance: {
+              createdBy: "browser-governed-factory-setup",
+              source: "factory.configuration.browser-baseline",
+              createdAt: Date.now(),
+            },
+          },
+          metadata: { executionEnvironments: ["LOCAL"], requireHumanReview: true },
+        });
+        nextAgentVersionId = version?._id;
+      }
+      if (!nextAgentVersionId) throw new Error("The local runner version was not created.");
+      if (selectedWorkflow) {
+        setAgentBindings(Object.fromEntries(selectedWorkflow.agents.map((agent) => [agent.id, nextAgentVersionId])));
+      }
+      setPolicyId(nextPolicyId);
+      setVerifierIds([nextVerifierId]);
+      setMessage("Local human-review policy, path-bound verifier, and approved LOCAL runner are ready. Review them before creating the immutable Factory version.");
+    } catch {
+      setError("The local governance baseline could not be created. Confirm Factory improvement authority and try again.");
+    } finally {
+      setPending("");
+    }
+  };
 
   const save = async () => {
     setError("");
@@ -183,6 +294,19 @@ function FactoryVersionEditor({
   return (
     <div className="mt-3 space-y-3">
       <div className="grid gap-3 rounded-lg border border-line bg-surface-2 p-3 md:grid-cols-2">
+        {policies.length === 0 || verifiers.length === 0 || versionOptions.agentVersions.length === 0 ? (
+          <div className="md:col-span-2 flex flex-wrap items-start justify-between gap-3 rounded-md border border-warning/30 bg-warning/10 px-3 py-3">
+            <div className="max-w-2xl">
+              <div className="text-[12.5px] font-medium text-ink">Governance records required</div>
+              <div className="mt-1 text-[11.5px] leading-relaxed text-ink-muted">
+                Create a LOCAL-only, human-review-first policy, a verifier bound to the repository scopes below, and an approved bounded Codex runner. This action does not activate the Factory or dispatch work.
+              </div>
+            </div>
+            <Button variant="outline" size="sm" disabled={Boolean(pending)} onClick={createLocalGovernanceBaseline}>
+              {pending === "baseline" ? "Creating baseline…" : "Create local governance baseline"}
+            </Button>
+          </div>
+        ) : null}
         <label className="text-[11.5px] text-ink-muted">Workflow
           <select className="mt-1 w-full rounded-md border border-line bg-surface-1 px-2 py-2 text-[12px] text-ink" value={workflowId} onChange={(event) => setWorkflowId(event.target.value)}>
             <option value="">Select workflow</option>
@@ -223,11 +347,11 @@ function FactoryVersionEditor({
             ))}
           </div>
         </fieldset>
-        {workflows.find((item) => item._id === workflowId)?.agents.length ? (
+        {selectedWorkflow?.agents.length ? (
           <fieldset className="md:col-span-2">
             <legend className="text-[11.5px] text-ink-muted">Frozen workflow agent versions</legend>
             <div className="mt-1 grid gap-2 md:grid-cols-2">
-              {workflows.find((item) => item._id === workflowId)?.agents.map((agent) => (
+              {selectedWorkflow.agents.map((agent) => (
                 <label key={agent.id} className="text-[11.5px] text-ink-muted">{agent.persona} · {agent.id}
                   <select className="mt-1 w-full rounded-md border border-line bg-surface-1 px-2 py-2 text-[12px] text-ink" value={agentBindings[agent.id] ?? ""} onChange={(event) => setAgentBindings((current) => ({ ...current, [agent.id]: event.target.value }))}>
                     <option value="">Select approved version</option>

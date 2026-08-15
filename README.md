@@ -14,10 +14,11 @@ decisions without surrendering human authority.
 ## Software Factory: governed recursive self-improvement
 
 The Mission Control Software Factory is designed as a **governed Recursive
-Self-Improvement (RSI) and continuous-learning system**. It continuously
-researches operator-approved sources, learns from delivery evidence, recommends
-improvements, implements approved changes, verifies the result, measures the
-outcome, and uses that evidence to propose the next bounded iteration.
+Self-Improvement (RSI) and continuous-learning system**. Its target operating
+model continuously researches operator-approved sources, learns from delivery
+evidence, recommends improvements, implements approved changes, verifies the
+result, measures the outcome, and uses that evidence to propose the next
+bounded iteration.
 
 The operating loop is:
 
@@ -32,10 +33,22 @@ Mission Control hierarchy:
 
 `Mission -> WorkOrder -> Task -> Attempt -> evidence -> pull request -> release`
 
-Continuous read-only research may run within explicit source, cost, time, and
-retention limits. Material changes still require governed scope, independent
-verification, measurable acceptance criteria, rollback controls, and the
-appropriate human decision.
+The current safe boundary is operator-triggered Web/RSS research with atomic
+artifact, observation, cursor, and verification-receipt lineage. A verified run
+can seed one frozen Research Brief and an operator can explicitly dispatch a
+read-only claim extractor followed by a distinct evidence verifier over only
+those frozen observation IDs. Broad discovery, automatic scheduling,
+recommendation generation, and repository changes remain disabled. Material
+changes still require governed scope, measurable acceptance criteria, rollback
+controls, and the appropriate human decision.
+
+The manual research executor now uses an atomic workspace lease, lease-fenced
+state writes, owner heartbeats, durable cursor checkpoints, reasoned retries,
+stale-owner recovery, budget reservations, workspace concurrency admission,
+automatic quarantine, and audited pause/drain/kill controls. A bounded live
+Research Lab drill independently verified each control and restored the
+workspace to `NORMAL`. This proof does not enable recurrence: scheduled claims
+still fail closed while `continuousSchedulingEnabled` is `false`.
 
 - [Governed Continuous Learning implementation plan](docs/plans/2026-08-08-feat-governed-continuous-learning-plan.md)
 - [Governed Continuous Learning operator and source contract](docs/software-factory/CONTINUOUS_LEARNING.md)
@@ -143,6 +156,16 @@ executable verification contract with mandatory checks, negative constraints,
 change budgets, criterion-level evidence requirements, and an independently
 computed WorkOrder verdict.
 
+The browser WorkOrder path now binds creation and dispatch to those same
+authorities. Operators select a ready repository, a code scope frozen into the
+active Factory version, its owning team and accountable member, and an exact
+JSON argv verification command. The dispatch gate displays and server-rechecks
+the immutable Factory version, workflow, repository, scope, local environment,
+and current clean executor host. It does not fall back to free-form repository
+labels, whitespace-split commands, or browser-owned authority. The
+orchestration worker reports its real Git checkout, branch, commit, dirty state,
+and capacity so a stale or dirty checkout remains visibly blocked.
+
 The real Codex-to-GitHub pull-request golden path is implemented and proven
 against this repository. A private, repository-scoped GitHub App created real
 pull requests through just-in-time installation tokens after the durable worker
@@ -188,6 +211,16 @@ The generated canary PR passed every check and was closed unmerged after the
 proof was captured. The audit IDs, event counts, and screenshots are recorded in
 [`docs/testing/evidence/pr-72-human-review-resume/`](docs/testing/evidence/pr-72-human-review-resume/README.md).
 
+Browser-governed creation is fail-closed until that repository has an active,
+passing Factory version. The isolated browser exercise for
+[PR #87](https://github.com/jaydubya818/MissionControl/pull/87) reconnected the
+repository-scoped GitHub App, created and approved the pre-dispatch checkpoint,
+dispatched an exact immutable Factory binding, and reached the expected
+post-verification pause. The candidate changed one approved file, passed the
+independent verifier, and produced no remote branch or pull request before the
+publication approval. Exact lineage and screenshots are recorded in
+[`docs/testing/evidence/browser-governed-factory-dispatch/`](docs/testing/evidence/browser-governed-factory-dispatch/README.md).
+
 This closes the single-repository delivery and review proof; it does not make a
 broad production-scale claim. Unified review evidence, governed staging, and
 human-approved production-release automation are implemented. The first
@@ -201,6 +234,7 @@ providers, and fleet-scale scheduling remain deferred.
 | Governed WorkOrders, Tasks, Attempts, and evidence records | Implemented |
 | GitHub App identity, least-privilege readiness, signed webhooks, ephemeral CI reads, and replay ledger | Implemented and browser-proven |
 | Immutable Factory configuration, readiness assessment, and activation | Implemented |
+| Browser-governed scoped WorkOrder creation and exact Factory dispatch binding | Implemented and browser-proven through verified pause |
 | Signed service commands and durable command receipts | Implemented |
 | `codex/v1` executor adapter with sandbox, events, health, and cancellation | Implemented |
 | Dispatch preflight and immutable execution envelope | Implemented |
@@ -215,6 +249,12 @@ providers, and fleet-scale scheduling remain deferred.
 | Remote sandbox enforcement | Deferred |
 | Learning ledger, trust scoring, and verified-throughput metrics | Deferred |
 | FDE engagement workspace and additional connectors | Post-V1 |
+
+This browser-dispatch change intentionally does not expand remote sandbox
+enforcement, provider CI ingestion, learning-ledger CRUD, trust scoring,
+verified-throughput metrics, deployment, or production verification. Those
+remain outside this slice even where earlier repository contracts already
+define or exercise adjacent release capabilities.
 
 The original repository baseline, approved implementation sequence, and live
 proof are recorded in the

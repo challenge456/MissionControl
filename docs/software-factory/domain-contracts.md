@@ -241,11 +241,19 @@ MissionControl now needs one authoritative command for WorkOrder dispatch.
 ```ts
 type DispatchWorkOrderCommand = {
   workOrderId: Id<"workOrders">;
+  taskId?: Id<"tasks">;
   workflowId?: string;
   actorType: "HUMAN" | "SYSTEM" | "AGENT";
   actorId?: string;
   idempotencyKey: string;
   runtime?: string;
+  repositoryId?: Id<"workspaceRepositories">;
+  codeScopeIds?: Id<"repositoryCodeScopes">[];
+  owningTeamId?: Id<"scrumTeams">;
+  ownerMemberId?: Id<"orgMembers">;
+  executionEnvironment?: "LOCAL" | "CLOUD" | "REMOTE" | "POLICY_SELECTED";
+  executorHostId?: string;
+  factoryDefinitionVersionId?: Id<"factoryDefinitionVersions">;
   model?: string;
   worktree?: string;
 };
@@ -262,6 +270,14 @@ The command must:
 5. create and link the execution run
 6. transition WorkOrder state to `DISPATCHED`
 7. emit auditable lifecycle events
+8. for stable repository WorkOrders, require the exact active Factory version,
+   approved code scopes, accountable team and owner, execution environment, and
+   current eligible host to match the persisted WorkOrder contract
+
+The browser may display these bindings, but it is never their authority. A
+Factory activation, readiness, scope, workflow, host, or organization change
+between the browser read and the mutation must reject dispatch without creating
+a run.
 
 ### Required callers
 

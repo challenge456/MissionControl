@@ -4,6 +4,7 @@ import {
   DEFAULT_WORK_ORDER_FILTERS,
   deriveNextAction,
   filterWorkOrders,
+  parseVerificationArguments,
   summarizeRequiredAttention,
   type WorkOrderQueueItem,
 } from "./workOrdersModel";
@@ -80,5 +81,22 @@ describe("work order queue model", () => {
   it("derives the next operator action", () => {
     expect(deriveNextAction(ITEMS[0])).toBe("Review approval");
     expect(deriveNextAction(ITEMS[1])).toBe("Review outcome");
+  });
+
+  it("preserves exact verification argv including spaces inside one argument", () => {
+    expect(parseVerificationArguments('["-e", "console.log(\'hello world\')"]')).toEqual({
+      ok: true,
+      args: ["-e", "console.log('hello world')"],
+    });
+  });
+
+  it("accepts an empty argv for executables that take no arguments", () => {
+    expect(parseVerificationArguments("[]")).toEqual({ ok: true, args: [] });
+  });
+
+  it("rejects non-array and non-string verification argv", () => {
+    expect(parseVerificationArguments('"--version"')).toMatchObject({ ok: false });
+    expect(parseVerificationArguments('["--filter", 3]')).toMatchObject({ ok: false });
+    expect(parseVerificationArguments("not-json")).toMatchObject({ ok: false });
   });
 });

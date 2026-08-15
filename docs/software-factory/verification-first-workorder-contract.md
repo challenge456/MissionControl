@@ -177,6 +177,28 @@ mc work-order inspect <work-order-id>
 mc work-order inspect <work-order-id> --json
 ```
 
+## Browser-governed creation and dispatch
+
+The Work Orders surface is the human entry point for a stable Factory contract,
+not a free-form launch form. For a repository-backed WorkOrder it must:
+
+1. select a `READY` workspace repository;
+2. resolve the exact active Factory version and current passing readiness
+   assessment for that repository;
+3. offer only active code scopes frozen into that version;
+4. persist the scope's owning team, one active accountable member, and the
+   `LOCAL` execution environment;
+5. represent verification arguments as an exact JSON string array, with no
+   shell expansion or whitespace splitting; and
+6. require the current clean host reported by the bounded orchestration worker
+   before dispatch.
+
+Creation and dispatch revalidate these identities server-side. Missing GitHub
+App identity, an inactive or stale Factory assessment, a replaced workflow,
+scope drift, a stale or dirty host, or changed team authority leaves the action
+disabled or rejects the mutation. The operator must repair the governing
+configuration; the browser cannot synthesize a compatibility path.
+
 ## Failure recovery
 
 - `NOT_CONFIGURED`: install or bind the required verifier, or revise the
@@ -200,15 +222,13 @@ mc work-order inspect <work-order-id> --json
 
 ## Deliberately deferred
 
-This original P0 slice does not include remote sandbox policy enforcement,
+This browser-dispatch slice does not add remote sandbox policy enforcement,
 network egress controls, coverage-delta calculation, mutation testing,
-flaky-test quarantine, or automatic workflow improvement. Provider CI/GitHub
-check ingestion and staging deployment verification are implemented by the
-downstream PR and governed-release contracts; see
+flaky-test quarantine, automatic workflow improvement, provider CI ingestion,
+learning-ledger CRUD, trust scoring, verified-throughput metrics, deployment,
+or production verification. Adjacent CI and release capabilities already
+present in the repository are unchanged; see
 `docs/software-factory/durable-codex-github-pr.md` and
-`docs/software-factory/governed-staging-release.md`. Production deployment,
-automatic provider deployment, Factory-level verified-throughput metrics,
-learning-ledger CRUD, and trust scoring remain deferred until their underlying
-outcomes exist. Those capabilities build on the same WorkOrder, Attempt,
-evidence, receipt, and event contracts rather than introducing parallel
-lifecycles.
+`docs/software-factory/governed-staging-release.md`. Future expansion must build
+on the same WorkOrder, Attempt, evidence, receipt, and event contracts rather
+than introduce parallel lifecycles.

@@ -117,6 +117,12 @@ Set these on the orchestration runtime:
 CODEX_FACTORY_WORKER_ENABLED=true
 CODEX_WORKER_PROJECT_ID=<Convex project ID>
 CODEX_WORKER_REPOSITORY_ID=<Convex workspaceRepositories ID>
+CODEX_WORKER_CHECKOUT_ROOT=<absolute path to the real Git checkout>
+CODEX_WORKER_HOST_ID=<stable executor identity; defaults to orchestration hostname>
+CODEX_WORKER_MAX_CONCURRENT_RUNS=1
+CODEX_WORKER_APPROVED_MODEL_IDS=<comma-separated model IDs, when host model policy is enforced>
+CODEX_WORKER_NETWORK_POLICY_STATUS=<READY|BLOCKED|UNKNOWN>
+CODEX_WORKER_SECRET_POLICY_STATUS=<READY|BLOCKED|UNKNOWN>
 MISSION_CONTROL_SERVICE_ID=orchestration-server
 MISSION_CONTROL_SERVICE_COMMAND_SECRET=<server-only HMAC secret>
 GITHUB_APP_ID=<bound GitHub App ID>
@@ -129,6 +135,13 @@ worker used by the human-review checkpoint contract, restricted to the exact
 project and repository IDs above. The older parallel durable-worker runtime is
 no longer selected at startup, so verification and publication cannot diverge
 between two lease models.
+
+The bounded worker also reports its own repository identity, canonical checkout
+root, branch, commit, dirty state, runtime, and capacity at startup and on a
+heartbeat. It derives the repository from `origin`; it does not accept a
+browser-authored repository label. Readiness and dispatch remain blocked when
+the checkout is dirty, stale, points at another repository, or lacks the host
+attestations required by execution policy.
 
 Configure the same service ID and HMAC secret on the Convex deployment. Keep
 all credentials out of `VITE_*` variables. The worker intentionally handles one

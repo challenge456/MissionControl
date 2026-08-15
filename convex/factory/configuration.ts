@@ -1,5 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "../_generated/server";
+import type { QueryCtx } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
 import { FACTORY_PERMISSIONS, requireWorkspacePermission } from "../lib/companyAccess";
 import {
   factoryConfigurationDigest,
@@ -8,7 +10,7 @@ import {
 } from "../lib/factoryConfiguration";
 import { evaluateGithubAppCapabilities, githubInstallationIsStale } from "../lib/githubAppReadiness";
 import { canonicalRepositoryKey } from "../lib/workspaceRepositories";
-import { codexV1RecoveryReady } from "../lib/factoryDispatch";
+import { codexV1RecoveryReady, selectCurrentFactoryHost } from "../lib/factoryDispatch";
 import { factoryWorkflowContractIssues } from "../lib/factoryWorkflowContract";
 
 const budget = v.object({
@@ -96,26 +98,89 @@ export const getVersionOptions = query({
   },
 });
 
+async function loadActiveFactoryContext(
+  ctx: QueryCtx,
+  projectId: Id<"projects">,
+  repositoryId: Id<"workspaceRepositories">,
+) {
+  const repository = await ctx.db.get(repositoryId);
+  if (!repository || repository.projectId !== projectId) return null;
+  const definition = await ctx.db.query("factoryDefinitions")
+    .withIndex("by_repository", (q) => q.eq("repositoryId", repository._id))
+    .filter((q) => q.eq(q.field("status"), "ACTIVE"))
+    .first();
+  if (!definition?.activeVersionId) return null;
+  const version = await ctx.db.get(definition.activeVersionId);
+  if (!version || version.factoryDefinitionId !== definition._id) return null;
+  const [workflow, codeScopes, assessments, bindings] = await Promise.all([
+    ctx.db.get(version.workflowId),
+    Promise.all((version.codeScopeIds ?? []).map((scopeId) => ctx.db.get(scopeId))),
+    ctx.db.query("factoryReadinessAssessments")
+      .withIndex("by_version", (q) => q.eq("factoryDefinitionVersionId", version._id))
+      .collect(),
+    ctx.db.query("workspaceHostBindings")
+      .withIndex("by_project", (q) => q.eq("projectId", projectId))
+      .collect(),
+  ]);
+  const now = Date.now();
+  const latestAssessment = assessments.sort((left, right) => right.assessedAt - left.assessedAt)[0] ?? null;
+  const host = selectCurrentFactoryHost(bindings, repository.repository, now);
+  return {
+    definition,
+    version,
+    repository,
+    workflow,
+    codeScopes: codeScopes.filter((scope): scope is NonNullable<typeof scope> => Boolean(scope?.active)),
+    assessment: latestAssessment,
+    host: host ? {
+      _id: host._id,
+      hostId: host.hostId,
+      status: host.status,
+      runtime: host.runtime,
+      observedBranch: host.observedBranch,
+      checkedAt: host.checkedAt,
+    } : null,
+    readyForBrowserDispatch: Boolean(
+      repository.status === "READY"
+      && workflow?.active
+      && latestAssessment?.status === "PASS"
+      && latestAssessment.expiresAt > now
+      && latestAssessment.configurationDigest === version.configurationDigest
+      && host
+    ),
+  };
+}
+
+export const getActiveForRepository = query({
+  args: {
+    projectId: v.id("projects"),
+    repositoryId: v.id("workspaceRepositories"),
+  },
+  handler: async (ctx, args) => {
+    await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.VIEW);
+    return await loadActiveFactoryContext(ctx, args.projectId, args.repositoryId);
+  },
+});
+
 export const getActiveForWorkOrder = query({
   args: { workOrderId: v.id("workOrders") },
   handler: async (ctx, args) => {
     const workOrder = await ctx.db.get(args.workOrderId);
-    if (!workOrder?.projectId || !workOrder.repository) return null;
+    if (!workOrder?.projectId || (!workOrder.repositoryId && !workOrder.repository)) return null;
     await requireWorkspacePermission(ctx, workOrder.projectId, FACTORY_PERMISSIONS.VIEW);
-    const repositories = await ctx.db.query("workspaceRepositories")
-      .withIndex("by_project", (q) => q.eq("projectId", workOrder.projectId!))
-      .collect();
-    const repository = repositories.find((candidate) =>
-      canonicalRepositoryKey(candidate.repository) === canonicalRepositoryKey(workOrder.repository!)
-    );
-    if (!repository) return null;
-    const definition = await ctx.db.query("factoryDefinitions")
-      .withIndex("by_repository", (q) => q.eq("repositoryId", repository._id))
-      .filter((q) => q.eq(q.field("status"), "ACTIVE"))
-      .first();
-    if (!definition?.activeVersionId) return null;
-    const version = await ctx.db.get(definition.activeVersionId);
-    return version ? { definition, version, repository } : null;
+    let repositoryId = workOrder.repositoryId;
+    if (!repositoryId) {
+      const repositories = await ctx.db.query("workspaceRepositories")
+        .withIndex("by_project", (q) => q.eq("projectId", workOrder.projectId!))
+        .collect();
+      repositoryId = repositories.find((candidate) =>
+        workOrder.repository
+        && canonicalRepositoryKey(candidate.repository) === canonicalRepositoryKey(workOrder.repository)
+      )?._id;
+    }
+    return repositoryId
+      ? await loadActiveFactoryContext(ctx, workOrder.projectId, repositoryId)
+      : null;
   },
 });
 

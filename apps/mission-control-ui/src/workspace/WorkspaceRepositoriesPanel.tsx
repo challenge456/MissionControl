@@ -2,6 +2,7 @@ import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "re
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import type { Doc, Id } from "../../../../convex/_generated/dataModel";
+import { CODE_SCOPE_APPROVAL_POLICIES } from "../../../../convex/lib/workspaceRepositories";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -467,8 +468,14 @@ function CodeScopeList({
                       : scope.owningTeam ? `Legacy owner: ${scope.owningTeam} · ` : ""}
                     {scope.allowedEnvironments.join(" + ").toLowerCase()} execution
                     {scope.verificationPolicy ? ` · ${scope.verificationPolicy}` : ""}
+                    {scope.approvalPolicy ? ` · ${scope.approvalPolicy}` : ""}
                     {scope.overlapPriority ? ` · overlap priority ${scope.overlapPriority}` : ""}
                   </div>
+                  {scope.approvalPolicyDescription ? (
+                    <div className="mt-1 text-[11.5px] text-ink-muted">
+                      Approval guidance: {scope.approvalPolicyDescription}
+                    </div>
+                  ) : null}
                 </div>
                 <Button variant="ghost" size="sm" onClick={() => archiveScope({ scopeId: scope._id })}>
                   Archive
@@ -574,6 +581,7 @@ function AddCodeScopeDialog({
   const [requiredReviewers, setRequiredReviewers] = useState("");
   const [verificationPolicy, setVerificationPolicy] = useState("");
   const [approvalPolicy, setApprovalPolicy] = useState("");
+  const [approvalPolicyDescription, setApprovalPolicyDescription] = useState("");
   const [allowOverlap, setAllowOverlap] = useState(false);
   const [overlapPriority, setOverlapPriority] = useState("");
   const [allowLocal, setAllowLocal] = useState(true);
@@ -615,6 +623,7 @@ function AddCodeScopeDialog({
         allowedEnvironments,
         verificationPolicy: verificationPolicy.trim() || undefined,
         approvalPolicy: approvalPolicy.trim() || undefined,
+        approvalPolicyDescription: approvalPolicyDescription.trim() || undefined,
         allowOverlap,
         overlapPriority: allowOverlap && overlapPriority ? Number(overlapPriority) : undefined,
       });
@@ -665,6 +674,27 @@ function AddCodeScopeDialog({
             <Field id="scope-policy" label="Verification policy" className="md:col-span-2">
               <Input id="scope-policy" value={verificationPolicy} onChange={(event) => setVerificationPolicy(event.target.value)} placeholder="Unit + browser + independent review" />
             </Field>
+            <Field id="scope-approval-gate" label="Approval gate">
+              <select
+                id="scope-approval-gate"
+                value={approvalPolicy}
+                onChange={(event) => setApprovalPolicy(event.target.value)}
+                className="h-9 w-full rounded-md border border-line bg-surface-1 px-3 text-[13px] text-ink outline-none focus:border-info-accent focus:ring-2 focus:ring-info-accent/25"
+              >
+                <option value="">No additional gate</option>
+                {CODE_SCOPE_APPROVAL_POLICIES.map((policy) => (
+                  <option key={policy} value={policy}>{policy.replace(/_/g, " ").toLowerCase()}</option>
+                ))}
+              </select>
+            </Field>
+            <Field id="scope-approval-guidance" label="Approval guidance">
+              <Input
+                id="scope-approval-guidance"
+                value={approvalPolicyDescription}
+                onChange={(event) => setApprovalPolicyDescription(event.target.value)}
+                placeholder="What the approver must confirm"
+              />
+            </Field>
             <div className="md:col-span-2 rounded-lg border border-line bg-surface-2 px-4 py-3">
               <label className="flex items-start gap-2 text-[12.5px] text-ink-secondary">
                 <input type="checkbox" checked={allowOverlap} onChange={(event) => setAllowOverlap(event.target.checked)} className="mt-0.5" />
@@ -675,9 +705,9 @@ function AddCodeScopeDialog({
                   <Field id="scope-priority" label="Priority">
                     <Input id="scope-priority" type="number" min={1} value={overlapPriority} onChange={(event) => setOverlapPriority(event.target.value)} placeholder="1" />
                   </Field>
-                  <Field id="scope-approval-policy" label="Approval policy">
-                    <Input id="scope-approval-policy" value={approvalPolicy} onChange={(event) => setApprovalPolicy(event.target.value)} placeholder="Both owning team leads approve" />
-                  </Field>
+                  <div className="self-end text-[12px] text-ink-muted">
+                    Select a controlled approval gate above before saving an overlapping scope.
+                  </div>
                 </div>
               ) : null}
             </div>

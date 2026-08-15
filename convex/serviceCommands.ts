@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { action, internalMutation, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import { canonicalRepositoryKey } from "./lib/workspaceRepositories";
 import {
   canonicalServiceCommand,
@@ -185,6 +186,12 @@ export const dispatchWorkOrder = action({
         actorId: `service:${args.envelope.serviceId}`,
         idempotencyKey: payload.idempotencyKey,
         runtime: payload.runtime,
+        repositoryId: scope.repositoryId as Id<"workspaceRepositories">,
+        codeScopeIds: payload.codeScopeIds,
+        owningTeamId: payload.owningTeamId,
+        ownerMemberId: payload.ownerMemberId,
+        executionEnvironment: payload.executionEnvironment,
+        executorHostId: payload.executorHostId,
         authorizedModelOverride: payload.authorizedModelOverride,
         model: payload.model,
         worktree: payload.worktree,

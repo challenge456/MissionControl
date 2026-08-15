@@ -8,6 +8,7 @@
     "start": "node dist/apps/orchestration-server/src/index.js",
     "build": "tsc",
     "smoke:start": "node ../../scripts/smoke-orchestration-start.mjs",
+    "test": "vitest run",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit"
   },
