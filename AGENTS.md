@@ -13,6 +13,16 @@
 - Ensure every new feature and page is reachable from the left-hand navigation menu.
 - Only create git commits when explicitly asked; use `gh` for pull requests.
 
+## Git Authorship
+
+- Preserve the repository operator's configured Git identity for all commits created while working in this repository.
+- Do not change `git user.name` or `git user.email` unless the operator explicitly requests it.
+- Do not author commits as Codex, OpenAI, Claude, or another AI agent.
+- Do not add AI tools as commit co-authors.
+- Do not add `Co-authored-by: Codex`, `Co-authored-by: OpenAI`, `Co-authored-by: Claude`, or equivalent AI attribution trailers to commit messages.
+- Use the existing repository/local Git configuration for commit authorship.
+- Record AI execution provenance in Mission Control's Attempt, execution, model, trace, evidence, and audit records rather than Git contributor identity.
+
 ## Learned Workspace Facts
 
 - Local repo path: `/Users/jaywest/MissionControl`; GitHub: `jaydubya818/MissionControl`.
