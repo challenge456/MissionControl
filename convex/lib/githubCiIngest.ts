@@ -48,6 +48,22 @@ export interface GithubPullRequestLineage {
   taskId: string;
 }
 
+export interface CandidateBoundVerificationReceipt {
+  status: string;
+  candidateRevision?: string;
+}
+
+export function verificationReceiptsInvalidatedByPrHead<
+  T extends CandidateBoundVerificationReceipt,
+>(receipts: T[], observedHeadSha: string): T[] {
+  return receipts.filter(
+    (receipt) =>
+      receipt.status !== "STALE"
+      && Boolean(receipt.candidateRevision)
+      && receipt.candidateRevision !== observedHeadSha,
+  );
+}
+
 export function canonicalGithubPullRequestUrl(owner: string, repo: string, prNumber: number) {
   return `https://github.com/${owner}/${repo}/pull/${prNumber}`;
 }

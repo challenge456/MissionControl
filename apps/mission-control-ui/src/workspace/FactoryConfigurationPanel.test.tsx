@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   agentTemplates: [] as any[],
   createAgentTemplate: vi.fn(),
   createAgentVersion: vi.fn(),
+  upsertWorkflow: vi.fn(),
 }));
 
 vi.mock("../../../../convex/_generated/api", () => ({
@@ -34,7 +35,7 @@ vi.mock("../../../../convex/_generated/api", () => ({
       assessReadiness: "factory.assessReadiness",
       activate: "factory.activate",
     },
-    workflows: { list: "workflows.list" },
+    workflows: { list: "workflows.list", upsert: "workflows.upsert" },
     "governance/policyEnvelopes": { listPolicyEnvelopes: "policies.list", createPolicyEnvelope: "policies.create" },
     "context/verifiers": { list: "verifiers.list", create: "verifiers.create" },
     "registry/agentTemplates": { listTemplates: "agentTemplates.list", createTemplate: "agentTemplates.create" },
@@ -62,6 +63,7 @@ vi.mock("convex/react", () => ({
     if (mutation === "verifiers.create") return mocks.createVerifier;
     if (mutation === "agentTemplates.create") return mocks.createAgentTemplate;
     if (mutation === "agentVersions.create") return mocks.createAgentVersion;
+    if (mutation === "workflows.upsert") return mocks.upsertWorkflow;
     throw new Error(`Unexpected mutation: ${mutation}`);
   },
 }));
@@ -108,6 +110,7 @@ describe("FactoryConfigurationPanel", () => {
     mocks.createVerifier.mockReset().mockResolvedValue("verifier-created");
     mocks.createAgentTemplate.mockReset().mockResolvedValue({ _id: "template-created", slug: "factory-local-codex-runner" });
     mocks.createAgentVersion.mockReset().mockResolvedValue({ _id: "agent-version-created" });
+    mocks.upsertWorkflow.mockReset().mockResolvedValue("workflow-created");
   });
 
   it("creates a draft Factory from the explicit empty state", async () => {
@@ -196,5 +199,58 @@ describe("FactoryConfigurationPanel", () => {
       status: "APPROVED",
     }));
     expect(await screen.findByRole("status")).toHaveTextContent("approved LOCAL runner are ready");
+  });
+
+  it("creates missing Verification-First readiness records from the Factory editor", async () => {
+    mocks.definitions = [{ _id: "factory-1", repositoryId: "repository-1", status: "DRAFT" }];
+    mocks.detail = { definition: { _id: "factory-1", status: "DRAFT" }, versions: [], assessments: [] };
+    mocks.policies = [];
+    mocks.verifiers = [];
+    renderPanel();
+
+    fireEvent.click(screen.getByRole("button", { name: "Create Verification-First policy" }));
+    await waitFor(() => expect(mocks.createPolicy).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: "project-1",
+      name: "Verification-First V1 Factory Envelope",
+    })));
+
+    fireEvent.click(screen.getByRole("button", { name: "Create independent verifier" }));
+    await waitFor(() => expect(mocks.createVerifier).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: "project-1",
+      label: "Verification-First Independent Validator",
+    })));
+  });
+
+  it("creates and binds an explicitly approved agent when the workspace has none", async () => {
+    mocks.definitions = [{ _id: "factory-1", repositoryId: "repository-1", status: "DRAFT" }];
+    mocks.detail = { definition: { _id: "factory-1", status: "DRAFT" }, versions: [], assessments: [] };
+    mocks.versionOptions = { ...mocks.versionOptions, agentVersions: [] };
+    renderPanel();
+
+    fireEvent.change(screen.getByLabelText("Workflow"), { target: { value: "workflow-1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create approved agent version" }));
+
+    await waitFor(() => expect(mocks.createAgentVersion).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: "project-1",
+      templateId: "template-created",
+      status: "APPROVED",
+      genome: expect.objectContaining({
+        modelConfig: expect.objectContaining({ modelId: "gpt-5.6-sol" }),
+      }),
+    })));
+  });
+
+  it("creates a structured Verification-First workflow from Factory setup", async () => {
+    mocks.definitions = [{ _id: "factory-1", repositoryId: "repository-1", status: "DRAFT" }];
+    mocks.detail = { definition: { _id: "factory-1", status: "DRAFT" }, versions: [], assessments: [] };
+    renderPanel();
+
+    fireEvent.click(screen.getByRole("button", { name: "Create Verification-First workflow" }));
+
+    await waitFor(() => expect(mocks.upsertWorkflow).toHaveBeenCalledWith(expect.objectContaining({
+      name: "Verification-First V1 Delivery",
+      agents: expect.arrayContaining([expect.objectContaining({ id: "independent-verifier" })]),
+      steps: expect.arrayContaining([expect.objectContaining({ id: "verify", kind: "VERIFY" })]),
+    })));
   });
 });

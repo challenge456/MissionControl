@@ -21,6 +21,7 @@ import {
 import { resolveFlag, type FlagRow } from "./lib/flags";
 import { createWorkOrderRecord } from "./lib/workOrderCreate";
 import { compileMissionWorkOrderContract } from "./lib/missionWorkOrderContract";
+import { compileApprovedPlanQualityContract } from "./lib/qualityContract";
 import {
   loadMissionExecutionState,
   reconcileMissionAfterHandoff,
@@ -835,6 +836,21 @@ export const approvePlan = mutation({
     }
     const now = Date.now();
     const releaseKey = missionPlanReleaseKey(String(plan._id));
+    const qualityContract = compileApprovedPlanQualityContract({
+      missionId: String(mission._id),
+      missionPlanId: String(plan._id),
+      missionPlanRevision: plan.revisionNumber,
+      objective: mission.objective,
+      businessContext: mission.context,
+      constraints: mission.constraints,
+      sourceOfTruthRefs: mission.sourceOfTruthRefs,
+      repository: plan.repository!,
+      repositoryBranch: plan.repositoryBranch!,
+      summary: plan.summary,
+      rollbackApproach: plan.rollbackApproach,
+      assertions: normalizedPlanAssertions(plan),
+      workOrderBlueprints: plan.workOrderBlueprints,
+    });
     const assertionRows = new Map<string, any>();
     for (const assertion of normalizedPlanAssertions(plan)) {
       const assertionId = await ctx.db.insert("validationAssertions", {
@@ -867,6 +883,8 @@ export const approvePlan = mutation({
       decidedActorSource: operator.actorSource,
       releaseIdempotencyKey: releaseKey,
       materializationVersion: 1,
+      qualityContractProjection: qualityContract.projection,
+      qualityContractDigest: qualityContract.digest,
     });
     await ctx.db.patch(mission._id, { state: "READY", currentPlanId: plan._id, updatedAt: now, requiredHumanAction: "Review released WorkOrders. Execution remains a separate governed action." });
 
@@ -892,6 +910,8 @@ export const approvePlan = mutation({
         projectId: args.projectId,
         missionId: mission._id,
         missionPlanId: plan._id,
+        missionPlanRevision: plan.revisionNumber,
+        qualityContractDigest: qualityContract.digest,
         missionBlueprintId: blueprint.id,
         missionRole: blueprint.role,
         isMutating: blueprint.isMutating,
@@ -937,7 +957,7 @@ export const approvePlan = mutation({
     }
     await ctx.db.patch(plan._id, { releasedAt: now, releasedWorkOrderIds: workOrders.map((workOrder) => workOrder._id) });
     const updated = await ctx.db.get(mission._id);
-    if (updated) await logMissionEvent(ctx, { mission: updated, eventType: "PLAN_APPROVED_AND_WORKORDERS_RELEASED", actorType: "HUMAN", actorId: operator.actorId, summary: `Approved mission plan revision ${plan.revisionNumber} and released ${workOrders.length} WorkOrders`, idempotencyKey: args.idempotencyKey, metadata: { planId: plan._id, releaseKey, workOrderIds: workOrders.map((workOrder) => workOrder._id), reason: args.decisionReason.trim(), actorSource: operator.actorSource, dispatchStarted: false } });
+    if (updated) await logMissionEvent(ctx, { mission: updated, eventType: "PLAN_APPROVED_AND_WORKORDERS_RELEASED", actorType: "HUMAN", actorId: operator.actorId, summary: `Approved mission plan revision ${plan.revisionNumber} and released ${workOrders.length} WorkOrders`, idempotencyKey: args.idempotencyKey, metadata: { planId: plan._id, releaseKey, qualityContractDigest: qualityContract.digest, workOrderIds: workOrders.map((workOrder) => workOrder._id), reason: args.decisionReason.trim(), actorSource: operator.actorSource, dispatchStarted: false } });
     return { mission: updated, plan: await ctx.db.get(plan._id), workOrders, created: true };
   },
 });

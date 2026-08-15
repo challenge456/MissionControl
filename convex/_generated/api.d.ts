@@ -75,6 +75,7 @@ import type * as governance_policyEnvelopes from "../governance/policyEnvelopes.
 import type * as governance_releaseGateAutomation from "../governance/releaseGateAutomation.js";
 import type * as governance_roleAssignments from "../governance/roleAssignments.js";
 import type * as governance_roles from "../governance/roles.js";
+import type * as governancePolicies from "../governancePolicies.js";
 import type * as health from "../health.js";
 import type * as http from "../http.js";
 import type * as hybridWorkflows from "../hybridWorkflows.js";
@@ -144,6 +145,8 @@ import type * as lib_outputValidation from "../lib/outputValidation.js";
 import type * as lib_piBridgeEnvelope from "../lib/piBridgeEnvelope.js";
 import type * as lib_prEvaluation from "../lib/prEvaluation.js";
 import type * as lib_prdParser from "../lib/prdParser.js";
+import type * as lib_qualityContract from "../lib/qualityContract.js";
+import type * as lib_qualityGateDecision from "../lib/qualityGateDecision.js";
 import type * as lib_readOnlyRunControl from "../lib/readOnlyRunControl.js";
 import type * as lib_repetitiveTaskCandidates from "../lib/repetitiveTaskCandidates.js";
 import type * as lib_repetitiveTasks from "../lib/repetitiveTasks.js";
@@ -339,6 +342,7 @@ declare const fullApi: ApiFromModules<{
   "governance/releaseGateAutomation": typeof governance_releaseGateAutomation;
   "governance/roleAssignments": typeof governance_roleAssignments;
   "governance/roles": typeof governance_roles;
+  governancePolicies: typeof governancePolicies;
   health: typeof health;
   http: typeof http;
   hybridWorkflows: typeof hybridWorkflows;
@@ -408,6 +412,8 @@ declare const fullApi: ApiFromModules<{
   "lib/piBridgeEnvelope": typeof lib_piBridgeEnvelope;
   "lib/prEvaluation": typeof lib_prEvaluation;
   "lib/prdParser": typeof lib_prdParser;
+  "lib/qualityContract": typeof lib_qualityContract;
+  "lib/qualityGateDecision": typeof lib_qualityGateDecision;
   "lib/readOnlyRunControl": typeof lib_readOnlyRunControl;
   "lib/repetitiveTaskCandidates": typeof lib_repetitiveTaskCandidates;
   "lib/repetitiveTasks": typeof lib_repetitiveTasks;

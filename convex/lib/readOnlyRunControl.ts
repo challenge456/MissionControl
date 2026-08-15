@@ -25,10 +25,10 @@ export function readOnlyQueueMode(input: {
   activeClaimCount: number;
   operatorMode?: "NORMAL" | "PAUSED" | "DRAINING" | "KILLED" | "QUARANTINED";
 }): ReadOnlyQueueMode {
+  if (input.operatorMode === "KILLED") return "KILLED";
   if (input.operatorMode === "QUARANTINED") return "QUARANTINED";
   if (input.operatorMode === "PAUSED") return "PAUSED";
   if (input.operatorMode === "DRAINING") return "DRAINING";
-  if (input.operatorMode === "KILLED") return "KILLED";
   if (input.definitionStatus === "ACTIVE") return "RUNNING";
   if (input.definitionStatus === "PAUSED") {
     return input.activeClaimCount > 0 ? "DRAINING" : "PAUSED";
