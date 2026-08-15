@@ -145,4 +145,5 @@ lease identity fields; no replacement tables.
 - Added operational recovery and future enrollment documents without deploying
   infrastructure or exposing a new network listener.
 - Passed repository-wide typecheck and tests, focused negative/golden paths,
-  `git diff --check`, and the runtime-contract guard at v22.
+  `git diff --check`, and the final runtime-contract guard at v23 after main
+  advanced to the Factory Memory v22 contract.

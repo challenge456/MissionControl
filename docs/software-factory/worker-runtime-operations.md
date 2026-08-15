@@ -152,11 +152,11 @@ create ownership.
 
 ## Backend-first rollout
 
-1. Deploy the `v22` Convex backend first. The host-report additions and lease
-   worker fields are optional, so existing active `v21` legacy leases remain
+1. Deploy the `v23` Convex backend first. The host-report additions and lease
+   worker fields are optional, so existing active `v22` legacy leases remain
    readable and may renew/report with their existing service owner and lease ID.
 2. Confirm the runtime-contract guard reports only
-   `workspaceHostBindings:report` and `v21 → v22`.
+   `workspaceHostBindings:report` and `v22 → v23`.
 3. Deploy hardened orchestration workers one host at a time. Each worker waits
    for its initial registration before polling.
 4. After a host advertises `workerRuntime`, new claims without the current

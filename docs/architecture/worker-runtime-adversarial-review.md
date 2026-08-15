@@ -1,10 +1,10 @@
 ---
 title: Worker Runtime Ownership and Recovery Adversarial Review
-status: in-progress
+status: accepted
 date: 2026-08-15
-review_base_sha: 78a090b576810748676336a2afe5cdc19eccc42d
-candidate_head_sha: a36c8da0d35659d1c835d4723b2ce2c5b9d13be9
-runtime_contract: v22
+review_base_sha: 376505033ac1de56415a33305ba7e20696230d9f
+reviewed_code_sha: e629601d852d1b0a3c7e6e5fc8f59f6b0a85abe7
+runtime_contract: v23
 ---
 
 # Worker Runtime Ownership and Recovery Adversarial Review
@@ -15,6 +15,12 @@ This is the final release-blocking architecture and security review for PR #102.
 It challenges lease fencing, admission capacity, process ownership, worktree
 cleanup, recovery, authority separation, and legacy rollout behavior. It does
 not authorize merge or add remote worker infrastructure.
+
+The review began from runtime `v21`, but `origin/main` advanced during the
+review to `376505033ac1de56415a33305ba7e20696230d9f` and runtime `v22` through
+Factory Memory PR #100. The branch was rebased onto that exact commit. The
+worker host-report change remains the only public delta, so this candidate is
+runtime `v23`.
 
 ## Blocking findings
 
@@ -58,6 +64,20 @@ not authorize merge or add remote worker infrastructure.
 
 ## Release gate
 
-The review becomes accepted only after focused and full tests, lint, TypeScript,
-runtime-contract guard, production build, orchestration smoke, and remote PR
-checks pass from a branch refreshed onto the exact latest `origin/main`.
+The architecture and security review is accepted after the following local
+gates passed from a branch refreshed onto the exact latest `origin/main`:
+
+- focused worker/runtime suites: 55 tests passed;
+- full repository suites: all enabled tests passed (one pre-existing optional
+  orchestration integration test remained skipped);
+- lint and full-workspace TypeScript: passed;
+- runtime-contract guard: passed with only `workspaceHostBindings:report`
+  changing from `v22` to `v23`;
+- production build: passed;
+- orchestration startup smoke: passed;
+- `git diff --check`: passed.
+
+The final release commit contains only this review record, the runtime version
+bump, and aligned operations/todo documentation on top of `reviewed_code_sha`.
+GitHub CI and Vercel must still pass on that exact pushed commit before the PR is
+changed from draft to ready. This review does not authorize automatic merge.
