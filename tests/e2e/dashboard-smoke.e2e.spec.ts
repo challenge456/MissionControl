@@ -15,7 +15,7 @@ test("home dashboard loads and shows main sections", async ({ page }) => {
 
   // Home section: quick navigation or status
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible({ timeout: 10000 });
-  await expect(page.getByText("Needs attention", { exact: true })).toBeVisible({ timeout: 10000 });
+  await expect(page.getByRole("heading", { name: "Needs attention", exact: true }).first()).toBeVisible({ timeout: 10000 });
 });
 
 test("navigate to Tasks and back to Home", async ({ page }) => {

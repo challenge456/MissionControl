@@ -102,4 +102,7 @@ export const ConvexMutations = {
   modelCatalog: {
     syncLocalModels: "modelCatalog:syncLocalModels",
   },
+  workspaceHostBindings: {
+    report: "workspaceHostBindings:report",
+  },
 } as const;

@@ -3,6 +3,7 @@ import { mutation, query } from "../_generated/server";
 import { computeGenomeHash } from "../lib/genomeHash";
 import { appendChangeRecord } from "../lib/armAudit";
 import { resolveActiveTenantId } from "../lib/getActiveTenant";
+import { FACTORY_PERMISSIONS, requireWorkspacePermission } from "../lib/companyAccess";
 
 const versionStatus = v.union(
   v.literal("DRAFT"),
@@ -38,6 +39,17 @@ export const createVersion = mutation({
     metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
+    if (args.projectId) {
+      await requireWorkspacePermission(
+        ctx,
+        args.projectId,
+        args.status === "APPROVED" ? FACTORY_PERMISSIONS.APPROVE : FACTORY_PERMISSIONS.IMPROVE,
+      );
+    }
+    const template = await ctx.db.get(args.templateId);
+    if (!template || (args.projectId && template.projectId && template.projectId !== args.projectId)) {
+      throw new Error("Agent template is outside the selected workspace.");
+    }
     const tenantId = await resolveActiveTenantId(
       { db: ctx.db as any },
       {

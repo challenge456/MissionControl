@@ -101,3 +101,20 @@ export function deriveNextAction(item: WorkOrderQueueItem): string {
 export function countByQuickFilter(items: WorkOrderQueueItem[], quickFilter: WorkOrderQuickFilter) {
   return items.filter((item) => matchesQuickFilter(item, quickFilter)).length;
 }
+
+export function parseVerificationArguments(value: string):
+  | { ok: true; args: string[] }
+  | { ok: false; error: string } {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) {
+      return { ok: false, error: "Enter verification arguments as a JSON string array." };
+    }
+    if (parsed.some((argument) => typeof argument !== "string")) {
+      return { ok: false, error: "Every verification argument must be a JSON string." };
+    }
+    return { ok: true, args: parsed };
+  } catch {
+    return { ok: false, error: "Verification arguments must be valid JSON, for example [\"--filter\", \"app\", \"test\"]." };
+  }
+}

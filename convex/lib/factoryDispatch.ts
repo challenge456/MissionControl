@@ -1,5 +1,5 @@
 export interface FactoryDispatchPreflightInput {
-  missionLinked: boolean;
+  factoryRequired: boolean;
   versionProvided: boolean;
   definitionActive: boolean;
   versionIsActive: boolean;
@@ -27,6 +27,47 @@ export interface FactoryDispatchPreflightResult {
   ok: boolean;
   blocker?: string;
   remediation?: string;
+}
+
+const FACTORY_HOST_MAX_AGE_MS = 24 * 60 * 60 * 1_000;
+
+export interface FactoryHostCandidate {
+  hostId: string;
+  repository: string;
+  status: string;
+  dirty: boolean;
+  checkedAt: number;
+}
+
+export function factoryVersionApprovesWorkOrderScopes(
+  factoryCodeScopeIds: readonly string[],
+  workOrderCodeScopeIds: readonly string[],
+): boolean {
+  if (workOrderCodeScopeIds.length === 0) return false;
+  const approved = new Set(factoryCodeScopeIds);
+  return workOrderCodeScopeIds.every((scopeId) => approved.has(scopeId));
+}
+
+export function selectCurrentFactoryHost<T extends FactoryHostCandidate>(
+  hosts: readonly T[],
+  repository: string,
+  now: number,
+  requestedHostId?: string,
+): T | null {
+  const repositoryKey = repository.trim().toLowerCase();
+  const eligible = hosts
+    .filter((host) =>
+      (!requestedHostId || host.hostId === requestedHostId)
+      && host.repository.trim().toLowerCase() === repositoryKey
+      && host.status === "READY"
+      && !host.dirty
+      && now - host.checkedAt <= FACTORY_HOST_MAX_AGE_MS
+    )
+    .sort((left, right) =>
+      right.checkedAt - left.checkedAt
+      || left.hostId.localeCompare(right.hostId)
+    );
+  return eligible[0] ?? null;
 }
 
 export function codexV1RecoveryReady(input: {
@@ -65,7 +106,7 @@ const checks: Array<{
 ];
 
 export function evaluateFactoryDispatchPreflight(input: FactoryDispatchPreflightInput): FactoryDispatchPreflightResult {
-  if (!input.missionLinked && !input.versionProvided) return { ok: true };
+  if (!input.factoryRequired && !input.versionProvided) return { ok: true };
   for (const check of checks) {
     if (!input[check.key]) return { ok: false, blocker: check.blocker, remediation: check.remediation };
   }

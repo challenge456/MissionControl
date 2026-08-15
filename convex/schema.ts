@@ -1055,6 +1055,7 @@ export default defineSchema({
     ),
     verificationPolicy: v.optional(v.string()),
     approvalPolicy: v.optional(v.string()),
+    approvalPolicyDescription: v.optional(v.string()),
     migrationVersion: v.optional(v.number()),
     fixtureKey: v.optional(v.string()),
     createdBy: v.optional(v.id("operators")),

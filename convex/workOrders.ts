@@ -29,7 +29,12 @@ import {
 } from "./lib/workOrderRevision";
 import { planAcceptedWorkOrderParentSync } from "./lib/workOrderParentSync";
 import { validateMissionWorkOrderDispatch } from "./lib/missionGovernance";
-import { codexV1RecoveryReady, evaluateFactoryDispatchPreflight } from "./lib/factoryDispatch";
+import {
+  codexV1RecoveryReady,
+  evaluateFactoryDispatchPreflight,
+  factoryVersionApprovesWorkOrderScopes,
+  selectCurrentFactoryHost,
+} from "./lib/factoryDispatch";
 import { validFactoryBudget } from "./lib/factoryConfiguration";
 import { evaluateGithubAppCapabilities, githubInstallationIsStale } from "./lib/githubAppReadiness";
 import { canonicalRepositoryKey } from "./lib/workspaceRepositories";
@@ -2012,8 +2017,8 @@ async function dispatchWorkOrder(ctx: MutationCtx, args: DispatchArgs) {
         effectiveRequiredApprovals = [...new Set([...effectiveRequiredApprovals, ...scopePolicyRequirements.approvalPolicies])].sort();
         const validatedScope = validateDispatchScope({
           projectId: refreshedWorkOrder.projectId,
-          repository: repository ? { id: repository._id, projectId: repository.projectId, status: repository.status } : null,
-          codeScopes: validCodeScopes.map((scope) => ({ id: scope._id, projectId: scope.projectId, repositoryId: scope.repositoryId, active: scope.active, allowedEnvironments: scope.allowedEnvironments })),
+          repository: repository ? { id: repository._id, projectId: repository.projectId, status: repository.status, repository: repository.repository } : null,
+          codeScopes: validCodeScopes.map((scope) => ({ id: scope._id, projectId: scope.projectId, repositoryId: scope.repositoryId, active: scope.active, allowedEnvironments: scope.allowedEnvironments, owningTeamId: scope.owningTeamId })),
           team: team ? { id: team._id, projectId: team.projectId, status: team.status } : null,
           owner: owner ? { id: owner._id, projectId: owner.projectId, active: owner.active } : null,
           executionEnvironment: effectiveScope.executionEnvironment,
@@ -2629,7 +2634,9 @@ async function resolveFactoryDispatchBinding(
   const { args, workOrder, workflow } = input;
   if (!args.factoryDefinitionVersionId) {
     const result = evaluateFactoryDispatchPreflight({
-      missionLinked: Boolean(workOrder.missionId), versionProvided: false,
+      // Stable repository scope opts a WorkOrder into the governed Factory
+      // path even when it was created directly rather than released by a Mission.
+      factoryRequired: Boolean(workOrder.missionId || workOrder.repositoryId), versionProvided: false,
       definitionActive: false, versionIsActive: false, assessmentPasses: false,
       assessmentCurrent: false, digestMatches: false, repositoryReady: false,
       githubReady: false, workflowMatches: false, executorReady: false,
@@ -2662,7 +2669,9 @@ async function resolveFactoryDispatchBinding(
   const agentTemplates = await Promise.all(agentVersions.map((agentVersion) =>
     agentVersion ? ctx.db.get(agentVersion.templateId) : null
   ));
-  const host = bindings.find((candidate) => repository && canonicalRepositoryKey(candidate.repository) === canonicalRepositoryKey(repository.repository));
+  const host = repository
+    ? selectCurrentFactoryHost(bindings, repository.repository, now, args.executorHostId)
+    : null;
   const activeStatuses = ["PENDING", "RUNNING", "PAUSED"] as const;
   const activeRuns = repository
     ? (await Promise.all(activeStatuses.map((status) => ctx.db.query("workflowRuns")
@@ -2670,7 +2679,7 @@ async function resolveFactoryDispatchBinding(
         .collect()))).flat()
     : [];
   const result = evaluateFactoryDispatchPreflight({
-    missionLinked: Boolean(workOrder.missionId),
+    factoryRequired: Boolean(workOrder.missionId || workOrder.repositoryId),
     versionProvided: true,
     definitionActive: definition?.status === "ACTIVE",
     versionIsActive: definition?.activeVersionId === version._id,
@@ -2686,6 +2695,10 @@ async function resolveFactoryDispatchBinding(
       version.codeScopeIds?.length
       && repository
       && codeScopes.every((scope) => scope?.active && scope.repositoryId === repository._id)
+      && factoryVersionApprovesWorkOrderScopes(
+        version.codeScopeIds.map(String),
+        (workOrder.codeScopeIds ?? []).map(String),
+      )
     ),
     agentManifestsReady: Boolean(
       version.agentBindings?.length === workflow.agents.length
