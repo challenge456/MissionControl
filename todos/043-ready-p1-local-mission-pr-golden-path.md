@@ -33,7 +33,7 @@ behind exe.dev `max_vms: 0` and do not create a parallel VM or acceptance path.
 - [x] A safe mismatch persists failure evidence; a retry creates a new Attempt
       and corrected independently verified candidate without rewriting history.
 - [x] Full repository and browser validation passes.
-- [ ] A draft PR is opened; it is not merged automatically.
+- [x] Draft PR #95 is opened; it is not merged automatically.
 
 ## Work Log
 
@@ -99,3 +99,16 @@ behind exe.dev `max_vms: 0` and do not create a parallel VM or acceptance path.
   boundary is not configured in the isolated local environment. Completing the
   real GitHub App PR leg requires that existing external prerequisite; it must
   not be faked or replaced with the operator's personal GitHub token.
+
+### 2026-08-15 - Draft publication
+
+**By:** Codex
+
+**Actions:**
+
+- Rebased the completed feature onto current `origin/main`.
+- Re-ran the complete repository validation matrix and the authoritative local
+  browser gate proof successfully.
+- Opened draft PR #95 without enabling auto-merge. The PR records the missing
+  GitHub App prerequisite and remains intentionally draft until the real
+  provider-backed Attempt and PR evidence can be captured.
