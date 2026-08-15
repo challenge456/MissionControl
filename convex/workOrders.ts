@@ -67,6 +67,7 @@ import { buildWorkOrderTaskAuthority } from "./lib/taskAuthority";
 import { buildFactoryExecutionManifest } from "./lib/executionManifest";
 import { factoryWorkflowContractIssues } from "./lib/factoryWorkflowContract";
 import { createWorkOrderRecord } from "./lib/workOrderCreate";
+import { getCurrentVerificationResult } from "./lib/currentVerification";
 import {
   nextTaskAttemptNumbers,
   taskAttemptErrorMessage,
@@ -83,7 +84,9 @@ import {
   negativeConstraintValidator,
   requirementValidator,
   verificationContractValidator,
+  workOrderKindValidator,
 } from "./lib/workOrderSpecificationValidators";
+import { verificationContractDigest } from "@mission-control/workflow-engine/verification-identity";
 import { classifyWorkOrderRisk, validateWorkOrderSpecification } from "./lib/workOrderSpecification";
 import {
   buildContinuousResearchInitialContext,
@@ -313,6 +316,11 @@ async function logWorkOrderEvent(
       | "VERIFICATION_FAILED"
       | "VERIFICATION_WAIVED"
       | "VERIFICATION_STALE"
+      | "CANDIDATE_READY"
+      | "VERIFICATION_ATTEMPT_DISPATCHED"
+      | "WORK_ORDER_ACCEPTANCE_ELIGIBLE"
+      | "WORK_ORDER_ACCEPTANCE_INELIGIBLE"
+      | "WORK_ORDER_ACCEPTANCE_REJECTED"
       | "GOVERNANCE_RECORDS_EXPIRED"
       | "WORK_ORDER_ACCEPTED";
     fromState?: string;
@@ -321,6 +329,7 @@ async function logWorkOrderEvent(
     actorId?: string;
     summary: string;
     idempotencyKey?: string;
+    traceContext?: { traceId?: string; spanId?: string; parentSpanId?: string };
     metadata?: any;
   }
 ) {
@@ -345,6 +354,7 @@ async function logWorkOrderEvent(
     actorId: args.actorId,
     summary: args.summary,
     timestamp: Date.now(),
+    traceContext: args.traceContext,
     metadata: args.metadata,
   });
 }
@@ -1321,6 +1331,9 @@ async function applyRevisionToWorkOrder(ctx: any, args: {
     riskLevel: riskAssessment.riskLevel,
     riskReasons: riskAssessment.riskReasons,
   };
+  const nextVerificationContractDigest = nextSnapshot.verificationContract?.schemaVersion === 2
+    ? verificationContractDigest(nextSnapshot.verificationContract)
+    : undefined;
   const nextRequiredApprovals = [...new Set([...(nextSnapshot.requiredApprovals ?? []), ...(args.revision.requiresReapproval ? args.revision.impactedApprovals : [])])];
   const nextState = nextStateAfterRevision({
     currentState: workOrder.state,
@@ -1350,6 +1363,7 @@ async function applyRevisionToWorkOrder(ctx: any, args: {
     dataBoundaries: nextSnapshot.dataBoundaries,
     changeBudget: nextSnapshot.changeBudget,
     verificationContract: nextSnapshot.verificationContract,
+    verificationContractDigest: nextVerificationContractDigest,
     autonomyLevel: nextSnapshot.autonomyLevel,
     riskReasons: nextSnapshot.riskReasons,
     specificationVersion: (workOrder.specificationVersion ?? 1) + 1,
@@ -1370,6 +1384,7 @@ async function applyRevisionToWorkOrder(ctx: any, args: {
 
   await ctx.db.patch(args.revision._id, {
     status: "APPLIED",
+    verificationContractDigest: nextVerificationContractDigest,
     approvedBy: args.approvedBy,
     effectiveAt: Date.now(),
   });
@@ -1724,6 +1739,7 @@ export const create = mutation({
     legacyTaskId: v.optional(v.id("tasks")),
     idempotencyKey: v.optional(v.string()),
     title: v.string(),
+    kind: v.optional(workOrderKindValidator),
     desiredOutcome: v.string(),
     context: v.optional(v.string()),
     workflowId: v.optional(v.string()),
@@ -2321,6 +2337,7 @@ async function dispatchWorkOrder(
           taskId: selectedTask ? String(selectedTask._id) : undefined,
           factoryDefinitionVersionId: String(factoryBinding.version._id),
           factoryConfigurationDigest: factoryBinding.version.configurationDigest,
+          factoryPurpose: factoryBinding.version.purpose ?? "SOFTWARE",
           repositoryId: String(factoryBinding.repository._id),
           repository: factoryBinding.repository.repository,
           defaultBranch: factoryBinding.repository.defaultBranch,
@@ -2384,8 +2401,11 @@ async function dispatchWorkOrder(
       workOrderId: refreshedWorkOrder._id,
       workOrderRevisionNumber: refreshedWorkOrder.currentRevisionNumber ?? 1,
       workOrderRevisionId: refreshedWorkOrder.currentRevisionId,
+      verificationContractDigest: refreshedWorkOrder.verificationContractDigest,
       factoryDefinitionVersionId: factoryBinding?.version._id,
       factoryConfigurationDigest: factoryBinding?.version.configurationDigest,
+      factoryPurpose: factoryBinding?.version.purpose ?? "SOFTWARE",
+      attemptPurpose: refreshedWorkOrder.kind === "AUTOMATION" ? "AUTOMATION" : "IMPLEMENTATION",
       repositoryId: factoryBinding?.repository._id,
       hostBindingId: factoryBinding?.host._id,
       policyEnvelopeId: factoryBinding?.version.policyEnvelopeId,
@@ -3797,11 +3817,51 @@ export const accept = mutation({
     if (activeRuns.some((run: any) => ACTIVE_RUN_STATUSES.includes(run.status))) {
       throw new Error("WorkOrder cannot be accepted while an execution run is active");
     }
-    if (!latestRun || latestRun.status !== "COMPLETED") {
+    const now = Date.now();
+    const policyV2Enforced = workOrder.verificationContract?.schemaVersion === 2
+      && workOrder.verificationContract.enforcementMode === "ENFORCED";
+    const currentVerification = policyV2Enforced
+      ? await getCurrentVerificationResult(ctx, workOrder, now)
+      : null;
+    if (currentVerification && !currentVerification.eligible) {
+      await logWorkOrderEvent(ctx, {
+        tenantId: workOrder.tenantId,
+        projectId: workOrder.projectId,
+        workOrderId: workOrder._id,
+        workflowRunId: currentVerification.verificationAttemptId,
+        eventType: "WORK_ORDER_ACCEPTANCE_INELIGIBLE",
+        actorType: args.actorType,
+        actorId: args.actorId,
+        summary: `Work order is not acceptance eligible: ${currentVerification.reasons.join(" ")}`,
+        idempotencyKey: `${args.idempotencyKey}:ineligible`,
+        metadata: currentVerification,
+      });
+      await logWorkOrderEvent(ctx, {
+        tenantId: workOrder.tenantId,
+        projectId: workOrder.projectId,
+        workOrderId: workOrder._id,
+        workflowRunId: currentVerification.verificationAttemptId,
+        eventType: "WORK_ORDER_ACCEPTANCE_REJECTED",
+        actorType: args.actorType,
+        actorId: args.actorId,
+        summary: `Authorized acceptance was rejected by policy-v2 verification currentness`,
+        idempotencyKey: `${args.idempotencyKey}:verification-rejected`,
+        metadata: currentVerification,
+      });
+      return {
+        accepted: false,
+        workOrder,
+        reason: "verification-ineligible",
+        verification: currentVerification,
+      };
+    }
+    const acceptanceRun = currentVerification?.verificationAttemptId
+      ? activeRuns.find((run: any) => String(run._id) === currentVerification.verificationAttemptId)
+      : latestRun;
+    if (!acceptanceRun || acceptanceRun.status !== "COMPLETED") {
       throw new Error("WorkOrder acceptance requires a completed execution run");
     }
 
-    const now = Date.now();
     const acceptance = evaluateAcceptance({
       riskLevel: workOrder.riskLevel as any,
       requiredApprovals: workOrder.requiredApprovals,
@@ -3812,6 +3872,20 @@ export const accept = mutation({
     });
     if (!acceptance.eligible) {
       throw new Error(`WorkOrder cannot be accepted (${acceptance.blockingReasons.join("; ")})`);
+    }
+    if (currentVerification) {
+      await logWorkOrderEvent(ctx, {
+        tenantId: workOrder.tenantId,
+        projectId: workOrder.projectId,
+        workOrderId: workOrder._id,
+        workflowRunId: acceptanceRun._id,
+        eventType: "WORK_ORDER_ACCEPTANCE_ELIGIBLE",
+        actorType: "SYSTEM",
+        actorId: "verification-policy-v2",
+        summary: "Exact current Verification Result satisfies acceptance eligibility.",
+        idempotencyKey: `${args.idempotencyKey}:eligible`,
+        metadata: currentVerification,
+      });
     }
 
     await ctx.db.patch(workOrder._id, {
@@ -3857,7 +3931,7 @@ export const accept = mutation({
         payload: {
           taskId: parentTask._id,
           workOrderId: workOrder._id,
-          workflowRunId: latestRun._id,
+          workflowRunId: acceptanceRun._id,
           fromStatus: parentSync.fromStatus,
           toStatus: "DONE",
           syncType: "ACCEPTED_WORK_ORDER_OUTCOME",
@@ -3880,7 +3954,7 @@ export const accept = mutation({
         afterState: { status: "DONE" },
         metadata: {
           workOrderId: workOrder._id,
-          workflowRunId: latestRun._id,
+          workflowRunId: acceptanceRun._id,
           syncType: "ACCEPTED_WORK_ORDER_OUTCOME",
         },
       });
@@ -3897,7 +3971,7 @@ export const accept = mutation({
         metadata: {
           reason: "Accepted WorkOrder outcome synchronization",
           workOrderId: workOrder._id,
-          workflowRunId: latestRun._id,
+          workflowRunId: acceptanceRun._id,
           syncType: "ACCEPTED_WORK_ORDER_OUTCOME",
         },
       });
@@ -3906,7 +3980,7 @@ export const accept = mutation({
         tenantId: workOrder.tenantId,
         projectId: workOrder.projectId,
         workOrderId: workOrder._id,
-        workflowRunId: latestRun._id,
+        workflowRunId: acceptanceRun._id,
         eventType: "STATE_SYNCED",
         actorType: args.actorType,
         actorId: args.actorId,
@@ -3926,7 +4000,7 @@ export const accept = mutation({
       tenantId: workOrder.tenantId,
       projectId: workOrder.projectId,
       workOrderId: workOrder._id,
-      workflowRunId: latestRun._id,
+      workflowRunId: acceptanceRun._id,
       eventType: "WORK_ORDER_ACCEPTED",
       fromState: workOrder.state,
       toState: "DONE",
@@ -3980,6 +4054,9 @@ export const requestWorkOrderRevision = mutation({
     const policy = await resolveGovernancePolicy(ctx, workOrder);
     const currentSnapshot = snapshotRevisionFields(workOrder);
     const nextSnapshot = buildRevisionSnapshot({ current: currentSnapshot, patch: args.patch as any });
+    const requestedVerificationContractDigest = nextSnapshot.verificationContract?.schemaVersion === 2
+      ? verificationContractDigest(nextSnapshot.verificationContract)
+      : undefined;
     const impact = evaluateRevisionImpact({
       current: currentSnapshot,
       next: nextSnapshot,
@@ -4006,6 +4083,7 @@ export const requestWorkOrderRevision = mutation({
       workOrderId: workOrder._id,
       idempotencyKey: args.idempotencyKey,
       revisionNumber,
+      verificationContractDigest: requestedVerificationContractDigest,
       previousRevisionId,
       status: impact.materiality === "NO_ACTION" ? "APPLIED" : "PENDING_APPROVAL",
       changedFields: impact.changedFields,

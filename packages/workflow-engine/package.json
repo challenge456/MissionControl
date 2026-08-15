@@ -16,6 +16,16 @@
       "types": "./dist/verification.d.ts",
       "import": "./dist/verification.js",
       "default": "./dist/verification.js"
+    },
+    "./verification-identity": {
+      "types": "./dist/verificationIdentity.d.ts",
+      "import": "./dist/verificationIdentity.js",
+      "default": "./dist/verificationIdentity.js"
+    },
+    "./verification-currentness": {
+      "types": "./dist/verificationCurrentness.d.ts",
+      "import": "./dist/verificationCurrentness.js",
+      "default": "./dist/verificationCurrentness.js"
     }
   },
   "scripts": {

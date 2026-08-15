@@ -62,4 +62,43 @@ describe("WorkOrder executable specification", () => {
     });
     expect(result.issues.join(" ")).toMatch(/Human review requires/);
   });
+
+  it("accepts an enforced policy-v2 contract with frozen risks and separate-Attempt independence", () => {
+    const result = validateWorkOrderSpecification({
+      ...valid,
+      verificationContract: {
+        ...valid.verificationContract,
+        schemaVersion: 2,
+        requiredRisks: [{
+          id: "risk-auth",
+          description: "Authorization boundary regresses",
+          severity: "CRITICAL",
+          source: "WORK_ORDER",
+          requiredEvidenceIds: ["unit"],
+        }],
+        independence: { required: true, minimumBoundary: "SEPARATE_ATTEMPT" },
+      },
+    });
+    expect(result).toEqual({ valid: true, issues: [] });
+  });
+
+  it("rejects policy-v2 independence spoofing and verifier-defined risk evidence", () => {
+    const result = validateWorkOrderSpecification({
+      ...valid,
+      verificationContract: {
+        ...valid.verificationContract,
+        schemaVersion: 2,
+        requiredRisks: [{
+          id: "risk-auth",
+          description: "Authorization boundary regresses",
+          severity: "CRITICAL",
+          source: "WORK_ORDER",
+          requiredEvidenceIds: ["verifier-invented-check"],
+        }],
+        independence: { required: false, minimumBoundary: "SEPARATE_ATTEMPT" },
+      },
+    });
+    expect(result.valid).toBe(false);
+    expect(result.issues.join(" ")).toMatch(/unknown or optional evidence|requires separate-Attempt independence/);
+  });
 });

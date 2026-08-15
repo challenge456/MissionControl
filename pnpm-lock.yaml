@@ -27,6 +27,9 @@ importers:
       '@mission-control/research-adapters':
         specifier: workspace:*
         version: link:packages/research-adapters
+      '@mission-control/workflow-engine':
+        specifier: workspace:*
+        version: link:packages/workflow-engine
       convex:
         specifier: ^1.42.3
         version: 1.42.3(@clerk/react@6.12.10(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)

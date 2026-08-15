@@ -1,5 +1,23 @@
 import { v } from "convex/values";
 
+export const factoryPurposeValidator = v.union(
+  v.literal("SOFTWARE"), v.literal("VERIFICATION"), v.literal("INTELLIGENT_AUTOMATION"),
+);
+
+export const workOrderKindValidator = v.union(
+  v.literal("SOFTWARE_CHANGE"), v.literal("VERIFICATION"), v.literal("AUTOMATION"),
+);
+
+export const attemptPurposeValidator = v.union(
+  v.literal("IMPLEMENTATION"), v.literal("VERIFICATION"), v.literal("AUTOMATION"),
+);
+
+export const traceContextValidator = v.object({
+  traceId: v.optional(v.string()),
+  spanId: v.optional(v.string()),
+  parentSpanId: v.optional(v.string()),
+});
+
 export const evidenceCategoryValidator = v.union(
   v.literal("TEST_RESULT"), v.literal("BUILD_RESULT"), v.literal("STATIC_ANALYSIS"),
   v.literal("SECURITY_SCAN"), v.literal("COMMAND_LOG"), v.literal("FILE_DIFF"),
@@ -127,11 +145,241 @@ export const verificationCheckValidator = v.object({
   })),
 });
 
-export const verificationContractValidator = v.object({
-  schemaVersion: v.number(),
+export const requiredVerificationRiskContractValidator = v.object({
+  id: v.string(),
+  description: v.string(),
+  severity: v.union(v.literal("LOW"), v.literal("MEDIUM"), v.literal("HIGH"), v.literal("CRITICAL")),
+  source: v.union(v.literal("WORK_ORDER"), v.literal("POLICY"), v.literal("HUMAN_APPROVED")),
+  requiredEvidenceIds: v.array(v.string()),
+});
+
+const verificationContractV1Validator = v.object({
+  schemaVersion: v.literal(1),
   enforcementMode: v.union(v.literal("OBSERVE_ONLY"), v.literal("ENFORCED")),
   checks: v.array(verificationCheckValidator),
   requireHumanReview: v.boolean(),
+});
+
+const verificationContractV2Validator = v.object({
+  schemaVersion: v.literal(2),
+  enforcementMode: v.union(v.literal("OBSERVE_ONLY"), v.literal("ENFORCED")),
+  checks: v.array(verificationCheckValidator),
+  requiredRisks: v.array(requiredVerificationRiskContractValidator),
+  requireHumanReview: v.boolean(),
+  independence: v.object({
+    required: v.boolean(),
+    minimumBoundary: v.literal("SEPARATE_ATTEMPT"),
+  }),
+});
+
+export const verificationContractValidator = v.union(
+  verificationContractV1Validator,
+  verificationContractV2Validator,
+);
+
+const verificationSubjectIdentityFields = {
+  version: v.literal(1),
+  subjectId: v.string(),
+  workOrderId: v.id("workOrders"),
+  workOrderRevisionNumber: v.number(),
+  verificationContractDigest: v.string(),
+  sourceAttemptId: v.id("workflowRuns"),
+  digest: v.string(),
+};
+
+export const gitVerificationSubjectValidator = v.object({
+  ...verificationSubjectIdentityFields,
+  kind: v.literal("GIT_CANDIDATE"),
+  repositoryId: v.id("workspaceRepositories"),
+  provider: v.literal("GITHUB"),
+  providerRepositoryId: v.string(),
+  candidateSha: v.string(),
+  treeSha: v.string(),
+  pullRequest: v.object({
+    providerPullRequestId: v.string(),
+    number: v.number(),
+    url: v.string(),
+    baseRef: v.string(),
+    headRef: v.string(),
+    headSha: v.string(),
+    draftAtPublication: v.literal(true),
+  }),
+});
+
+export const automationVerificationSubjectValidator = v.object({
+  ...verificationSubjectIdentityFields,
+  kind: v.literal("AUTOMATION_RUN"),
+  automationWorkflowRunId: v.id("workflowRuns"),
+  automationDefinitionId: v.id("automationDefinitions"),
+  automationDefinitionVersion: v.number(),
+  adapterIdentity: v.object({
+    adapterType: v.string(),
+    runtime: v.optional(v.string()),
+    executionBindingDigest: v.string(),
+    outputContractDigest: v.string(),
+  }),
+  outputSnapshotArtifactId: v.id("runArtifacts"),
+  outputSnapshotContentHash: v.string(),
+  outputArtifactIds: v.array(v.id("runArtifacts")),
+  outputArtifactContentHashes: v.array(v.string()),
+});
+
+export const verificationSubjectValidator = v.union(
+  gitVerificationSubjectValidator,
+  automationVerificationSubjectValidator,
+);
+
+export const verificationAttemptBindingValidator = v.object({
+  sourceAttemptId: v.id("workflowRuns"),
+  workOrderId: v.id("workOrders"),
+  workOrderRevisionNumber: v.number(),
+  verificationContractDigest: v.string(),
+  verificationSubject: verificationSubjectValidator,
+  verificationSubjectDigest: v.string(),
+});
+
+export const verificationRequirementValidator = v.object({
+  id: v.string(),
+  description: v.string(),
+  source: v.union(v.literal("WORK_ORDER"), v.literal("ACCEPTANCE_CRITERION"), v.literal("POLICY"), v.literal("MANUAL")),
+  sourceReference: v.optional(v.string()),
+  criticality: v.union(v.literal("REQUIRED"), v.literal("IMPORTANT"), v.literal("INFORMATIONAL")),
+});
+
+export const requiredVerificationRiskValidator = v.object({
+  id: v.string(),
+  description: v.string(),
+  severity: v.union(v.literal("LOW"), v.literal("MEDIUM"), v.literal("HIGH"), v.literal("CRITICAL")),
+  source: v.union(v.literal("WORK_ORDER"), v.literal("POLICY"), v.literal("HUMAN_APPROVED")),
+  affectedAreas: v.array(v.string()),
+});
+
+export const discoveredVerificationRiskValidator = v.object({
+  id: v.string(),
+  description: v.string(),
+  severity: v.union(v.literal("LOW"), v.literal("MEDIUM"), v.literal("HIGH"), v.literal("CRITICAL")),
+  affectedAreas: v.array(v.string()),
+  discoveredBy: v.string(),
+});
+
+export const requiredEvidenceValidator = v.object({
+  id: v.string(),
+  requirementIds: v.array(v.string()),
+  requiredRiskIds: v.array(v.string()),
+  description: v.string(),
+  evidenceType: v.union(
+    v.literal("UNIT_TEST"), v.literal("INTEGRATION_TEST"), v.literal("E2E_TEST"), v.literal("API_CHECK"),
+    v.literal("RUNTIME_OBSERVATION"), v.literal("SECURITY_CHECK"), v.literal("PERFORMANCE_CHECK"),
+    v.literal("ARTIFACT_INSPECTION"), v.literal("MANUAL_REVIEW"), v.literal("CUSTOM"),
+  ),
+  required: v.boolean(),
+});
+
+export const verificationPlanValidator = v.object({
+  planVersion: v.literal(1),
+  planId: v.string(),
+  planDigest: v.string(),
+  workOrderId: v.id("workOrders"),
+  workOrderRevisionNumber: v.number(),
+  verificationContractDigest: v.string(),
+  sourceAttemptId: v.id("workflowRuns"),
+  verificationAttemptId: v.id("workflowRuns"),
+  verificationSubject: verificationSubjectValidator,
+  generatedBy: v.object({
+    factoryDefinitionId: v.id("factoryDefinitions"),
+    factoryDefinitionVersionId: v.id("factoryDefinitionVersions"),
+    attemptId: v.id("workflowRuns"),
+    executorInvocationId: v.string(),
+  }),
+  requirements: v.array(verificationRequirementValidator),
+  requiredRisks: v.array(requiredVerificationRiskValidator),
+  discoveredRisks: v.array(discoveredVerificationRiskValidator),
+  requiredEvidence: v.array(requiredEvidenceValidator),
+  adversarial: v.optional(v.object({
+    enabled: v.boolean(),
+    scenarios: v.array(v.object({
+      id: v.string(),
+      description: v.string(),
+      requirementIds: v.array(v.string()),
+      riskIds: v.array(v.string()),
+      requiredEvidenceIds: v.array(v.string()),
+    })),
+  })),
+  createdAt: v.number(),
+});
+
+export const verificationCoverageV2Validator = v.object({
+  requiredRequirementCoverage: v.number(),
+  requiredEvidenceCoverage: v.number(),
+  requiredRiskCoverage: v.number(),
+  totalRequiredRequirements: v.number(),
+  coveredRequiredRequirements: v.number(),
+  totalRequiredRisks: v.number(),
+  coveredRequiredRisks: v.number(),
+  requiredEvidenceCount: v.number(),
+  passedRequiredEvidenceCount: v.number(),
+  discoveredRiskCount: v.number(),
+  discoveredRiskEvidenceCoverage: v.union(v.number(), v.null()),
+});
+
+export const verificationIndependenceValidator = v.object({
+  policyVersion: v.literal("verification-independence/v1"),
+  sourceAttemptId: v.id("workflowRuns"),
+  verificationAttemptId: v.id("workflowRuns"),
+  passed: v.boolean(),
+  reasons: v.array(v.string()),
+});
+
+export const verificationIsolationAttestationValidator = v.object({
+  mode: v.union(
+    v.literal("DETACHED_GIT_WORKTREE"), v.literal("FRESH_CLONE"), v.literal("REMOTE_SANDBOX"),
+    v.literal("AUTOMATION_SNAPSHOT"), v.literal("LOCAL_DOCKER_CANARY"),
+  ),
+  sandboxId: v.string(),
+  rootBindingDigest: v.string(),
+  subjectDigest: v.string(),
+  verifierRoot: v.optional(v.string()),
+  sourceRoot: v.optional(v.string()),
+  initialClean: v.boolean(),
+  finalSubjectMatch: v.boolean(),
+  repositoryId: v.optional(v.id("workspaceRepositories")),
+  headSha: v.optional(v.string()),
+  treeSha: v.optional(v.string()),
+  outputSnapshotContentHash: v.optional(v.string()),
+  attestedAt: v.number(),
+});
+
+export const automationDesignValidator = v.object({
+  version: v.literal(1),
+  objective: v.string(),
+  steps: v.array(v.object({
+    id: v.string(),
+    description: v.string(),
+    classification: v.union(v.literal("DETERMINISTIC"), v.literal("AI_ASSISTED"), v.literal("AGENTIC"), v.literal("HUMAN")),
+    reason: v.string(),
+    tool: v.optional(v.string()),
+    approvalRequired: v.optional(v.boolean()),
+  })),
+});
+
+export const automationOutputSnapshotValidator = v.object({
+  version: v.literal(1),
+  sourceAttemptId: v.id("workflowRuns"),
+  automationDefinitionId: v.id("automationDefinitions"),
+  automationDefinitionVersion: v.number(),
+  adapterType: v.string(),
+  runtime: v.optional(v.string()),
+  executionBindingDigest: v.string(),
+  outputContractDigest: v.string(),
+  normalizedStatus: v.union(
+    v.literal("PASSED"), v.literal("FAILED"), v.literal("TIMED_OUT"), v.literal("CANCELED"), v.literal("INFRASTRUCTURE_ERROR"),
+  ),
+  outputContractVersion: v.optional(v.string()),
+  normalizedResult: v.any(),
+  artifactRefs: v.array(v.string()),
+  artifactContentHashes: v.array(v.string()),
+  startedAt: v.number(),
+  completedAt: v.number(),
 });
 
 export const verificationCheckResultValidator = v.object({

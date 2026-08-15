@@ -11,6 +11,7 @@ const input: FactoryExecutionManifestInput = {
   taskId: "task-1",
   factoryDefinitionVersionId: "factory-version-1",
   factoryConfigurationDigest: "factory-v1-test",
+  factoryPurpose: "SOFTWARE",
   repositoryId: "repository-1",
   repository: "sellerfi/sandbox",
   defaultBranch: "main",
