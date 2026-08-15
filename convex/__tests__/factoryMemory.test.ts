@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import type { Id } from "../_generated/dataModel";
 import {
+  freezeContextPackage,
   overview,
   recordContextEvaluations,
+  recordObservation,
+  saveRetrievalPlan,
   search,
   upsertDocument,
   upsertEntity,
@@ -19,6 +22,7 @@ import {
   scoreFactorySearchCandidate,
   validateFactoryRelationship,
 } from "../lib/factoryMemory";
+import { ensureAttemptTrace } from "../lib/observabilityPersistence";
 
 function functionHandler<T extends (...args: any[]) => any>(
   registered: unknown,
@@ -157,8 +161,10 @@ function createContext(
     factoryRetrievalPlans: [],
     factoryContextPackages: [],
     factoryContextVerificationAdvisories: [],
-    factoryRetrievalObservations: [],
-    factoryContextEvaluations: [],
+    traces: [],
+    traceObservations: [],
+    evalDefinitions: [],
+    evalScores: [],
     metaLoopSuggestions: [],
     activities: [],
     workOrders: [],
@@ -351,6 +357,38 @@ describe("Factory Memory authorization and persistence", () => {
     ).rejects.toThrow("factory-memory.hybrid");
   });
 
+  it("rejects retrieval plans whose canonical Factory purpose conflicts with Attempt lineage", async () => {
+    const state = createContext();
+    const workOrderId = await state.ctx.db.insert("workOrders", {
+      projectId: state.projectId,
+      repositoryId: state.repositoryId,
+      factoryPurpose: "VERIFICATION",
+    });
+    const workflowRunId = await state.ctx.db.insert("workflowRuns", {
+      projectId: state.projectId,
+      repositoryId: state.repositoryId,
+      workOrderId,
+      factoryPurpose: "VERIFICATION",
+      attemptPurpose: "VERIFICATION",
+    });
+
+    await expect(
+      functionHandler(saveRetrievalPlan)(state.ctx, {
+        projectId: state.projectId,
+        repositoryId: state.repositoryId,
+        workOrderId,
+        workflowRunId,
+        objective: "Recover verification context.",
+        purpose: "SOFTWARE",
+        steps: [],
+        budget: {},
+        requiredSourceTypes: [],
+        maxIterations: 1,
+      }),
+    ).rejects.toThrow("Factory Memory purpose must match");
+    expect(state.tables.factoryRetrievalPlans).toHaveLength(0);
+  });
+
   it("authorizes workspace-scoped Factory Memory flags and derives the actor", async () => {
     const anonymous = createContext({ identity: null });
     await expect(
@@ -505,6 +543,46 @@ describe("Factory Memory authorization and persistence", () => {
     ).toBe(true);
   });
 
+  it("derives repository scope from Attempt lineage when callers omit it", async () => {
+    const state = createContext();
+    const workOrderId = await state.ctx.db.insert("workOrders", {
+      projectId: state.projectId,
+      repositoryId: state.repositoryId,
+      factoryPurpose: "SOFTWARE",
+    });
+    const workflowRunId = await state.ctx.db.insert("workflowRuns", {
+      tenantId: state.tenantId,
+      projectId: state.projectId,
+      repositoryId: state.repositoryId,
+      workOrderId,
+      runId: "attempt-repository-scope",
+      workflowId: "factory-memory-test",
+      status: "RUNNING",
+      factoryPurpose: "SOFTWARE",
+      attemptPurpose: "IMPLEMENTATION",
+    });
+
+    await functionHandler(upsertDocument)(state.ctx, {
+      projectId: state.projectId,
+      workflowRunId,
+      sourceType: "source-code",
+      sourceId: "src/scoped.ts",
+      revision: "scope-1",
+      content: "export const repositoryScoped = true;",
+    });
+
+    expect(state.tables.factoryMemoryDocuments[0]).toMatchObject({
+      repositoryId: state.repositoryId,
+      workOrderId,
+      workflowRunId,
+    });
+    expect(state.tables.factoryMemoryChunks[0]).toMatchObject({
+      repositoryId: state.repositoryId,
+      workOrderId,
+      workflowRunId,
+    });
+  });
+
   it("audits typed graph mutations with server-derived actors", async () => {
     const state = createContext();
     const provenance = [
@@ -555,14 +633,158 @@ describe("Factory Memory authorization and persistence", () => {
     ).toBe(true);
   });
 
-  it("appends immutable context-quality sets without acceptance authority", async () => {
+  it("preserves canonical Attempt lineage and writes retrievals to its trace", async () => {
     const state = createContext();
+    const workOrderId = await state.ctx.db.insert("workOrders", {
+      projectId: state.projectId,
+      repositoryId: state.repositoryId,
+      factoryPurpose: "VERIFICATION",
+    });
+    const workflowRunId = await state.ctx.db.insert("workflowRuns", {
+      tenantId: state.tenantId,
+      projectId: state.projectId,
+      repositoryId: state.repositoryId,
+      workOrderId,
+      runId: "attempt-verification-1",
+      workflowId: "verification-workflow",
+      status: "RUNNING",
+      startedAt: 100,
+      factoryPurpose: "VERIFICATION",
+      attemptPurpose: "VERIFICATION",
+      qualityContractDigest: "sha256:quality-contract",
+    });
+    const chunkId = await state.ctx.db.insert("factoryMemoryChunks", {
+      tenantId: state.tenantId,
+      projectId: state.projectId,
+      repositoryId: state.repositoryId,
+      documentId: "document-a",
+      sourceType: "test",
+      sourceId: "auth.integration.test",
+      content: "Verification evidence must remain independently collected.",
+      estimatedTokens: 12,
+      provenance: {
+        sourceType: "test",
+        sourceId: "auth.integration.test",
+        revision: "abc123",
+        timestamp: 100,
+      },
+    });
+    const retrievalPlanId = await state.ctx.db.insert("factoryRetrievalPlans", {
+      tenantId: state.tenantId,
+      projectId: state.projectId,
+      repositoryId: state.repositoryId,
+      workOrderId,
+      workflowRunId,
+      objective: "Recover bounded verification context.",
+      purpose: "VERIFICATION",
+      steps: [{ strategy: "hybrid", reason: "Bounded retrieval." }],
+      budget: { maxItems: 4, maxEstimatedTokens: 1_000 },
+      requiredSourceTypes: ["test"],
+    });
+
+    const contextPackageId = await functionHandler(freezeContextPackage)(
+      state.ctx,
+      {
+        projectId: state.projectId,
+        retrievalPlanId,
+        workflowRunId,
+        selected: [
+          {
+            chunkId,
+            reason: "Direct verification surface.",
+            priority: "required",
+            retrievalMethod: "hybrid",
+          },
+        ],
+      },
+    );
+    await functionHandler(recordObservation)(state.ctx, {
+      projectId: state.projectId,
+      workflowRunId,
+      retrievalPlanId,
+      contextPackageId,
+      observationType: "memory.search",
+      strategy: "hybrid",
+      resultCount: 1,
+      selectedCount: 1,
+      latencyMs: 5,
+    });
+
+    const run = state.tables.workflowRuns.find(
+      (candidate) => candidate._id === workflowRunId,
+    );
+    const contextPackage = state.tables.factoryContextPackages.find(
+      (candidate) => candidate._id === contextPackageId,
+    );
+    expect(run).toMatchObject({
+      factoryPurpose: "VERIFICATION",
+      attemptPurpose: "VERIFICATION",
+      qualityContractDigest: "sha256:quality-contract",
+      factoryContextPackageId: contextPackageId,
+    });
+    expect(run.primaryTraceId).toBeDefined();
+    expect(contextPackage).toMatchObject({
+      workflowRunId,
+      purpose: "VERIFICATION",
+      attemptPurpose: "VERIFICATION",
+      primaryTraceId: run.primaryTraceId,
+      qualityContractDigest: "sha256:quality-contract",
+      acceptanceAuthority: false,
+    });
+    expect(
+      state.tables.traceObservations.filter(
+        (observation) => observation.type === "RETRIEVAL",
+      ),
+    ).toHaveLength(2);
+    expect(
+      state.tables.traceObservations
+        .filter((observation) => observation.type === "RETRIEVAL")
+        .every(
+          (observation) =>
+            observation.metadata.acceptanceAuthority === false &&
+            observation.traceId === run.primaryTraceId,
+        ),
+    ).toBe(true);
+  });
+
+  it("appends canonical context-quality scores without acceptance authority", async () => {
+    const state = createContext();
+    const workOrderId = await state.ctx.db.insert("workOrders", {
+      projectId: state.projectId,
+      repositoryId: state.repositoryId,
+      factoryPurpose: "VERIFICATION",
+    });
+    const workflowRunId = await state.ctx.db.insert("workflowRuns", {
+      tenantId: state.tenantId,
+      projectId: state.projectId,
+      repositoryId: state.repositoryId,
+      workOrderId,
+      runId: "attempt-eval-1",
+      workflowId: "verification-workflow",
+      status: "RUNNING",
+      startedAt: 100,
+      factoryPurpose: "VERIFICATION",
+      attemptPurpose: "VERIFICATION",
+      qualityContractDigest: "sha256:quality-contract",
+    });
+    const workflowRun = state.tables.workflowRuns.find(
+      (candidate) => candidate._id === workflowRunId,
+    );
+    const trace = await ensureAttemptTrace(state.ctx, workflowRun, {
+      purpose: "VERIFICATION",
+    });
     const contextPackageId = await state.ctx.db.insert(
       "factoryContextPackages",
       {
         tenantId: state.tenantId,
         projectId: state.projectId,
-        workOrderId: "work-order-a",
+        repositoryId: state.repositoryId,
+        workOrderId,
+        workflowRunId,
+        purpose: "VERIFICATION",
+        attemptPurpose: "VERIFICATION",
+        primaryTraceId: trace._id,
+        qualityContractDigest: "sha256:quality-contract",
         items: [],
         acceptanceAuthority: false,
       },
@@ -594,16 +816,20 @@ describe("Factory Memory authorization and persistence", () => {
     });
 
     expect(duplicateIds).toEqual(firstIds);
-    expect(state.tables.factoryContextEvaluations).toHaveLength(2);
+    expect(state.tables.evalDefinitions).toHaveLength(1);
+    expect(state.tables.evalScores).toHaveLength(2);
     expect(
-      state.tables.factoryContextEvaluations.every(
-        (evaluation) => evaluation.acceptanceAuthority === false,
+      state.tables.evalScores.every(
+        (evaluation) =>
+          evaluation.metadata.acceptanceAuthority === false &&
+          evaluation.traceId === trace._id &&
+          evaluation.workflowRunId === workflowRunId,
       ),
     ).toBe(true);
     expect(
       new Set(
-        state.tables.factoryContextEvaluations.map(
-          (evaluation) => evaluation.evaluationSetId,
+        state.tables.evalScores.map(
+          (evaluation) => evaluation.metadata.evaluationSetId,
         ),
       ).size,
     ).toBe(2);

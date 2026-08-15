@@ -22,7 +22,8 @@
     "golden-path": "tsx src/factory/goldenPathCli.ts"
   },
   "dependencies": {
-    "@mission-control/shared": "workspace:*"
+    "@mission-control/shared": "workspace:*",
+    "@mission-control/workflow-engine": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.3.3",

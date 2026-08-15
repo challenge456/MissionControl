@@ -1,5 +1,15 @@
 import type { Id } from "../_generated/dataModel";
 import { sha256Hex } from "./harnessPrChecks";
+import {
+  ensureFactoryEvalDefinition,
+  factoryTelemetryMetadata,
+  recordFactoryRetrievalObservation,
+  tracePurposeForFactoryPurpose,
+} from "./factoryMemoryTelemetry";
+import {
+  ensureAttemptTrace,
+  insertEvalScore,
+} from "./observabilityPersistence";
 
 const FIXTURE_KEY = "shop-service-five-phase-v1";
 const REVISION = "demo-sha-auth-0042";
@@ -170,6 +180,15 @@ async function hash(value: unknown): Promise<string> {
   return `sha256:${await sha256Hex(typeof value === "string" ? value : JSON.stringify(value))}`;
 }
 
+function attemptPurposeForRun(
+  run: any,
+): "IMPLEMENTATION" | "VERIFICATION" | "AUTOMATION" {
+  if (run.attemptPurpose) return run.attemptPurpose;
+  if (run.factoryPurpose === "VERIFICATION") return "VERIFICATION";
+  if (run.factoryPurpose === "INTELLIGENT_AUTOMATION") return "AUTOMATION";
+  return "IMPLEMENTATION";
+}
+
 export async function seedFactoryMemoryGoldenPath(ctx: any, input: SeedInput) {
   const { tenantId, projectId, now } = input;
   const counts = {
@@ -196,7 +215,7 @@ export async function seedFactoryMemoryGoldenPath(ctx: any, input: SeedInput) {
         .query("workOrders")
         .withIndex("by_project", (q: any) => q.eq("projectId", projectId))
         .first();
-  if (!repository || !workOrder) return counts;
+  if (!repository || !workOrder || !workflowRun) return counts;
 
   const factoryDefinition = await ctx.db
     .query("factoryDefinitions")
@@ -213,9 +232,15 @@ export async function seedFactoryMemoryGoldenPath(ctx: any, input: SeedInput) {
           .order("desc")
           .first()
       : null;
-  const linkedRun = workflowRun?.factoryContextPackageId
-    ? undefined
-    : workflowRun;
+  const linkedRun = workflowRun;
+  const factoryPurpose =
+    linkedRun.factoryPurpose ??
+    factoryVersion?.purpose ??
+    workOrder.factoryPurpose ??
+    "SOFTWARE";
+  const primaryTrace = await ensureAttemptTrace(ctx, linkedRun, {
+    purpose: tracePurposeForFactoryPurpose(factoryPurpose),
+  });
 
   const chunkBySource = new Map<string, any>();
   for (const source of SOURCES) {
@@ -419,10 +444,10 @@ export async function seedFactoryMemoryGoldenPath(ctx: any, input: SeedInput) {
         fixture: FIXTURE_KEY,
         workOrderId: workOrder._id,
         workflowRunId: linkedRun?._id,
-        purpose: "verification",
+        purpose: factoryPurpose,
         version: 1,
       }),
-      purpose: "verification",
+      purpose: factoryPurpose,
       steps: [
         {
           strategy: "code",
@@ -503,9 +528,12 @@ export async function seedFactoryMemoryGoldenPath(ctx: any, input: SeedInput) {
       projectId,
       repositoryId: repository._id,
       workOrderId: workOrder._id,
-      workflowRunId: linkedRun?._id,
+      workflowRunId: linkedRun._id,
       factoryDefinitionVersionId: factoryVersion?._id,
-      purpose: "verification",
+      purpose: factoryPurpose,
+      attemptPurpose: attemptPurposeForRun(linkedRun),
+      primaryTraceId: primaryTrace._id,
+      qualityContractDigest: linkedRun.qualityContractDigest,
       generatedAt: now - 45 * 60_000,
       objective: retrievalPlan.objective,
       items: selectedItems,
@@ -521,9 +549,16 @@ export async function seedFactoryMemoryGoldenPath(ctx: any, input: SeedInput) {
         "incident-history",
         "graph",
       ],
-      contentHash: await hash(
-        selectedItems.map((item) => [item.sourceId, item.provenance.revision]),
-      ),
+      contentHash: await hash({
+        workflowRunId: linkedRun._id,
+        primaryTraceId: primaryTrace._id,
+        attemptPurpose: attemptPurposeForRun(linkedRun),
+        qualityContractDigest: linkedRun.qualityContractDigest,
+        items: selectedItems.map((item) => [
+          item.sourceId,
+          item.provenance.revision,
+        ]),
+      }),
       frozen: true,
       acceptanceAuthority: false,
       metadata: { fixture: FIXTURE_KEY, minimalRelevantContext: true },
@@ -531,10 +566,9 @@ export async function seedFactoryMemoryGoldenPath(ctx: any, input: SeedInput) {
     });
     contextPackage = await ctx.db.get(contextPackageId);
     counts.contextPackages += 1;
-    if (linkedRun)
-      await ctx.db.patch(linkedRun._id, {
-        factoryContextPackageId: contextPackageId,
-      });
+    await ctx.db.patch(linkedRun._id, {
+      factoryContextPackageId: contextPackageId,
+    });
   }
 
   const baselineFixtureKey = `${FIXTURE_KEY}-baseline`;
@@ -548,19 +582,34 @@ export async function seedFactoryMemoryGoldenPath(ctx: any, input: SeedInput) {
   ).find(
     (candidate: any) => candidate.metadata?.fixture === baselineFixtureKey,
   );
-  if (!existingBaseline) {
+  const baselineRun = runs.find(
+    (run: any) =>
+      run._id !== linkedRun._id &&
+      run.workOrderId === workOrder._id &&
+      !run.factoryContextPackageId,
+  );
+  if (!existingBaseline && baselineRun) {
+    const baselinePurpose = baselineRun.factoryPurpose ?? factoryPurpose;
+    const baselineTrace = await ensureAttemptTrace(ctx, baselineRun, {
+      purpose: tracePurposeForFactoryPurpose(baselinePurpose),
+    });
     const baselineItems = contextPackage.items.slice(0, 6).map((item: any) => ({
       ...item,
       reason:
         "Earlier bounded package before verification evidence and the explicit regression case were added.",
     }));
-    await ctx.db.insert("factoryContextPackages", {
+    const baselinePackageId = await ctx.db.insert("factoryContextPackages", {
       tenantId,
       projectId,
       repositoryId: repository._id,
       workOrderId: workOrder._id,
-      factoryDefinitionVersionId: factoryVersion?._id,
-      purpose: "verification",
+      workflowRunId: baselineRun._id,
+      factoryDefinitionVersionId:
+        baselineRun.factoryDefinitionVersionId ?? factoryVersion?._id,
+      purpose: baselinePurpose,
+      attemptPurpose: attemptPurposeForRun(baselineRun),
+      primaryTraceId: baselineTrace._id,
+      qualityContractDigest: baselineRun.qualityContractDigest,
       generatedAt: now - 24 * 60 * 60_000,
       objective: retrievalPlan.objective,
       items: baselineItems,
@@ -569,14 +618,17 @@ export async function seedFactoryMemoryGoldenPath(ctx: any, input: SeedInput) {
         0,
       ),
       budget: retrievalPlan.budget,
-      retrievalPlanId: retrievalPlan._id,
       retrievalStrategies: ["code", "architecture", "hybrid"],
-      contentHash: await hash(
-        baselineItems.map((item: any) => [
+      contentHash: await hash({
+        workflowRunId: baselineRun._id,
+        primaryTraceId: baselineTrace._id,
+        attemptPurpose: attemptPurposeForRun(baselineRun),
+        qualityContractDigest: baselineRun.qualityContractDigest,
+        items: baselineItems.map((item: any) => [
           item.sourceId,
           item.provenance.revision,
         ]),
-      ),
+      }),
       frozen: true,
       acceptanceAuthority: false,
       metadata: {
@@ -585,6 +637,9 @@ export async function seedFactoryMemoryGoldenPath(ctx: any, input: SeedInput) {
         comparisonBaseline: true,
       },
       createdBy: `demo:${FIXTURE_KEY}`,
+    });
+    await ctx.db.patch(baselineRun._id, {
+      factoryContextPackageId: baselinePackageId,
     });
     counts.contextPackages += 1;
   }
@@ -635,13 +690,26 @@ export async function seedFactoryMemoryGoldenPath(ctx: any, input: SeedInput) {
     });
   }
 
+  const [contextRun, trace] = await Promise.all([
+    ctx.db.get(contextPackage.workflowRunId),
+    ctx.db.get(contextPackage.primaryTraceId),
+  ]);
+  if (!contextRun || !trace || trace.workflowRunId !== contextRun._id) {
+    throw new Error(
+      "Factory Memory demo Context Package lost Attempt lineage.",
+    );
+  }
   const observations = await ctx.db
-    .query("factoryRetrievalObservations")
-    .withIndex("by_context_package", (q: any) =>
-      q.eq("contextPackageId", contextPackage._id),
+    .query("traceObservations")
+    .withIndex("by_trace", (q: any) => q.eq("traceId", trace._id))
+    .take(1_000);
+  if (
+    !observations.some(
+      (observation: any) =>
+        factoryTelemetryMetadata(observation.metadata)
+          .factoryContextPackageId === String(contextPackage._id),
     )
-    .collect();
-  if (!observations.length) {
+  ) {
     const specs = [
       ["context.plan", "hybrid", 0, 4],
       ["memory.search", "hybrid", 34, SOURCES.length],
@@ -650,13 +718,10 @@ export async function seedFactoryMemoryGoldenPath(ctx: any, input: SeedInput) {
       ["context.sufficiency", "verification-history", 1, SOURCES.length],
     ] as const;
     for (const [observationType, strategy, latencyMs, resultCount] of specs) {
-      await ctx.db.insert("factoryRetrievalObservations", {
-        tenantId,
-        projectId,
-        workflowRunId: linkedRun?._id,
+      await recordFactoryRetrievalObservation(ctx, contextRun, {
+        observationType,
         retrievalPlanId: retrievalPlan._id,
         contextPackageId: contextPackage._id,
-        observationType,
         strategy,
         query: "auth middleware token refresh authorization regression",
         resultCount,
@@ -664,20 +729,27 @@ export async function seedFactoryMemoryGoldenPath(ctx: any, input: SeedInput) {
         rejectedCount: 26,
         estimatedTokens: contextPackage.estimatedTokens,
         latencyMs,
-        metadata: { fixture: FIXTURE_KEY, iteration: 2, maxIterations: 3 },
-        acceptanceAuthority: false,
+        metadata: {
+          fixture: FIXTURE_KEY,
+          iteration: 2,
+          maxIterations: 3,
+        },
         createdAt: now - 35 * 60_000 + latencyMs,
       });
     }
   }
 
   const evaluations = await ctx.db
-    .query("factoryContextEvaluations")
-    .withIndex("by_context_package", (q: any) =>
-      q.eq("contextPackageId", contextPackage._id),
+    .query("evalScores")
+    .withIndex("by_attempt", (q: any) => q.eq("workflowRunId", contextRun._id))
+    .take(1_000);
+  if (
+    !evaluations.some(
+      (evaluation: any) =>
+        factoryTelemetryMetadata(evaluation.metadata)
+          .factoryContextPackageId === String(contextPackage._id),
     )
-    .collect();
-  if (!evaluations.length) {
+  ) {
     const specs = [
       [
         "retrieval.precision",
@@ -716,20 +788,38 @@ export async function seedFactoryMemoryGoldenPath(ctx: any, input: SeedInput) {
         "The bounded package outperformed the oversized noisy variant.",
       ],
     ] as const;
+    const evaluationSetId = await hash({
+      fixture: FIXTURE_KEY,
+      contextPackageId: contextPackage._id,
+      version: 1,
+    });
     for (const [key, score, passed, reason] of specs) {
-      await ctx.db.insert("factoryContextEvaluations", {
+      const definition = await ensureFactoryEvalDefinition(ctx, {
         tenantId,
         projectId,
-        contextPackageId: contextPackage._id,
-        workflowRunId: linkedRun?._id,
-        evaluationSetId: `${FIXTURE_KEY}:context-quality:v1`,
-        key,
-        score,
-        passed,
+        actorId: `demo:${FIXTURE_KEY}`,
+        metricKey: key,
+      });
+      await insertEvalScore(ctx, {
+        tenantId,
+        projectId,
+        definition,
+        traceId: trace._id,
+        workflowRunId: contextRun._id,
+        value: score,
         reason,
-        sampleSize: 1,
-        acceptanceAuthority: false,
-        createdAt: now - 30 * 60_000,
+        metadata: {
+          domain: "FACTORY_MEMORY_CONTEXT",
+          factoryContextPackageId: String(contextPackage._id),
+          evaluationSetId,
+          metricKey: key,
+          passed,
+          sampleSize: 1,
+          acceptanceAuthority: false,
+        },
+        evaluator: { type: "DETERMINISTIC", version: "factory-memory-v1" },
+        createdBy: `demo:${FIXTURE_KEY}`,
+        idempotencyKey: `factory-memory:${String(contextPackage._id)}:${evaluationSetId}:${String(definition._id)}`,
       });
     }
   }

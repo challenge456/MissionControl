@@ -15,7 +15,7 @@ const SOURCE_PRIORITY: Record<
   FactoryPurpose,
   Partial<Record<FactoryMemoryResult["sourceType"], number>>
 > = {
-  software: {
+  SOFTWARE: {
     "source-code": 1,
     adr: 0.95,
     test: 0.9,
@@ -24,7 +24,7 @@ const SOURCE_PRIORITY: Record<
     "git-history": 0.75,
     trace: 0.7,
   },
-  verification: {
+  VERIFICATION: {
     "verification-plan": 1,
     "verification-evidence": 1,
     test: 0.98,
@@ -35,7 +35,7 @@ const SOURCE_PRIORITY: Record<
     trace: 0.85,
     "work-order": 0.8,
   },
-  automation: {
+  INTELLIGENT_AUTOMATION: {
     "repository-document": 1,
     adr: 0.95,
     "source-code": 0.9,
@@ -142,6 +142,9 @@ export function assembleContextPackage(input: {
     JSON.stringify({
       workOrderId: input.workOrder.workOrderId,
       attemptId: input.workOrder.attemptId,
+      attemptPurpose: input.workOrder.attemptPurpose,
+      primaryTraceId: input.workOrder.primaryTraceId,
+      qualityContractDigest: input.workOrder.qualityContractDigest,
       factoryVersionId: input.workOrder.factoryVersionId,
       purpose: input.workOrder.purpose,
       budget,
@@ -163,6 +166,9 @@ export function assembleContextPackage(input: {
     repositoryId: input.workOrder.repositoryId,
     workOrderId: input.workOrder.workOrderId,
     attemptId: input.workOrder.attemptId,
+    attemptPurpose: input.workOrder.attemptPurpose,
+    primaryTraceId: input.workOrder.primaryTraceId,
+    qualityContractDigest: input.workOrder.qualityContractDigest,
     factoryVersionId: input.workOrder.factoryVersionId,
     purpose: input.workOrder.purpose,
     generatedAt,

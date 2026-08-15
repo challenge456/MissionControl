@@ -41,7 +41,6 @@ import {
   factoryKnowledgeDerivationValidator,
   factoryMemoryProvenanceValidator,
   factoryMemorySourceTypeValidator,
-  factoryPurposeValidator,
   factoryRelationValidator,
   factoryRetrievalStrategyValidator,
 } from "./lib/factoryMemoryValidators";
@@ -5186,9 +5185,12 @@ export default defineSchema({
     projectId: v.id("projects"),
     repositoryId: v.optional(v.id("workspaceRepositories")),
     workOrderId: v.id("workOrders"),
-    workflowRunId: v.optional(v.id("workflowRuns")),
+    workflowRunId: v.id("workflowRuns"),
     factoryDefinitionVersionId: v.optional(v.id("factoryDefinitionVersions")),
     purpose: factoryPurposeValidator,
+    attemptPurpose: attemptPurposeValidator,
+    primaryTraceId: v.id("traces"),
+    qualityContractDigest: v.optional(v.string()),
     generatedAt: v.number(),
     objective: v.string(),
     items: v.array(factoryContextItemValidator),
@@ -5238,56 +5240,6 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_work_order", ["workOrderId"])
     .index("by_context_package", ["contextPackageId"]),
-
-  factoryRetrievalObservations: defineTable({
-    tenantId: v.id("tenants"),
-    projectId: v.id("projects"),
-    workflowRunId: v.optional(v.id("workflowRuns")),
-    retrievalPlanId: v.optional(v.id("factoryRetrievalPlans")),
-    contextPackageId: v.optional(v.id("factoryContextPackages")),
-    observationType: v.union(
-      v.literal("context.plan"),
-      v.literal("memory.search"),
-      v.literal("code.search"),
-      v.literal("graph.traversal"),
-      v.literal("context.rank"),
-      v.literal("context.assemble"),
-      v.literal("context.sufficiency"),
-    ),
-    strategy: v.optional(factoryRetrievalStrategyValidator),
-    query: v.optional(v.string()),
-    resultCount: v.optional(v.number()),
-    selectedCount: v.optional(v.number()),
-    rejectedCount: v.optional(v.number()),
-    estimatedTokens: v.optional(v.number()),
-    latencyMs: v.number(),
-    metadata: v.optional(v.any()),
-    acceptanceAuthority: v.literal(false),
-    createdAt: v.number(),
-  })
-    .index("by_project", ["projectId"])
-    .index("by_project_time", ["projectId", "createdAt"])
-    .index("by_workflow_run", ["workflowRunId"])
-    .index("by_context_package", ["contextPackageId"]),
-
-  factoryContextEvaluations: defineTable({
-    tenantId: v.id("tenants"),
-    projectId: v.id("projects"),
-    contextPackageId: v.id("factoryContextPackages"),
-    workflowRunId: v.optional(v.id("workflowRuns")),
-    evaluationSetId: v.string(),
-    key: v.string(),
-    score: v.number(),
-    passed: v.boolean(),
-    reason: v.string(),
-    sampleSize: v.number(),
-    acceptanceAuthority: v.literal(false),
-    createdAt: v.number(),
-  })
-    .index("by_project", ["projectId"])
-    .index("by_context_package", ["contextPackageId"])
-    .index("by_context_package_set", ["contextPackageId", "evaluationSetId"])
-    .index("by_project_key", ["projectId", "key"]),
 
   // -------------------------------------------------------------------------
   // CONTEXT REGISTRY: PACKAGES (Software Factory Epic 1)
@@ -5859,6 +5811,7 @@ export default defineSchema({
     ),
     value: v.union(v.number(), v.boolean(), v.string()),
     reason: v.optional(v.string()),
+    metadata: v.optional(v.any()),
     evaluator: v.object({
       type: v.union(
         v.literal("DETERMINISTIC"),

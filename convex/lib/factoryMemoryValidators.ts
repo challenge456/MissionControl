@@ -120,12 +120,6 @@ export const factoryRetrievalStrategyValidator = v.union(
   v.literal("architecture"),
 );
 
-export const factoryPurposeValidator = v.union(
-  v.literal("software"),
-  v.literal("verification"),
-  v.literal("automation"),
-);
-
 export const factoryMemoryProvenanceValidator = v.object({
   sourceType: factoryMemorySourceTypeValidator,
   sourceId: v.string(),

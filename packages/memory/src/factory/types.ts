@@ -1,3 +1,13 @@
+import type {
+  AttemptPurpose,
+  FactoryPurpose,
+} from "@mission-control/workflow-engine";
+
+export type {
+  AttemptPurpose,
+  FactoryPurpose,
+} from "@mission-control/workflow-engine";
+
 export const FACTORY_MEMORY_SOURCE_TYPES = [
   "source-code",
   "repository-document",
@@ -102,7 +112,6 @@ export type RetrievalMethod =
   | "hybrid"
   | "relationship"
   | "graph";
-export type FactoryPurpose = "software" | "verification" | "automation";
 export interface FactoryScope {
   projectId: string;
   repositoryId?: string;
@@ -271,7 +280,10 @@ export interface ContextPackage {
   projectId: string;
   repositoryId?: string;
   workOrderId: string;
-  attemptId?: string;
+  attemptId: string;
+  attemptPurpose: AttemptPurpose;
+  primaryTraceId: string;
+  qualityContractDigest?: string;
   factoryVersionId?: string;
   purpose: FactoryPurpose;
   generatedAt: number;
@@ -437,7 +449,10 @@ export interface GraphPath {
 }
 export interface WorkOrderContextInput extends FactoryScope {
   workOrderId: string;
-  attemptId?: string;
+  attemptId: string;
+  attemptPurpose: AttemptPurpose;
+  primaryTraceId: string;
+  qualityContractDigest?: string;
   factoryVersionId?: string;
   objective: string;
   context?: string;

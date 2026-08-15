@@ -19,18 +19,28 @@ import {
   validateFactoryRelationship,
 } from "./lib/factoryMemory";
 import {
+  ensureFactoryEvalDefinition,
+  factoryTelemetryMetadata,
+  recordFactoryRetrievalObservation,
+  tracePurposeForFactoryPurpose,
+} from "./lib/factoryMemoryTelemetry";
+import {
   factoryContextBudgetValidator,
   factoryEntityTypeValidator,
   factoryKnowledgeDerivationValidator,
   factoryMemoryProvenanceValidator,
   factoryMemorySourceTypeValidator,
-  factoryPurposeValidator,
   factoryRelationValidator,
   factoryRelationshipPathStepValidator,
   factoryRetrievalMethodValidator,
   factoryRetrievalStrategyValidator,
 } from "./lib/factoryMemoryValidators";
 import { resolveFlag, type FlagRow } from "./lib/flags";
+import {
+  ensureAttemptTrace,
+  insertEvalScore,
+} from "./lib/observabilityPersistence";
+import { factoryPurposeValidator } from "./lib/workOrderSpecificationValidators";
 
 const FACTORY_FLAG_KEYS = Object.values(FACTORY_MEMORY_FLAGS);
 
@@ -60,6 +70,31 @@ function canonicalize(value: unknown): unknown {
 
 async function digest(value: unknown): Promise<string> {
   return sha256(JSON.stringify(canonicalize(value)));
+}
+
+function assertFactoryPurposeAlignment(
+  purpose: Doc<"factoryRetrievalPlans">["purpose"],
+  linked: Awaited<ReturnType<typeof requireLinkedScope>>,
+) {
+  const declaredPurposes = [
+    linked.workOrder?.factoryPurpose,
+    linked.workflowRun?.factoryPurpose,
+    linked.factoryVersion?.purpose,
+  ].filter((declared): declared is string => declared !== undefined);
+  if (declaredPurposes.some((declared) => declared !== purpose)) {
+    throw new Error(
+      "Factory Memory purpose must match its WorkOrder, Attempt, and FactoryVersion lineage.",
+    );
+  }
+}
+
+function canonicalAttemptPurpose(
+  run: Doc<"workflowRuns">,
+): "IMPLEMENTATION" | "VERIFICATION" | "AUTOMATION" {
+  if (run.attemptPurpose) return run.attemptPurpose;
+  if (run.factoryPurpose === "VERIFICATION") return "VERIFICATION";
+  if (run.factoryPurpose === "INTELLIGENT_AUTOMATION") return "AUTOMATION";
+  return "IMPLEMENTATION";
 }
 
 async function requireRepositoryScope(
@@ -141,6 +176,18 @@ async function requireLinkedScope(
   )
     throw new Error("Attempt does not use the linked FactoryVersion.");
   return { workOrder, workflowRun, factoryVersion };
+}
+
+function resolveLinkedRepositoryId(
+  explicitRepositoryId: Id<"workspaceRepositories"> | undefined,
+  linked: Awaited<ReturnType<typeof requireLinkedScope>>,
+): Id<"workspaceRepositories"> | undefined {
+  return (
+    explicitRepositoryId ??
+    linked.workOrder?.repositoryId ??
+    linked.workflowRun?.repositoryId ??
+    linked.factoryVersion?.repositoryId
+  );
 }
 
 function withinRepositoryScope(
@@ -332,8 +379,13 @@ export const search = query({
       FACTORY_PERMISSIONS.VIEW,
     );
     await requireFactoryMemoryPhaseEnabled(ctx, args.projectId, "HYBRID");
-    await requireRepositoryScope(ctx, args.projectId, args.repositoryId);
-    await requireLinkedScope(ctx, args.projectId, args);
+    const linked = await requireLinkedScope(ctx, args.projectId, args);
+    const repositoryId = resolveLinkedRepositoryId(args.repositoryId, linked);
+    await requireRepositoryScope(ctx, args.projectId, repositoryId);
+    const workOrderId = args.workOrderId ?? linked.workflowRun?.workOrderId;
+    const factoryDefinitionVersionId =
+      args.factoryDefinitionVersionId ??
+      linked.workflowRun?.factoryDefinitionVersionId;
     const normalizedQuery = sanitizeFactoryText(args.query.trim(), 2_000);
     const candidates = normalizedQuery
       ? await ctx.db
@@ -342,24 +394,24 @@ export const search = query({
             const projectQuery = q
               .search("searchText", normalizedQuery)
               .eq("projectId", args.projectId);
-            if (args.repositoryId && args.sourceTypes?.length === 1)
+            if (repositoryId && args.sourceTypes?.length === 1)
               return projectQuery
-                .eq("repositoryId", args.repositoryId)
+                .eq("repositoryId", repositoryId)
                 .eq("sourceType", args.sourceTypes[0]);
-            if (args.repositoryId)
-              return projectQuery.eq("repositoryId", args.repositoryId);
+            if (repositoryId)
+              return projectQuery.eq("repositoryId", repositoryId);
             if (args.sourceTypes?.length === 1)
               return projectQuery.eq("sourceType", args.sourceTypes[0]);
             return projectQuery;
           })
           .take(FACTORY_MEMORY_LIMITS.maxSearchCandidates)
-      : args.repositoryId
+      : repositoryId
         ? await ctx.db
             .query("factoryMemoryChunks")
             .withIndex("by_project_repository", (q) =>
               q
                 .eq("projectId", args.projectId)
-                .eq("repositoryId", args.repositoryId),
+                .eq("repositoryId", repositoryId),
             )
             .order("desc")
             .take(FACTORY_MEMORY_LIMITS.maxSearchCandidates)
@@ -370,19 +422,19 @@ export const search = query({
             .take(FACTORY_MEMORY_LIMITS.maxSearchCandidates);
     const filtered = candidates.filter((candidate) => {
       if (candidate.invalidatedAt) return false;
-      if (!withinRepositoryScope(candidate, args.repositoryId)) return false;
+      if (!withinRepositoryScope(candidate, repositoryId)) return false;
       if (
         args.sourceTypes?.length &&
         !args.sourceTypes.includes(candidate.sourceType)
       )
         return false;
-      if (args.workOrderId && candidate.workOrderId !== args.workOrderId)
+      if (workOrderId && candidate.workOrderId !== workOrderId)
         return false;
       if (args.workflowRunId && candidate.workflowRunId !== args.workflowRunId)
         return false;
       if (
-        args.factoryDefinitionVersionId &&
-        candidate.factoryDefinitionVersionId !== args.factoryDefinitionVersionId
+        factoryDefinitionVersionId &&
+        candidate.factoryDefinitionVersionId !== factoryDefinitionVersionId
       )
         return false;
       if (
@@ -473,8 +525,13 @@ export const upsertDocument = mutation({
       FACTORY_PERMISSIONS.IMPROVE,
     );
     await requireFactoryMemoryPhaseEnabled(ctx, args.projectId, "HYBRID");
-    await requireRepositoryScope(ctx, args.projectId, args.repositoryId);
-    await requireLinkedScope(ctx, args.projectId, args);
+    const linked = await requireLinkedScope(ctx, args.projectId, args);
+    const repositoryId = resolveLinkedRepositoryId(args.repositoryId, linked);
+    await requireRepositoryScope(ctx, args.projectId, repositoryId);
+    const workOrderId = args.workOrderId ?? linked.workflowRun?.workOrderId;
+    const factoryDefinitionVersionId =
+      args.factoryDefinitionVersionId ??
+      linked.workflowRun?.factoryDefinitionVersionId;
     const prepared = prepareFactoryMemoryContent({
       content: args.content,
       metadata: args.metadata,
@@ -494,7 +551,7 @@ export const upsertDocument = mutation({
       .withIndex("by_project_repository_source_revision", (q) =>
         q
           .eq("projectId", args.projectId)
-          .eq("repositoryId", args.repositoryId)
+          .eq("repositoryId", repositoryId)
           .eq("sourceType", args.sourceType)
           .eq("sourceId", sourceId)
           .eq("sourceRevision", sourceRevision),
@@ -524,7 +581,7 @@ export const upsertDocument = mutation({
       .withIndex("by_project_repository_source", (q) =>
         q
           .eq("projectId", args.projectId)
-          .eq("repositoryId", args.repositoryId)
+          .eq("repositoryId", repositoryId)
           .eq("sourceType", args.sourceType)
           .eq("sourceId", sourceId),
       )
@@ -562,10 +619,10 @@ export const upsertDocument = mutation({
         .collect();
       for (const chunk of oldChunks) await ctx.db.delete(chunk._id);
       await ctx.db.patch(existingRevision._id, {
-        repositoryId: args.repositoryId,
-        workOrderId: args.workOrderId,
+        repositoryId,
+        workOrderId,
         workflowRunId: args.workflowRunId,
-        factoryDefinitionVersionId: args.factoryDefinitionVersionId,
+        factoryDefinitionVersionId,
         title,
         content: prepared.content,
         metadata: prepared.metadata,
@@ -579,12 +636,12 @@ export const upsertDocument = mutation({
       documentId = await ctx.db.insert("factoryMemoryDocuments", {
         tenantId: requireTenantId(access.project),
         projectId: args.projectId,
-        repositoryId: args.repositoryId,
+        repositoryId,
         sourceType: args.sourceType,
         sourceId,
-        workOrderId: args.workOrderId,
+        workOrderId,
         workflowRunId: args.workflowRunId,
-        factoryDefinitionVersionId: args.factoryDefinitionVersionId,
+        factoryDefinitionVersionId,
         title,
         content: prepared.content,
         metadata: prepared.metadata,
@@ -601,13 +658,13 @@ export const upsertDocument = mutation({
         ctx.db.insert("factoryMemoryChunks", {
           tenantId: requireTenantId(access.project),
           projectId: args.projectId,
-          repositoryId: args.repositoryId,
+          repositoryId,
           documentId,
           sourceType: args.sourceType,
           sourceId,
-          workOrderId: args.workOrderId,
+          workOrderId,
           workflowRunId: args.workflowRunId,
-          factoryDefinitionVersionId: args.factoryDefinitionVersionId,
+          factoryDefinitionVersionId,
           title,
           content: chunk.content,
           searchText: chunk.searchText,
@@ -627,7 +684,7 @@ export const upsertDocument = mutation({
     await ctx.db.insert("factoryMemoryIngestionRuns", {
       tenantId: requireTenantId(access.project),
       projectId: args.projectId,
-      repositoryId: args.repositoryId,
+      repositoryId,
       status: "SUCCEEDED",
       sourceTypes: [args.sourceType],
       indexedDocuments: 1,
@@ -1269,8 +1326,13 @@ export const saveRetrievalPlan = mutation({
       args.projectId,
       "AGENTIC_RETRIEVAL",
     );
-    await requireRepositoryScope(ctx, args.projectId, args.repositoryId);
-    await requireLinkedScope(ctx, args.projectId, args);
+    const linked = await requireLinkedScope(ctx, args.projectId, args);
+    const repositoryId = resolveLinkedRepositoryId(args.repositoryId, linked);
+    const factoryDefinitionVersionId =
+      args.factoryDefinitionVersionId ??
+      linked.workflowRun?.factoryDefinitionVersionId;
+    await requireRepositoryScope(ctx, args.projectId, repositoryId);
+    assertFactoryPurposeAlignment(args.purpose, linked);
     for (const step of args.steps) {
       if (!step.entity) continue;
       const entity = await ctx.db.get(step.entity.id);
@@ -1278,7 +1340,7 @@ export const saveRetrievalPlan = mutation({
         !entity ||
         entity.projectId !== args.projectId ||
         entity.entityType !== step.entity.type ||
-        (args.repositoryId && entity.repositoryId !== args.repositoryId)
+        (repositoryId && entity.repositoryId !== repositoryId)
       )
         throw new Error(
           "Retrieval Plan entity is unavailable or unauthorized.",
@@ -1318,10 +1380,10 @@ export const saveRetrievalPlan = mutation({
     const sufficiency = sanitizeFactoryObservation(args.sufficiency);
     const planDigest = await digest({
       projectId: args.projectId,
-      repositoryId: args.repositoryId,
+      repositoryId,
       workOrderId: args.workOrderId,
       workflowRunId: args.workflowRunId,
-      factoryDefinitionVersionId: args.factoryDefinitionVersionId,
+      factoryDefinitionVersionId,
       objective,
       purpose: args.purpose,
       steps,
@@ -1333,10 +1395,10 @@ export const saveRetrievalPlan = mutation({
     const retrievalPlanId = await ctx.db.insert("factoryRetrievalPlans", {
       tenantId: requireTenantId(access.project),
       projectId: args.projectId,
-      repositoryId: args.repositoryId,
+      repositoryId,
       workOrderId: args.workOrderId,
       workflowRunId: args.workflowRunId,
-      factoryDefinitionVersionId: args.factoryDefinitionVersionId,
+      factoryDefinitionVersionId,
       objective,
       planDigest,
       purpose: args.purpose,
@@ -1348,22 +1410,20 @@ export const saveRetrievalPlan = mutation({
       createdAt: now,
       createdBy: access.actorId,
     });
-    await ctx.db.insert("factoryRetrievalObservations", {
-      tenantId: requireTenantId(access.project),
-      projectId: args.projectId,
-      workflowRunId: args.workflowRunId,
-      retrievalPlanId,
-      observationType: "context.plan",
-      resultCount: args.steps.length,
-      estimatedTokens: budget.maxEstimatedTokens,
-      latencyMs: 0,
-      metadata: {
-        strategies: args.steps.map((step) => step.strategy),
-        maxIterations: args.maxIterations,
-      },
-      acceptanceAuthority: false,
-      createdAt: now,
-    });
+    if (linked.workflowRun) {
+      await recordFactoryRetrievalObservation(ctx, linked.workflowRun, {
+        retrievalPlanId,
+        observationType: "context.plan",
+        resultCount: args.steps.length,
+        estimatedTokens: budget.maxEstimatedTokens,
+        latencyMs: 0,
+        metadata: {
+          strategies: args.steps.map((step) => step.strategy),
+          maxIterations: args.maxIterations,
+        },
+        createdAt: now,
+      });
+    }
     return retrievalPlanId;
   },
 });
@@ -1372,7 +1432,7 @@ export const freezeContextPackage = mutation({
   args: {
     projectId: v.id("projects"),
     retrievalPlanId: v.id("factoryRetrievalPlans"),
-    workflowRunId: v.optional(v.id("workflowRuns")),
+    workflowRunId: v.id("workflowRuns"),
     selected: v.array(
       v.object({
         chunkId: v.id("factoryMemoryChunks"),
@@ -1405,22 +1465,25 @@ export const freezeContextPackage = mutation({
     const plan = await ctx.db.get(args.retrievalPlanId);
     if (!plan || plan.projectId !== args.projectId)
       throw new Error("Retrieval plan is unavailable or unauthorized.");
-    const workflowRunId = args.workflowRunId ?? plan.workflowRunId;
+    const workflowRunId = args.workflowRunId;
     const linked = await requireLinkedScope(ctx, args.projectId, {
       repositoryId: plan.repositoryId,
       workOrderId: plan.workOrderId,
       workflowRunId,
       factoryDefinitionVersionId: plan.factoryDefinitionVersionId,
     });
-    if (
-      workflowRunId &&
-      plan.workflowRunId &&
-      workflowRunId !== plan.workflowRunId
-    )
+    assertFactoryPurposeAlignment(plan.purpose, linked);
+    if (!linked.workflowRun)
+      throw new Error("Context Packages require an exact Attempt.");
+    const repositoryId = resolveLinkedRepositoryId(plan.repositoryId, linked);
+    const factoryDefinitionVersionId =
+      plan.factoryDefinitionVersionId ??
+      linked.workflowRun.factoryDefinitionVersionId;
+    if (plan.workflowRunId && workflowRunId !== plan.workflowRunId)
       throw new Error(
         "Context Package Attempt does not match its Retrieval Plan.",
       );
-    if (workflowRunId && linked.workflowRun?.workOrderId !== plan.workOrderId)
+    if (linked.workflowRun.workOrderId !== plan.workOrderId)
       throw new Error(
         "Context Package Attempt does not belong to its WorkOrder.",
       );
@@ -1437,7 +1500,7 @@ export const freezeContextPackage = mutation({
         !chunk ||
         chunk.projectId !== args.projectId ||
         chunk.invalidatedAt ||
-        (plan.repositoryId && chunk.repositoryId !== plan.repositoryId)
+        (repositoryId && chunk.repositoryId !== repositoryId)
       )
         throw new Error("Context candidate is unavailable or unauthorized.");
       estimatedTokens += chunk.estimatedTokens;
@@ -1467,6 +1530,11 @@ export const freezeContextPackage = mutation({
       throw new Error(
         `Context Package is missing required sources: ${missing.join(", ")}.`,
       );
+    const trace = await ensureAttemptTrace(ctx, linked.workflowRun, {
+      purpose: tracePurposeForFactoryPurpose(linked.workflowRun.factoryPurpose),
+    });
+    const attemptPurpose = canonicalAttemptPurpose(linked.workflowRun);
+    const qualityContractDigest = linked.workflowRun.qualityContractDigest;
     const digestItems = await Promise.all(
       selected.map(async (item) => ({
         chunkId: item.chunkId,
@@ -1480,17 +1548,35 @@ export const freezeContextPackage = mutation({
     const contentHash = await digest({
       workOrderId: plan.workOrderId,
       workflowRunId,
-      factoryDefinitionVersionId: plan.factoryDefinitionVersionId,
+      factoryDefinitionVersionId,
       purpose: plan.purpose,
+      attemptPurpose,
+      primaryTraceId: trace._id,
+      qualityContractDigest,
       objective: plan.objective,
       budget: plan.budget,
       items: digestItems,
     });
-    if (workflowRunId && linked.workflowRun?.factoryContextPackageId) {
+    if (linked.workflowRun.factoryContextPackageId) {
       const existing = (await ctx.db.get(
         linked.workflowRun.factoryContextPackageId,
       )) as Doc<"factoryContextPackages"> | null;
-      if (existing?.contentHash === contentHash) return existing._id;
+      if (
+        existing?.contentHash === contentHash &&
+        existing.workflowRunId === workflowRunId &&
+        existing.primaryTraceId === trace._id
+      ) {
+        await recordFactoryRetrievalObservation(ctx, linked.workflowRun, {
+          retrievalPlanId: plan._id,
+          contextPackageId: existing._id,
+          observationType: "context.assemble",
+          selectedCount: selected.length,
+          estimatedTokens,
+          latencyMs: 0,
+          metadata: { contentHash, frozen: true },
+        });
+        return existing._id;
+      }
       throw new Error(
         "Attempt already has a different frozen Context Package.",
       );
@@ -1502,23 +1588,36 @@ export const freezeContextPackage = mutation({
     if (
       existingByHash &&
       existingByHash.projectId === args.projectId &&
-      existingByHash.workOrderId === plan.workOrderId
+      existingByHash.workOrderId === plan.workOrderId &&
+      existingByHash.workflowRunId === workflowRunId &&
+      existingByHash.primaryTraceId === trace._id
     ) {
-      if (workflowRunId)
-        await ctx.db.patch(workflowRunId, {
-          factoryContextPackageId: existingByHash._id,
-        });
+      await ctx.db.patch(workflowRunId, {
+        factoryContextPackageId: existingByHash._id,
+      });
+      await recordFactoryRetrievalObservation(ctx, linked.workflowRun, {
+        retrievalPlanId: plan._id,
+        contextPackageId: existingByHash._id,
+        observationType: "context.assemble",
+        selectedCount: selected.length,
+        estimatedTokens,
+        latencyMs: 0,
+        metadata: { contentHash, frozen: true },
+      });
       return existingByHash._id;
     }
     const now = Date.now();
     const contextPackageId = await ctx.db.insert("factoryContextPackages", {
       tenantId: requireTenantId(access.project),
       projectId: args.projectId,
-      repositoryId: plan.repositoryId,
+      repositoryId,
       workOrderId: plan.workOrderId,
       workflowRunId,
-      factoryDefinitionVersionId: plan.factoryDefinitionVersionId,
+      factoryDefinitionVersionId,
       purpose: plan.purpose,
+      attemptPurpose,
+      primaryTraceId: trace._id,
+      qualityContractDigest,
       generatedAt: now,
       objective: plan.objective,
       items: selected,
@@ -1532,14 +1631,10 @@ export const freezeContextPackage = mutation({
       metadata: sanitizeFactoryObservation(args.metadata),
       createdBy: access.actorId,
     });
-    if (workflowRunId)
-      await ctx.db.patch(workflowRunId, {
-        factoryContextPackageId: contextPackageId,
-      });
-    await ctx.db.insert("factoryRetrievalObservations", {
-      tenantId: requireTenantId(access.project),
-      projectId: args.projectId,
-      workflowRunId,
+    await ctx.db.patch(workflowRunId, {
+      factoryContextPackageId: contextPackageId,
+    });
+    await recordFactoryRetrievalObservation(ctx, linked.workflowRun, {
       retrievalPlanId: plan._id,
       contextPackageId,
       observationType: "context.assemble",
@@ -1547,7 +1642,6 @@ export const freezeContextPackage = mutation({
       estimatedTokens,
       latencyMs: 0,
       metadata: { contentHash, frozen: true },
-      acceptanceAuthority: false,
       createdAt: now,
     });
     await ctx.db.insert("activities", {
@@ -1584,20 +1678,39 @@ export const getContextPackage = query({
       args.projectId,
       "CONTEXT_ENGINE",
     );
+    const requestedWorkflowRunId = args.workflowRunId;
     const contextPackage = args.contextPackageId
       ? await ctx.db.get(args.contextPackageId)
-      : args.workflowRunId
+      : requestedWorkflowRunId
         ? await ctx.db
             .query("factoryContextPackages")
             .withIndex("by_workflow_run", (q) =>
-              q.eq("workflowRunId", args.workflowRunId),
+              q.eq("workflowRunId", requestedWorkflowRunId),
             )
             .first()
         : null;
     if (!contextPackage || contextPackage.projectId !== args.projectId)
       return null;
-    const [verificationAdvisory, evaluationRows, observations] =
-      await Promise.all([
+    if (
+      args.workflowRunId &&
+      contextPackage.workflowRunId !== args.workflowRunId
+    ) {
+      return null;
+    }
+    const [workflowRun, trace] = await Promise.all([
+      ctx.db.get(contextPackage.workflowRunId),
+      ctx.db.get(contextPackage.primaryTraceId),
+    ]);
+    if (
+      !workflowRun ||
+      workflowRun.projectId !== args.projectId ||
+      !trace ||
+      trace.workflowRunId !== workflowRun._id
+    ) {
+      throw new Error("Context Package Attempt trace lineage is unavailable.");
+    }
+    const [verificationAdvisory, traceRows, evaluationRows] = await Promise.all(
+      [
         ctx.db
           .query("factoryContextVerificationAdvisories")
           .withIndex("by_context_package", (q) =>
@@ -1605,30 +1718,87 @@ export const getContextPackage = query({
           )
           .first(),
         ctx.db
-          .query("factoryContextEvaluations")
-          .withIndex("by_context_package", (q) =>
-            q.eq("contextPackageId", contextPackage._id),
-          )
-          .collect(),
+          .query("traceObservations")
+          .withIndex("by_trace", (q) => q.eq("traceId", trace._id))
+          .take(1_000),
         ctx.db
-          .query("factoryRetrievalObservations")
-          .withIndex("by_context_package", (q) =>
-            q.eq("contextPackageId", contextPackage._id),
+          .query("evalScores")
+          .withIndex("by_attempt", (q) =>
+            q.eq("workflowRunId", workflowRun._id),
           )
-          .collect(),
-      ]);
+          .take(1_000),
+      ],
+    );
+    const packageId = String(contextPackage._id);
+    const planId = contextPackage.retrievalPlanId
+      ? String(contextPackage.retrievalPlanId)
+      : undefined;
+    const observations = traceRows.filter((observation) => {
+      const metadata = factoryTelemetryMetadata(observation.metadata);
+      if (metadata.domain !== "FACTORY_MEMORY") return false;
+      if (metadata.factoryContextPackageId === packageId) return true;
+      return (
+        !metadata.factoryContextPackageId &&
+        planId !== undefined &&
+        metadata.factoryRetrievalPlanId === planId
+      );
+    });
+    const packageEvaluations = evaluationRows.filter((evaluation) => {
+      const metadata = factoryTelemetryMetadata(evaluation.metadata);
+      return (
+        metadata.domain === "FACTORY_MEMORY_CONTEXT" &&
+        metadata.factoryContextPackageId === packageId
+      );
+    });
     const evaluationSetIds = [
       ...new Set(
-        [...evaluationRows]
+        [...packageEvaluations]
           .sort((left, right) => right.createdAt - left.createdAt)
-          .map((evaluation) => evaluation.evaluationSetId),
+          .map(
+            (evaluation) =>
+              factoryTelemetryMetadata(evaluation.metadata).evaluationSetId,
+          )
+          .filter((id): id is string => typeof id === "string"),
       ),
     ];
-    const evaluations = evaluationSetIds[0]
-      ? evaluationRows.filter(
-          (evaluation) => evaluation.evaluationSetId === evaluationSetIds[0],
+    const latestEvaluationRows = evaluationSetIds[0]
+      ? packageEvaluations.filter(
+          (evaluation) =>
+            factoryTelemetryMetadata(evaluation.metadata).evaluationSetId ===
+            evaluationSetIds[0],
         )
       : [];
+    const definitions = await Promise.all(
+      [...new Set(latestEvaluationRows.map((row) => row.evalDefinitionId))].map(
+        (definitionId) => ctx.db.get(definitionId),
+      ),
+    );
+    const definitionById = new Map(
+      definitions
+        .filter((definition) => definition !== null)
+        .map((definition) => [String(definition!._id), definition!]),
+    );
+    const evaluations = latestEvaluationRows.map((evaluation) => {
+      const metadata = factoryTelemetryMetadata(evaluation.metadata);
+      const definition = definitionById.get(
+        String(evaluation.evalDefinitionId),
+      );
+      return {
+        _id: evaluation._id,
+        key:
+          typeof metadata.metricKey === "string"
+            ? metadata.metricKey
+            : (definition?.key ?? "factory-memory-context"),
+        score: typeof evaluation.value === "number" ? evaluation.value : 0,
+        passed: metadata.passed === true,
+        reason: evaluation.reason ?? "",
+        sampleSize:
+          typeof metadata.sampleSize === "number" ? metadata.sampleSize : 0,
+        evaluationSetId: String(metadata.evaluationSetId ?? ""),
+        acceptanceAuthority: false as const,
+        createdAt: evaluation.createdAt,
+      };
+    });
     return {
       contextPackage,
       verificationAdvisory,
@@ -1830,7 +2000,7 @@ export const saveVerificationAdvisory = mutation({
 export const recordObservation = mutation({
   args: {
     projectId: v.id("projects"),
-    workflowRunId: v.optional(v.id("workflowRuns")),
+    workflowRunId: v.id("workflowRuns"),
     retrievalPlanId: v.optional(v.id("factoryRetrievalPlans")),
     contextPackageId: v.optional(v.id("factoryContextPackages")),
     observationType: v.union(
@@ -1852,7 +2022,7 @@ export const recordObservation = mutation({
     metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
-    const access = await requireWorkspacePermission(
+    await requireWorkspacePermission(
       ctx,
       args.projectId,
       FACTORY_PERMISSIONS.IMPROVE,
@@ -1862,9 +2032,6 @@ export const recordObservation = mutation({
       args.projectId,
       "AGENTIC_RETRIEVAL",
     );
-    await requireLinkedScope(ctx, args.projectId, {
-      workflowRunId: args.workflowRunId,
-    });
     const plan = args.retrievalPlanId
       ? await ctx.db.get(args.retrievalPlanId)
       : null;
@@ -1880,10 +2047,8 @@ export const recordObservation = mutation({
         throw new Error("Context Package is unavailable or unauthorized.");
     }
     if (
-      args.workflowRunId &&
-      ((plan?.workflowRunId && plan.workflowRunId !== args.workflowRunId) ||
-        (contextPackage?.workflowRunId &&
-          contextPackage.workflowRunId !== args.workflowRunId))
+      (plan?.workflowRunId && plan.workflowRunId !== args.workflowRunId) ||
+      (contextPackage && contextPackage.workflowRunId !== args.workflowRunId)
     )
       throw new Error("Retrieval observation Attempt scope mismatch.");
     if (
@@ -1892,25 +2057,35 @@ export const recordObservation = mutation({
       contextPackage.retrievalPlanId !== plan._id
     )
       throw new Error("Retrieval observation plan/package scope mismatch.");
-    return ctx.db.insert("factoryRetrievalObservations", {
-      tenantId: requireTenantId(access.project),
-      projectId: args.projectId,
+    const linked = await requireLinkedScope(ctx, args.projectId, {
+      repositoryId: plan?.repositoryId ?? contextPackage?.repositoryId,
+      workOrderId: plan?.workOrderId ?? contextPackage?.workOrderId,
       workflowRunId: args.workflowRunId,
+      factoryDefinitionVersionId:
+        plan?.factoryDefinitionVersionId ??
+        contextPackage?.factoryDefinitionVersionId,
+    });
+    if (!linked.workflowRun)
+      throw new Error("Retrieval observations require an exact Attempt trace.");
+    if (plan) assertFactoryPurposeAlignment(plan.purpose, linked);
+    if (
+      contextPackage?.purpose &&
+      linked.workflowRun.factoryPurpose &&
+      contextPackage.purpose !== linked.workflowRun.factoryPurpose
+    )
+      throw new Error("Retrieval observation Factory purpose mismatch.");
+    return recordFactoryRetrievalObservation(ctx, linked.workflowRun, {
       retrievalPlanId: args.retrievalPlanId,
       contextPackageId: args.contextPackageId,
       observationType: args.observationType,
       strategy: args.strategy,
-      query: args.query
-        ? sanitizeFactoryText(args.query.trim(), 2_000)
-        : undefined,
+      query: args.query,
       resultCount: args.resultCount,
       selectedCount: args.selectedCount,
       rejectedCount: args.rejectedCount,
       estimatedTokens: args.estimatedTokens,
       latencyMs: Math.max(0, args.latencyMs),
-      metadata: sanitizeFactoryObservation(args.metadata),
-      acceptanceAuthority: false,
-      createdAt: Date.now(),
+      metadata: args.metadata,
     });
   },
 });
@@ -1943,6 +2118,19 @@ export const recordContextEvaluations = mutation({
     const contextPackage = await ctx.db.get(args.contextPackageId);
     if (!contextPackage || contextPackage.projectId !== args.projectId)
       throw new Error("Context Package is unavailable or unauthorized.");
+    const linked = await requireLinkedScope(ctx, args.projectId, {
+      repositoryId: contextPackage.repositoryId,
+      workOrderId: contextPackage.workOrderId,
+      workflowRunId: contextPackage.workflowRunId,
+      factoryDefinitionVersionId: contextPackage.factoryDefinitionVersionId,
+    });
+    if (!linked.workflowRun)
+      throw new Error("Context evaluations require an exact Attempt.");
+    if (
+      linked.workflowRun.factoryPurpose &&
+      linked.workflowRun.factoryPurpose !== contextPackage.purpose
+    )
+      throw new Error("Context evaluation Factory purpose mismatch.");
     if (!args.evaluations.length || args.evaluations.length > 50)
       throw new Error(
         "Context Package evaluations require between 1 and 50 results.",
@@ -1966,30 +2154,42 @@ export const recordContextEvaluations = mutation({
       contextPackageId: args.contextPackageId,
       evaluations: normalized,
     });
-    const existing = await ctx.db
-      .query("factoryContextEvaluations")
-      .withIndex("by_context_package_set", (q) =>
-        q
-          .eq("contextPackageId", args.contextPackageId)
-          .eq("evaluationSetId", evaluationSetId),
-      )
-      .collect();
-    if (existing.length) return existing.map((evaluation) => evaluation._id);
-    const now = Date.now();
+    const trace = await ensureAttemptTrace(ctx, linked.workflowRun, {
+      purpose: tracePurposeForFactoryPurpose(linked.workflowRun.factoryPurpose),
+    });
+    if (trace._id !== contextPackage.primaryTraceId) {
+      throw new Error("Context evaluation Attempt trace mismatch.");
+    }
     const ids = [];
     for (const evaluation of normalized) {
-      ids.push(
-        await ctx.db.insert("factoryContextEvaluations", {
-          tenantId: requireTenantId(access.project),
-          projectId: args.projectId,
-          contextPackageId: args.contextPackageId,
-          workflowRunId: contextPackage.workflowRunId,
+      const definition = await ensureFactoryEvalDefinition(ctx, {
+        tenantId: requireTenantId(access.project),
+        projectId: args.projectId,
+        actorId: access.actorId,
+        metricKey: evaluation.key,
+      });
+      const score = await insertEvalScore(ctx, {
+        projectId: args.projectId,
+        tenantId: requireTenantId(access.project),
+        definition,
+        traceId: trace._id,
+        workflowRunId: linked.workflowRun._id,
+        value: evaluation.score,
+        reason: evaluation.reason,
+        metadata: {
+          domain: "FACTORY_MEMORY_CONTEXT",
+          factoryContextPackageId: String(args.contextPackageId),
           evaluationSetId,
-          ...evaluation,
+          metricKey: evaluation.key,
+          passed: evaluation.passed,
+          sampleSize: evaluation.sampleSize,
           acceptanceAuthority: false,
-          createdAt: now,
-        }),
-      );
+        },
+        evaluator: { type: "DETERMINISTIC", version: "factory-memory-v1" },
+        createdBy: access.actorId,
+        idempotencyKey: `factory-memory:${String(args.contextPackageId)}:${evaluationSetId}:${String(definition._id)}`,
+      });
+      ids.push(score._id);
     }
     return ids;
   },

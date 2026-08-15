@@ -262,6 +262,9 @@ export function createGoldenPathFixture(): GoldenPathFixture {
       repositoryId: REPOSITORY_ID,
       workOrderId: "WO-100",
       attemptId: "ATTEMPT-1",
+      attemptPurpose: "VERIFICATION",
+      primaryTraceId: "TRACE-ATTEMPT-1",
+      qualityContractDigest: "sha256:fixture-quality-contract",
       factoryVersionId: "FACTORY-V3",
       objective:
         "Modify authentication middleware and add token refresh support.",
@@ -280,7 +283,7 @@ export function createGoldenPathFixture(): GoldenPathFixture {
         },
       ],
       changedPaths: ["src/auth/authMiddleware.ts"],
-      purpose: "verification",
+      purpose: "VERIFICATION",
     },
     chunks,
     entities,

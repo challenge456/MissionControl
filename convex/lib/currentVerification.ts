@@ -1,13 +1,41 @@
 import {
   evaluateCurrentVerificationEligibility,
-  type CurrentVerificationEligibility,
 } from "@mission-control/workflow-engine/verification-currentness";
 import {
   qualityGateProjectionInputDigest,
   qualityGateStateForCurrentEligibility,
 } from "./qualityGateDecision";
 
-export async function getCurrentVerificationResult(ctx: any, workOrder: any, now = Date.now()) {
+export type CurrentVerificationResult = {
+  eligible: boolean;
+  current: boolean;
+  exactIdentity?: {
+    workOrderId: string;
+    workOrderRevisionNumber: number;
+    verificationContractDigest: string;
+    sourceAttemptId: string;
+    verificationSubjectDigest: string;
+  };
+  sourceAttemptId?: string;
+  candidateRevision?: string;
+  verificationAttemptId?: string;
+  verificationRunId?: string;
+  verificationReceiptId?: string;
+  verificationPlanDigest?: string;
+  evidenceSetDigest?: string;
+  historicalVerdict?:
+    | "VERIFIED"
+    | "NOT_VERIFIED"
+    | "BLOCKED"
+    | "REQUIRES_HUMAN_REVIEW";
+  reasons: string[];
+};
+
+export async function getCurrentVerificationResult(
+  ctx: any,
+  workOrder: any,
+  now = Date.now(),
+): Promise<CurrentVerificationResult> {
   const [attempts, results, receipts, evidence, providerHeads, repository, installations] = await Promise.all([
     ctx.db.query("workflowRuns").withIndex("by_work_order", (q: any) => q.eq("workOrderId", workOrder._id)).collect(),
     ctx.db.query("verificationRuns").withIndex("by_work_order", (q: any) => q.eq("workOrderId", workOrder._id)).collect(),
@@ -136,7 +164,7 @@ export async function getCurrentVerificationResult(ctx: any, workOrder: any, now
 export async function appendCurrentVerificationQualityGateDecision(
   ctx: any,
   workOrder: any,
-  current: CurrentVerificationEligibility,
+  current: CurrentVerificationResult,
   idempotencyKey: string,
   now = Date.now(),
 ) {

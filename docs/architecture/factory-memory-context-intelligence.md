@@ -59,27 +59,31 @@ and an Attempt can bind to at most one digest.
 
 - **Factory Memory** owns rebuildable documents/chunks, typed entities and
   relationships, bounded retrieval plans, immutable Attempt Context Packages,
-  retrieval observations, context-quality evaluation sets, and proposal-only
-  improvements.
+  advisory verification guidance, the semantics of its retrieval observations
+  and context-quality evaluations, and proposal-only improvements.
 - **Context Registry** continues to own installable/versioned skills, manifests,
   activation receipts, and package capability evaluations. Registry
   `contextPackages` are not Attempt Context Packages.
 - **Observability/Evals** owns execution traces, observations, datasets,
-  evaluators, and experiments. Factory retrieval observations are specialized
-  context-selection diagnostics and may later emit to that provider-neutral
-  boundary; they are not trace success or evidence.
+  evaluator definitions, scores, and experiments. Factory Memory persists its
+  diagnostics as `RETRIEVAL` rows on the exact Attempt's canonical trace and
+  persists context-quality metrics through versioned canonical evaluator
+  definitions and attributable scores. They are not trace success, evidence,
+  verification verdicts, or acceptance receipts.
 - **Verification/Evidence** owns verification subjects, checks, results,
   receipts, and evidence envelopes. `factoryContextVerificationAdvisories`
   only explains checks worth running and always requires independent evidence.
+  It cannot establish subject identity, independence, currentness, a verdict,
+  or acceptance.
 - **WorkOrder acceptance** remains exclusively in `workOrders.accept`. No
   memory result, inferred relationship, package, observation, evaluation score,
   advisory, or learning proposal can call or satisfy that boundary.
 
-Every diagnostic record that could otherwise be misread as a verdict persists
-`acceptanceAuthority: false`. Context-quality evaluation sets are append-only;
-re-submitting the same canonical set is idempotent. Package comparisons are
-deterministic read models over two immutable packages, so they cannot mutate or
-silently refresh either snapshot.
+Every Factory Memory diagnostic carries `acceptanceAuthority: false` in its
+canonical observation or score metadata. Context-quality evaluation sets are
+append-only; re-submitting the same canonical set is idempotent. Package
+comparisons are deterministic read models over two immutable packages, so they
+cannot mutate or silently refresh either snapshot.
 
 ## Canonical persistence model
 
@@ -88,11 +92,25 @@ silently refresh either snapshot.
 | `factoryMemoryDocuments` / `factoryMemoryChunks` | Redacted, revisioned projections with source lineage and bounded full-text retrieval.                                |
 | `factoryEntities` / `factoryRelationships`       | Typed graph projection; inferred edges require provenance and confidence, and all graph writes are audited.          |
 | `factoryRetrievalPlans`                          | Reproducible plan inputs, reasons, bounds, maximum iterations, and canonical `planDigest`.                           |
-| `factoryContextPackages`                         | Exact selected content and revisions, canonical digest, literal frozen state, and optional one-time Attempt binding. |
+| `factoryContextPackages`                         | Exact selected content and revisions, canonical digest, literal frozen state, and required immutable Attempt/trace binding. |
 | `factoryContextVerificationAdvisories`           | Evidence-required suggestions only; never a Verification Factory plan or verdict.                                    |
-| `factoryRetrievalObservations`                   | Bounded retrieval-quality diagnostics with no acceptance authority.                                                  |
-| `factoryContextEvaluations`                      | Append-only, attributable context-quality sets with no acceptance authority.                                         |
+| `traceObservations`                              | Canonical Attempt-trace store; Factory Memory writes typed `RETRIEVAL` observations through a narrow adapter.        |
+| `evalDefinitions` / `evalScores`                 | Canonical versioned evaluator and attributable score stores for advisory context-effectiveness metrics.              |
 | `metaLoopSuggestions`                            | Existing governed OPEN/approved/rejected workflow used for proposal-only learning.                                   |
+
+The eight Factory Memory domain tables are the document/chunk projection,
+ingestion runs, entities, relationships, retrieval plans, Context Packages,
+and verification advisories. The former generic retrieval-observation and
+context-evaluation tables were removed rather than duplicating the canonical
+observability and evaluation stores.
+
+Factory purpose is the platform-wide canonical vocabulary: `SOFTWARE`,
+`VERIFICATION`, and `INTELLIGENT_AUTOMATION`. Attempt purpose remains the
+separate execution-role vocabulary defined by policy-v2. Each frozen package
+snapshots `attemptPurpose`, `primaryTraceId`, and the Attempt's
+`qualityContractDigest`. Freezing it adds only `factoryContextPackageId` to the
+Attempt and leaves existing verification subject, binding, currentness,
+evidence, verdict, and receipt lineage unchanged.
 
 ## Scope and security invariants
 
@@ -147,7 +165,5 @@ violation, or material latency regression. Disable the affected flag to return
 to the previous execution path; retain the rebuildable projection for audit and
 diagnosis.
 
-This additive public Convex surface advances the runtime contract from v18 to
-v21. Versions 19 and 20 are already reserved by in-flight Model
-Routing/Verification and Observability/Evals changes; this branch must be
-refreshed after those PRs land without reusing their contract versions.
+After rebasing onto main runtime v21, this additive public Convex surface
+advances the runtime contract to v22.

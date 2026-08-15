@@ -882,7 +882,16 @@ export async function seedDemoExtensions(ctx: any, input: DemoSeedContext) {
     const existing = rows.find((row: { projectId?: string }) =>
       factoryMemoryFlag ? row.projectId === projectId : row.projectId == null,
     );
-    if (!existing) {
+    if (existing) {
+      if (!existing.enabled) {
+        await ctx.db.patch(existing._id, {
+          enabled: true,
+          description: `Demo seed — ${key}`,
+          updatedAt: now,
+          updatedBy: "seedMissionControlDemo",
+        });
+      }
+    } else {
       await ctx.db.insert("featureFlags", {
         key,
         enabled: true,

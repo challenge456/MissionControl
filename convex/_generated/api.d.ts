@@ -115,6 +115,7 @@ import type * as lib_factoryHumanReview from "../lib/factoryHumanReview.js";
 import type * as lib_factoryMemory from "../lib/factoryMemory.js";
 import type * as lib_factoryMemoryDemoSeed from "../lib/factoryMemoryDemoSeed.js";
 import type * as lib_factoryMemoryGate from "../lib/factoryMemoryGate.js";
+import type * as lib_factoryMemoryTelemetry from "../lib/factoryMemoryTelemetry.js";
 import type * as lib_factoryMemoryValidators from "../lib/factoryMemoryValidators.js";
 import type * as lib_factoryOverview from "../lib/factoryOverview.js";
 import type * as lib_factoryProjectSeed from "../lib/factoryProjectSeed.js";
@@ -389,6 +390,7 @@ declare const fullApi: ApiFromModules<{
   "lib/factoryMemory": typeof lib_factoryMemory;
   "lib/factoryMemoryDemoSeed": typeof lib_factoryMemoryDemoSeed;
   "lib/factoryMemoryGate": typeof lib_factoryMemoryGate;
+  "lib/factoryMemoryTelemetry": typeof lib_factoryMemoryTelemetry;
   "lib/factoryMemoryValidators": typeof lib_factoryMemoryValidators;
   "lib/factoryOverview": typeof lib_factoryOverview;
   "lib/factoryProjectSeed": typeof lib_factoryProjectSeed;

@@ -12,9 +12,9 @@ import type {
   WorkOrderContextInput,
 } from "./types.js";
 const DEFAULT_BUDGETS: Record<FactoryPurpose, Required<ContextBudget>> = {
-  software: { maxItems: 14, maxEstimatedTokens: 18_000 },
-  verification: { maxItems: 16, maxEstimatedTokens: 20_000 },
-  automation: { maxItems: 12, maxEstimatedTokens: 14_000 },
+  SOFTWARE: { maxItems: 14, maxEstimatedTokens: 18_000 },
+  VERIFICATION: { maxItems: 16, maxEstimatedTokens: 20_000 },
+  INTELLIGENT_AUTOMATION: { maxItems: 12, maxEstimatedTokens: 14_000 },
 };
 function step(
   strategy: RetrievalStrategy,
@@ -131,7 +131,7 @@ export function planContextRetrieval(
         ),
       );
     if (
-      input.purpose === "verification" ||
+      input.purpose === "VERIFICATION" ||
       /\b(test|verify|verification|acceptance|evidence|regression)\b/.test(
         normalized,
       )
@@ -149,13 +149,13 @@ export function planContextRetrieval(
           ],
         ),
       );
-      if (input.purpose === "verification") required.add("test");
+      if (input.purpose === "VERIFICATION") required.add("test");
     }
     if (
       /\b(incident|outage|historically breaks|risk|regression)\b/.test(
         normalized,
       ) ||
-      input.purpose === "verification"
+      input.purpose === "VERIFICATION"
     )
       steps.push(
         step(
