@@ -82,6 +82,7 @@ const DEFAULT_DEPENDENCIES: FactoryAttemptWorkerDependencies = {
 
 export class FactoryAttemptWorker {
   private readonly active = new Map<string, AbortController>();
+  private readonly activeTasks = new Set<Promise<void>>();
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private polling = false;
   private stopped = false;
@@ -111,6 +112,7 @@ export class FactoryAttemptWorker {
     if (this.pollTimer) clearInterval(this.pollTimer);
     this.pollTimer = null;
     for (const controller of this.active.values()) controller.abort();
+    await Promise.allSettled([...this.activeTasks]);
   }
 
   status(): FactoryAttemptWorkerStatus {
@@ -145,13 +147,15 @@ export class FactoryAttemptWorker {
         if (!isBoundFactoryAttempt(run) || !matchesWorkerScope(run, this.scope) || this.active.has(String(run._id))) continue;
         const controller = new AbortController();
         this.active.set(String(run._id), controller);
-        void this.execute(run, controller)
+        const task = this.execute(run, controller)
           .catch((error) => {
             this.failedCount += 1;
             this.lastError = safeError(error);
             console.error(`[factory-worker] Attempt ${run.runId} failed: ${this.lastError}`);
           })
           .finally(() => this.active.delete(String(run._id)));
+        this.activeTasks.add(task);
+        void task.finally(() => this.activeTasks.delete(task));
       }
     } catch (error) {
       this.lastError = safeError(error);

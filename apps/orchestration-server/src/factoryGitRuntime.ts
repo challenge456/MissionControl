@@ -1,9 +1,9 @@
 import { execFile } from "node:child_process";
-import { chmod, mkdir, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { assertWorktreeBoundary } from "./factoryPathScope.js";
+import { assertCanonicalWorktreeBoundary, assertWorktreeBoundary } from "./factoryPathScope.js";
 import { ensureFactoryWorkspaceOwnership, type FactoryWorkspaceOwner } from "./factoryWorkspaceOwnership.js";
 
 const execFileAsync = promisify(execFile);
@@ -15,15 +15,15 @@ export async function ensureFactoryWorktree(input: {
   baseSha: string;
   ownership?: FactoryWorkspaceOwner;
 }) {
-  const boundary = assertWorktreeBoundary(input.checkoutRoot, input.worktree);
+  const lexicalBoundary = assertWorktreeBoundary(input.checkoutRoot, input.worktree);
   assertFactoryBranch(input.branch);
-  const repositoryRoot = path.resolve((await runGit(boundary.checkoutRoot, ["rev-parse", "--show-toplevel"])).stdout.trim());
-  if (await realpath(repositoryRoot) !== await realpath(boundary.checkoutRoot)) throw new Error("Factory host checkout root does not match the Git repository root.");
+  const repositoryRoot = path.resolve((await runGit(lexicalBoundary.checkoutRoot, ["rev-parse", "--show-toplevel"])).stdout.trim());
+  if (await realpath(repositoryRoot) !== await realpath(lexicalBoundary.checkoutRoot)) throw new Error("Factory host checkout root does not match the Git repository root.");
+  const boundary = await assertCanonicalWorktreeBoundary(input.checkoutRoot, input.worktree, { createRoot: true });
   if (!/^[a-f0-9]{40,64}$/i.test(input.baseSha)
     || !await gitSucceeds(boundary.checkoutRoot, ["cat-file", "-e", `${input.baseSha}^{commit}`])) {
     throw new Error("Factory worktree requires the exact frozen base commit to exist locally.");
   }
-  await mkdir(boundary.worktreeRoot, { recursive: true });
   const worktreeExists = await exists(boundary.worktree);
   if (input.ownership) {
     await ensureFactoryWorkspaceOwnership({ owner: input.ownership, allowCreate: !worktreeExists });

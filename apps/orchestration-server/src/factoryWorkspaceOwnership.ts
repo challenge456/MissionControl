@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
-import { lstat, mkdir, readFile, realpath, rename, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import { assertWorktreeBoundary } from "./factoryPathScope.js";
+import { assertCanonicalWorktreeBoundary, assertWorktreeBoundary } from "./factoryPathScope.js";
+import { canonicalGithubRepositoryFromRemote, isExactGithubPullRequestUrl } from "./factoryRepositoryIdentity.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -74,10 +75,15 @@ export async function ensureFactoryWorkspaceOwnership(input: {
 
 export async function recordFactoryExecutorStarted(owner: FactoryWorkspaceOwner, pid: number) {
   if (!Number.isSafeInteger(pid) || pid < 1) throw new Error("Executor process identity requires a positive PID.");
-  return await updateOwnedManifest(owner, (manifest) => ({
-    ...manifest,
-    process: { state: "RUNNING", pid, startedAt: Date.now() },
-  }));
+  return await updateOwnedManifest(owner, (manifest) => {
+    if (manifest.process.state !== "NOT_STARTED") {
+      throw new Error("Executor process ownership was already established; workspace was preserved.");
+    }
+    return {
+      ...manifest,
+      process: { state: "RUNNING", pid, startedAt: Date.now() },
+    };
+  });
 }
 
 export async function recordFactoryExecutorTerminated(owner: FactoryWorkspaceOwner, process: {
@@ -104,8 +110,9 @@ export async function recordFactoryPublication(owner: FactoryWorkspaceOwner, pub
   headSha: string;
   pullRequestUrl: string;
 }) {
-  if (!gitSha(publication.headSha) || !httpsUrl(publication.pullRequestUrl)) {
-    throw new Error("Workspace publication proof requires an exact head SHA and HTTPS pull-request URL.");
+  if (!gitSha(publication.headSha)
+    || !isExactGithubPullRequestUrl(publication.pullRequestUrl, owner.repositoryIdentity)) {
+    throw new Error("Workspace publication proof requires an exact head SHA and repository-scoped GitHub pull-request URL.");
   }
   return await updateOwnedManifest(owner, (manifest) => ({
     ...manifest,
@@ -131,10 +138,22 @@ export async function transferFactoryPublicationWorkspace(input: {
     throw new Error("Only a terminated workspace with an exact publication checkpoint can transfer sessions.");
   }
   assertStaticWorkspaceIdentity(input.previousOwner, input.nextOwner);
+  if (input.previousOwner.workerId !== input.nextOwner.workerId
+    || input.previousOwner.leaseId === input.nextOwner.leaseId
+    || input.nextOwner.workerGeneration < input.previousOwner.workerGeneration
+    || (input.previousOwner.workerSessionId !== input.nextOwner.workerSessionId
+      && input.nextOwner.workerGeneration <= input.previousOwner.workerGeneration)) {
+    throw new Error("Publication workspace transfer requires the same stable worker, a new lease, and monotonic generation.");
+  }
+  const boundary = await assertCanonicalWorktreeBoundary(
+    input.previousOwner.checkoutRoot,
+    input.previousOwner.worktree,
+    { requireWorktree: true },
+  );
   const [branch, head, status] = await Promise.all([
-    git(input.previousOwner.worktree, ["branch", "--show-current"]),
-    git(input.previousOwner.worktree, ["rev-parse", "HEAD"]),
-    git(input.previousOwner.worktree, ["status", "--porcelain=v1", "--untracked-files=all"]),
+    git(boundary.worktree, ["branch", "--show-current"]),
+    git(boundary.worktree, ["rev-parse", "HEAD"]),
+    git(boundary.worktree, ["status", "--porcelain=v1", "--untracked-files=all"]),
   ]);
   if (branch !== input.previousOwner.branch || head !== input.checkpointCandidateSha || status) {
     throw new Error("Publication workspace transfer proof does not match the clean checkpoint candidate.");
@@ -177,11 +196,12 @@ export async function cleanupOwnedFactoryWorkspace(input: {
   }
 
   try {
-    const boundary = assertWorktreeBoundary(input.owner.checkoutRoot, input.owner.worktree);
-    const [checkoutRoot, worktreeRoot, registeredWorktreeRoot, branch, head, status, remote, worktreeList, baseIsAncestor] = await Promise.all([
-      realpath(boundary.checkoutRoot),
-      realpath(boundary.worktree),
-      realpath(boundary.worktreeRoot),
+    const boundary = await assertCanonicalWorktreeBoundary(
+      input.owner.checkoutRoot,
+      input.owner.worktree,
+      { requireWorktree: true },
+    );
+    const [branch, head, status, remote, worktreeList, baseIsAncestor] = await Promise.all([
       git(boundary.worktree, ["branch", "--show-current"]),
       git(boundary.worktree, ["rev-parse", "HEAD"]),
       git(boundary.worktree, ["status", "--porcelain=v1", "--untracked-files=all"]),
@@ -189,25 +209,23 @@ export async function cleanupOwnedFactoryWorkspace(input: {
       git(boundary.checkoutRoot, ["worktree", "list", "--porcelain"]),
       gitSucceeds(boundary.worktree, ["merge-base", "--is-ancestor", input.owner.baseSha, input.expectedHeadSha]),
     ]);
-    const realRelativeWorktree = path.relative(registeredWorktreeRoot, worktreeRoot);
-    if (checkoutRoot !== await realpath(input.owner.checkoutRoot)
-      || worktreeRoot !== await realpath(input.owner.worktree)
-      || !realRelativeWorktree
-      || realRelativeWorktree.startsWith("..")
-      || path.isAbsolute(realRelativeWorktree)
-      || branch !== input.owner.branch
+    if (branch !== input.owner.branch
       || head !== input.expectedHeadSha
       || !baseIsAncestor
       || status
-      || canonicalRepository(remote) !== input.owner.repositoryIdentity
-      || !worktreeListHasExactOwner(worktreeList, worktreeRoot, input.owner.branch)) {
+      || canonicalGithubRepositoryFromRemote(remote) !== input.owner.repositoryIdentity
+      || !worktreeListHasExactOwner(worktreeList, boundary.worktree, input.owner.branch)) {
       return await preserve("git-worktree-ownership-proof-mismatch-or-dirty");
     }
   } catch (error) {
     return await preserve(`cleanup-proof-failed:${safeReason(error)}`);
   }
-  const boundary = assertWorktreeBoundary(input.owner.checkoutRoot, input.owner.worktree);
   try {
+    const boundary = await assertCanonicalWorktreeBoundary(
+      input.owner.checkoutRoot,
+      input.owner.worktree,
+      { requireWorktree: true },
+    );
     await git(boundary.checkoutRoot, ["worktree", "remove", boundary.worktree]);
   } catch (error) {
     return await preserve(`cleanup-remove-refused:${safeReason(error)}`);
@@ -244,7 +262,7 @@ async function requireOwnedManifest(owner: FactoryWorkspaceOwner) {
 }
 
 async function ownershipManifestPath(owner: FactoryWorkspaceOwner) {
-  const boundary = assertWorktreeBoundary(owner.checkoutRoot, owner.worktree);
+  const boundary = await assertCanonicalWorktreeBoundary(owner.checkoutRoot, owner.worktree, { createRoot: true });
   const stateRoot = path.join(boundary.checkoutRoot, ".mission-control", "worker-state", "workspaces");
   await ensureProtectedDirectory(stateRoot, boundary.checkoutRoot);
   const fileName = `${createHash("sha256").update(owner.workflowRunId).digest("hex")}.json`;
@@ -271,7 +289,9 @@ async function ensureProtectedDirectory(directory: string, checkoutRoot: string)
 async function readManifest(manifestPath: string): Promise<FactoryWorkspaceOwnershipManifest | undefined> {
   const file = await lstat(manifestPath).catch(() => null);
   if (!file) return undefined;
-  if (file.isSymbolicLink() || !file.isFile()) throw new Error("Workspace ownership manifest must be a regular protected file.");
+  if (file.isSymbolicLink() || !file.isFile() || (file.mode & 0o077) !== 0) {
+    throw new Error("Workspace ownership manifest must be a regular owner-only protected file.");
+  }
   const parsed = JSON.parse(await readFile(manifestPath, "utf8"));
   if (parsed?.version !== "factory-workspace-ownership/v1") throw new Error("Workspace ownership manifest version is invalid.");
   return parsed;
@@ -326,15 +346,6 @@ function worktreeListHasExactOwner(output: string, worktree: string, branch: str
   });
 }
 
-function canonicalRepository(remote: string) {
-  const value = remote.trim().replace(/\.git$/, "");
-  const scp = value.match(/^[^@]+@[^:]+:(.+)$/)?.[1];
-  const remotePath = scp ?? (() => {
-    try { return new URL(value).pathname; } catch { return value; }
-  })();
-  return remotePath.replace(/^\/+/, "").replace(/\.git$/, "");
-}
-
 async function git(cwd: string, args: string[]) {
   const result = await execFileAsync("git", args, { cwd, env: process.env, maxBuffer: 20 * 1024 * 1024 });
   return result.stdout.trim();
@@ -351,10 +362,6 @@ async function gitSucceeds(cwd: string, args: string[]) {
 
 function gitSha(value: string) {
   return /^[a-f0-9]{40,64}$/i.test(value);
-}
-
-function httpsUrl(value: string) {
-  try { return new URL(value).protocol === "https:"; } catch { return false; }
 }
 
 function safeReason(error: unknown) {

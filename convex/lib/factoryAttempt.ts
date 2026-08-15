@@ -28,6 +28,14 @@ type PublicationArtifactLike = {
   metadata?: Record<string, unknown>;
 };
 
+type FactoryWorkerRegistrationLike = {
+  hostId?: string;
+  workerRuntime?: {
+    sessionId?: string;
+    generation?: number;
+  };
+};
+
 type FactoryPublicationPatch = {
   executionBaseSha?: string;
   headSha?: string;
@@ -55,6 +63,7 @@ export function deriveFactoryPublicationLineage(input: {
   codeDiffArtifact?: PublicationArtifactLike | null;
   verifiedSourceRevision?: string;
   completedAt?: number;
+  expectedRepositoryIdentity?: string;
 }): { changedFiles: string[]; patch: FactoryPublicationPatch } {
   const pullRequest = input.pullRequestArtifact?.artifactType === "PULL_REQUEST"
     ? input.pullRequestArtifact
@@ -68,7 +77,12 @@ export function deriveFactoryPublicationLineage(input: {
   const sourceRevision = gitRevision(pullRequestMetadata.sourceRevision)
     ?? gitRevision(codeDiffMetadata.sourceRevision)
     ?? gitRevision(input.verifiedSourceRevision);
-  const pullRequestUrl = httpUrl(pullRequest?.externalLocation ?? pullRequestMetadata.pullRequestUrl);
+  const pullRequestUrl = input.expectedRepositoryIdentity
+    ? exactGithubPullRequest(
+        pullRequest?.externalLocation ?? pullRequestMetadata.pullRequestUrl,
+        input.expectedRepositoryIdentity,
+      )?.url
+    : httpUrl(pullRequest?.externalLocation ?? pullRequestMetadata.pullRequestUrl);
   const pullRequestNumber = Number.isSafeInteger(pullRequestMetadata.pullRequestNumber)
     && Number(pullRequestMetadata.pullRequestNumber) > 0
     ? Number(pullRequestMetadata.pullRequestNumber)
@@ -94,6 +108,92 @@ export function deriveFactoryPublicationLineage(input: {
       ...(input.completedAt ? { publishedAt: input.completedAt } : {}),
     },
   };
+}
+
+export function factoryAttemptRequiresReplacementOnClaim(input: {
+  status: string;
+  lease?: AttemptLease;
+  continuationStatus?: string;
+  now: number;
+}) {
+  const hadExecutionOwnership = input.status === "RUNNING" || Boolean(input.lease);
+  const leaseIsInactive = !input.lease || input.lease.expiresAt <= input.now;
+  const hasRecoverablePublicationCheckpoint = ["AWAITING_HUMAN_REVIEW", "READY_TO_PUBLISH", "PUBLICATION_AUTHORIZED"]
+    .includes(input.continuationStatus ?? "");
+  return hadExecutionOwnership && leaseIsInactive && !hasRecoverablePublicationCheckpoint;
+}
+
+export function expiredFactoryLeaseIdIsReplay(input: {
+  lease?: AttemptLease;
+  leaseId: string;
+  now: number;
+}) {
+  return Boolean(input.lease
+    && input.lease.expiresAt <= input.now
+    && input.lease.leaseId === input.leaseId);
+}
+
+export function factoryLeaseMatchesCurrentRegistration(
+  lease: AttemptLease | undefined,
+  registration: FactoryWorkerRegistrationLike | undefined,
+) {
+  if (!lease) return false;
+  // Active legacy leases remain usable during a backend-first rollout. They
+  // are still fenced by service owner, random lease ID, status, and expiry.
+  if (!lease.workerId && !lease.workerSessionId && lease.workerGeneration === undefined) return true;
+  return Boolean(
+    lease.workerId
+    && lease.workerSessionId
+    && Number.isSafeInteger(lease.workerGeneration)
+    && registration?.hostId === lease.workerId
+    && registration.workerRuntime?.sessionId === lease.workerSessionId
+    && registration.workerRuntime?.generation === lease.workerGeneration
+  );
+}
+
+export function validateFactoryPullRequestLineage(input: {
+  artifact: PublicationArtifactLike | null | undefined;
+  expected: {
+    repositoryId: string;
+    repositoryIdentity: string;
+    installationId: string;
+    branch: string;
+    headSha: string;
+    sourceRevision?: string;
+    executionManifestDigest: string;
+    publicationPermitId?: string;
+  };
+}): { ok: true; pullRequestNumber: number; pullRequestUrl: string } | { ok: false; reason: string } {
+  const artifact = input.artifact;
+  const metadata = artifact?.metadata ?? {};
+  if (!gitRevision(input.expected.headSha)
+    || (input.expected.sourceRevision !== undefined && !gitRevision(input.expected.sourceRevision))) {
+    return { ok: false, reason: "pull-request-revision-invalid" };
+  }
+  if (artifact?.artifactType !== "PULL_REQUEST") return { ok: false, reason: "artifact-type-mismatch" };
+  const pullRequest = exactGithubPullRequest(
+    artifact.externalLocation ?? metadata.pullRequestUrl,
+    input.expected.repositoryIdentity,
+  );
+  if (!pullRequest) return { ok: false, reason: "pull-request-url-mismatch" };
+  if (metadata.pullRequestNumber !== pullRequest.number
+    || metadata.repositoryId !== input.expected.repositoryId
+    || metadata.repository !== input.expected.repositoryIdentity
+    || metadata.installationId !== input.expected.installationId
+    || metadata.branch !== input.expected.branch
+    || metadata.headSha !== input.expected.headSha
+    || metadata.executionManifestDigest !== input.expected.executionManifestDigest) {
+    return { ok: false, reason: "pull-request-metadata-mismatch" };
+  }
+  if (input.expected.sourceRevision !== undefined
+    && metadata.sourceRevision !== input.expected.sourceRevision) {
+    return { ok: false, reason: "pull-request-source-revision-mismatch" };
+  }
+  if (input.expected.publicationPermitId !== undefined
+    && metadata.publicationPermitId !== input.expected.publicationPermitId) {
+    return { ok: false, reason: "pull-request-permit-mismatch" };
+  }
+  return { ok: true, pullRequestNumber: pullRequest.number, pullRequestUrl: pullRequest.url };
 }
 
 export function factoryAttemptMutationIsAuthorized(run: {
@@ -259,4 +359,26 @@ function leaseWorkerMatches(lease: AttemptLease, worker: FactoryAttemptWorkerIde
     && lease.workerId === worker.workerId
     && lease.workerSessionId === worker.sessionId
     && lease.workerGeneration === worker.generation);
+}
+
+function exactGithubPullRequest(value: unknown, repositoryIdentity: string) {
+  if (typeof value !== "string"
+    || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repositoryIdentity)) return undefined;
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "https:"
+      || parsed.hostname.toLowerCase() !== "github.com"
+      || parsed.port
+      || parsed.username
+      || parsed.password
+      || parsed.search
+      || parsed.hash) return undefined;
+    const match = parsed.pathname.match(/^\/([^/]+)\/([^/]+)\/pull\/([1-9]\d*)$/);
+    if (!match || `${match[1]}/${match[2]}` !== repositoryIdentity) return undefined;
+    const number = Number(match[3]);
+    if (!Number.isSafeInteger(number)) return undefined;
+    return { number, url: parsed.toString() };
+  } catch {
+    return undefined;
+  }
 }

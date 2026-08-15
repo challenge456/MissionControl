@@ -50,12 +50,15 @@ creates a new session and server-derived generation.
    Version, quality contract, and verification contract.
 2. `attempts.claim` atomically checks the current registration, heartbeat,
    readiness/draining state, repository access, executor, isolation, required
-   sandbox capabilities, backend, and server-counted active leases.
+   sandbox capabilities, backend, and server-counted active leases. Capacity is
+   counted across all repositories and sessions for the stable worker ID; the
+   reported `currentRuns` value is observational only.
 3. A successful claim writes a unique lease ID plus worker ID, session, and
    generation.
 4. Renewal extends the lease only for that complete identity. A stale process
    cannot report evidence or authorize publication after expiry, replacement,
-   cancellation, or session change.
+   cancellation, or session/generation change. Every hardened mutation also
+   re-checks the current server registration in the same transaction.
 5. Heartbeats update current lease/registration state. They are not emitted as
    high-volume durable events.
 
@@ -72,6 +75,9 @@ repository, Attempt, worker/session/generation, lease, branch, exact path,
 execution-manifest digest, base SHA, optional sandbox ID, executor PID/state,
 publication proof, and cleanup result. Files are atomically replaced with mode
 `0600`; state directories use mode `0700`; symbolic-link traversal is rejected.
+The real `.mission-control/worktrees` directory must resolve exactly beneath
+the real checkout root; a symlinked root is rejected before creation, transfer,
+or cleanup.
 
 Do not hand-edit these files to force recovery or cleanup. A mismatch is a
 preservation signal, not a repair instruction.
@@ -104,8 +110,11 @@ Automatic cleanup runs only after all of the following are true:
 2. the executor PID recorded by the adapter is proven terminated;
 3. the Git worktree registry contains the exact path and branch;
 4. the worktree is clean and its `HEAD` is the published PR head;
-5. the HTTPS pull-request proof matches the recorded publication;
-6. the checkout origin matches the frozen repository identity.
+5. the pull-request proof is an exact `https://github.com/<owner>/<repo>/pull/<n>`
+   URL with matching GitHub App installation, branch, candidate, permit, and
+   execution-manifest lineage;
+6. the checkout origin is an exact HTTPS/SSH `github.com` remote matching the
+   frozen repository identity.
 
 Cleanup invokes `git worktree remove <exact-path>` without `--force`. It never
 runs global `git clean`, recursive blanket deletion, wildcard removal, or
@@ -130,9 +139,33 @@ When a workspace is preserved:
 
 Set worker readiness to `DRAINING` in the registration interface before a
 future fleet manager stops assigning work. The current single-process runtime
-aborts active adapters on `SIGINT`/`SIGTERM`; if termination proof cannot be
-written, the workspace remains `RUNNING`/unknown and automated cleanup will
-preserve it after restart.
+aborts active adapters on `SIGINT`/`SIGTERM` and waits for their tasks to settle.
+The Codex child runs in a dedicated process group; cancellation and timeout
+signal only that live owned group and escalate from `SIGTERM` to `SIGKILL` after
+a bounded grace period. The agent child receives an explicit environment
+allowlist and never inherits service-command, Convex, GitHub App, or provider
+API secret environment variables. If termination proof cannot be written, the
+workspace remains
+`RUNNING`/unknown and automated cleanup preserves it after restart. A manifest
+PID is never used to adopt or kill a process after restart, so PID reuse cannot
+create ownership.
+
+## Backend-first rollout
+
+1. Deploy the `v22` Convex backend first. The host-report additions and lease
+   worker fields are optional, so existing active `v21` legacy leases remain
+   readable and may renew/report with their existing service owner and lease ID.
+2. Confirm the runtime-contract guard reports only
+   `workspaceHostBindings:report` and `v21 → v22`.
+3. Deploy hardened orchestration workers one host at a time. Each worker waits
+   for its initial registration before polling.
+4. After a host advertises `workerRuntime`, new claims without the current
+   worker/session identity fail closed. Existing unexpired legacy leases remain
+   valid; once any execution lease expires or disappears, it is LOST and cannot
+   reclaim the same Attempt.
+5. Drain before rollback. Removing the worker process does not downgrade an
+   existing hardened registration; stale heartbeats stop new claims and retain
+   workspaces for inspection.
 
 ## Monitoring
 

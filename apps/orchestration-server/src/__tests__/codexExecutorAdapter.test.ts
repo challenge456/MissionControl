@@ -1,8 +1,12 @@
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { CodexV1ExecutorAdapter } from "../codexExecutorAdapter.js";
+import {
+  CodexV1ExecutorAdapter,
+  codexChildEnvironment,
+  codexOwnedProcessGroupExists,
+} from "../codexExecutorAdapter.js";
 
 const request = {
   executionId: "execution-1",
@@ -65,6 +69,56 @@ describe("CodexV1ExecutorAdapter", () => {
     expect(await adapter.cancel(request.executionId)).toBe(true);
     await expect(execution).resolves.toMatchObject({ status: "CANCELED" });
   });
+
+  it("passes only an explicit non-control-plane environment to Codex", () => {
+    const child = codexChildEnvironment({
+      PATH: "/usr/bin",
+      HOME: "/tmp/home",
+      CODEX_HOME: "/tmp/codex-home",
+      MISSION_CONTROL_SERVICE_COMMAND_SECRET: "service-secret",
+      GITHUB_APP_PRIVATE_KEY: "github-secret",
+      CONVEX_SERVICE_AUTH_TOKEN: "convex-secret",
+      OPENAI_API_KEY: "provider-secret",
+    });
+    expect(child).toMatchObject({ PATH: "/usr/bin", HOME: "/tmp/home", CODEX_HOME: "/tmp/codex-home", CI: "true" });
+    expect(child).not.toHaveProperty("MISSION_CONTROL_SERVICE_COMMAND_SECRET");
+    expect(child).not.toHaveProperty("GITHUB_APP_PRIVATE_KEY");
+    expect(child).not.toHaveProperty("CONVEX_SERVICE_AUTH_TOKEN");
+    expect(child).not.toHaveProperty("OPENAI_API_KEY");
+  });
+
+  it.skipIf(process.platform === "win32")("cancels the dedicated owned executor process group", async () => {
+    const repositoryRoot = await mkdtemp(path.join(tmpdir(), "mc-codex-process-group-"));
+    const executable = path.join(repositoryRoot, "codex-tree-stub.sh");
+    const childPidPath = path.join(repositoryRoot, "child.pid");
+    await writeFile(executable, `#!/bin/sh
+sleep 60 &
+printf '%s' "$!" > "${childPidPath}"
+wait
+`);
+    await chmod(executable, 0o700);
+
+    try {
+      const adapter = new CodexV1ExecutorAdapter(executable);
+      const started = vi.fn();
+      const terminated = vi.fn();
+      const execution = adapter.execute({
+        ...request,
+        repositoryRoot,
+        workingDirectory: repositoryRoot,
+      }, () => undefined, undefined, { started, terminated });
+      await vi.waitFor(() => expect(access(childPidPath)).resolves.toBeUndefined());
+      expect(Number.isSafeInteger(Number(await readFile(childPidPath, "utf8")))).toBe(true);
+      const processGroupId = started.mock.calls[0][0].pid;
+      expect(codexOwnedProcessGroupExists(processGroupId)).toBe(true);
+      expect(await adapter.cancel(request.executionId)).toBe(true);
+      await expect(execution).resolves.toMatchObject({ status: "CANCELED" });
+      expect(terminated).toHaveBeenCalledWith(expect.objectContaining({ pid: processGroupId }));
+      await vi.waitFor(() => expect(codexOwnedProcessGroupExists(processGroupId)).toBe(false), { timeout: 7_000 });
+    } finally {
+      await rm(repositoryRoot, { recursive: true, force: true });
+    }
+  }, 10_000);
 
   it("closes the Codex CLI stdin pipe so an explicit prompt can start", async () => {
     const repositoryRoot = await mkdtemp(path.join(tmpdir(), "mc-codex-stdin-"));

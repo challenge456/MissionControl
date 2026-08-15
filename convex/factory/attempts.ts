@@ -1,8 +1,18 @@
 import { v } from "convex/values";
 import { internalMutation, internalQuery } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { activeLeaseMatches, deriveFactoryPublicationLineage, evaluateAttemptClaim, factoryAttemptMutationIsAuthorized, renewAttemptLease } from "../lib/factoryAttempt";
-import { factoryWorkerEligibility } from "../lib/factoryWorkerRuntime";
+import {
+  activeLeaseMatches,
+  deriveFactoryPublicationLineage,
+  evaluateAttemptClaim,
+  expiredFactoryLeaseIdIsReplay,
+  factoryAttemptMutationIsAuthorized,
+  factoryAttemptRequiresReplacementOnClaim,
+  factoryLeaseMatchesCurrentRegistration,
+  renewAttemptLease,
+  validateFactoryPullRequestLineage,
+} from "../lib/factoryAttempt";
+import { countActiveFactoryWorkerLeases, factoryWorkerEligibility } from "../lib/factoryWorkerRuntime";
 import {
   PUBLICATION_SAFETY_WINDOW_MS,
   validatePublicationPermit,
@@ -116,6 +126,20 @@ export const claimInternal = internalMutation({
     }
 
     const now = Date.now();
+    if (factoryAttemptRequiresReplacementOnClaim({
+      status: run.status,
+      lease: run.lease,
+      continuationStatus: run.factoryContinuation?.status,
+      now,
+    })) {
+      return await failLostAttempt(ctx, run, "The prior execution lease is missing or expired without a recoverable publication checkpoint.");
+    }
+    if (run.factoryContinuation?.status === "AWAITING_HUMAN_REVIEW") {
+      return { claimed: false as const, reason: "human-review-pending" };
+    }
+    if (expiredFactoryLeaseIdIsReplay({ lease: run.lease, leaseId: args.leaseId, now })) {
+      return { claimed: false as const, reason: "lease-id-replay" };
+    }
     let worker: { workerId: string; sessionId: string; generation: number } | undefined;
     if (host.workerRuntime && !args.workerId && !args.workerSessionId) {
       return { claimed: false as const, reason: "worker-session-identity-required" };
@@ -124,18 +148,17 @@ export const claimInternal = internalMutation({
       if (!args.workerId || !args.workerSessionId || host.hostId !== args.workerId) {
         return { claimed: false as const, reason: "worker-identity-mismatch" };
       }
+      // Every claim for every repository reads the same RUNNING index range.
+      // Convex serializable transactions therefore retry concurrent phantoms,
+      // while the stable worker ID makes capacity global across sessions.
       const runningAttempts = await ctx.db.query("workflowRuns")
-        .withIndex("by_repository_status", (q) => q.eq("repositoryId", repository._id).eq("status", "RUNNING"))
+        .withIndex("by_status", (q) => q.eq("status", "RUNNING"))
         .collect();
-      const activeSessionLeaseCount = runningAttempts.filter((candidate) => {
-        const lease = candidate.lease;
-        return Boolean(
-          lease
-          && lease.workerId === args.workerId
-          && lease.workerSessionId === args.workerSessionId
-          && lease.expiresAt > now
-        );
-      }).length;
+      const activeWorkerLeaseCount = countActiveFactoryWorkerLeases({
+        runs: runningAttempts,
+        workerId: args.workerId,
+        now,
+      });
       const manifest = run.executionManifest as any;
       const eligibility = factoryWorkerEligibility({
         worker: {
@@ -158,16 +181,13 @@ export const claimInternal = internalMutation({
           sandboxCapabilities: manifest.harness?.requiredCapabilities ?? [],
           executionBackend: manifest.harness?.executionBackend,
         },
-        activeSessionLeaseCount,
+        activeWorkerLeaseCount,
         now,
       });
       if (!eligibility.eligible || eligibility.sessionId !== args.workerSessionId) {
         return { claimed: false as const, reason: eligibility.eligible ? "worker-session-mismatch" : eligibility.reason };
       }
       worker = { workerId: eligibility.workerId, sessionId: eligibility.sessionId, generation: eligibility.generation };
-      if (run.lease && run.lease.expiresAt <= now && !run.factoryContinuation) {
-        return await failLostAttempt(ctx, run, "The prior worker lease expired without a recoverable publication checkpoint.");
-      }
     }
     const decision = evaluateAttemptClaim({
       status: run.status,
@@ -374,7 +394,8 @@ export const authorizePublicationInternal = internalMutation({
         ownerId: args.ownerId,
         worker: mutationWorkerIdentity(args),
         now,
-      })) {
+      })
+      || !await factoryLeaseRegistrationIsCurrent(ctx, run)) {
       throw new Error("Factory publication authorization requires the active matching lease.");
     }
     if (!run.workOrderId) throw new Error("Factory publication requires a WorkOrder-bound Attempt.");
@@ -498,6 +519,9 @@ export const renewInternal = internalMutation({
     if (!run || !factoryAttemptMutationIsAuthorized(run)) {
       return { renewed: false as const, reason: run?.cancellationRequestedAt ? "cancellation-requested" : "attempt-not-running" };
     }
+    if (!await factoryLeaseRegistrationIsCurrent(ctx, run)) {
+      return { renewed: false as const, reason: "worker-registration-stale" };
+    }
     const result = renewAttemptLease({
       lease: run.lease,
       leaseId: args.leaseId,
@@ -531,7 +555,8 @@ export const reportInternal = internalMutation({
         ownerId: args.ownerId,
         worker: mutationWorkerIdentity(args),
         now: Date.now(),
-      })) {
+      })
+      || !await factoryLeaseRegistrationIsCurrent(ctx, run)) {
       throw new Error("Factory attempt report requires the active matching lease.");
     }
     const packet = args.packet && typeof args.packet === "object" ? args.packet : {};
@@ -540,6 +565,17 @@ export const reportInternal = internalMutation({
     const observations = Array.isArray(packet.observations) ? packet.observations : [];
     if (events.length > 100 || artifacts.length > 20 || observations.length > 200) {
       throw new Error("Factory attempt report exceeds packet limits.");
+    }
+    if (artifacts.filter((artifact: any) => artifact?.artifactType === "PULL_REQUEST").length > 1) {
+      throw new Error("Factory attempt report may contain only one pull-request artifact.");
+    }
+    for (const artifact of artifacts) {
+      if (artifact?.artifactType === "PULL_REQUEST") {
+        await assertFactoryPullRequestArtifact(ctx, run, artifact, {
+          headSha: run.factoryContinuation?.candidateRevision ?? artifact?.metadata?.headSha,
+          sourceRevision: run.factoryContinuation?.sourceRevision,
+        });
+      }
     }
 
     const eventResults = [];
@@ -574,6 +610,9 @@ export const reportInternal = internalMutation({
         .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", artifact.idempotencyKey))
         .first();
       if (existing) {
+        if (existing.workflowRunId !== run._id) {
+          throw new Error("Factory artifact idempotency key is already bound to another Attempt.");
+        }
         artifactResults.push({ artifact: existing, created: false });
         continue;
       }
@@ -645,6 +684,14 @@ export const reportInternal = internalMutation({
           .order("desc")
           .first()
         : null;
+      if (pullRequestArtifact) {
+        await assertFactoryPullRequestArtifact(ctx, run, pullRequestArtifact, {
+          headSha: exactGateReceipt?.candidateRevision
+            ?? run.factoryContinuation?.candidateRevision
+            ?? pullRequestArtifact.metadata?.headSha,
+          sourceRevision: exactGateReceipt?.sourceRevision ?? run.factoryContinuation?.sourceRevision,
+        });
+      }
       if (terminal.status === "COMPLETED" && run.isMutating !== false) {
         if (!pullRequestArtifact) throw new Error("A mutating Factory attempt cannot complete without a pull-request artifact.");
       }
@@ -698,6 +745,9 @@ export const reportInternal = internalMutation({
         codeDiffArtifact,
         verifiedSourceRevision: exactGateReceipt?.sourceRevision,
         completedAt: terminal.status === "COMPLETED" ? completedAt : undefined,
+        expectedRepositoryIdentity: terminal.status === "COMPLETED" && run.repositoryId
+          ? (await ctx.db.get(run.repositoryId))?.repository
+          : undefined,
       });
       if (terminal.status === "COMPLETED" && run.isMutating !== false
         && (!publicationLineage.patch.headSha || !publicationLineage.patch.pullRequestUrl)) {
@@ -773,6 +823,54 @@ export const reportInternal = internalMutation({
     };
   },
 });
+
+async function factoryLeaseRegistrationIsCurrent(ctx: any, run: any) {
+  if (!run.lease) return false;
+  if (!run.lease.workerId && !run.lease.workerSessionId && run.lease.workerGeneration === undefined) {
+    return true;
+  }
+  const host = run.hostBindingId ? await ctx.db.get(run.hostBindingId) : null;
+  return factoryLeaseMatchesCurrentRegistration(run.lease, host ?? undefined);
+}
+
+async function assertFactoryPullRequestArtifact(
+  ctx: any,
+  run: any,
+  artifact: any,
+  revisions: { headSha?: string; sourceRevision?: string },
+) {
+  if (!run.repositoryId || !run.branch || !run.executionManifestDigest || !revisions.headSha) {
+    throw new Error("Factory pull-request artifact is missing its frozen Attempt lineage.");
+  }
+  const [repository, installation] = await Promise.all([
+    ctx.db.get(run.repositoryId),
+    ctx.db.query("githubAppInstallations")
+      .withIndex("by_repository", (q: any) => q.eq("repositoryId", run.repositoryId))
+      .first(),
+  ]);
+  if (!repository || repository.projectId !== run.projectId || repository.status !== "READY"
+    || !installation || installation.projectId !== run.projectId || installation.status !== "CONNECTED") {
+    throw new Error("Factory pull-request artifact requires the current connected GitHub App repository binding.");
+  }
+  const validation = validateFactoryPullRequestLineage({
+    artifact,
+    expected: {
+      repositoryId: String(repository._id),
+      repositoryIdentity: repository.repository,
+      installationId: installation.installationId,
+      branch: run.branch,
+      headSha: revisions.headSha,
+      sourceRevision: revisions.sourceRevision,
+      executionManifestDigest: run.executionManifestDigest,
+      publicationPermitId: run.factoryContinuation?.status === "PUBLICATION_AUTHORIZED"
+        ? run.factoryContinuation.publicationPermitId
+        : undefined,
+    },
+  });
+  if (validation.ok === false) {
+    throw new Error(`Factory pull-request artifact failed GitHub App lineage validation (${validation.reason}).`);
+  }
+}
 
 function mutationWorkerIdentity(args: {
   workerId?: string;

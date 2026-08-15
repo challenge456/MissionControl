@@ -22,6 +22,15 @@ describe("Factory host reporting", () => {
     expect(canonicalRepositoryFromRemote(remote)).toBe(expected);
   });
 
+  it.each([
+    "https://evil.example/jaydubya818/MissionControl.git",
+    "git@evil.example:jaydubya818/MissionControl.git",
+    "file:///tmp/jaydubya818/MissionControl.git",
+    "https://github.com/jaydubya818/MissionControl/extra.git",
+  ])("rejects a non-canonical GitHub origin %s", (remote) => {
+    expect(() => canonicalRepositoryFromRemote(remote)).toThrow(/GitHub|github\.com/);
+  });
+
   it("reports the real root, identity, revision, and dirty state", async () => {
     const repository = await mkdtemp(path.join(os.tmpdir(), "mc-host-report-"));
     cleanup.push(repository);

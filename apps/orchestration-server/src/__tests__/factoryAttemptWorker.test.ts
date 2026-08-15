@@ -275,7 +275,7 @@ async function runFixture(
   const adapter = new CodexV1ExecutorAdapter("codex-fixture", executeCodex);
   const createPullRequest = vi.fn(async (input: Parameters<FactoryAttemptWorkerDependencies["createOrReusePullRequest"]>[0]) => ({
     number: 42,
-    url: "https://example.test/sellerfi/mission-control-fixture/pull/42",
+    url: "https://github.com/sellerfi/mission-control-fixture/pull/42",
     nodeId: "PR_fixture",
     headSha: input.headSha,
     reused: false,

@@ -1,3 +1,4 @@
+import { lstat, mkdir, realpath } from "node:fs/promises";
 import path from "node:path";
 
 export interface FrozenCodeScope {
@@ -23,6 +24,60 @@ export function assertWorktreeBoundary(checkoutRoot: string, worktree: string) {
     throw new Error("The Factory worktree must be attempt-specific and remain inside .mission-control/worktrees.");
   }
   return { checkoutRoot: root, worktree: target, worktreeRoot: requiredRoot };
+}
+
+export async function assertCanonicalWorktreeBoundary(
+  checkoutRoot: string,
+  worktree: string,
+  options: { createRoot?: boolean; requireWorktree?: boolean } = {},
+) {
+  const boundary = assertWorktreeBoundary(checkoutRoot, worktree);
+  const missionControlRoot = path.join(boundary.checkoutRoot, ".mission-control");
+  await ensureRealDirectory(missionControlRoot, options.createRoot ?? false);
+  await ensureRealDirectory(boundary.worktreeRoot, options.createRoot ?? false);
+
+  const [realCheckoutRoot, realWorktreeRoot] = await Promise.all([
+    realpath(boundary.checkoutRoot),
+    realpath(boundary.worktreeRoot),
+  ]);
+  if (realWorktreeRoot !== path.join(realCheckoutRoot, ".mission-control", "worktrees")) {
+    throw new Error("The Factory worktree root must resolve inside the approved checkout root without symbolic links.");
+  }
+
+  const worktreeEntry = await lstat(boundary.worktree).catch(() => null);
+  if (!worktreeEntry) {
+    if (options.requireWorktree) throw new Error("The Factory worktree does not exist.");
+    return { ...boundary, checkoutRoot: realCheckoutRoot, worktreeRoot: realWorktreeRoot };
+  }
+  if (worktreeEntry.isSymbolicLink() || !worktreeEntry.isDirectory()) {
+    throw new Error("The Factory worktree must be a real directory, not a symbolic link.");
+  }
+  const realWorktree = await realpath(boundary.worktree);
+  const relative = path.relative(realWorktreeRoot, realWorktree);
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error("The canonical Factory worktree escaped the approved worktree root.");
+  }
+  return {
+    checkoutRoot: realCheckoutRoot,
+    worktree: realWorktree,
+    worktreeRoot: realWorktreeRoot,
+  };
+}
+
+async function ensureRealDirectory(directory: string, create: boolean) {
+  let entry = await lstat(directory).catch(() => null);
+  if (!entry && create) {
+    try {
+      await mkdir(directory, { mode: 0o700 });
+    } catch (error: any) {
+      if (error?.code !== "EEXIST") throw error;
+    }
+    entry = await lstat(directory).catch(() => null);
+  }
+  if (!entry) throw new Error("The Factory worktree root is missing.");
+  if (entry.isSymbolicLink() || !entry.isDirectory()) {
+    throw new Error("The Factory worktree path cannot traverse a symbolic link.");
+  }
 }
 
 export function normalizeRepositoryPath(value: string) {

@@ -37,7 +37,7 @@ describe("Factory worker runtime golden path", () => {
         sandboxCapabilities: ["git-worktree", "workspace-write"],
         executionBackend: "persistent-worker",
       },
-      activeSessionLeaseCount: 0,
+      activeWorkerLeaseCount: 0,
       now: 1_000,
     });
     expect(eligibility.eligible).toBe(true);

@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { ConvexHttpClient } from "convex/browser";
 import { ConvexMutations } from "./convexCalls.js";
+import { canonicalGithubRepositoryFromRemote } from "./factoryRepositoryIdentity.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -145,22 +146,7 @@ async function gitOptional(cwd: string, args: string[]) {
   }
 }
 
-export function canonicalRepositoryFromRemote(remoteUrl: string) {
-  const value = remoteUrl.trim().replace(/\.git$/, "");
-  const scpMatch = value.match(/^[^@]+@[^:]+:(.+)$/);
-  const pathValue = scpMatch?.[1] ?? (() => {
-    try {
-      return new URL(value).pathname;
-    } catch {
-      return value;
-    }
-  })();
-  const repository = pathValue.replace(/^\/+/, "").replace(/\.git$/, "");
-  if (repository.split("/").length !== 2) {
-    throw new Error("Factory checkout origin must identify one owner/repository pair.");
-  }
-  return repository;
-}
+export const canonicalRepositoryFromRemote = canonicalGithubRepositoryFromRemote;
 
 async function git(cwd: string, args: string[]) {
   const result = await execFileAsync("git", args, {

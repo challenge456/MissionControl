@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { activeLeaseMatches, classifyFactoryAttemptReconciliation, deriveFactoryPublicationLineage, evaluateAttemptClaim, factoryAttemptMutationIsAuthorized, renewAttemptLease } from "../lib/factoryAttempt";
+import {
+  activeLeaseMatches,
+  classifyFactoryAttemptReconciliation,
+  deriveFactoryPublicationLineage,
+  evaluateAttemptClaim,
+  expiredFactoryLeaseIdIsReplay,
+  factoryAttemptMutationIsAuthorized,
+  factoryAttemptRequiresReplacementOnClaim,
+  factoryLeaseMatchesCurrentRegistration,
+  renewAttemptLease,
+  validateFactoryPullRequestLineage,
+} from "../lib/factoryAttempt";
 
 const workerA = { workerId: "worker-a", sessionId: "session-a", generation: 1 };
 const workerB = { workerId: "worker-b", sessionId: "session-b", generation: 3 };
@@ -57,6 +68,49 @@ describe("Factory attempt leases", () => {
       worker: workerA,
       now: 2_000,
     })).toBe(true);
+  });
+
+  it("revokes a hardened lease when the current registration session or generation changes", () => {
+    const lease = {
+      leaseId: "lease-1", ownerId: "factory-service", workerId: "worker-a",
+      workerSessionId: "session-a", workerGeneration: 2,
+      claimedAt: 1, heartbeatAt: 2, expiresAt: 100,
+    };
+    expect(factoryLeaseMatchesCurrentRegistration(lease, {
+      hostId: "worker-a", workerRuntime: { sessionId: "session-a", generation: 2 },
+    })).toBe(true);
+    expect(factoryLeaseMatchesCurrentRegistration(lease, {
+      hostId: "worker-a", workerRuntime: { sessionId: "session-b", generation: 3 },
+    })).toBe(false);
+    expect(factoryLeaseMatchesCurrentRegistration(lease, {
+      hostId: "worker-a", workerRuntime: { sessionId: "session-a", generation: 3 },
+    })).toBe(false);
+  });
+
+  it("keeps active legacy leases compatible but never reclaims lost execution ownership", () => {
+    const legacyLease = { leaseId: "legacy", ownerId: "factory-service", claimedAt: 1, heartbeatAt: 2, expiresAt: 100 };
+    expect(factoryLeaseMatchesCurrentRegistration(legacyLease, undefined)).toBe(true);
+    expect(factoryAttemptRequiresReplacementOnClaim({
+      status: "RUNNING", lease: legacyLease, now: 99,
+    })).toBe(false);
+    expect(factoryAttemptRequiresReplacementOnClaim({
+      status: "RUNNING", lease: legacyLease, now: 100,
+    })).toBe(true);
+    expect(factoryAttemptRequiresReplacementOnClaim({
+      status: "RUNNING", now: 100,
+    })).toBe(true);
+    expect(factoryAttemptRequiresReplacementOnClaim({
+      status: "RUNNING", lease: legacyLease, continuationStatus: "READY_TO_PUBLISH", now: 100,
+    })).toBe(false);
+    expect(factoryAttemptRequiresReplacementOnClaim({
+      status: "RUNNING", lease: legacyLease, continuationStatus: "AWAITING_HUMAN_REVIEW", now: 100,
+    })).toBe(false);
+  });
+
+  it("rejects replay of an expired lease identity during publication recovery", () => {
+    const lease = { leaseId: "lease-old", ownerId: "factory-service", claimedAt: 1, heartbeatAt: 2, expiresAt: 100 };
+    expect(expiredFactoryLeaseIdIsReplay({ lease, leaseId: "lease-old", now: 100 })).toBe(true);
+    expect(expiredFactoryLeaseIdIsReplay({ lease, leaseId: "lease-new", now: 100 })).toBe(false);
   });
 
   it("classifies worker and process loss without rewriting the interrupted Attempt", () => {
@@ -125,6 +179,7 @@ describe("Factory attempt leases", () => {
         },
       },
       completedAt: 123,
+      expectedRepositoryIdentity: "acme/repo",
     });
 
     expect(lineage).toEqual({
@@ -159,5 +214,47 @@ describe("Factory attempt leases", () => {
       },
     });
     expect(insecure.patch).toEqual({});
+
+    const wrongRepository = deriveFactoryPublicationLineage({
+      pullRequestArtifact: {
+        artifactType: "PULL_REQUEST",
+        externalLocation: "https://github.com/other/repo/pull/42",
+        metadata: { headSha: "b".repeat(40), pullRequestNumber: 42 },
+      },
+      expectedRepositoryIdentity: "acme/repo",
+    });
+    expect(wrongRepository.patch).toEqual({});
+  });
+
+  it("requires exact GitHub App pull-request lineage", () => {
+    const expected = {
+      repositoryId: "repository-1",
+      repositoryIdentity: "acme/repo",
+      installationId: "123",
+      branch: "mc/attempt-1",
+      sourceRevision: "a".repeat(40),
+      headSha: "b".repeat(40),
+      executionManifestDigest: `sha256:${"c".repeat(64)}`,
+      publicationPermitId: "permit-1",
+    };
+    const artifact = {
+      artifactType: "PULL_REQUEST",
+      externalLocation: "https://github.com/acme/repo/pull/42",
+      metadata: {
+        repositoryId: "repository-1", repository: "acme/repo", installationId: "123",
+        branch: "mc/attempt-1", sourceRevision: "a".repeat(40), headSha: "b".repeat(40),
+        pullRequestNumber: 42, executionManifestDigest: `sha256:${"c".repeat(64)}`,
+        publicationPermitId: "permit-1",
+      },
+    };
+    expect(validateFactoryPullRequestLineage({ artifact, expected })).toMatchObject({ ok: true, pullRequestNumber: 42 });
+    expect(validateFactoryPullRequestLineage({
+      artifact: { ...artifact, externalLocation: "https://evil.example/acme/repo/pull/42" },
+      expected,
+    })).toEqual({ ok: false, reason: "pull-request-url-mismatch" });
+    expect(validateFactoryPullRequestLineage({
+      artifact: { ...artifact, metadata: { ...artifact.metadata, publicationPermitId: "permit-stale" } },
+      expected,
+    })).toEqual({ ok: false, reason: "pull-request-permit-mismatch" });
   });
 });

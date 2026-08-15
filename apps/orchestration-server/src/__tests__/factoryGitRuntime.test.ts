@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -42,6 +42,28 @@ describe("Factory Git runtime", () => {
     await ensureFactoryWorktree({ checkoutRoot: repository, worktree, branch: "mc/attempt-1", baseSha });
     expect(await listChangedFiles(worktree, baseSha)).toEqual(["apps/ui/App.tsx"]);
     expect(await commitFactoryChanges({ worktree, changedFiles: ["apps/ui/App.tsx"], title: "Update app" })).toBe(firstHead);
+  });
+
+  it("rejects a worktree root symlink that escapes the canonical checkout", async () => {
+    const repository = await mkdtemp(path.join(tmpdir(), "mc-factory-git-symlink-"));
+    const escapedRoot = await mkdtemp(path.join(tmpdir(), "mc-factory-git-escaped-"));
+    cleanup.push(repository, escapedRoot);
+    await git(repository, ["init", "-b", "main"]);
+    await git(repository, ["config", "user.name", "Test"]);
+    await git(repository, ["config", "user.email", "test@example.com"]);
+    await writeFile(path.join(repository, "README.md"), "safe\n");
+    await git(repository, ["add", "."]);
+    await git(repository, ["commit", "-m", "Initial"]);
+    const baseSha = (await git(repository, ["rev-parse", "HEAD"])).stdout.trim();
+    await mkdir(path.join(repository, ".mission-control"));
+    await symlink(escapedRoot, path.join(repository, ".mission-control", "worktrees"));
+
+    await expect(ensureFactoryWorktree({
+      checkoutRoot: repository,
+      worktree: path.join(repository, ".mission-control", "worktrees", "attempt-escape"),
+      branch: "mc/attempt-escape",
+      baseSha,
+    })).rejects.toThrow(/symbolic link|resolve inside/);
   });
 });
 

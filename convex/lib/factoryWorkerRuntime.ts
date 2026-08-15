@@ -56,7 +56,7 @@ export function nextFactoryWorkerGeneration(
 export function factoryWorkerEligibility(input: {
   worker: FactoryWorkerCandidate;
   requirements: FactoryWorkerRequirements;
-  activeSessionLeaseCount: number;
+  activeWorkerLeaseCount: number;
   now: number;
 }) {
   const { worker, requirements, now } = input;
@@ -78,7 +78,7 @@ export function factoryWorkerEligibility(input: {
     || worker.capacity.maxConcurrentRuns < 1) {
     return { eligible: false as const, reason: "worker-capacity-invalid" };
   }
-  if (input.activeSessionLeaseCount >= worker.capacity.maxConcurrentRuns) {
+  if (input.activeWorkerLeaseCount >= worker.capacity.maxConcurrentRuns) {
     return { eligible: false as const, reason: "worker-capacity-exhausted" };
   }
   const executor = runtime.supportedExecutors.find((candidate) =>
@@ -106,6 +106,22 @@ export function factoryWorkerEligibility(input: {
     sessionId: runtime.sessionId,
     generation: runtime.generation,
   };
+}
+
+export function countActiveFactoryWorkerLeases(input: {
+  runs: Array<{
+    status?: string;
+    lease?: {
+      workerId?: string;
+      expiresAt: number;
+    };
+  }>;
+  workerId: string;
+  now: number;
+}) {
+  return input.runs.filter((run) => run.status === "RUNNING"
+    && run.lease?.workerId === input.workerId
+    && run.lease.expiresAt > input.now).length;
 }
 
 export function factoryWorkerRegistrationIssues(input: {

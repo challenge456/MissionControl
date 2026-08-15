@@ -60,6 +60,37 @@ describe("Factory workspace ownership", () => {
     await expect(access(path.join(fixture.worktree, "operator-inspection.txt"))).resolves.toBeUndefined();
   });
 
+  it("binds one exact PID lifecycle to the full ownership tuple", async () => {
+    const fixture = await createFixture();
+    await ensureFactoryWorkspaceOwnership({ owner: fixture.owner, allowCreate: true });
+    await recordFactoryExecutorStarted(fixture.owner, 12345);
+    await expect(recordFactoryExecutorStarted(fixture.owner, 54321)).rejects.toThrow(/already established/);
+    await expect(recordFactoryExecutorTerminated(fixture.owner, { pid: 54321, exitCode: 0 }))
+      .rejects.toThrow(/does not match/);
+    expect(await loadFactoryWorkspaceOwnership(fixture.owner)).toMatchObject({
+      process: { state: "RUNNING", pid: 12345 },
+    });
+  });
+
+  it("preserves cleanup when the checkout origin host is not the frozen GitHub repository", async () => {
+    const fixture = await createFixture();
+    await ensureFactoryWorkspaceOwnership({ owner: fixture.owner, allowCreate: true });
+    await recordFactoryExecutorStarted(fixture.owner, 12345);
+    await recordFactoryExecutorTerminated(fixture.owner, { pid: 12345, exitCode: 0 });
+    await recordFactoryPublication(fixture.owner, {
+      headSha: fixture.headSha,
+      pullRequestUrl: "https://github.com/sellerfi/runtime-fixture/pull/3",
+    });
+    await git(fixture.checkoutRoot, ["remote", "set-url", "origin", "https://evil.example/sellerfi/runtime-fixture.git"]);
+
+    expect(await cleanupOwnedFactoryWorkspace({
+      owner: fixture.owner,
+      expectedHeadSha: fixture.headSha,
+      expectedPullRequestUrl: "https://github.com/sellerfi/runtime-fixture/pull/3",
+    })).toMatchObject({ outcome: "PRESERVED" });
+    await expect(access(fixture.worktree)).resolves.toBeUndefined();
+  });
+
   it("removes only an exact, clean, published, terminated worktree", async () => {
     const fixture = await createFixture();
     await ensureFactoryWorkspaceOwnership({ owner: fixture.owner, allowCreate: true });
@@ -95,6 +126,23 @@ describe("Factory workspace ownership", () => {
       nextOwner,
       checkpointCandidateSha: fixture.headSha,
     })).toMatchObject({ workerSessionId: "session-2", workerGeneration: 2, leaseId: "lease-2" });
+  });
+
+  it("rejects publication transfer to another stable worker or a replayed lease", async () => {
+    const fixture = await createFixture();
+    await ensureFactoryWorkspaceOwnership({ owner: fixture.owner, allowCreate: true });
+    await recordFactoryExecutorStarted(fixture.owner, 34567);
+    await recordFactoryExecutorTerminated(fixture.owner, { pid: 34567, exitCode: 0 });
+    await expect(transferFactoryPublicationWorkspace({
+      previousOwner: fixture.owner,
+      nextOwner: { ...fixture.owner, workerId: "worker-other", workerSessionId: "session-2", workerGeneration: 2, leaseId: "lease-2" },
+      checkpointCandidateSha: fixture.headSha,
+    })).rejects.toThrow(/same stable worker/);
+    await expect(transferFactoryPublicationWorkspace({
+      previousOwner: fixture.owner,
+      nextOwner: { ...fixture.owner, workerSessionId: "session-2", workerGeneration: 2 },
+      checkpointCandidateSha: fixture.headSha,
+    })).rejects.toThrow(/new lease/);
   });
 });
 
