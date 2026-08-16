@@ -17,6 +17,8 @@ export const factoryMemorySourceTypeValidator = v.union(
   v.literal("git-history"),
   v.literal("artifact"),
   v.literal("regression-case"),
+  v.literal("project-constitution"),
+  v.literal("mission-spec"),
 );
 
 export const factoryEntityTypeValidator = v.union(

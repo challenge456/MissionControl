@@ -4,9 +4,28 @@
  */
 
 import type { Id } from "../_generated/dataModel";
+import type { MutationCtx } from "../_generated/server";
 import { deriveVerificationStatus } from "./workOrderGovernance";
 import { sha256Hex } from "./harnessPrChecks";
 import { seedFactoryMemoryGoldenPath } from "./factoryMemoryDemoSeed";
+import { internal } from "../_generated/api";
+import {
+  analyzeSpecPlanConsistency,
+  evaluateMissionSpecQuality,
+  missionSpecDigest,
+  projectConstitutionDigest,
+} from "./missionSpec";
+import {
+  demoMissionPlanAssertions,
+  demoMissionPlanBlueprint,
+  demoMissionSpecRevision1,
+  demoMissionSpecRevision2,
+  demoMissionSpecRevision3,
+  demoProjectConstitution,
+} from "./missionSpecDemo";
+import { compileApprovedPlanQualityContract } from "./qualityContract";
+import { compileMissionWorkOrderContract } from "./missionWorkOrderContract";
+import { createWorkOrderRecord } from "./workOrderCreate";
 
 export type DemoSeedContext = {
   tenantId: Id<"tenants">;
@@ -18,6 +37,342 @@ export type DemoSeedContext = {
 };
 
 const REPO_SLUG = "jaydubya818/MissionControl";
+
+async function seedSpecIntakeGoldenPath(ctx: MutationCtx, input: DemoSeedContext) {
+  const { tenantId, projectId, now, withSeedMeta } = input;
+  const missionKey = "mc-demo:mission:spec-intake-golden-path";
+  const existingMission = await ctx.db
+    .query("missions")
+    .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", missionKey))
+    .first();
+  if (existingMission) return { created: false, missionId: existingMission._id };
+
+  const [project, repository, codeScope, workflow] = await Promise.all([
+    ctx.db.get(projectId),
+    ctx.db.query("workspaceRepositories").withIndex("by_project", (q) => q.eq("projectId", projectId)).filter((q) => q.eq(q.field("isDefault"), true)).first(),
+    ctx.db.query("repositoryCodeScopes").withIndex("by_project", (q) => q.eq("projectId", projectId)).filter((q) => q.eq(q.field("active"), true)).first(),
+    ctx.db.query("workflows").withIndex("by_active", (q) => q.eq("active", true)).first(),
+  ]);
+  if (!project || !repository || !codeScope || !workflow) {
+    throw new Error("Spec Intake demo seed requires an active project, repository, code scope, and workflow");
+  }
+
+  const constitutionContent = demoProjectConstitution();
+  const constitutionDigest = projectConstitutionDigest(constitutionContent);
+  const constitutionId = await ctx.db.insert("projectConstitutionRevisions", {
+    tenantId,
+    projectId,
+    idempotencyKey: "mc-demo:constitution:spec-intake:v1",
+    revisionNumber: 1,
+    title: "Software Factory planning Constitution",
+    content: constitutionContent,
+    digest: constitutionDigest,
+    createdBy: "seedMissionControlDemo",
+    createdActorSource: "DEVELOPMENT_FALLBACK",
+    createdAt: now - 90 * 60_000,
+  });
+  await ctx.db.patch(projectId, { currentConstitutionRevisionId: constitutionId, updatedAt: now });
+
+  const missionId = await ctx.db.insert("missions", {
+    tenantId,
+    projectId,
+    idempotencyKey: missionKey,
+    title: "Spec Intake Golden Path — immutable revision proof",
+    objective: "Prove exact Mission intent can be revised, qualified, finalized for planning, approved separately, and traced into released WorkOrders without silent rebinding.",
+    context: "Deterministic demo fixture for Spec-driven Mission Intake V1 qualification.",
+    constraints: ["No Spec path may authorize execution or acceptance", "Existing Plan approval remains the release boundary"],
+    sourceOfTruthRefs: [{ kind: "DOC", label: "Approved Spec Intake architecture", location: "docs/architecture/2026-08-16-spec-driven-mission-intake-audit.md" }],
+    owner: "Mission Control Operator",
+    repositoryId: repository._id,
+    codeScopeIds: [codeScope._id],
+    executionEnvironment: "LOCAL",
+    state: "DRAFT",
+    executionPolicy: "SERIAL_MUTATIONS",
+    maxReadOnlyConcurrency: 2,
+    maxCorrectiveIterations: 2,
+    correctiveIterations: 0,
+    stopCondition: "Stop before dispatch; the demo proves planning and release lineage only.",
+    budgetUsd: 30,
+    spentUsd: 0,
+    createdAt: now - 85 * 60_000,
+    updatedAt: now - 85 * 60_000,
+    metadata: withSeedMeta("mission:spec-intake-golden-path", { factoryExperience: { selectedRecipeId: "full-sdlc" } }),
+  });
+
+  const revision1Content = demoMissionSpecRevision1(String(repository._id), String(codeScope._id));
+  const revision1Digest = missionSpecDigest(revision1Content);
+  const revision1Id = await ctx.db.insert("missionSpecRevisions", {
+    tenantId, projectId, missionId,
+    idempotencyKey: "mc-demo:mission-spec:golden:r1",
+    revisionNumber: 1,
+    projectConstitutionRevisionId: constitutionId,
+    projectConstitutionDigest: constitutionDigest,
+    content: revision1Content,
+    digest: revision1Digest,
+    createdBy: "seedMissionControlDemo",
+    createdActorSource: "DEVELOPMENT_FALLBACK",
+    createdAt: now - 80 * 60_000,
+  });
+  const revision1Quality = evaluateMissionSpecQuality({ spec: revision1Content, constitution: constitutionContent });
+  const evaluation1Id = await ctx.db.insert("missionSpecQualityEvaluations", {
+    tenantId, projectId, missionId,
+    missionSpecRevisionId: revision1Id,
+    missionSpecDigest: revision1Digest,
+    projectConstitutionRevisionId: constitutionId,
+    projectConstitutionDigest: constitutionDigest,
+    idempotencyKey: "mc-demo:mission-spec-evaluation:golden:r1",
+    rulesetVersion: revision1Quality.rulesetVersion,
+    result: revision1Quality.result,
+    findings: revision1Quality.findings,
+    evaluatedBy: "seedMissionControlDemo",
+    evaluatedActorSource: "DEVELOPMENT_FALLBACK",
+    evaluatedAt: now - 75 * 60_000,
+  });
+  if (revision1Quality.result !== "FAIL") throw new Error("Spec Intake demo revision 1 must fail deterministic quality");
+
+  const revision2Content = demoMissionSpecRevision2(String(repository._id), String(codeScope._id));
+  const revision2Digest = missionSpecDigest(revision2Content);
+  const revision2Id = await ctx.db.insert("missionSpecRevisions", {
+    tenantId, projectId, missionId,
+    baseRevisionId: revision1Id,
+    idempotencyKey: "mc-demo:mission-spec:golden:r2",
+    revisionNumber: 2,
+    projectConstitutionRevisionId: constitutionId,
+    projectConstitutionDigest: constitutionDigest,
+    content: revision2Content,
+    digest: revision2Digest,
+    createdBy: "seedMissionControlDemo",
+    createdActorSource: "DEVELOPMENT_FALLBACK",
+    createdAt: now - 70 * 60_000,
+  });
+  const revision2Quality = evaluateMissionSpecQuality({ spec: revision2Content, constitution: constitutionContent });
+  if (revision2Quality.result !== "PASS") throw new Error(`Spec Intake demo revision 2 must pass deterministic quality (${revision2Quality.findings.map((item) => item.code).join(", ")})`);
+  const evaluation2Id = await ctx.db.insert("missionSpecQualityEvaluations", {
+    tenantId, projectId, missionId,
+    missionSpecRevisionId: revision2Id,
+    missionSpecDigest: revision2Digest,
+    projectConstitutionRevisionId: constitutionId,
+    projectConstitutionDigest: constitutionDigest,
+    idempotencyKey: "mc-demo:mission-spec-evaluation:golden:r2",
+    rulesetVersion: revision2Quality.rulesetVersion,
+    result: revision2Quality.result,
+    findings: revision2Quality.findings,
+    evaluatedBy: "seedMissionControlDemo",
+    evaluatedActorSource: "DEVELOPMENT_FALLBACK",
+    evaluatedAt: now - 65 * 60_000,
+  });
+  await ctx.db.insert("missionSpecDecisions", {
+    tenantId, projectId, missionId,
+    missionSpecRevisionId: revision2Id,
+    missionSpecQualityEvaluationId: evaluation2Id,
+    idempotencyKey: "mc-demo:mission-spec-finalized:golden:r2",
+    decisionType: "FINALIZED",
+    rationale: "Exact deterministic quality passed; revision two is complete enough to propose for planning and grants no execution authority.",
+    decidedBy: "seedMissionControlDemo",
+    decidedActorSource: "DEVELOPMENT_FALLBACK",
+    decidedAt: now - 60 * 60_000,
+  });
+  await ctx.db.patch(missionId, { currentSpecRevisionId: revision2Id, updatedAt: now - 60 * 60_000 });
+
+  const assertions = demoMissionPlanAssertions();
+  const blueprint = demoMissionPlanBlueprint({ workflowId: workflow.workflowId, version: workflow.version });
+  const planAnalysis = analyzeSpecPlanConsistency({
+    spec: revision2Content,
+    assertions,
+    workOrderBlueprints: [blueprint],
+    planSummary: "Implement immutable Spec intake and exact Plan-to-WorkOrder lineage while preserving the existing approval and acceptance path.",
+    repositoryId: String(repository._id),
+  });
+  if (planAnalysis.findings.some((item) => item.blocking)) throw new Error(`Spec Intake demo Plan coverage must pass (${planAnalysis.findings.map((item) => item.code).join(", ")})`);
+  const checklistLineage = {
+    requirementsQualityItemIds: ["CHECK-REQ-001"],
+    governanceConstraintItemIds: ["CHECK-GOV-001"],
+    evidenceBearingVerificationItemIds: ["CHECK-VERIFY-001"],
+  };
+  const planId = await ctx.db.insert("missionPlans", {
+    tenantId, projectId, missionId,
+    idempotencyKey: "mc-demo:mission-plan:golden:r1",
+    revisionNumber: 1,
+    draftVersion: 1,
+    status: "PROPOSED",
+    summary: "Implement immutable Spec intake and exact Plan-to-WorkOrder lineage while preserving the existing approval and acceptance path.",
+    rollbackApproach: "Revert the candidate commit and disable missions.spec-intake-v1; existing immutable records remain readable.",
+    estimatedCostUsd: 24,
+    repository: repository.repository,
+    repositoryBranch: repository.defaultBranch,
+    createdBy: "seedMissionControlDemo:plan-author",
+    submittedBy: "seedMissionControlDemo:plan-author",
+    submittedAt: now - 50 * 60_000,
+    submittedActorSource: "DEVELOPMENT_FALLBACK",
+    missionSpecRevisionId: revision2Id,
+    missionSpecDigest: revision2Digest,
+    missionSpecQualityEvaluationId: evaluation2Id,
+    projectConstitutionRevisionId: constitutionId,
+    projectConstitutionDigest: constitutionDigest,
+    requirementsCoverageProjection: planAnalysis.coverage,
+    specConsistencyFindings: planAnalysis.findings,
+    specConsistencyDigest: planAnalysis.digest,
+    specConsistencyEvaluatedAt: now - 50 * 60_000,
+    assertions,
+    workOrderBlueprints: [blueprint],
+    createdAt: now - 55 * 60_000,
+    metadata: withSeedMeta("mission-plan:spec-intake-golden:r1"),
+  });
+  const qualityContract = compileApprovedPlanQualityContract({
+    missionId: String(missionId),
+    missionPlanId: String(planId),
+    missionPlanRevision: 1,
+    objective: "Prove exact immutable Spec-to-delivery lineage.",
+    businessContext: "Spec Intake Golden Path qualification",
+    constraints: ["No Spec execution or acceptance authority"],
+    sourceOfTruthRefs: [{ kind: "DOC", label: "Approved architecture", location: "docs/architecture/2026-08-16-spec-driven-mission-intake-audit.md" }],
+    repository: repository.repository,
+    repositoryBranch: repository.defaultBranch,
+    summary: "Implement immutable Spec intake and exact Plan-to-WorkOrder lineage while preserving the existing approval and acceptance path.",
+    rollbackApproach: "Revert the candidate commit and disable missions.spec-intake-v1.",
+    assertions,
+    workOrderBlueprints: [blueprint],
+    specLineage: {
+      missionSpecRevisionId: String(revision2Id),
+      missionSpecDigest: revision2Digest,
+      missionSpecQualityEvaluationId: String(evaluation2Id),
+      projectConstitutionRevisionId: String(constitutionId),
+      projectConstitutionDigest: constitutionDigest,
+      requirementsCoverage: planAnalysis.coverage,
+      checklistLineage,
+    },
+  });
+  const assertionRowIds: Array<Id<"validationAssertions">> = [];
+  for (const assertion of assertions) {
+    assertionRowIds.push(await ctx.db.insert("validationAssertions", {
+      tenantId, projectId, missionId, missionPlanId: planId,
+      assertionId: assertion.assertionId,
+      title: assertion.title,
+      outcome: assertion.outcome,
+      verificationMethod: assertion.verificationMethod,
+      passCondition: assertion.passCondition,
+      requiredEvidence: assertion.requiredEvidence,
+      requiresIndependentValidation: assertion.requiresIndependentValidation,
+      waiverAllowed: assertion.waiverAllowed,
+      linkedWorkOrderIds: [],
+      status: "PENDING",
+      createdAt: now - 45 * 60_000,
+      updatedAt: now - 45 * 60_000,
+    }));
+  }
+  await ctx.db.patch(planId, {
+    status: "APPROVED",
+    approvedBy: "seedMissionControlDemo:plan-approver",
+    approvedAt: now - 40 * 60_000,
+    decisionReason: "The exact bound Plan is complete, covered, and preserves all existing release and acceptance gates.",
+    decidedBy: "seedMissionControlDemo:plan-approver",
+    decidedAt: now - 40 * 60_000,
+    decidedActorSource: "DEVELOPMENT_FALLBACK",
+    releaseIdempotencyKey: `mission-plan:${String(planId)}:release:v1`,
+    materializationVersion: 1,
+    qualityContractProjection: qualityContract.projection,
+    qualityContractDigest: qualityContract.digest,
+  });
+  await ctx.db.patch(missionId, { state: "READY", currentPlanId: planId, requiredHumanAction: "Review released WorkOrders. Execution remains a separate governed action.", updatedAt: now - 40 * 60_000 });
+
+  const compiledWorkOrder = compileMissionWorkOrderContract({
+    blueprint,
+    assertions,
+    rollbackApproach: "Revert the candidate commit and disable missions.spec-intake-v1.",
+    codeScopes: [{ includePaths: codeScope.includePaths, excludePaths: codeScope.excludePaths }],
+    spec: revision2Content,
+  });
+  const workOrderResult = await createWorkOrderRecord(ctx, {
+    projectId, missionId, missionPlanId: planId, missionPlanRevision: 1,
+    qualityContractDigest: qualityContract.digest,
+    missionSpecLineage: {
+      missionSpecRevisionId: revision2Id,
+      missionSpecDigest: revision2Digest,
+      missionSpecQualityEvaluationId: evaluation2Id,
+      projectConstitutionRevisionId: constitutionId,
+      projectConstitutionDigest: constitutionDigest,
+      requirementsCoverage: planAnalysis.coverage,
+      checklistLineage,
+    },
+    missionBlueprintId: blueprint.id,
+    missionRole: blueprint.role,
+    isMutating: blueprint.isMutating,
+    idempotencyKey: "mc-demo:mission-work-order:spec-intake-golden",
+    title: blueprint.title,
+    desiredOutcome: blueprint.desiredOutcome,
+    context: "Released from the exact human-approved Spec Intake Golden Path Plan.",
+    workflowId: workflow.workflowId,
+    repository: repository.repository,
+    repositoryId: repository._id,
+    codeScopeIds: [codeScope._id],
+    branchStrategy: blueprint.branchStrategy,
+    priority: blueprint.priority,
+    riskLevel: blueprint.riskLevel,
+    modelComplexity: blueprint.modelComplexity,
+    requestedBy: "seedMissionControlDemo:plan-approver",
+    requirements: compiledWorkOrder.requirements,
+    acceptanceCriteria: compiledWorkOrder.acceptanceCriteria,
+    constraints: blueprint.constraints,
+    positiveConstraints: compiledWorkOrder.positiveConstraints,
+    negativeConstraints: compiledWorkOrder.negativeConstraints,
+    changeBudget: compiledWorkOrder.changeBudget,
+    verificationContract: compiledWorkOrder.verificationContract,
+    autonomyLevel: compiledWorkOrder.autonomyLevel,
+    dependencies: [],
+    sourceOfTruthRefs: [{ kind: "DOC", label: "Approved architecture", location: "docs/architecture/2026-08-16-spec-driven-mission-intake-audit.md" }],
+    requiredApprovals: compiledWorkOrder.requiredApprovals,
+    state: "READY",
+    metadata: { ...compiledWorkOrder.metadata, approvedWorkflowVersion: workflow.version, ...withSeedMeta("work-order:spec-intake-golden") },
+  });
+  await ctx.db.patch(planId, { releasedAt: now - 35 * 60_000, releasedWorkOrderIds: [workOrderResult.workOrder._id] });
+
+  const revision3Content = demoMissionSpecRevision3(String(repository._id), String(codeScope._id));
+  const revision3Digest = missionSpecDigest(revision3Content);
+  const revision3Id = await ctx.db.insert("missionSpecRevisions", {
+    tenantId, projectId, missionId,
+    baseRevisionId: revision2Id,
+    idempotencyKey: "mc-demo:mission-spec:golden:r3",
+    revisionNumber: 3,
+    projectConstitutionRevisionId: constitutionId,
+    projectConstitutionDigest: constitutionDigest,
+    content: revision3Content,
+    digest: revision3Digest,
+    createdBy: "seedMissionControlDemo:spec-author",
+    createdActorSource: "DEVELOPMENT_FALLBACK",
+    createdAt: now - 20 * 60_000,
+  });
+  await ctx.db.patch(missionId, { currentSpecRevisionId: revision3Id, updatedAt: now - 20 * 60_000 });
+
+  const eventSpecs = [
+    ["MISSION_CREATED", "Defined Spec Intake Golden Path Mission", now - 85 * 60_000],
+    ["SPEC_QUALITY_FAILED", `Revision 1 retained with ${revision1Quality.findings.length} deterministic finding(s)`, now - 75 * 60_000],
+    ["SPEC_REVISION_FINALIZED", "Revision 2 passed deterministic quality and was finalized for planning only", now - 60 * 60_000],
+    ["PLAN_SUBMITTED", "Plan revision 1 submitted with complete exact Spec coverage", now - 50 * 60_000],
+    ["PLAN_APPROVED_AND_WORKORDERS_RELEASED", "A separate human decision approved the Plan and released one WorkOrder without dispatch", now - 35 * 60_000],
+    ["SPEC_REVISION_CREATED", "Revision 3 became current without rebinding the approved Plan or released WorkOrder", now - 20 * 60_000],
+  ] as const;
+  for (const [eventType, summary, timestamp] of eventSpecs) {
+    await ctx.db.insert("missionEvents", { tenantId, projectId, missionId, eventType, actorType: "HUMAN", actorId: "seedMissionControlDemo", summary, idempotencyKey: `mc-demo:event:spec-intake:${eventType}`, timestamp, metadata: withSeedMeta(`mission-event:spec-intake:${eventType}`, { acceptanceAuthority: false }) });
+  }
+
+  await ctx.scheduler.runAfter(0, internal.missionSpecs.indexConstitutionInFactoryMemory, { revisionId: constitutionId });
+  await ctx.scheduler.runAfter(0, internal.missionSpecs.indexSpecInFactoryMemory, { revisionId: revision1Id });
+  await ctx.scheduler.runAfter(0, internal.missionSpecs.indexSpecInFactoryMemory, { revisionId: revision2Id });
+  await ctx.scheduler.runAfter(0, internal.missionSpecs.indexSpecInFactoryMemory, { revisionId: revision3Id });
+  return {
+    created: true,
+    missionId,
+    constitutionId,
+    revision1Id,
+    evaluation1Id,
+    revision2Id,
+    evaluation2Id,
+    planId,
+    workOrderId: workOrderResult.workOrder._id,
+    revision3Id,
+    assertionRowIds,
+  };
+}
 
 const SKILL_PACKAGES = [
   {
@@ -310,6 +665,7 @@ export async function seedDemoExtensions(ctx: any, input: DemoSeedContext) {
     factoryEntities: 0,
     factoryRelationships: 0,
     factoryContextPackages: 0,
+    specIntakeGoldenPaths: 0,
   };
 
   const agents = await ctx.db
@@ -867,6 +1223,8 @@ export async function seedDemoExtensions(ctx: any, input: DemoSeedContext) {
     "eos.command-center-preview",
     "executor.pi-bridge",
     "eval.framework",
+    "missions.plan-release-v1",
+    "missions.spec-intake-v1",
     "factory-memory.hybrid",
     "factory-memory.relationships",
     "factory-memory.agentic-retrieval",
@@ -874,13 +1232,13 @@ export async function seedDemoExtensions(ctx: any, input: DemoSeedContext) {
     "factory-memory.context-engine",
   ];
   for (const key of demoFlags) {
-    const factoryMemoryFlag = key.startsWith("factory-memory.");
+    const projectScopedFlag = key.startsWith("factory-memory.") || key.startsWith("missions.");
     const rows = await ctx.db
       .query("featureFlags")
       .withIndex("by_key", (q: any) => q.eq("key", key))
       .collect();
     const existing = rows.find((row: { projectId?: string }) =>
-      factoryMemoryFlag ? row.projectId === projectId : row.projectId == null,
+      projectScopedFlag ? row.projectId === projectId : row.projectId == null,
     );
     if (existing) {
       if (!existing.enabled) {
@@ -896,13 +1254,16 @@ export async function seedDemoExtensions(ctx: any, input: DemoSeedContext) {
         key,
         enabled: true,
         description: `Demo seed — ${key}`,
-        projectId: factoryMemoryFlag ? projectId : undefined,
+        projectId: projectScopedFlag ? projectId : undefined,
         createdAt: now,
         updatedAt: now,
         updatedBy: "seedMissionControlDemo",
       });
     }
   }
+
+  const specIntakeGoldenPath = await seedSpecIntakeGoldenPath(ctx, input);
+  counts.specIntakeGoldenPaths = specIntakeGoldenPath.missionId ? 1 : 0;
 
   const factoryMemoryCounts = await seedFactoryMemoryGoldenPath(ctx, {
     tenantId,

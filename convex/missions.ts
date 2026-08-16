@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
+import type { MutationCtx } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
 import {
   canTransitionMission,
   evaluateMissionAcceptance,
@@ -32,6 +33,14 @@ import { assertAuthorizedDeliveryRecord, canAccessDeliveryRecord, requireAuthori
 import { evaluateAcceptance } from "./lib/workOrderGovernance";
 import { loadFactoryAttemptReviewReadModel } from "./lib/factoryReviewReadModel";
 import { getCurrentVerificationResult } from "./lib/currentVerification";
+import {
+  MISSION_SPEC_INTAKE_FLAG,
+  analyzeSpecPlanConsistency,
+  missionSpecDigest,
+  projectConstitutionDigest,
+  type ChecklistClassification,
+  type MissionSpecContent,
+} from "./lib/missionSpec";
 
 const missionState = v.union(
   v.literal("DRAFT"), v.literal("PLANNING"), v.literal("AWAITING_PLAN_APPROVAL"),
@@ -55,6 +64,9 @@ const assertionInput = v.object({
   requiredEvidence: v.string(),
   requiresIndependentValidation: v.boolean(),
   waiverAllowed: v.boolean(),
+  sourceRequirementIds: v.optional(v.array(v.string())),
+  sourceAcceptanceExpectationIds: v.optional(v.array(v.string())),
+  sourceVerificationExpectationIds: v.optional(v.array(v.string())),
 });
 
 const blueprintInput = v.object({
@@ -111,6 +123,137 @@ async function assertPlanReleaseEnabled(ctx: any, projectId: any) {
   if (!resolveFlag(rows, MISSION_PLAN_RELEASE_FLAG, projectId).enabled) {
     throw new Error(`Mission planning is disabled (${MISSION_PLAN_RELEASE_FLAG})`);
   }
+}
+
+async function isSpecIntakeEnabled(ctx: MutationCtx, projectId: Id<"projects">) {
+  const rows = await ctx.db
+    .query("featureFlags")
+    .withIndex("by_key", (q) => q.eq("key", MISSION_SPEC_INTAKE_FLAG))
+    .collect() as FlagRow[];
+  return resolveFlag(rows, MISSION_SPEC_INTAKE_FLAG, projectId).enabled;
+}
+
+function hasAnyPlanSpecLineage(plan: Doc<"missionPlans">) {
+  return Boolean(
+    plan.missionSpecRevisionId
+    || plan.missionSpecDigest
+    || plan.missionSpecQualityEvaluationId
+    || plan.projectConstitutionRevisionId
+    || plan.projectConstitutionDigest
+  );
+}
+
+async function loadFinalizedSpecBinding(
+  ctx: MutationCtx,
+  project: Doc<"projects">,
+  mission: Doc<"missions">,
+) {
+  if (!mission.currentSpecRevisionId) throw new Error("Finalize a Mission Spec revision before creating a governed Plan");
+  if (!project.currentConstitutionRevisionId) throw new Error("Activate a Project Constitution before creating a governed Plan");
+  const [spec, constitution] = await Promise.all([
+    ctx.db.get(mission.currentSpecRevisionId),
+    ctx.db.get(project.currentConstitutionRevisionId),
+  ]);
+  if (!spec || spec.missionId !== mission._id || spec.projectId !== project._id) throw new Error("Current Mission Spec revision is unavailable");
+  if (!constitution || constitution.projectId !== project._id) throw new Error("Current Project Constitution revision is unavailable");
+  if (spec.projectConstitutionRevisionId !== constitution._id || spec.projectConstitutionDigest !== constitution.digest) {
+    throw new Error("Current Mission Spec was created under another Constitution revision. Revise and finalize the Spec before planning.");
+  }
+  if (spec.digest !== missionSpecDigest(spec.content) || constitution.digest !== projectConstitutionDigest(constitution.content)) {
+    throw new Error("Mission Spec or Constitution digest does not match immutable content");
+  }
+  const decision = await ctx.db.query("missionSpecDecisions").withIndex("by_spec", (q) => q.eq("missionSpecRevisionId", spec._id)).first();
+  if (!decision || decision.decisionType !== "FINALIZED") throw new Error("Mission Spec revision is not FINALIZED for planning");
+  const evaluation = await ctx.db.get(decision.missionSpecQualityEvaluationId);
+  if (!evaluation || evaluation.missionSpecRevisionId !== spec._id || evaluation.result !== "PASS" || evaluation.findings.some((item) => item.blocking)) {
+    throw new Error("Mission Spec revision does not have a passing exact deterministic evaluation");
+  }
+  if (evaluation.missionSpecDigest !== spec.digest || evaluation.projectConstitutionRevisionId !== constitution._id || evaluation.projectConstitutionDigest !== constitution.digest) {
+    throw new Error("Mission Spec finalization lineage is invalid");
+  }
+  return {
+    spec,
+    constitution,
+    evaluation,
+    decision,
+    fields: {
+      missionSpecRevisionId: spec._id,
+      missionSpecDigest: spec.digest,
+      missionSpecQualityEvaluationId: evaluation._id,
+      projectConstitutionRevisionId: constitution._id,
+      projectConstitutionDigest: constitution.digest,
+    },
+  };
+}
+
+async function loadPlanSpecLineage(
+  ctx: MutationCtx,
+  mission: Doc<"missions">,
+  plan: Doc<"missionPlans">,
+) {
+  if (!hasAnyPlanSpecLineage(plan)) return null;
+  if (!plan.missionSpecRevisionId || !plan.missionSpecDigest || !plan.missionSpecQualityEvaluationId || !plan.projectConstitutionRevisionId || !plan.projectConstitutionDigest) {
+    throw new Error("Mission Plan Spec lineage is incomplete. Create a new Plan revision.");
+  }
+  const [spec, evaluation, constitution] = await Promise.all([
+    ctx.db.get(plan.missionSpecRevisionId),
+    ctx.db.get(plan.missionSpecQualityEvaluationId),
+    ctx.db.get(plan.projectConstitutionRevisionId),
+  ]);
+  if (!spec || spec.missionId !== mission._id || spec.projectId !== mission.projectId) throw new Error("Mission Plan references an unavailable Spec revision");
+  if (!constitution || constitution.projectId !== mission.projectId) throw new Error("Mission Plan references an unavailable Constitution revision");
+  const [governancePolicy, policyEnvelope] = await Promise.all([
+    constitution.governancePolicyId ? ctx.db.get(constitution.governancePolicyId) : null,
+    constitution.policyEnvelopeId ? ctx.db.get(constitution.policyEnvelopeId) : null,
+  ]);
+  if (constitution.governancePolicyId && (!governancePolicy || !governancePolicy.active || (governancePolicy.scope === "PROJECT" && governancePolicy.projectId !== mission.projectId))) {
+    throw new Error("Mission Plan Constitution governance policy is unavailable or inactive");
+  }
+  if (constitution.policyEnvelopeId && (!policyEnvelope || !policyEnvelope.active || (policyEnvelope.projectId && policyEnvelope.projectId !== mission.projectId))) {
+    throw new Error("Mission Plan Constitution policy envelope is unavailable or inactive");
+  }
+  if (spec.digest !== plan.missionSpecDigest || spec.digest !== missionSpecDigest(spec.content)) throw new Error("Mission Plan Spec digest is stale or invalid");
+  if (constitution.digest !== plan.projectConstitutionDigest || constitution.digest !== projectConstitutionDigest(constitution.content)) throw new Error("Mission Plan Constitution digest is stale or invalid");
+  if (spec.projectConstitutionRevisionId !== constitution._id || spec.projectConstitutionDigest !== constitution.digest) throw new Error("Mission Plan Spec and Constitution lineage do not match");
+  if (!evaluation || evaluation.missionSpecRevisionId !== spec._id || evaluation.missionSpecDigest !== spec.digest || evaluation.projectConstitutionRevisionId !== constitution._id || evaluation.projectConstitutionDigest !== constitution.digest || evaluation.result !== "PASS" || evaluation.findings.some((item) => item.blocking)) {
+    throw new Error("Mission Plan references a non-passing or mismatched Spec Quality evaluation");
+  }
+  const decision = await ctx.db.query("missionSpecDecisions").withIndex("by_spec", (q) => q.eq("missionSpecRevisionId", spec._id)).first();
+  if (!decision || decision.decisionType !== "FINALIZED" || decision.missionSpecQualityEvaluationId !== evaluation._id) throw new Error("Mission Plan references a Spec revision that is not FINALIZED for planning");
+  return { spec, constitution, evaluation, decision };
+}
+
+function analyzeBoundPlan(
+  mission: Doc<"missions">,
+  plan: Doc<"missionPlans">,
+  lineage: NonNullable<Awaited<ReturnType<typeof loadPlanSpecLineage>>>,
+) {
+  const analysis = analyzeSpecPlanConsistency({
+    spec: lineage.spec.content,
+    assertions: normalizedPlanAssertions(plan),
+    workOrderBlueprints: plan.workOrderBlueprints,
+    planSummary: plan.summary,
+    repositoryId: mission.repositoryId ? String(mission.repositoryId) : undefined,
+  });
+  const blockingFindings = analysis.findings.filter((item) => item.blocking);
+  if (blockingFindings.length > 0) {
+    const error = new Error(`Mission Plan is inconsistent with its bound Spec: ${blockingFindings.map((item) => item.message).join(" ")}`) as Error & { data?: unknown };
+    error.data = { code: "MISSION_SPEC_PLAN_INCONSISTENT", findings: analysis.findings, coverage: analysis.coverage };
+    throw error;
+  }
+  return analysis;
+}
+
+function boundChecklistLineage(spec: MissionSpecContent) {
+  const byClassification = (classification: ChecklistClassification) => spec.checklistDispositions
+    .filter((item) => item.classification === classification)
+    .map((item) => item.checklistItemId)
+    .sort((left, right) => left.localeCompare(right));
+  return {
+    requirementsQualityItemIds: byClassification("REQUIREMENTS_QUALITY"),
+    governanceConstraintItemIds: byClassification("GOVERNANCE_CONSTRAINT"),
+    evidenceBearingVerificationItemIds: byClassification("EVIDENCE_BEARING_VERIFICATION"),
+  };
 }
 
 function normalizedPlanAssertions(plan: any) {
@@ -610,7 +753,7 @@ export const savePlanDraft = mutation({
   handler: async (ctx, args) => {
     const deliveryAccess = await requireAuthorizedDeliveryScope(ctx, args.projectId, COMPANY_PERMISSIONS.UPDATE_DELIVERY);
     await assertPlanReleaseEnabled(ctx, args.projectId);
-    const { mission } = await assertMissionProject(ctx, args.missionId, args.projectId, deliveryAccess);
+    const { mission, project } = await assertMissionProject(ctx, args.missionId, args.projectId, deliveryAccess);
     if (!["DRAFT", "PLANNING"].includes(mission.state)) throw new Error(`Mission plan cannot be edited while ${mission.state}`);
     const operator = await resolveOperator(ctx);
     const now = Date.now();
@@ -654,8 +797,11 @@ export const savePlanDraft = mutation({
         throw new Error("Plan revision baseline is not available");
       }
     }
-    const existingPlans = await ctx.db.query("missionPlans").withIndex("by_mission", (q) => q.eq("missionId", mission._id)).collect();
-    const revisionNumber = existingPlans.reduce((latest, plan) => Math.max(latest, plan.revisionNumber), 0) + 1;
+    const specBinding = await isSpecIntakeEnabled(ctx, args.projectId)
+      ? await loadFinalizedSpecBinding(ctx, project, mission)
+      : null;
+    const latestPlan = await ctx.db.query("missionPlans").withIndex("by_mission_revision", (q) => q.eq("missionId", mission._id)).order("desc").first();
+    const revisionNumber = (latestPlan?.revisionNumber ?? 0) + 1;
     const planId = await ctx.db.insert("missionPlans", {
       tenantId: mission.tenantId,
       projectId: mission.projectId,
@@ -669,6 +815,7 @@ export const savePlanDraft = mutation({
       rollbackApproach: args.rollbackApproach,
       estimatedCostUsd: args.estimatedCostUsd,
       createdBy: operator.actorId,
+      ...specBinding?.fields,
       assertions: args.assertions,
       workOrderBlueprints: args.workOrderBlueprints,
       createdAt: now,
@@ -738,6 +885,8 @@ export const submitPlan = mutation({
     if (mission.budgetUsd !== undefined && proposed.estimatedCostUsd !== undefined && proposed.estimatedCostUsd > mission.budgetUsd) {
       throw new Error("Plan estimate exceeds the Mission budget");
     }
+    const specLineage = await loadPlanSpecLineage(ctx, mission, proposed);
+    const specAnalysis = specLineage ? analyzeBoundPlan(mission, proposed, specLineage) : null;
     const operator = await resolveOperator(ctx);
     const now = Date.now();
     assertTransition(mission, "AWAITING_PLAN_APPROVAL");
@@ -749,6 +898,10 @@ export const submitPlan = mutation({
       submittedBy: operator.actorId,
       submittedAt: now,
       submittedActorSource: operator.actorSource,
+      requirementsCoverageProjection: specAnalysis?.coverage,
+      specConsistencyFindings: specAnalysis?.findings,
+      specConsistencyDigest: specAnalysis?.digest,
+      specConsistencyEvaluatedAt: specAnalysis ? now : undefined,
     });
     await ctx.db.patch(mission._id, { state: "AWAITING_PLAN_APPROVAL", updatedAt: now, requiredHumanAction: "Review, reject, or approve the proposed Mission plan." });
     const updated = await ctx.db.get(mission._id);
@@ -784,7 +937,7 @@ export const forkPlanRevision = mutation({
   handler: async (ctx, args) => {
     const deliveryAccess = await requireAuthorizedDeliveryScope(ctx, args.projectId, COMPANY_PERMISSIONS.UPDATE_DELIVERY);
     await assertPlanReleaseEnabled(ctx, args.projectId);
-    const { mission } = await assertMissionProject(ctx, args.missionId, args.projectId, deliveryAccess);
+    const { mission, project } = await assertMissionProject(ctx, args.missionId, args.projectId, deliveryAccess);
     if (mission.state !== "DRAFT") throw new Error(`Mission cannot create a plan revision while ${mission.state}`);
     const source = await ctx.db.get(args.sourcePlanId);
     if (!source || source.missionId !== mission._id || !["REJECTED", "SUPERSEDED"].includes(source.status)) throw new Error("Plan revision source not found");
@@ -793,10 +946,13 @@ export const forkPlanRevision = mutation({
       if (duplicate.missionId !== mission._id) throw new Error("Idempotency key is already bound to another Mission");
       return { plan: duplicate, created: false };
     }
-    const plans = await ctx.db.query("missionPlans").withIndex("by_mission", (q) => q.eq("missionId", mission._id)).collect();
-    const revisionNumber = plans.reduce((latest, plan) => Math.max(latest, plan.revisionNumber), 0) + 1;
+    const latestPlan = await ctx.db.query("missionPlans").withIndex("by_mission_revision", (q) => q.eq("missionId", mission._id)).order("desc").first();
+    const revisionNumber = (latestPlan?.revisionNumber ?? 0) + 1;
     const operator = await resolveOperator(ctx);
     const now = Date.now();
+    const specEnabled = await isSpecIntakeEnabled(ctx, args.projectId);
+    if (!specEnabled && hasAnyPlanSpecLineage(source)) throw new Error(`Mission Spec intake is disabled (${MISSION_SPEC_INTAKE_FLAG}); a new Spec-bound Plan revision cannot be created`);
+    const specBinding = specEnabled ? await loadFinalizedSpecBinding(ctx, project, mission) : null;
     const planId = await ctx.db.insert("missionPlans", {
       tenantId: mission.tenantId,
       projectId: mission.projectId,
@@ -810,6 +966,7 @@ export const forkPlanRevision = mutation({
       rollbackApproach: source.rollbackApproach,
       estimatedCostUsd: source.estimatedCostUsd,
       createdBy: operator.actorId,
+      ...specBinding?.fields,
       assertions: normalizedPlanAssertions(source),
       workOrderBlueprints: source.workOrderBlueprints,
       createdAt: now,
@@ -839,6 +996,11 @@ export const approvePlan = mutation({
     if (mission.state !== "AWAITING_PLAN_APPROVAL" || plan.status !== "PROPOSED") throw new Error("Mission plan is not awaiting approval");
     if (plan.repository !== project.githubRepo || plan.repositoryBranch !== project.githubBranch) throw new Error("Repository configuration changed after plan submission. Create a new revision.");
     assertValidPlan(plan);
+    const specLineage = await loadPlanSpecLineage(ctx, mission, plan);
+    const specAnalysis = specLineage ? analyzeBoundPlan(mission, plan, specLineage) : null;
+    if (specAnalysis && (!plan.requirementsCoverageProjection || plan.specConsistencyDigest !== specAnalysis.digest || plan.requirementsCoverageProjection.digest !== specAnalysis.coverage.digest)) {
+      throw new Error("Mission Plan Spec coverage changed after submission. Create a new Plan revision.");
+    }
     const workflows = await Promise.all(plan.workOrderBlueprints.map((blueprint: any) => ctx.db.query("workflows").withIndex("by_workflow_id", (q: any) => q.eq("workflowId", blueprint.workflowId)).first()));
     for (let index = 0; index < workflows.length; index += 1) {
       if (!workflows[index]?.active || workflows[index]?.version !== plan.workOrderBlueprints[index].workflowVersion) {
@@ -865,6 +1027,15 @@ export const approvePlan = mutation({
       rollbackApproach: plan.rollbackApproach,
       assertions: normalizedPlanAssertions(plan),
       workOrderBlueprints: plan.workOrderBlueprints,
+      specLineage: specLineage ? {
+        missionSpecRevisionId: String(specLineage.spec._id),
+        missionSpecDigest: specLineage.spec.digest,
+        missionSpecQualityEvaluationId: String(specLineage.evaluation._id),
+        projectConstitutionRevisionId: String(specLineage.constitution._id),
+        projectConstitutionDigest: specLineage.constitution.digest,
+        requirementsCoverage: specAnalysis!.coverage,
+        checklistLineage: boundChecklistLineage(specLineage.spec.content),
+      } : undefined,
     });
     const assertionRows = new Map<string, any>();
     for (const assertion of normalizedPlanAssertions(plan)) {
@@ -920,6 +1091,7 @@ export const approvePlan = mutation({
         assertions: normalizedPlanAssertions(plan),
         rollbackApproach: plan.rollbackApproach,
         codeScopes,
+        spec: specLineage?.spec.content,
       });
       const result = await createWorkOrderRecord(ctx, {
         projectId: args.projectId,
@@ -927,6 +1099,15 @@ export const approvePlan = mutation({
         missionPlanId: plan._id,
         missionPlanRevision: plan.revisionNumber,
         qualityContractDigest: qualityContract.digest,
+        missionSpecLineage: specLineage ? {
+          missionSpecRevisionId: specLineage.spec._id,
+          missionSpecDigest: specLineage.spec.digest,
+          missionSpecQualityEvaluationId: specLineage.evaluation._id,
+          projectConstitutionRevisionId: specLineage.constitution._id,
+          projectConstitutionDigest: specLineage.constitution.digest,
+          requirementsCoverage: specAnalysis!.coverage,
+          checklistLineage: boundChecklistLineage(specLineage.spec.content),
+        } : undefined,
         missionBlueprintId: blueprint.id,
         missionRole: blueprint.role,
         isMutating: blueprint.isMutating,

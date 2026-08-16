@@ -15,6 +15,7 @@ import { presentMissionState } from "../missionPresentation";
 import { MissionDraftForm } from "./MissionDraftForm";
 import { MissionPlanWorkspace } from "./MissionPlanWorkspace";
 import { MissionExecutionWorkspace } from "./MissionExecutionWorkspace";
+import { MissionSpecificationWorkspace } from "./MissionSpecificationWorkspace";
 
 export interface MissionDetailViewProps {
   projectId: Id<"projects">;
@@ -22,7 +23,7 @@ export interface MissionDetailViewProps {
 }
 
 const TABS: DetailTab[] = [
-  { id: "overview", label: "Overview" }, { id: "plan", label: "Plan" }, { id: "execution", label: "Execution" }, { id: "work-orders", label: "Work Orders" },
+  { id: "overview", label: "Overview" }, { id: "specification", label: "Specification" }, { id: "plan", label: "Plan" }, { id: "execution", label: "Execution" }, { id: "work-orders", label: "Work Orders" },
   { id: "evidence", label: "Validation" }, { id: "activity", label: "Activity" },
 ];
 
@@ -83,6 +84,7 @@ export function MissionDetailView({ projectId, onNavigate }: MissionDetailViewPr
     tabs={TABS} activeTabId={tab} onTabChange={setTab} aside={aside}>
       <div className="flex flex-col gap-6"><div className="rounded-xl border border-line bg-surface-1 px-4 py-3 text-[12.5px] text-ink-secondary">Live Convex Mission record. Validation status is derived from durable assertions and independent validator evidence.</div>{actionError ? <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{actionError}</div> : null}
         {tab === "overview" ? <div className="space-y-4"><div className="grid gap-4 lg:grid-cols-2"><section className="rounded-xl border border-line bg-surface-1 p-4"><h2 className="text-[13px] font-semibold text-ink">Current decision gate</h2><p className="mt-2 text-[13px] leading-relaxed text-ink-secondary">{mission.requiredHumanAction ?? presentation.health}</p></section><section className="rounded-xl border border-line bg-surface-1 p-4"><h2 className="text-[13px] font-semibold text-ink">Validation coverage</h2><p className="mt-2 text-[13px] leading-relaxed text-ink-secondary">{assertions.length === 0 ? "Validation contract is not yet defined." : acceptance.eligible ? "All contract assertions have required evidence, including independent validation where required. Operator acceptance is the final gate." : acceptance.blockingReasons.join(" · ")}</p></section></div><MissionDraftForm mission={mission} projectId={projectId} onDirtyChange={setDraftDirty} /></div> : null}
+        {tab === "specification" ? <MissionSpecificationWorkspace projectId={projectId} mission={mission} plans={plans} onOpenPlan={() => setTab("plan")} /> : null}
         {tab === "plan" ? <MissionPlanWorkspace projectId={projectId} mission={mission} project={project} plans={plans} /> : null}
         {tab === "execution" ? <MissionExecutionWorkspace projectId={projectId} mission={mission} workOrders={workOrders} /> : null}
         {tab === "work-orders" ? <WorkOrderList workOrders={workOrders} projectId={projectId} /> : null}

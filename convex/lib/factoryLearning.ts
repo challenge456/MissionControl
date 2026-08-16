@@ -104,6 +104,44 @@ export interface ObservationLearningSignal {
   severity: LearningSeverity;
 }
 
+export interface MissionSpecLearningSignal {
+  signalType: Extract<LearningSignalType, "PROMPT_AMBIGUITY" | "CONTEXT_MISS">;
+  deterministicKey: string;
+  reason: string;
+  confidence: number;
+  severity: LearningSeverity;
+  findingCode: string;
+}
+
+/**
+ * Project deterministic Spec Quality findings into advisory learning inputs.
+ * The projection never changes the Spec, Constitution, recipes, or quality
+ * rules; the existing recurring-evidence threshold still controls whether a
+ * human-reviewable improvement candidate may be created.
+ */
+export function deriveMissionSpecLearningSignals(findings: Array<{
+  code: string;
+  path: string;
+  message: string;
+  blocking: boolean;
+}>): MissionSpecLearningSignal[] {
+  return findings.flatMap((finding) => {
+    const ambiguity = /AMBIGU|PLACEHOLDER|CLARIFICATION|MEASURABLE/.test(finding.code);
+    const coverageGap = /ACCEPTANCE|VERIFICATION|COVERAGE|REQUIRED_SECTION|REPOSITORY_SCOPE/.test(finding.code);
+    if (!ambiguity && !coverageGap) return [];
+    return [{
+      signalType: ambiguity ? "PROMPT_AMBIGUITY" as const : "CONTEXT_MISS" as const,
+      deterministicKey: `mission-spec:${finding.code}:${finding.path.replace(/\[\d+\]/g, "[]")}`,
+      reason: boundedText(finding.message),
+      confidence: 1,
+      severity: finding.blocking ? "MEDIUM" as const : "LOW" as const,
+      findingCode: boundedText(finding.code, 100),
+    }];
+  }).sort((left, right) =>
+    left.deterministicKey.localeCompare(right.deterministicKey)
+  );
+}
+
 function objectValue(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>

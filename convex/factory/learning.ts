@@ -22,6 +22,7 @@ import {
   aggregateLearningSignals,
   buildImprovementCandidate,
   deriveObservationLearningSignals,
+  deriveMissionSpecLearningSignals,
   deriveRecipeMismatch,
   learningClusterKey,
   normalizeLearningSignature,
@@ -113,7 +114,8 @@ interface SignalDraft {
     | "RUN_EVENT"
     | "TRACE"
     | "HUMAN_DECISION"
-    | "CONFIGURATION_REGISTRY";
+    | "CONFIGURATION_REGISTRY"
+    | "MISSION_SPEC_QUALITY";
   sourceId: string;
   reasonCode: string;
   reasonSummary: string;
@@ -128,6 +130,8 @@ interface SignalDraft {
   observationId?: Id<"traceObservations">;
   evalScoreId?: Id<"evalScores">;
   factoryDefinitionVersionId?: Id<"factoryDefinitionVersions">;
+  missionSpecRevisionId?: Id<"missionSpecRevisions">;
+  specFindingCode?: string;
   recipeId?: string;
   affectedRole?: string;
   affectedModel?: string;
@@ -258,6 +262,8 @@ async function insertSignal(
     observationId: draft.observationId,
     evalScoreId: draft.evalScoreId,
     factoryDefinitionVersionId: draft.factoryDefinitionVersionId,
+    missionSpecRevisionId: draft.missionSpecRevisionId,
+    specFindingCode: draft.specFindingCode,
     signalType: draft.signalType,
     sourceType: draft.sourceType,
     sourceId: boundedText(draft.sourceId, 300),
@@ -295,6 +301,42 @@ async function collectSourceSignals(
     if (draft.observedAt < windowStart) return;
     if (await insertSignal(ctx, access, scope, draft)) created += 1;
   };
+
+  const specEvaluations = await ctx.db
+    .query("missionSpecQualityEvaluations")
+    .withIndex("by_project_evaluated", (q) =>
+      q.eq("projectId", access.project._id).gte("evaluatedAt", windowStart))
+    .order("desc")
+    .take(MAX_SOURCE_ROWS);
+  for (const evaluation of specEvaluations) {
+    const mission = await ctx.db.get(evaluation.missionId);
+    if (!mission || !(await sourceBelongsToRepository(ctx, scope, {
+      repositoryId: mission.repositoryId,
+    }))) continue;
+    for (const derived of deriveMissionSpecLearningSignals(evaluation.findings)) {
+      await add({
+        ...derived,
+        sourceType: "MISSION_SPEC_QUALITY",
+        sourceId: String(evaluation._id),
+        reasonCode: derived.findingCode,
+        reasonSummary: derived.reason,
+        evidenceRefs: [
+          `mission-spec-revision:${evaluation.missionSpecRevisionId}`,
+          `mission-spec-evaluation:${evaluation._id}`,
+          `spec-finding:${derived.findingCode}`,
+        ],
+        observedAt: evaluation.evaluatedAt,
+        missionSpecRevisionId: evaluation.missionSpecRevisionId,
+        specFindingCode: derived.findingCode,
+        metadata: {
+          missionId: evaluation.missionId,
+          missionSpecDigest: evaluation.missionSpecDigest,
+          rulesetVersion: evaluation.rulesetVersion,
+          acceptanceAuthority: false,
+        },
+      });
+    }
+  }
 
   const receipts = await ctx.db
     .query("verificationReceipts")

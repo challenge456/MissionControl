@@ -1,0 +1,88 @@
+{
+  "schemaVersion": "spec-driven-mission-intake-lineage-proof/v1",
+  "recordedAt": "2026-08-16",
+  "base": {
+    "originMainSha": "e2bec95c1665d7184e6d41e9178db42ee06ac5f3",
+    "runtimeContractBefore": 27,
+    "runtimeContractAfter": 28
+  },
+  "fixture": {
+    "projectId": "sn7dtgyn9pt0gq43x2wpw5mwxn8b7adt",
+    "tenantId": "wx74rg6ftfvzpq8hhtcjh4qve58b64w8",
+    "missionId": "gs7hvwk9bx6yk3xh14mtsn3k7s8ck7ha",
+    "constitution": {
+      "revisionId": "sx7z2d2a4xqmfca1d1wtqm1vp18ckf3a",
+      "digest": "sha256:8916d7121dd4fdf0e6599724d083cd0b16774f9a65679bf9b4a963e35f868569"
+    },
+    "specRevision1": {
+      "revisionId": "ss7ykezdhw5h0sbq1p8psead258cjvh2",
+      "evaluationResult": "FAIL",
+      "blockingFindingCodes": [
+        "ACCEPTANCE_VERIFICATION_MISSING",
+        "CLARIFICATION_UNRESOLVED",
+        "MEASURABLE_OUTCOME_MISSING",
+        "REQUIRED_SECTION_MISSING"
+      ]
+    },
+    "specRevision2": {
+      "revisionId": "ss7t5avvnbrqkfmgff3s2v69d98ckmpd",
+      "digest": "sha256:d211d54c2dd6aea651e102c0a38bd57563c719c081609fb95add39967c20358e",
+      "evaluationResult": "PASS",
+      "decision": "FINALIZED"
+    },
+    "plan": {
+      "planId": "gn7zsa15fycsc8v61bmandwr7h8cj57g",
+      "status": "APPROVED",
+      "boundSpecRevisionId": "ss7t5avvnbrqkfmgff3s2v69d98ckmpd",
+      "coverageComplete": true
+    },
+    "workOrder": {
+      "workOrderId": "yh78xkk0vf93ey58wcptav2ydd8cj1f3",
+      "status": "AWAITING_APPROVAL",
+      "boundSpecRevisionId": "ss7t5avvnbrqkfmgff3s2v69d98ckmpd",
+      "coverageComplete": true,
+      "attemptDispatched": false
+    },
+    "specRevision3": {
+      "revisionId": "ss7k9nz7afc1e4d1ck9a11y09d8ck138",
+      "digest": "sha256:21d9d82c3b227d1d974998f7845e960ed07df96c596a3773fbb80f3f596cff53",
+      "becameCurrent": true,
+      "silentlyReboundExistingPlan": false,
+      "silentlyReboundExistingWorkOrder": false
+    }
+  },
+  "memory": {
+    "constitutionAndAllSpecRevisionsIndexed": true,
+    "advisoryOnly": true,
+    "frozenLineageWins": true,
+    "acceptanceAuthority": false
+  },
+  "authorityProfile": {
+    "releaseWorkOrders": false,
+    "dispatchAttempts": false,
+    "establishVerification": false,
+    "createAuthoritativeEvidence": false,
+    "publish": false,
+    "merge": false,
+    "accept": false,
+    "mutateWorkerLeases": false,
+    "mutateRouting": false,
+    "alterFactoryVersions": false
+  },
+  "browser": {
+    "desktopWidth": 1440,
+    "mobileWidth": 390,
+    "themes": ["light", "dark"],
+    "experienceLevels": ["Basic", "Intermediate", "Advanced"],
+    "axeViolations": 0,
+    "browserErrors": 0,
+    "http4xxOr5xx": 0
+  },
+  "qualification": {
+    "focusedTestsPassed": 61,
+    "factoryQualification": "PASS",
+    "runtimeContract": "PASS",
+    "build": "PASS",
+    "orchestrationSmoke": "PASS"
+  }
+}

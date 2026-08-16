@@ -63,6 +63,9 @@ export interface MissionPlanAssertionInput {
   requiredEvidence: string;
   requiresIndependentValidation: boolean;
   waiverAllowed: boolean;
+  sourceRequirementIds?: string[];
+  sourceAcceptanceExpectationIds?: string[];
+  sourceVerificationExpectationIds?: string[];
 }
 
 export interface MissionPlanBlueprintInput {

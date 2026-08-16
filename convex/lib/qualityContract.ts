@@ -1,6 +1,6 @@
 import { canonicalHash } from "@mission-control/shared";
 
-export const QUALITY_CONTRACT_SCHEMA_VERSION = 1;
+export const QUALITY_CONTRACT_SCHEMA_VERSION = 2;
 
 export interface ApprovedPlanQualityContractInput {
   missionId: string;
@@ -23,7 +23,36 @@ export interface ApprovedPlanQualityContractInput {
     requiredEvidence: string;
     requiresIndependentValidation: boolean;
     waiverAllowed: boolean;
+    sourceRequirementIds?: string[];
+    sourceAcceptanceExpectationIds?: string[];
+    sourceVerificationExpectationIds?: string[];
   }>;
+  specLineage?: {
+    missionSpecRevisionId: string;
+    missionSpecDigest: string;
+    missionSpecQualityEvaluationId: string;
+    projectConstitutionRevisionId: string;
+    projectConstitutionDigest: string;
+    requirementsCoverage: {
+      schemaVersion: number;
+      rows: Array<{
+        specRequirementId: string;
+        acceptanceExpectationIds: string[];
+        planAssertionIds: string[];
+        workOrderBlueprintIds: string[];
+        acceptanceCriterionIds: string[];
+        verificationCheckIds: string[];
+        complete: boolean;
+      }>;
+      complete: boolean;
+      digest: string;
+    };
+    checklistLineage: {
+      requirementsQualityItemIds: string[];
+      governanceConstraintItemIds: string[];
+      evidenceBearingVerificationItemIds: string[];
+    };
+  };
   workOrderBlueprints: Array<{
     id: string;
     title: string;
@@ -53,11 +82,18 @@ export function compileApprovedPlanQualityContract(
   input: ApprovedPlanQualityContractInput,
 ) {
   const projection = {
-    schemaVersion: QUALITY_CONTRACT_SCHEMA_VERSION,
+    schemaVersion: input.specLineage ? QUALITY_CONTRACT_SCHEMA_VERSION : 1,
     source: {
       missionId: input.missionId,
       missionPlanId: input.missionPlanId,
       missionPlanRevision: input.missionPlanRevision,
+      ...(input.specLineage ? {
+        missionSpecRevisionId: input.specLineage.missionSpecRevisionId,
+        missionSpecDigest: input.specLineage.missionSpecDigest,
+        missionSpecQualityEvaluationId: input.specLineage.missionSpecQualityEvaluationId,
+        projectConstitutionRevisionId: input.specLineage.projectConstitutionRevisionId,
+        projectConstitutionDigest: input.specLineage.projectConstitutionDigest,
+      } : {}),
     },
     intent: {
       objective: input.objective,
@@ -89,6 +125,10 @@ export function compileApprovedPlanQualityContract(
         dependsOnBlueprintIds: sortedStrings(blueprint.dependsOnBlueprintIds),
         assertionIds: sortedStrings(blueprint.assertionIds),
       })),
+    ...(input.specLineage ? {
+      requirementsCoverage: input.specLineage.requirementsCoverage,
+      checklistLineage: input.specLineage.checklistLineage,
+    } : {}),
   };
 
   return {

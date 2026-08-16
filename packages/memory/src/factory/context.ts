@@ -16,6 +16,8 @@ const SOURCE_PRIORITY: Record<
   Partial<Record<FactoryMemoryResult["sourceType"], number>>
 > = {
   SOFTWARE: {
+    "mission-spec": 1,
+    "project-constitution": 0.98,
     "source-code": 1,
     adr: 0.95,
     test: 0.9,
@@ -25,6 +27,8 @@ const SOURCE_PRIORITY: Record<
     trace: 0.7,
   },
   VERIFICATION: {
+    "mission-spec": 1,
+    "project-constitution": 0.96,
     "verification-plan": 1,
     "verification-evidence": 1,
     test: 0.98,
@@ -36,6 +40,8 @@ const SOURCE_PRIORITY: Record<
     "work-order": 0.8,
   },
   INTELLIGENT_AUTOMATION: {
+    "mission-spec": 0.95,
+    "project-constitution": 0.92,
     "repository-document": 1,
     adr: 0.95,
     "source-code": 0.9,

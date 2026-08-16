@@ -23,6 +23,7 @@ describe("flag registry", () => {
     expect(keys).toContain("rollout.rings");
     expect(keys).toContain("delivery.workorders");
     expect(keys).toContain("missions.plan-release-v1");
+    expect(keys).toContain("missions.spec-intake-v1");
     expect(keys).toContain("executor.pi-bridge");
     expect(keys).toContain("factory-memory.hybrid");
     expect(keys).toContain("factory-memory.relationships");
