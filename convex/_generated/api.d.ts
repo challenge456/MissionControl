@@ -121,6 +121,7 @@ import type * as lib_factoryOverview from "../lib/factoryOverview.js";
 import type * as lib_factoryProjectSeed from "../lib/factoryProjectSeed.js";
 import type * as lib_factoryRelease from "../lib/factoryRelease.js";
 import type * as lib_factoryReviewReadModel from "../lib/factoryReviewReadModel.js";
+import type * as lib_factoryWorkerRuntime from "../lib/factoryWorkerRuntime.js";
 import type * as lib_factoryWorkflowContract from "../lib/factoryWorkflowContract.js";
 import type * as lib_fileTree from "../lib/fileTree.js";
 import type * as lib_flags from "../lib/flags.js";
@@ -399,6 +400,7 @@ declare const fullApi: ApiFromModules<{
   "lib/factoryProjectSeed": typeof lib_factoryProjectSeed;
   "lib/factoryRelease": typeof lib_factoryRelease;
   "lib/factoryReviewReadModel": typeof lib_factoryReviewReadModel;
+  "lib/factoryWorkerRuntime": typeof lib_factoryWorkerRuntime;
   "lib/factoryWorkflowContract": typeof lib_factoryWorkflowContract;
   "lib/fileTree": typeof lib_fileTree;
   "lib/flags": typeof lib_flags;

@@ -6,7 +6,7 @@ import type { Id } from "./_generated/dataModel";
 import { appendChangeRecord } from "./lib/armAudit";
 import { logTaskEvent } from "./lib/taskEvents";
 import { deriveVerificationStatus, currentWorkflowStepLabel, totalWorkflowRetries } from "./lib/workOrders";
-import { ACTIVE_RUN_STATUSES, nextStateForRunStatus, publicDispatchActorAllowed, resolveRetryExecutionBinding, validateDispatchable, validateRetryRequest } from "./lib/workOrderDispatch";
+import { ACTIVE_RUN_STATUSES, dispatchInvalidatesVerificationReceipts, nextStateForRunStatus, publicDispatchActorAllowed, resolveRetryExecutionBinding, validateDispatchable, validateRetryRequest } from "./lib/workOrderDispatch";
 import { isRunNeedingAttention, summarizeFactoryMetrics } from "./lib/factoryOverview";
 import {
   approvalStatusSatisfiesRequirement,
@@ -2549,7 +2549,9 @@ async function dispatchWorkOrder(
       },
     });
 
-    await markReceiptsStaleForWorkOrder(ctx, refreshedWorkOrder, runDocId);
+    if (dispatchInvalidatesVerificationReceipts(refreshedWorkOrder)) {
+      await markReceiptsStaleForWorkOrder(ctx, refreshedWorkOrder, runDocId);
+    }
 
     await ctx.db.patch(refreshedWorkOrder._id, {
       workflowId: resolvedWorkflowId,

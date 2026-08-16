@@ -22,6 +22,18 @@ export function publicDispatchActorAllowed(actorType: "HUMAN" | "SYSTEM" | "AGEN
   return actorType === "HUMAN";
 }
 
+/**
+ * Policy-v2 receipts are immutable historical evidence. A newer Attempt makes
+ * the previous result non-current through the canonical exact-current
+ * evaluator; dispatch must not rewrite the previous receipt to express that.
+ * Legacy verification continues to use receipt invalidation for currentness.
+ */
+export function dispatchInvalidatesVerificationReceipts(workOrder: {
+  verificationContract?: { schemaVersion?: number };
+}): boolean {
+  return workOrder.verificationContract?.schemaVersion !== 2;
+}
+
 export function dispatchApprovalAllowed(args: {
   riskLevel: DispatchRiskLevel;
   approvalStatus: DispatchApprovalStatus;
