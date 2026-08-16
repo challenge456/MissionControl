@@ -1,5 +1,5 @@
 ---
-status: ready
+status: complete
 priority: p1
 issue_id: "045"
 tags: [software-factory, remote-sandbox, worker-runtime, reconciliation, security]
@@ -84,8 +84,8 @@ Use Option 2. Treat merged main as authoritative. Reuse #102 worker identity/ses
 - [x] TypeScript, lint, runtime-contract guard, production build, and orchestration smoke pass
 - [x] FakeSandboxProvider golden path passes
 - [x] Browser validation passes in dark/light themes with accessibility and console checks
-- [ ] Branch pushed and draft PR created without merge
-- [ ] GitHub CI and Vercel results recorded
+- [x] Branch pushed and draft PR created without merge
+- [x] GitHub CI and Vercel results recorded
 - [x] Live exe.dev remains Preview / Not Live Certified without external mutation
 
 ## Work Log
@@ -151,6 +151,20 @@ Use Option 2. Treat merged main as authoritative. Reuse #102 worker identity/ses
 **Learnings:**
 - Certification evidence must be minted by a separately authorized control-plane workflow, not accepted as an operator checkbox in routine configuration.
 - Workspace pages with persistent sidebars and chat cannot select dense layouts from total viewport width alone; container-aware disclosure and a later parent split preserve readable operator controls.
+
+### 2026-08-15 - Draft PR opened and hosted validation passed
+
+**By:** Codex
+
+**Actions:**
+- Pushed `codex/remote-sandbox-factory-n1-reconcile` without changing the preserved source worktree.
+- Opened draft PR #109 against exact base `c97b31d59911543c6f95b2cd35fded957b2eddc6`; auto-merge remains disabled.
+- Confirmed all six GitHub CI jobs passed: Smoke Test, TypeScript Type Check, Lint, Unit Tests, Build (UI + workspaces), and E2E Tests.
+- Confirmed Vercel Preview Comments and both Vercel deployments passed.
+
+**Learnings:**
+- Hosted validation agrees with the local full-suite, build, runtime-contract, golden-path, and browser evidence.
+- Live exe.dev certification remains separate authorized operational work and is not a prerequisite for merging the Preview implementation.
 
 ## Notes
 
