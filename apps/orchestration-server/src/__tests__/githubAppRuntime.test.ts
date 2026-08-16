@@ -51,12 +51,13 @@ describe("GitHub App runtime", () => {
   });
 
   it("refuses to attest a reused pull request at a different head commit", async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify([{
+    const staleResponse = () => new Response(JSON.stringify([{
       number: 42,
       html_url: "https://github.com/sellerfi/sandbox/pull/42",
       head: { ref: "mc/work-order-1", sha: "unverified-head" },
       base: { ref: "main" },
-    }]), { status: 200, headers: { "Content-Type": "application/json" } }));
+    }]), { status: 200, headers: { "Content-Type": "application/json" } });
+    const fetchImpl = vi.fn().mockImplementation(async () => staleResponse());
 
     await expect(createOrReusePullRequest({
       repository: "sellerfi/sandbox",
@@ -67,7 +68,50 @@ describe("GitHub App runtime", () => {
       token: "not-logged",
       headSha: "verified-head",
       fetchImpl,
+      sleepImpl: async () => undefined,
+      headPropagationAttempts: 2,
     })).rejects.toThrow("head does not match the independently verified candidate");
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("waits for a just-pushed candidate head to propagate before reusing the pull request", async () => {
+    const stalePullRequest = {
+      number: 42,
+      html_url: "https://github.com/sellerfi/sandbox/pull/42",
+      node_id: "PR_42",
+      head: { ref: "mc/work-order-1", sha: "previous-head" },
+      base: { ref: "main" },
+    };
+    const currentPullRequest = {
+      ...stalePullRequest,
+      head: { ref: "mc/work-order-1", sha: "verified-head" },
+    };
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify([stalePullRequest]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([currentPullRequest]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }));
+    const sleepImpl = vi.fn(async () => undefined);
+
+    const result = await createOrReusePullRequest({
+      repository: "sellerfi/sandbox",
+      branch: "mc/work-order-1",
+      base: "main",
+      title: "Add buyer gate",
+      body: "Evidence",
+      token: "not-logged",
+      headSha: "verified-head",
+      fetchImpl,
+      sleepImpl,
+    });
+
+    expect(result).toMatchObject({ number: 42, reused: true, headSha: "verified-head" });
+    expect(sleepImpl).toHaveBeenCalledWith(750);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it("creates a review-ready pull request when the branch has none", async () => {

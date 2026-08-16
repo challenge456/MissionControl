@@ -94,17 +94,21 @@ export async function createOrReusePullRequest(input: {
   headSha: string;
   draft?: boolean;
   fetchImpl?: typeof fetch;
+  sleepImpl?: (milliseconds: number) => Promise<void>;
+  headPropagationAttempts?: number;
+  headPropagationDelayMs?: number;
 }) {
   const [owner] = input.repository.split("/");
   if (!owner || input.repository.split("/").length !== 2) throw new Error("GitHub repository must use owner/name format.");
-  const existing = await githubJson<Array<any>>(
+  const listOpenPullRequests = () => githubJson<Array<any>>(
     `https://api.github.com/repos/${input.repository}/pulls?state=open&head=${encodeURIComponent(`${owner}:${input.branch}`)}&per_page=10`,
     { method: "GET", headers: { Authorization: `Bearer ${input.token}` } },
     input.fetchImpl
   );
+  const existing = await listOpenPullRequests();
   const exact = existing.find((pull) => pull?.head?.ref === input.branch && pull?.base?.ref === input.base);
   if (exact) {
-    return normalizePullRequest(exact, input, true);
+    return await normalizeReusedPullRequestAfterPush(exact, input, listOpenPullRequests);
   }
   if (existing.length > 0) throw new Error("An open pull request exists for the branch with a different base branch.");
   const created = await githubJson<any>(
@@ -123,6 +127,41 @@ export async function createOrReusePullRequest(input: {
     input.fetchImpl
   );
   return normalizePullRequest(created, input, false);
+}
+
+async function normalizeReusedPullRequestAfterPush(
+  initialPullRequest: any,
+  expected: {
+    branch: string;
+    base: string;
+    headSha: string;
+    sleepImpl?: (milliseconds: number) => Promise<void>;
+    headPropagationAttempts?: number;
+    headPropagationDelayMs?: number;
+  },
+  listOpenPullRequests: () => Promise<Array<any>>,
+) {
+  const attempts = Math.max(1, expected.headPropagationAttempts ?? 8);
+  const delayMs = Math.max(0, expected.headPropagationDelayMs ?? 750);
+  const sleepImpl = expected.sleepImpl ?? ((milliseconds: number) => new Promise<void>((resolve) => {
+    setTimeout(resolve, milliseconds);
+  }));
+  let pullRequest = initialPullRequest;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    if (pullRequest?.head?.sha === expected.headSha) {
+      return normalizePullRequest(pullRequest, expected, true);
+    }
+    if (attempt < attempts) {
+      await sleepImpl(delayMs);
+      const openPullRequests = await listOpenPullRequests();
+      const refreshed = openPullRequests.find((pull) =>
+        pull?.head?.ref === expected.branch && pull?.base?.ref === expected.base
+      );
+      if (!refreshed) throw new Error("The exact open GitHub pull request disappeared while confirming its candidate head.");
+      pullRequest = refreshed;
+    }
+  }
+  return normalizePullRequest(pullRequest, expected, true);
 }
 
 export async function fetchGithubPullRequestEvidence(input: {
