@@ -94,6 +94,18 @@ export const DOCS_SITE_SECTIONS: DocsSiteSection[] = [
     icon: Layers,
     pages: [
       {
+        id: "sfe-progressive-factory-experience",
+        title: "Progressive Factory Experience",
+        description: "Experience levels, recipes, launch flow, run lanes, and safety boundaries",
+        path: "software-factory-enhancement/progressive-factory-experience",
+      },
+      {
+        id: "sfe-progressive-factory-browser-results",
+        title: "Progressive Factory Browser Results",
+        description: "Responsive, theme, keyboard, accessibility, and runtime evidence",
+        path: "software-factory-enhancement/testing/progressive-factory-experience-browser-results",
+      },
+      {
         id: "sfe-overview",
         title: "Software Factory Enhancement Overview",
         description: "Status, findings, decisions, and next actions",
