@@ -376,6 +376,8 @@ export const claimFactoryAttempt = action({
         leaseId: payload.leaseId,
         ownerId: args.envelope.serviceId,
         leaseDurationMs: payload.leaseDurationMs,
+        workerId: payload.workerId,
+        workerSessionId: payload.workerSessionId,
       });
       await ctx.runMutation(internal.serviceCommands.complete, {
         receiptId: receipt.receiptId,
@@ -404,6 +406,9 @@ export const renewFactoryAttempt = action({
         leaseId: payload.leaseId,
         ownerId: args.envelope.serviceId,
         leaseDurationMs: payload.leaseDurationMs,
+        workerId: payload.workerId,
+        workerSessionId: payload.workerSessionId,
+        workerGeneration: payload.workerGeneration,
       });
       await ctx.runMutation(internal.serviceCommands.complete, {
         receiptId: receipt.receiptId,
@@ -432,6 +437,9 @@ export const reportFactoryAttempt = action({
         workflowRunId: payload.workflowRunId,
         leaseId: payload.leaseId,
         ownerId: args.envelope.serviceId,
+        workerId: payload.workerId,
+        workerSessionId: payload.workerSessionId,
+        workerGeneration: payload.workerGeneration,
         packet: payload.packet,
       });
       await ctx.runMutation(internal.serviceCommands.complete, {
@@ -461,6 +469,9 @@ export const authorizeFactoryPublication = action({
         leaseId: payload.leaseId,
         ownerId: args.envelope.serviceId,
         candidateRevision: payload.candidateRevision,
+        workerId: payload.workerId,
+        workerSessionId: payload.workerSessionId,
+        workerGeneration: payload.workerGeneration,
       });
       await ctx.runMutation(internal.serviceCommands.complete, {
         receiptId: receipt.receiptId,

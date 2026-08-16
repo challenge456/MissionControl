@@ -64,6 +64,11 @@ export interface ExecutorHealth {
   details?: string;
 }
 
+export interface ExecutorProcessObserver {
+  started(process: { pid: number; startedAt: number }): Promise<void> | void;
+  terminated(process: { pid: number; terminatedAt: number; exitCode?: number }): Promise<void> | void;
+}
+
 export interface ExecutorAdapter {
   capabilities(): ExecutorCapabilities;
   validateConfiguration(request: ExecutorRequest): ExecutorConfigurationIssue[];
@@ -71,7 +76,8 @@ export interface ExecutorAdapter {
   execute(
     request: ExecutorRequest,
     emit: (event: ExecutorEvent) => Promise<void> | void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    processObserver?: ExecutorProcessObserver,
   ): Promise<ExecutorResult>;
   cancel(executionId: string): Promise<boolean>;
   resume?(executionId: string): Promise<ExecutorResult>;

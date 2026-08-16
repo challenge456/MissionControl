@@ -16,8 +16,18 @@ export interface FactoryExecutionManifestInput {
   repositoryId: string;
   repository: string;
   defaultBranch: string;
+  baseSha: string;
   branch: string;
   worktree: string;
+  executor: {
+    adapter: string;
+    version: string;
+  };
+  executionBackend: string;
+  sandboxProfile: {
+    isolation: "READ_ONLY" | "WORKSPACE_WRITE";
+    requiredCapabilities: string[];
+  };
   workflow: {
     workflowId: string;
     version: number;
@@ -73,6 +83,12 @@ export interface FactoryExecutionManifestInput {
 }
 
 export function buildFactoryExecutionManifest(input: FactoryExecutionManifestInput) {
+  if (!/^[a-f0-9]{40,64}$/i.test(input.baseSha)) {
+    throw new Error("Execution manifest requires an immutable full base SHA.");
+  }
+  if (!input.executor.adapter.trim() || !input.executor.version.trim() || !input.executionBackend.trim()) {
+    throw new Error("Execution manifest requires a provider-neutral executor and backend binding.");
+  }
   const allowedPaths = Array.from(new Set(input.codeScopes.flatMap((scope) => scope.includePaths))).sort();
   const excludedPaths = Array.from(new Set(input.codeScopes.flatMap((scope) => scope.excludePaths))).sort();
   const contextHash = `sha256:${computeCanonicalHash(input.initialContext)}`;
@@ -119,6 +135,7 @@ export function buildFactoryExecutionManifest(input: FactoryExecutionManifestInp
       repositoryId: input.repositoryId,
       repository: input.repository,
       defaultBranch: input.defaultBranch,
+      baseSha: input.baseSha,
       branch: input.branch,
       worktree: input.worktree,
       codeScopeIds: input.codeScopes.map((scope) => scope.id).sort(),
@@ -145,9 +162,11 @@ export function buildFactoryExecutionManifest(input: FactoryExecutionManifestInp
       requiredApprovals: input.workOrder.requiredApprovals ?? [],
     },
     harness: {
-      adapter: "codex",
-      version: "v1",
-      isolation: "WORKSPACE_WRITE",
+      adapter: input.executor.adapter,
+      version: input.executor.version,
+      isolation: input.sandboxProfile.isolation,
+      executionBackend: input.executionBackend,
+      requiredCapabilities: [...new Set(input.sandboxProfile.requiredCapabilities)].sort(),
       timeoutMs: input.maxRuntimeMinutes * 60_000,
       completionContract: "factory-result/v1",
       pullRequestAuthority: "CONTROL_PLANE_ONLY",

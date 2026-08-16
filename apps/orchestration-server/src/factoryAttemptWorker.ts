@@ -8,6 +8,14 @@ import { assertFactoryCandidateUnchanged, commitFactoryChanges, ensureFactoryWor
 import { validateChangedFileScope } from "./factoryPathScope.js";
 import { createOrReusePullRequest, loadGithubAppPrivateKey, mintInstallationToken } from "./githubAppRuntime.js";
 import { executeIndependentVerification } from "./factoryVerification.js";
+import {
+  cleanupOwnedFactoryWorkspace,
+  recordFactoryExecutorStarted,
+  recordFactoryExecutorTerminated,
+  recordFactoryPublication,
+  transferFactoryPublicationWorkspace,
+  type FactoryWorkspaceOwner,
+} from "./factoryWorkspaceOwnership.js";
 
 const LEASE_DURATION_MS = 60_000;
 const HEARTBEAT_INTERVAL_MS = 20_000;
@@ -35,11 +43,22 @@ export interface FactoryAttemptWorkerDependencies {
   mintInstallationToken: typeof mintInstallationToken;
   pushFactoryBranch: typeof pushFactoryBranch;
   createOrReusePullRequest: typeof createOrReusePullRequest;
+  recordFactoryExecutorStarted?: typeof recordFactoryExecutorStarted;
+  recordFactoryExecutorTerminated?: typeof recordFactoryExecutorTerminated;
+  recordFactoryPublication?: typeof recordFactoryPublication;
+  cleanupOwnedFactoryWorkspace?: typeof cleanupOwnedFactoryWorkspace;
+  transferFactoryPublicationWorkspace?: typeof transferFactoryPublicationWorkspace;
 }
 
 export interface FactoryAttemptWorkerScope {
   projectId: string;
   repositoryId: string;
+}
+
+export interface FactoryAttemptWorkerIdentity {
+  workerId: string;
+  sessionId: string;
+  maxConcurrentRuns: number;
 }
 
 const DEFAULT_DEPENDENCIES: FactoryAttemptWorkerDependencies = {
@@ -54,10 +73,16 @@ const DEFAULT_DEPENDENCIES: FactoryAttemptWorkerDependencies = {
   mintInstallationToken,
   pushFactoryBranch,
   createOrReusePullRequest,
+  recordFactoryExecutorStarted,
+  recordFactoryExecutorTerminated,
+  recordFactoryPublication,
+  cleanupOwnedFactoryWorkspace,
+  transferFactoryPublicationWorkspace,
 };
 
 export class FactoryAttemptWorker {
   private readonly active = new Map<string, AbortController>();
+  private readonly activeTasks = new Set<Promise<void>>();
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private polling = false;
   private stopped = false;
@@ -73,6 +98,7 @@ export class FactoryAttemptWorker {
     private readonly pollIntervalMs = boundedInteger(process.env.FACTORY_EXECUTION_POLL_MS, 5_000, 300_000, 15_000),
     private readonly dependencies: FactoryAttemptWorkerDependencies = DEFAULT_DEPENDENCIES,
     private readonly scope?: FactoryAttemptWorkerScope,
+    private readonly identity?: FactoryAttemptWorkerIdentity,
   ) {}
 
   start() {
@@ -86,6 +112,7 @@ export class FactoryAttemptWorker {
     if (this.pollTimer) clearInterval(this.pollTimer);
     this.pollTimer = null;
     for (const controller of this.active.values()) controller.abort();
+    await Promise.allSettled([...this.activeTasks]);
   }
 
   status(): FactoryAttemptWorkerStatus {
@@ -116,17 +143,19 @@ export class FactoryAttemptWorker {
         this.client.query(ConvexQueries.workflowRuns.list as any, factoryRunQueryArgs("RUNNING", this.scope)),
       ]) as [any[], any[]];
       for (const run of [...pending, ...running]) {
-        if (this.stopped || this.active.size > 0) break;
+        if (this.stopped || this.active.size >= (this.identity?.maxConcurrentRuns ?? 1)) break;
         if (!isBoundFactoryAttempt(run) || !matchesWorkerScope(run, this.scope) || this.active.has(String(run._id))) continue;
         const controller = new AbortController();
         this.active.set(String(run._id), controller);
-        void this.execute(run, controller)
+        const task = this.execute(run, controller)
           .catch((error) => {
             this.failedCount += 1;
             this.lastError = safeError(error);
             console.error(`[factory-worker] Attempt ${run.runId} failed: ${this.lastError}`);
           })
           .finally(() => this.active.delete(String(run._id)));
+        this.activeTasks.add(task);
+        void task.finally(() => this.activeTasks.delete(task));
       }
     } catch (error) {
       this.lastError = safeError(error);
@@ -142,8 +171,15 @@ export class FactoryAttemptWorker {
       workflowRunId: run._id,
       leaseId,
       leaseDurationMs: LEASE_DURATION_MS,
+      workerId: this.identity?.workerId,
+      workerSessionId: this.identity?.sessionId,
     });
     if (!claim?.claimed) return;
+    const workerLeaseIdentity = claim.lease?.workerId ? {
+      workerId: claim.lease.workerId,
+      workerSessionId: claim.lease.workerSessionId,
+      workerGeneration: claim.lease.workerGeneration,
+    } : {};
 
     let heartbeatTask: Promise<void> | null = null;
     let leaseHealthy = true;
@@ -155,6 +191,7 @@ export class FactoryAttemptWorker {
             workflowRunId: run._id,
             leaseId,
             leaseDurationMs: LEASE_DURATION_MS,
+            ...workerLeaseIdentity,
           });
           if (!result?.renewed) throw new Error(`Attempt lease renewal rejected (${result?.reason ?? "unknown"}).`);
         } catch (error) {
@@ -177,22 +214,32 @@ export class FactoryAttemptWorker {
         workflowRunId: run._id,
         leaseId,
         packet,
+        ...workerLeaseIdentity,
       });
     };
 
     try {
       const manifest = validateClaimManifest(claim);
+      const workspaceOwner = workspaceOwnerFromClaim(claim, manifest);
+      if (claim.publicationCheckpoint && workspaceOwner && claim.previousLease?.workerId) {
+        await (this.dependencies.transferFactoryPublicationWorkspace ?? transferFactoryPublicationWorkspace)({
+          previousOwner: workspaceOwnerFromLease(claim, manifest, claim.previousLease),
+          nextOwner: workspaceOwner,
+          checkpointCandidateSha: claim.publicationCheckpoint.candidateRevision,
+        });
+      }
       await this.dependencies.ensureFactoryWorktree({
         checkoutRoot: claim.checkoutRoot,
         worktree: claim.worktree,
         branch: claim.branch,
-        defaultBranch: claim.defaultBranch,
+        baseSha: manifest.repository.baseSha,
+        ownership: workspaceOwner,
       });
 
       if (claim.publicationCheckpoint) {
         const checkpoint = validatePublicationCheckpoint(claim.publicationCheckpoint);
         const structuredResult = validateFactoryResult(checkpoint.structuredResult);
-        const candidate = await this.dependencies.inspectCandidateChange(claim.worktree, claim.defaultBranch);
+        const candidate = await this.dependencies.inspectCandidateChange(claim.worktree, manifest.repository.baseSha);
         if (candidate.sourceRevision !== checkpoint.sourceRevision
           || candidate.candidateRevision !== checkpoint.candidateRevision) {
           throw new Error("Approved publication checkpoint no longer matches the attempt worktree.");
@@ -225,6 +272,7 @@ export class FactoryAttemptWorker {
       }
 
       const executorEvents: ExecutorEvent[] = [];
+      const runtimeEvents: any[] = [];
       const result = await this.adapter.execute({
         executionId: `${claim.runId}:${claim.executionManifestDigest}`,
         repositoryRoot: claim.worktree,
@@ -236,9 +284,25 @@ export class FactoryAttemptWorker {
         isolation: "WORKSPACE_WRITE",
       }, (event) => {
         executorEvents.push(event);
-      }, controller.signal);
+      }, controller.signal, workspaceOwner ? {
+        started: async (process) => {
+          await (this.dependencies.recordFactoryExecutorStarted ?? recordFactoryExecutorStarted)(workspaceOwner, process.pid);
+        },
+        terminated: async (process) => {
+          await (this.dependencies.recordFactoryExecutorTerminated ?? recordFactoryExecutorTerminated)(workspaceOwner, process);
+          runtimeEvents.push({
+            idempotencyKey: `factory:${claim.runId}:process:${process.pid}:terminated`,
+            eventType: "CHECKPOINT_CREATED",
+            workflowStep: "factory-execution",
+            status: "COMPLETED",
+            startedAt: process.terminatedAt,
+            commandSummary: "Owned executor process terminated",
+            metadata: { lifecycleType: "PROCESS_TERMINATED", pid: process.pid, exitCode: process.exitCode },
+          });
+        },
+      } : undefined);
 
-      const mappedEvents = executorEvents.map((event) => mapExecutorEvent(claim.runId, event));
+      const mappedEvents = [...executorEvents.map((event) => mapExecutorEvent(claim.runId, event)), ...runtimeEvents];
       const traceObservations = mapExecutorObservations({
         runId: claim.runId,
         events: executorEvents,
@@ -271,7 +335,7 @@ export class FactoryAttemptWorker {
       }
 
       const scopeResult = validateChangedFileScope(
-        await this.dependencies.listChangedFiles(claim.worktree, claim.defaultBranch),
+        await this.dependencies.listChangedFiles(claim.worktree, manifest.repository.baseSha),
         { allowedPaths: manifest.repository.allowedPaths, excludedPaths: manifest.repository.excludedPaths }
       );
       if (!scopeResult.ok) {
@@ -309,7 +373,7 @@ export class FactoryAttemptWorker {
         changedFiles: scopeResult.changedFiles,
         title: String(manifest.intent?.title ?? structuredResult.summary ?? "Mission Control Work Order"),
       });
-      const candidate = await this.dependencies.inspectCandidateChange(claim.worktree, claim.defaultBranch);
+      const candidate = await this.dependencies.inspectCandidateChange(claim.worktree, manifest.repository.baseSha);
       if (candidate.candidateRevision !== headSha) throw new Error("Committed candidate revision changed before verification.");
       const baseArtifacts = [
         structuredResultArtifact(claim, structuredResult),
@@ -439,6 +503,11 @@ export class FactoryAttemptWorker {
           workflowRunId: input.claim.workflowRunId,
           leaseId: input.leaseId,
           candidateRevision: input.headSha,
+          ...(input.claim.lease?.workerId ? {
+            workerId: input.claim.lease.workerId,
+            workerSessionId: input.claim.lease.workerSessionId,
+            workerGeneration: input.claim.lease.workerGeneration,
+          } : {}),
         },
       );
       if (!authorization?.authorized) throw new Error("Control plane did not authorize pull-request publication.");
@@ -488,24 +557,81 @@ export class FactoryAttemptWorker {
       executionManifestDigest: input.claim.executionManifestDigest,
       publicationPermitId: publicationPermit?.id,
     };
+    const pullRequestArtifact = {
+      idempotencyKey: `factory:${input.claim.runId}:pull-request`,
+      artifactType: "PULL_REQUEST",
+      name: `Pull request #${pullRequest.number}`,
+      description: "Review-ready pull request created by the governed GitHub App boundary. Human merge remains required.",
+      externalLocation: pullRequest.url,
+      contentHash: `sha256:${createHash("sha256").update(JSON.stringify(pullRequestLineage)).digest("hex")}`,
+      metadata: pullRequestLineage,
+    };
+    const workspaceOwner = workspaceOwnerFromClaim(input.claim, input.manifest);
+    if (!workspaceOwner) {
+      await input.report({
+        events: input.events ?? [],
+        observations: input.observations ?? [],
+        artifacts: [...(input.artifacts ?? []), pullRequestArtifact],
+        terminal: { status: "COMPLETED" },
+      });
+      return;
+    }
+    await (this.dependencies.recordFactoryPublication ?? recordFactoryPublication)(workspaceOwner, {
+      headSha: input.headSha,
+      pullRequestUrl: pullRequest.url,
+    });
+    // Persist provider lineage before local cleanup. If the second report is
+    // interrupted, the PR artifact remains durable and reconciliation can
+    // complete without rerunning the executor.
     await input.report({
       events: input.events ?? [],
       observations: input.observations ?? [],
-      artifacts: [
-        ...(input.artifacts ?? []),
-        {
-          idempotencyKey: `factory:${input.claim.runId}:pull-request`,
-          artifactType: "PULL_REQUEST",
-          name: `Pull request #${pullRequest.number}`,
-          description: "Review-ready pull request created by the governed GitHub App boundary. Human merge remains required.",
-          externalLocation: pullRequest.url,
-          contentHash: `sha256:${createHash("sha256").update(JSON.stringify(pullRequestLineage)).digest("hex")}`,
-          metadata: pullRequestLineage,
-        },
-      ],
+      artifacts: [...(input.artifacts ?? []), pullRequestArtifact],
+    });
+    const cleanup = await (this.dependencies.cleanupOwnedFactoryWorkspace ?? cleanupOwnedFactoryWorkspace)({
+      owner: workspaceOwner,
+      expectedHeadSha: input.headSha,
+      expectedPullRequestUrl: pullRequest.url,
+    });
+    await input.report({
+      events: [{
+        idempotencyKey: `factory:${input.claim.runId}:workspace-cleanup:${cleanup.outcome.toLowerCase()}`,
+        eventType: "CHECKPOINT_CREATED",
+        workflowStep: "workspace-cleanup",
+        status: cleanup.outcome,
+        startedAt: Date.now(),
+        commandSummary: cleanup.outcome === "COMPLETED" ? "Owned Factory workspace cleanup completed" : "Factory workspace preserved for operator inspection",
+        metadata: { lifecycleType: `WORKSPACE_CLEANUP_${cleanup.outcome}`, reason: cleanup.reason },
+      }],
       terminal: { status: "COMPLETED" },
     });
   }
+}
+
+function workspaceOwnerFromClaim(claim: any, manifest: any): FactoryWorkspaceOwner | undefined {
+  const lease = claim?.lease;
+  if (!lease?.workerId && !lease?.workerSessionId && lease?.workerGeneration === undefined) return undefined;
+  return workspaceOwnerFromLease(claim, manifest, lease);
+}
+
+function workspaceOwnerFromLease(claim: any, manifest: any, lease: any): FactoryWorkspaceOwner {
+  if (!lease?.leaseId || !lease.workerId || !lease.workerSessionId || !Number.isSafeInteger(lease.workerGeneration)) {
+    throw new Error("Durable Factory claim is missing its complete workspace ownership identity.");
+  }
+  return {
+    repositoryIdentity: claim.repository,
+    workflowRunId: String(claim.workflowRunId),
+    workerId: lease.workerId,
+    workerSessionId: lease.workerSessionId,
+    workerGeneration: lease.workerGeneration,
+    leaseId: lease.leaseId,
+    branch: claim.branch,
+    worktree: claim.worktree,
+    checkoutRoot: claim.checkoutRoot,
+    executionManifestDigest: claim.executionManifestDigest,
+    baseSha: manifest.repository.baseSha,
+    sandboxId: manifest.harness?.sandboxId,
+  };
 }
 
 export function matchesWorkerScope(run: any, scope?: FactoryAttemptWorkerScope) {
@@ -537,10 +663,15 @@ function validateClaimManifest(claim: any) {
     || manifest?.harness?.version !== "v1"
     || manifest?.harness?.isolation !== "WORKSPACE_WRITE"
     || manifest?.harness?.pullRequestAuthority !== "CONTROL_PLANE_ONLY"
+    || typeof manifest?.harness?.executionBackend !== "string"
+    || !manifest.harness.executionBackend.trim()
+    || !Array.isArray(manifest?.harness?.requiredCapabilities)
     || !Number.isSafeInteger(manifest?.harness?.timeoutMs)
     || manifest.harness.timeoutMs < 1_000
     || manifest.harness.timeoutMs > 8 * 60 * 60 * 1_000
     || !Array.isArray(manifest?.repository?.allowedPaths)
+    || typeof manifest?.repository?.baseSha !== "string"
+    || !/^[a-f0-9]{40,64}$/i.test(manifest.repository.baseSha)
     || manifest.repository.allowedPaths.length === 0
     || !Array.isArray(manifest?.repository?.excludedPaths)
     || !Array.isArray(manifest?.workflow?.steps)

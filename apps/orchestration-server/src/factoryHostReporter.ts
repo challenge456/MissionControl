@@ -2,18 +2,33 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { ConvexHttpClient } from "convex/browser";
 import { ConvexMutations } from "./convexCalls.js";
+import { canonicalGithubRepositoryFromRemote } from "./factoryRepositoryIdentity.js";
 
 const execFileAsync = promisify(execFile);
 
 export interface FactoryHostReporterConfig {
   projectId: string;
+  repositoryId: string;
   hostId: string;
+  sessionId: string;
   checkoutRoot: string;
   maxConcurrentRuns: number;
   getCurrentRuns: () => number;
   approvedModelIds?: string[];
   networkPolicyStatus?: "READY" | "BLOCKED" | "UNKNOWN";
   secretPolicyStatus?: "READY" | "BLOCKED" | "UNKNOWN";
+  hostRuntimeType: string;
+  executionBackends: string[];
+  supportedExecutors: Array<{
+    adapter: string;
+    version: string;
+    supportsCancel: boolean;
+    supportsResume: boolean;
+    isolationModes: Array<"READ_ONLY" | "WORKSPACE_WRITE">;
+  }>;
+  sandboxCapabilities: string[];
+  readiness?: "STARTING" | "READY" | "DRAINING" | "BLOCKED";
+  draining?: boolean;
   intervalMs?: number;
   onError?: (error: unknown) => void;
 }
@@ -23,6 +38,8 @@ export interface FactoryCheckoutObservation {
   checkoutRoot: string;
   observedBranch?: string;
   observedCommit: string;
+  baseBranch: string;
+  baseCommit: string;
   dirty: boolean;
 }
 
@@ -35,12 +52,17 @@ export class FactoryHostReporter {
     private readonly config: FactoryHostReporterConfig,
   ) {}
 
-  start() {
+  async start() {
     if (this.timer) return;
     const intervalMs = Math.max(30_000, this.config.intervalMs ?? 60_000);
     const report = () => void this.report().catch((error) => this.config.onError?.(error));
     this.timer = setInterval(report, intervalMs);
-    report();
+    try {
+      await this.report();
+    } catch (error) {
+      this.config.onError?.(error);
+      throw error;
+    }
   }
 
   stop() {
@@ -56,11 +78,14 @@ export class FactoryHostReporter {
       const now = Date.now();
       await this.client.mutation(ConvexMutations.workspaceHostBindings.report as any, {
         projectId: this.config.projectId,
+        repositoryId: this.config.repositoryId,
         hostId: this.config.hostId,
         repository: observation.repository,
         checkoutRoot: observation.checkoutRoot,
         observedBranch: observation.observedBranch,
         observedCommit: observation.observedCommit,
+        baseBranch: observation.baseBranch,
+        baseCommit: observation.baseCommit,
         dirty: observation.dirty,
         runtime: `node ${process.version} ${process.platform}/${process.arch}`,
         approvedModelIds: this.config.approvedModelIds,
@@ -68,6 +93,16 @@ export class FactoryHostReporter {
         secretPolicyStatus: this.config.secretPolicyStatus,
         maxConcurrentRuns: this.config.maxConcurrentRuns,
         currentRuns: this.config.getCurrentRuns(),
+        workerRuntime: {
+          sessionId: this.config.sessionId,
+          hostRuntimeType: this.config.hostRuntimeType,
+          executionBackends: this.config.executionBackends,
+          supportedExecutors: this.config.supportedExecutors,
+          sandboxCapabilities: this.config.sandboxCapabilities,
+          repositoryAccess: [{ repositoryId: this.config.repositoryId, access: "READ_WRITE" }],
+          readiness: this.config.readiness ?? "READY",
+          draining: this.config.draining ?? false,
+        },
         attestedAt: now,
         status: observation.dirty ? "DIRTY" : "READY",
         checkedAt: now,
@@ -79,38 +114,39 @@ export class FactoryHostReporter {
 }
 
 export async function inspectFactoryCheckout(cwd: string): Promise<FactoryCheckoutObservation> {
-  const [checkoutRoot, remoteUrl, branch, commit, status] = await Promise.all([
+  const [checkoutRoot, remoteUrl, branch, commit, status, remoteHead] = await Promise.all([
     git(cwd, ["rev-parse", "--show-toplevel"]),
     git(cwd, ["remote", "get-url", "origin"]),
     git(cwd, ["branch", "--show-current"]),
     git(cwd, ["rev-parse", "HEAD"]),
     git(cwd, ["status", "--porcelain=v1", "--untracked-files=all"]),
+    gitOptional(cwd, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]),
   ]);
+  const baseBranch = remoteHead?.replace(/^origin\//, "") || branch;
+  if (!baseBranch) throw new Error("Factory checkout cannot resolve its default branch");
+  const baseCommit = remoteHead
+    ? await git(cwd, ["rev-parse", `refs/remotes/${remoteHead}`])
+    : commit;
   return {
     repository: canonicalRepositoryFromRemote(remoteUrl),
     checkoutRoot,
     observedBranch: branch || undefined,
     observedCommit: commit,
+    baseBranch,
+    baseCommit,
     dirty: Boolean(status),
   };
 }
 
-export function canonicalRepositoryFromRemote(remoteUrl: string) {
-  const value = remoteUrl.trim().replace(/\.git$/, "");
-  const scpMatch = value.match(/^[^@]+@[^:]+:(.+)$/);
-  const pathValue = scpMatch?.[1] ?? (() => {
-    try {
-      return new URL(value).pathname;
-    } catch {
-      return value;
-    }
-  })();
-  const repository = pathValue.replace(/^\/+/, "").replace(/\.git$/, "");
-  if (repository.split("/").length !== 2) {
-    throw new Error("Factory checkout origin must identify one owner/repository pair.");
+async function gitOptional(cwd: string, args: string[]) {
+  try {
+    return await git(cwd, args);
+  } catch {
+    return undefined;
   }
-  return repository;
 }
+
+export const canonicalRepositoryFromRemote = canonicalGithubRepositoryFromRemote;
 
 async function git(cwd: string, args: string[]) {
   const result = await execFileAsync("git", args, {

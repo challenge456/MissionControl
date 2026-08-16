@@ -37,6 +37,7 @@ import { executeAutomation } from "./automationAdapter.js";
 import { discoverLocalInference } from "./localInference.js";
 import { FactoryAttemptWorker } from "./factoryAttemptWorker.js";
 import { FactoryHostReporter } from "./factoryHostReporter.js";
+import { CodexV1ExecutorAdapter } from "./codexExecutorAdapter.js";
 import os from "node:os";
 
 const envSearchPaths = [
@@ -70,6 +71,9 @@ const FACTORY_WORKER_SCOPE = CODEX_FACTORY_WORKER_ENABLED
       repositoryId: requiredRuntimeSetting("CODEX_WORKER_REPOSITORY_ID"),
     }
   : undefined;
+const FACTORY_WORKER_SESSION_ID = randomUUID();
+const FACTORY_WORKER_ID = process.env.CODEX_WORKER_HOST_ID?.trim() || `orchestration:${os.hostname()}`;
+const FACTORY_WORKER_MAX_CONCURRENT_RUNS = boundedPositiveInteger(process.env.CODEX_WORKER_MAX_CONCURRENT_RUNS, 1);
 
 if (!CONVEX_URL) {
   console.error("[orchestration] CONVEX_URL is required. Set it in .env or environment.");
@@ -85,24 +89,36 @@ const CONVEX_SERVICE_AUTH_TOKEN = process.env.CONVEX_SERVICE_AUTH_TOKEN?.trim();
 if (CONVEX_SERVICE_AUTH_TOKEN) {
   client.setAuth(CONVEX_SERVICE_AUTH_TOKEN);
 }
+const factoryExecutorAdapter = new CodexV1ExecutorAdapter();
 const factoryAttemptWorker = new FactoryAttemptWorker(
   client,
-  undefined,
+  factoryExecutorAdapter,
   CODEX_FACTORY_WORKER_ENABLED || LEGACY_FACTORY_WORKER_ENABLED,
   undefined,
   undefined,
   FACTORY_WORKER_SCOPE,
+  FACTORY_WORKER_SCOPE ? {
+    workerId: FACTORY_WORKER_ID,
+    sessionId: FACTORY_WORKER_SESSION_ID,
+    maxConcurrentRuns: FACTORY_WORKER_MAX_CONCURRENT_RUNS,
+  } : undefined,
 );
 const factoryHostReporter = FACTORY_WORKER_SCOPE
   ? new FactoryHostReporter(client, {
       projectId: FACTORY_WORKER_SCOPE.projectId,
-      hostId: process.env.CODEX_WORKER_HOST_ID?.trim() || `orchestration:${os.hostname()}`,
+      repositoryId: FACTORY_WORKER_SCOPE.repositoryId,
+      hostId: FACTORY_WORKER_ID,
+      sessionId: FACTORY_WORKER_SESSION_ID,
       checkoutRoot: path.resolve(process.env.CODEX_WORKER_CHECKOUT_ROOT?.trim() || process.cwd()),
-      maxConcurrentRuns: boundedPositiveInteger(process.env.CODEX_WORKER_MAX_CONCURRENT_RUNS, 1),
+      maxConcurrentRuns: FACTORY_WORKER_MAX_CONCURRENT_RUNS,
       getCurrentRuns: () => factoryAttemptWorker.status().activeRunIds.length,
       approvedModelIds: commaSeparatedValues(process.env.CODEX_WORKER_APPROVED_MODEL_IDS),
       networkPolicyStatus: attestationStatus(process.env.CODEX_WORKER_NETWORK_POLICY_STATUS),
       secretPolicyStatus: attestationStatus(process.env.CODEX_WORKER_SECRET_POLICY_STATUS),
+      hostRuntimeType: "persistent-worker",
+      executionBackends: ["persistent-worker"],
+      supportedExecutors: [factoryExecutorAdapter.capabilities()],
+      sandboxCapabilities: ["git-worktree", "workspace-write", "read-only", "github-app-publication"],
       onError: (error) => console.error("[orchestration] Factory host report failed:", error),
     })
   : null;
@@ -1308,8 +1324,13 @@ export function startServer() {
   if (CODEX_FACTORY_WORKER_ENABLED && LEGACY_FACTORY_WORKER_ENABLED) {
     throw new Error("Configure exactly one Factory execution worker; legacy and durable workers cannot run together.");
   }
-  factoryAttemptWorker.start();
-  factoryHostReporter?.start();
+  if (factoryHostReporter) {
+    void factoryHostReporter.start()
+      .then(() => factoryAttemptWorker.start())
+      .catch((error) => console.error("[orchestration] Factory worker registration failed closed; execution did not start:", error));
+  } else {
+    factoryAttemptWorker.start();
+  }
 
   if (CODEX_FACTORY_WORKER_ENABLED) {
     console.log(`[orchestration] Durable verification-first codex/v1 worker enabled for one governed repository.`);
