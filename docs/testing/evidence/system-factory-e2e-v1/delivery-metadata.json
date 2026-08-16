@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "system-factory-e2e-delivery/v1",
+  "qualificationDecision": "SYSTEM QUALIFIED WITH KNOWN LIMITATIONS",
+  "qualifiedContentSha": "89416477c2ad044a268594eed16bc257cc32e7ad",
+  "baseSha": "3de80b97c7272f64586e5d08bc7c73fcd2114faa",
+  "branch": "codex/system-factory-e2e-qualification-v1",
+  "pullRequest": {
+    "number": 111,
+    "url": "https://github.com/jaydubya818/MissionControl/pull/111",
+    "draft": true,
+    "autoMergeEnabled": false
+  },
+  "recordedAt": "2026-08-16T20:36:15Z"
+}

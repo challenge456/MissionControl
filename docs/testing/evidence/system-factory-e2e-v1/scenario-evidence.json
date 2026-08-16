@@ -1,0 +1,176 @@
+{
+  "schemaVersion": "system-factory-e2e-qualification/v1",
+  "result": "SYSTEM QUALIFIED WITH KNOWN LIMITATIONS",
+  "baseSha": "3de80b97c7272f64586e5d08bc7c73fcd2114faa",
+  "runtimeContractVersion": 26,
+  "fixture": {
+    "repository": "sellerfi/system-factory-qualification-fixture",
+    "baseSha": "920eb7f3de2759bfc96d5dcf7306e3a174a57bee",
+    "baseTreeSha": "60e1c7d797ecac6280eb995c95ef60c4371feceb",
+    "finalCandidateSha": "9ba871d9efad9b224b2f2cd432fbfb5cfbc9d461",
+    "definitionOfDone": "node scripts/verify.mjs exits zero in an independent checkout."
+  },
+  "lineage": {
+    "missionId": "mission-system-factory-e2e-v1",
+    "planId": "plan-system-factory-e2e-v1",
+    "planRevision": 1,
+    "planApproval": {
+      "submittedBy": "operator-author",
+      "approvedBy": "operator-approver",
+      "approvedRevision": 1
+    },
+    "qualityContractDigest": "sha256:ca3b5575e305dd0a361516a5fe7b77eb6b6498321a49f93e482f697afe5d8ce4",
+    "workOrderId": "work-order-system-factory-e2e-v1",
+    "workOrderRevision": 1,
+    "recipe": "progressive-software-delivery",
+    "factoryVersionId": "factory-version-progressive-software-v1",
+    "verificationFactoryVersionId": "factory-version-independent-verification-v1",
+    "contextPackageId": "6a4dca610b1ad053ca9a6cf1",
+    "worker": {
+      "workerId": "worker-system-factory-v1",
+      "sessionId": "worker-session-current",
+      "generation": 2
+    },
+    "leaseId": "lease-source-current-head",
+    "sourceAttemptIds": [
+      "attempt-source-failed-1",
+      "attempt-source-failed-2",
+      "attempt-source-failed-3",
+      "attempt-source-repaired",
+      "attempt-source-current-head"
+    ],
+    "executionManifestDigest": "sha256:c025f2f67ee9ac904c798fc27adead7afab95ff0ffd39085f78fc7413fc1afb1",
+    "executionBackend": "remote-sandbox",
+    "candidateShas": [
+      "911cc67e464c075ddd7081ac5d72ceb2e9dc11bc",
+      "c0a4802fa86333248831375766e2393eaef37f80",
+      "4aec47c3d14f18b432ea5b14b9233e535104f567",
+      "b830028fb294f4b14cbdf1bc3b8505e843ff1fbf",
+      "9ba871d9efad9b224b2f2cd432fbfb5cfbc9d461"
+    ],
+    "verificationAttemptIds": [
+      "attempt-verification-failed-3",
+      "attempt-verification-repaired",
+      "attempt-verification-current-head"
+    ],
+    "verificationSubjectId": "verification-subject:a10b9848dc17f79b8d3a0cff3c546b7143bf97e8d9be3c06017db9324a658fc5",
+    "verificationPlanId": "verification-plan:0f78283d1553e3f41e15b1f6ecf8bd314cc8a08f7e6b0022dbf6032da8e858e8",
+    "verificationPlanDigest": "sha256:0f78283d1553e3f41e15b1f6ecf8bd314cc8a08f7e6b0022dbf6032da8e858e8",
+    "verificationRunId": "verification-run:attempt-verification-current-head",
+    "evidenceIds": [
+      "evidence:attempt-verification-current-head:factory-negative-constraints",
+      "evidence:attempt-verification-current-head:factory-change-budget",
+      "evidence:attempt-verification-current-head:mission:independent-verification"
+    ],
+    "receiptId": "receipt:attempt-verification-current-head",
+    "qualityGateState": "ELIGIBLE",
+    "providerPullRequestId": "provider-pr-system-factory-v1",
+    "providerPullRequestUrl": "https://github.invalid/sellerfi/system-factory-qualification-fixture/pull/1",
+    "providerHeadSha": "9ba871d9efad9b224b2f2cd432fbfb5cfbc9d461",
+    "acceptanceEvent": "WORK_ORDER_ACCEPTED via workOrders.accept only",
+    "acceptanceActor": "human operator"
+  },
+  "observability": {
+    "sourceTraceId": "trace:attempt-source-current-head",
+    "verificationTraceId": "trace:attempt-verification-current-head",
+    "sourceWorkflowRunId": "attempt-source-current-head",
+    "verificationWorkflowRunId": "attempt-verification-current-head",
+    "sandboxLifecycleEvents": [
+      "SANDBOX_REQUESTED",
+      "SANDBOX_ALLOCATED",
+      "SANDBOX_STARTED",
+      "SANDBOX_RESULT_RECEIVED",
+      "SANDBOX_CREDENTIAL_REVOKED",
+      "SANDBOX_TERMINATION_REQUESTED",
+      "SANDBOX_TERMINATED"
+    ],
+    "phases": {
+      "human": [
+        "plan approval",
+        "improvement review",
+        "workOrders.accept"
+      ],
+      "agent": [
+        "bounded fake-provider execution"
+      ],
+      "code": [
+        "context retrieval",
+        "deterministic gates",
+        "independent verification",
+        "exact-current eligibility"
+      ]
+    }
+  },
+  "failureInjection": {
+    "staleLease": "PASS",
+    "candidatePrHeadMismatch": "PASS",
+    "verificationFailure": "PASS",
+    "retryNewAttempt": "PASS",
+    "contextMiss": "PASS",
+    "deterministicGateFailure": "PASS",
+    "sandboxTeardownFailure": "PASS (focused regression suite)",
+    "repeatedCorrectionLearning": "PASS",
+    "improvementCandidateCannotSelfPromote": "PASS"
+  },
+  "learning": {
+    "signalCount": 3,
+    "signalType": "HUMAN_CORRECTION",
+    "contextMissSignalType": "CONTEXT_MISS",
+    "duplicateCount": 1,
+    "clusterKey": "workspace-system-factory-e2e-v1|sellerfi/system-factory-qualification-fixture|HUMAN_CORRECTION|test:listing-fee-deterministic-gate",
+    "candidateId": "improvement-candidate-listing-fee-gate",
+    "candidateType": "ADD_DETERMINISTIC_GATE",
+    "review": {
+      "status": "APPROVED_FOR_EXPERIMENT",
+      "actorType": "HUMAN"
+    },
+    "experimentId": "experiment-listing-fee-gate",
+    "experimentStatus": "COMPLETED",
+    "promotionRecommendation": {
+      "recommendation": "PROMOTION_RECOMMENDED",
+      "sampleLabel": "LOW_SAMPLE",
+      "statisticallySignificant": false,
+      "autoPromote": false,
+      "improvements": [
+        "success rate",
+        "first-pass verification",
+        "retries",
+        "deterministic failures"
+      ],
+      "regressions": []
+    },
+    "promotedMissionId": "mission-learning-followup",
+    "submittedPlanId": "plan-learning-followup",
+    "submittedPlanStatus": "PROPOSED",
+    "releasedWorkOrderIds": [],
+    "modelCalls": 0
+  },
+  "authority": {
+    "workOrderAcceptedEventWriters": [
+      "workOrders.ts"
+    ],
+    "learningHasAcceptanceMutation": false,
+    "observabilityHasAcceptanceMutation": false,
+    "planSelfApprovalGuard": true,
+    "sandboxHasGithubAuthority": false
+  },
+  "performance": {
+    "durationMs": 6195,
+    "sourceGateDurationMs": 3315,
+    "verificationDurationMs": 2431,
+    "sandboxProviderRuntimeMs": 1,
+    "deterministicGateRuns": 7,
+    "sourceAttempts": 5,
+    "sourceRetries": 4,
+    "verificationAttempts": 3,
+    "agentSteps": 1,
+    "modelCalls": 0,
+    "tokens": null,
+    "costUsd": 0
+  },
+  "limitations": [
+    "Remote Sandbox uses FakeSandboxProvider; live exe.dev remains Preview / Not Live Certified.",
+    "PR #89 two-company live identity proof remains deferred by instruction.",
+    "The provider pull-request identity is deterministic fixture lineage; no external product repository is mutated."
+  ]
+}

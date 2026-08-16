@@ -97,6 +97,35 @@ describe("RemoteSandboxRuntime", () => {
     expect(journal.terminations).toHaveLength(1);
     expect(journal.events.map((event) => event.type)).toContain("SANDBOX_FAILED");
   });
+
+  it("durably records teardown failure after revoking the Attempt credential", async () => {
+    const selectedProfile = profile();
+    const bundle = resultBundle(selectedProfile);
+    const provider = new FakeSandboxProvider({
+      result: encodeSandboxResultBundle(bundle),
+      failAt: "TERMINATE",
+    });
+    const credentials = new FakeSandboxCredentialBroker();
+    const journal = new InMemoryRemoteSandboxJournal();
+    const runtime = new RemoteSandboxRuntime(provider, credentials, journal);
+
+    await expect(runtime.execute(request(selectedProfile))).rejects.toThrow(
+      /Deterministic fake teardown failure/,
+    );
+
+    expect(credentials.active.size).toBe(0);
+    expect(journal.revokedCredentials).toHaveLength(1);
+    expect(journal.terminations).toHaveLength(0);
+    expect(journal.events).toContainEqual(expect.objectContaining({
+      type: "SANDBOX_FAILED",
+      metadata: expect.objectContaining({
+        phase: "CLEANUP",
+        credentialRevoked: true,
+        resourceAbsenceProven: false,
+      }),
+    }));
+    expect(provider.inventory()[0].state).not.toBe("TERMINATED");
+  });
 });
 
 describe("sandbox supervisor", () => {
