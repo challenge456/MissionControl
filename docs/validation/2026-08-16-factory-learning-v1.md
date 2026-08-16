@@ -20,11 +20,11 @@ without conflict so the draft preserves the merged OpenSandbox provider work.
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Factory Learning domain and authorization | `pnpm exec vitest run convex/__tests__/factoryLearning.test.ts` | 7 passed |
+| Factory Learning domain and authorization | `pnpm exec vitest run convex/__tests__/factoryLearning.test.ts` | 11 passed |
 | Canonical experiment golden path | `pnpm exec vitest run convex/__tests__/observabilityGoldenPath.test.ts` | 6 passed |
 | Agent configuration scanner | `node --test scripts/lib/agent-config-registry.test.mjs` | 6 passed |
 | UI disclosure and promotion rules | `pnpm --filter mission-control-ui test -- factoryExperience/factoryLearningModel.test.ts` | 4 passed |
-| Full repository tests | `pnpm test` | 89 Convex files / 619 tests and 65 UI files / 291 tests passed; all workspace suites passed; 1 pre-existing integration test skipped |
+| Full repository tests | `pnpm test` | 89 Convex files / 623 tests and 65 UI files / 291 tests passed; all workspace suites passed; 1 pre-existing integration test skipped |
 | Full typecheck | `pnpm run typecheck` | passed across 19 workspace projects and Convex |
 | Lint | `pnpm run lint` | passed; 10 skills at 100/100 |
 | Production build | `pnpm run build` | passed across all buildable workspaces |
@@ -36,10 +36,10 @@ without conflict so the draft preserves the merged OpenSandbox provider work.
 The browser suite used the seeded Software Factory Demo against the real local
 Convex backend and port 5199. It verified Factory Board reachability, Basic /
 Intermediate / Advanced disclosure, an authorized on-demand refresh, truthful
-empty states, responsive navigation, the Agent Configuration next action, the
-in-app operator guide, dark and light themes, and zero relevant page errors or
-failed requests. Axe reported no critical-impact WCAG 2 A/AA, 2.1 A/AA, or
-2.2 AA violations inside `main`.
+empty states, responsive navigation, the populated read-only Agent
+Configuration registry, the in-app operator guide, dark and light themes, and
+zero relevant page errors or failed requests. Axe reported no critical-impact
+WCAG 2 A/AA, 2.1 A/AA, or 2.2 AA violations inside `main`.
 
 - [Advanced Agent setup, dark theme](./evidence/2026-08-16-factory-learning-agent-setup.png)
 - [Advanced Agent setup, light theme](./evidence/2026-08-16-factory-learning-light.png)
@@ -59,7 +59,7 @@ failed requests. Axe reported no critical-impact WCAG 2 A/AA, 2.1 A/AA, or
 | Canonical experiment | Existing eval datasets, definitions, experiments, and exactly two variants are reused | Pass |
 | Outcome comparison | Bounded aggregate sample/success/duration/cost metrics are recorded without a significance claim | Pass |
 | No auto-promotion | Recommendation always reports `autoPromote: false`; UI exposes promotion only after Accepted + Completed | Pass |
-| Governed change | Promotion creates an approval-gated WorkOrder and Task with cluster/experiment/evidence lineage | Pass |
+| Governed change | Promotion submits a canonical Mission Plan with cluster/experiment/evidence lineage; separate Plan approval releases the WorkOrder | Pass |
 | Configuration registry | Bounded tracked-file inventory records harness, scope, digest, precedence, last commit, overlaps, contradiction, coverage, duplicate, and shadow findings | Pass |
 
 ## Authority and security review
@@ -91,6 +91,8 @@ decision gates.
 
 - 30-day evidence window.
 - At most 200 records per source and 500 signals per repository refresh.
+- At most 50 recent traces and 50 observations per trace for deterministic
+  operation/context extraction.
 - At most 40 evidence items retained per cluster.
 - Candidate threshold: three distinct occurrences.
 - At most 200 configuration sources/findings and 256 KiB per file.

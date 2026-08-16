@@ -200,7 +200,7 @@ export function FactoryLearningView({
         onPromote={() => execute(
           "promote",
           () => promoteCandidate({ suggestionId: selectedCandidate!._id, action: "ACCEPT" }),
-          "Approval-gated implementation WorkOrder created.",
+          "Governed Mission plan submitted. A separate plan approval releases the implementation WorkOrder.",
         )}
       />
     </div>
@@ -424,6 +424,14 @@ function CandidateReviewDialog({
         </div>
         {(candidate.sourceLinks?.length ?? 0) > 0 ? <section><h3 className="text-[10px] font-medium uppercase tracking-[0.07em] text-ink-muted">Evidence lineage</h3><div className="mt-2 flex flex-wrap gap-1.5">{candidate.sourceLinks?.map((link) => <span key={link} className="max-w-full truncate rounded border border-line bg-surface-2 px-2 py-1 font-mono text-[9.5px] text-ink-secondary" title={link}>{link}</span>)}</div></section> : null}
 
+        {candidate.missionId && candidate.missionPlanId ? (
+          <section className="rounded-xl border border-warn/30 bg-warn-soft p-4">
+            <div className="flex items-center gap-2 text-[11.5px] font-medium text-ink"><ShieldCheck size={14} className="text-warn" /> Mission plan approval required</div>
+            <p className="mt-1 text-[10.5px] leading-relaxed text-ink-secondary">The improvement is now a canonical Mission with a submitted Plan. A separate human plan approval must release the implementation WorkOrder; no execution has started.</p>
+            <a className="mt-3 inline-flex text-[10.5px] font-medium text-accent hover:underline" href={`/v2/missions/${encodeURIComponent(String(candidate.missionId))}`}>Open governed Mission</a>
+          </section>
+        ) : null}
+
         {reviewable ? (
           <section className="rounded-xl border border-line bg-surface-1 p-4">
             <div className="flex items-center gap-2 text-[11.5px] font-medium text-ink"><FlaskConical size={14} className="text-ink-muted" /> Approve a governed experiment</div>
@@ -455,7 +463,7 @@ function CandidateReviewDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Close</Button>
-          {canPromoteImprovement({ candidateStatus: candidate.status, experimentStatus: experiment?.status }) ? <Button disabled={busy !== null} onClick={() => void onPromote()}>{busy === "promote" ? <Loader2 size={13} className="mr-1.5 animate-spin" /> : <Bot size={13} className="mr-1.5" />}Create governed WorkOrder</Button> : null}
+          {!candidate.missionPlanId && canPromoteImprovement({ candidateStatus: candidate.status, experimentStatus: experiment?.status }) ? <Button disabled={busy !== null} onClick={() => void onPromote()}>{busy === "promote" ? <Loader2 size={13} className="mr-1.5 animate-spin" /> : <Bot size={13} className="mr-1.5" />}Create governed Mission plan</Button> : null}
         </DialogFooter>
       </DialogContent>
     </Dialog>

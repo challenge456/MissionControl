@@ -1,8 +1,12 @@
 # Factory Learning architecture-gap analysis
 
-Date: 2026-08-16  
-Baseline: `origin/main` at `d0e5ff2ff57da7e5037da6f6ee8083ed275d911f`  
-Runtime contract baseline: `24`
+Date: 2026-08-16
+Baseline: `origin/main` at `e32444a2aecb67bfcb050cd4a92d11d8de650db8`
+Runtime contract baseline: `25`
+
+The baseline includes merged Remote Sandbox N=1 reconciliation. Factory
+Learning adds no executor, lease, fencing, sandbox, receipt, or publication
+path, so no additional reconciliation is required.
 
 ## External reference boundary
 
@@ -36,7 +40,7 @@ the current repository.
 | Context Packages | `factoryContextPackages`, context registry, Factory Memory | No recurring context-miss projection | Extract misses/overload when explicit evidence exists; never infer missing facts. |
 | Human decisions | approval decisions, reviews, activities | Rejection/correction categories are not normalized | Add deterministic human-correction/intervention signals with retained reason refs. |
 | Improvement proposals | `metaLoopSuggestions` and governed WorkOrder creation | Candidate fields are unstructured | Extend the existing proposal model; do not add a second candidate store. |
-| Automated opportunities | repetitive-task detector, automation control plane | Does not measure repeated agent use for deterministic work | Detect tool/command patterns and create `ADD_DETERMINISTIC_GATE` candidates. |
+| Automated opportunities | repetitive-task detector, automation control plane | Does not measure repeated agent use for deterministic work | Detect tool/command patterns and create `REPLACE_AGENT_WITH_CODE` candidates. |
 | Factory Memory | provenance-backed advisory documents/chunks/graph | Not connected to learning signals | Link source IDs and expose context-related candidates; keep memory advisory. |
 | Agent/skill/rule inventory | context registry, `mc-context scan`, skill linter | Scan covers only SKILL.md and lacks precedence/drift | Add bounded agent-config inventory and deterministic drift findings. |
 | Canonical Agent Intent | No canonical definition | Premature without drift data | Document a future projection architecture; implement preview-only normalization in V1. |

@@ -26,15 +26,13 @@ export const IMPROVEMENT_CANDIDATE_TYPES = [
   "MODIFY_GATE",
   "UPDATE_PROMPT",
   "UPDATE_AGENT_RULE",
-  "ADD_SKILL",
-  "UPDATE_SKILL",
+  "ADD_OR_UPDATE_SKILL",
   "UPDATE_CONTEXT_POLICY",
-  "ADD_MEMORY_SOURCE",
   "CHANGE_RECIPE",
   "CHANGE_RETRY_POLICY",
   "CHANGE_MODEL_ROUTING",
-  "CHANGE_TOOL_CONFIGURATION",
-  "ADD_AUTOMATION",
+  "CHANGE_TOOL_CONFIG",
+  "REPLACE_AGENT_WITH_CODE",
   "ADD_DOCUMENTATION",
 ] as const;
 
@@ -93,6 +91,111 @@ export interface ImprovementCandidateProjection {
   confidence: number;
   observedCostImpact?: LearningClusterProjection["observedCostImpact"];
   acceptanceAuthority: false;
+}
+
+export interface ObservationLearningSignal {
+  signalType: Extract<
+    LearningSignalType,
+    "CONTEXT_MISS" | "CONTEXT_OVERLOAD" | "RECIPE_MISMATCH" | "UNNECESSARY_AGENT_USAGE"
+  >;
+  deterministicKey: string;
+  reason: string;
+  confidence: number;
+  severity: LearningSeverity;
+}
+
+function objectValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+const DETERMINISTIC_AGENT_OPERATION = /\b(?:format(?:ting)?|lint(?:ing)?|type[ -]?check|schema check|codegen|code generation|known transform|json transform|deterministic validation|gate result|pass\/fail|passing\/failing)\b/i;
+
+/**
+ * Project only explicit Factory Memory sufficiency markers and a small fixed
+ * allowlist of known deterministic agent operations. This is intentionally
+ * not semantic classification.
+ */
+export function deriveObservationLearningSignals(input: {
+  type: string;
+  name: string;
+  metadata?: unknown;
+  output?: unknown;
+}): ObservationLearningSignal[] {
+  const metadata = objectValue(input.metadata);
+  const detail = objectValue(metadata.detail);
+  const output = objectValue(input.output);
+  const signals: ObservationLearningSignal[] = [];
+
+  if (input.type === "AGENT") {
+    const explicitlyDeterministic = metadata.deterministicOperation === true
+      || metadata.deterministic === true
+      || metadata.operationClass === "DETERMINISTIC";
+    if (explicitlyDeterministic || DETERMINISTIC_AGENT_OPERATION.test(input.name)) {
+      signals.push({
+        signalType: "UNNECESSARY_AGENT_USAGE",
+        deterministicKey: `agent-operation:${input.name}`,
+        reason: `Agent handled a deterministic operation: ${boundedText(input.name, 300)}`,
+        confidence: explicitlyDeterministic ? 1 : 0.85,
+        severity: "MEDIUM",
+      });
+    }
+  }
+
+  if (
+    input.type === "RETRIEVAL"
+    && metadata.domain === "FACTORY_MEMORY"
+    && metadata.factoryObservationType === "context.sufficiency"
+  ) {
+    const missingSources = [detail.missingSources, detail.requiredSourcesMissing]
+      .flatMap((value) => Array.isArray(value) ? value : [])
+      .filter((value): value is string => typeof value === "string" && Boolean(value.trim()))
+      .map((value) => boundedText(value, 200))
+      .sort();
+    const insufficient = detail.sufficient === false
+      || detail.status === "INSUFFICIENT"
+      || output.resultCount === 0;
+    if (insufficient) {
+      signals.push({
+        signalType: "CONTEXT_MISS",
+        deterministicKey: `context-sufficiency:${missingSources.join(",") || boundedText(input.name, 300)}`,
+        reason: missingSources.length
+          ? `Context was explicitly insufficient; missing ${missingSources.join(", ")}.`
+          : "Factory Memory recorded explicit context insufficiency.",
+        confidence: 1,
+        severity: "MEDIUM",
+      });
+    }
+    if (detail.overloaded === true || detail.contextOverload === true) {
+      signals.push({
+        signalType: "CONTEXT_OVERLOAD",
+        deterministicKey: `context-overload:${boundedText(input.name, 300)}`,
+        reason: "Factory Memory explicitly marked the context package as overloaded.",
+        confidence: 1,
+        severity: "MEDIUM",
+      });
+    }
+  }
+
+  return signals;
+}
+
+export function deriveRecipeMismatch(input: {
+  workflowId: string;
+  steps: Array<{ stepId: string; retryCount: number; error?: string }>;
+}): ObservationLearningSignal | null {
+  const buildIndex = input.steps.findIndex((step) => /\bbuild\b/i.test(step.stepId));
+  const typecheckFailureIndex = input.steps.findIndex((step) =>
+    step.retryCount > 0 && /type[ -]?check|\btsc\b|type error/i.test(`${step.stepId} ${step.error ?? ""}`));
+  if (buildIndex < 0 || typecheckFailureIndex <= buildIndex) return null;
+  return {
+    signalType: "RECIPE_MISMATCH",
+    deterministicKey: `recipe:${input.workflowId}:build-before-typecheck`,
+    reason: `Recipe ${boundedText(input.workflowId, 200)} reached typecheck failure after Build.`,
+    confidence: 1,
+    severity: "MEDIUM",
+  };
 }
 
 const SEVERITY_RANK: Record<LearningSeverity, number> = {
@@ -276,14 +379,14 @@ function candidateTypeForCluster(
         : "UPDATE_AGENT_RULE";
     case "UNNECESSARY_AGENT_USAGE":
     case "TOKEN_WASTE":
-      return "ADD_DETERMINISTIC_GATE";
+      return "REPLACE_AGENT_WITH_CODE";
     case "CONTEXT_MISS":
     case "CONTEXT_OVERLOAD":
       return "UPDATE_CONTEXT_POLICY";
     case "MODEL_ROUTING_MISMATCH":
       return "CHANGE_MODEL_ROUTING";
     case "TOOL_SELECTION_MISMATCH":
-      return "CHANGE_TOOL_CONFIGURATION";
+      return "CHANGE_TOOL_CONFIG";
     case "RECIPE_MISMATCH":
       return "CHANGE_RECIPE";
     case "RETRY_REQUIRED":
@@ -339,24 +442,14 @@ const CHANGE_COPY: Record<ImprovementCandidateType, {
     benefit: "Reduce repeated steering and inconsistent handoff behavior.",
     effort: "SMALL",
   },
-  ADD_SKILL: {
-    change: "Propose a focused, versioned skill through the Context Registry.",
-    benefit: "Make a repeated bounded workflow reusable across approved harnesses.",
-    effort: "MEDIUM",
-  },
-  UPDATE_SKILL: {
-    change: "Test a versioned skill update against existing registry evals.",
-    benefit: "Improve reusable execution guidance with retained version history.",
+  ADD_OR_UPDATE_SKILL: {
+    change: "Propose a focused, versioned skill change through the Context Registry.",
+    benefit: "Make repeated execution guidance reusable while retaining version history.",
     effort: "MEDIUM",
   },
   UPDATE_CONTEXT_POLICY: {
     change: "Adjust the bounded context-source policy in a governed experiment.",
     benefit: "Improve context relevance while controlling token load.",
-    effort: "MEDIUM",
-  },
-  ADD_MEMORY_SOURCE: {
-    change: "Propose an additional provenance-backed Factory Memory source.",
-    benefit: "Make repeatedly missing authoritative context retrievable.",
     effort: "MEDIUM",
   },
   CHANGE_RECIPE: {
@@ -374,14 +467,14 @@ const CHANGE_COPY: Record<ImprovementCandidateType, {
     benefit: "Improve outcome quality or cost without mutating Model Routing automatically.",
     effort: "MEDIUM",
   },
-  CHANGE_TOOL_CONFIGURATION: {
+  CHANGE_TOOL_CONFIG: {
     change: "Review the affected tool permission or selection through governed work.",
     benefit: "Reduce tool mismatch without expanding permissions silently.",
     effort: "MEDIUM",
   },
-  ADD_AUTOMATION: {
-    change: "Propose a review-gated automation definition for the repeated workflow.",
-    benefit: "Remove repeat manual work while retaining approval and evidence gates.",
+  REPLACE_AGENT_WITH_CODE: {
+    change: "Replace the repeated deterministic agent step with bounded code or a gate.",
+    benefit: "Remove unnecessary model interpretation while retaining approval and evidence gates.",
     effort: "MEDIUM",
   },
   ADD_DOCUMENTATION: {

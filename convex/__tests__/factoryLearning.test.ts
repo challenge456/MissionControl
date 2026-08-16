@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   aggregateLearningSignals,
   buildImprovementCandidate,
+  deriveObservationLearningSignals,
+  deriveRecipeMismatch,
+  IMPROVEMENT_CANDIDATE_TYPES,
   learningClusterKey,
   normalizeLearningSignature,
   recommendImprovementPromotion,
   type LearningSignalInput,
 } from "../lib/factoryLearning";
 import { getDashboard, refresh } from "../factory/learning";
+import { resolve as resolveMetaLoop } from "../factory/metaLoop";
 
 function functionHandler<T extends (...args: any[]) => any>(registered: unknown): T {
   return (registered as { _handler: T })._handler;
@@ -144,7 +149,7 @@ describe("Factory Learning deterministic domain", () => {
     });
 
     expect(automation).toMatchObject({
-      candidateType: "ADD_DETERMINISTIC_GATE",
+      candidateType: "REPLACE_AGENT_WITH_CODE",
       observedCostImpact: undefined,
     });
     expect(context.candidateType).toBe("UPDATE_CONTEXT_POLICY");
@@ -152,6 +157,160 @@ describe("Factory Learning deterministic domain", () => {
       candidateType: "CHANGE_MODEL_ROUTING",
       risk: "HIGH",
     });
+  });
+
+  it("extracts only explicit or allowlisted context, automation, and recipe signals", () => {
+    expect(deriveObservationLearningSignals({
+      type: "AGENT",
+      name: "Format generated schema",
+    })).toEqual([expect.objectContaining({
+      signalType: "UNNECESSARY_AGENT_USAGE",
+      confidence: 0.85,
+    })]);
+    expect(deriveObservationLearningSignals({
+      type: "RETRIEVAL",
+      name: "Factory Memory context.sufficiency",
+      output: { resultCount: 0 },
+      metadata: {
+        domain: "FACTORY_MEMORY",
+        factoryObservationType: "context.sufficiency",
+        detail: { sufficient: false, missingSources: ["ADR-004"] },
+      },
+    })).toEqual([expect.objectContaining({
+      signalType: "CONTEXT_MISS",
+      deterministicKey: "context-sufficiency:ADR-004",
+    })]);
+    expect(deriveObservationLearningSignals({
+      type: "AGENT",
+      name: "Design checkout strategy",
+    })).toEqual([]);
+    expect(deriveRecipeMismatch({
+      workflowId: "build-test",
+      steps: [
+        { stepId: "build", retryCount: 0 },
+        { stepId: "test", retryCount: 1, error: "tsc reported a type error" },
+      ],
+    })).toMatchObject({
+      signalType: "RECIPE_MISMATCH",
+      deterministicKey: "recipe:build-test:build-before-typecheck",
+    });
+  });
+
+  it("keeps the V1 candidate taxonomy exact and bounded", () => {
+    expect(IMPROVEMENT_CANDIDATE_TYPES).toEqual([
+      "ADD_DETERMINISTIC_GATE",
+      "MODIFY_GATE",
+      "UPDATE_PROMPT",
+      "UPDATE_AGENT_RULE",
+      "ADD_OR_UPDATE_SKILL",
+      "UPDATE_CONTEXT_POLICY",
+      "CHANGE_RECIPE",
+      "CHANGE_RETRY_POLICY",
+      "CHANGE_MODEL_ROUTING",
+      "CHANGE_TOOL_CONFIG",
+      "REPLACE_AGENT_WITH_CODE",
+      "ADD_DOCUMENTATION",
+    ]);
+  });
+
+  it("promotes learning through a submitted Mission plan instead of direct repository work", async () => {
+    const suggestion = {
+      _id: "candidate-1",
+      projectId: "project-1",
+      repositoryId: "repository-1",
+      title: "replace agent with code: formatting",
+      summary: "Formatting repeatedly consumed an agent turn.",
+      status: "ACCEPTED",
+      kind: "DELEGATION",
+      candidateType: "REPLACE_AGENT_WITH_CODE",
+      proposedChange: "Replace the repeated formatter step with deterministic code.",
+      expectedBenefit: "Remove unnecessary model interpretation.",
+      evidenceCount: 4,
+      confidence: 1,
+      impact: "MEDIUM",
+      risk: "MEDIUM",
+      sourceLinks: ["trace:1"],
+      experimentId: "experiment-1",
+      learningClusterId: "cluster-1",
+      acceptanceAuthority: false,
+    };
+    const queryResults = [
+      suggestion,
+      { allowed: true, actorId: "operator-2", projectExists: true },
+      { experiment: { _id: "experiment-1", status: "COMPLETED" } },
+      { _id: "project-1", githubRepo: "sellerfi/marketplace", githubBranch: "main" },
+      true,
+      { workflowId: "feature-dev", version: 3, active: true },
+    ];
+    const mutationCalls: Array<{ args: any }> = [];
+    const ctx = {
+      runQuery: async () => {
+        if (!queryResults.length) throw new Error("Unexpected query reference");
+        return queryResults.shift();
+      },
+      runMutation: async (_reference: unknown, args: any) => {
+        mutationCalls.push({ args });
+        if (mutationCalls.length === 1) {
+          return { mission: { _id: "mission-1" }, created: true };
+        }
+        if (mutationCalls.length === 2) {
+          return { plan: { _id: "plan-1" }, created: true };
+        }
+        if (mutationCalls.length === 3) {
+          return { plan: { _id: "plan-1", status: "PROPOSED" }, created: true };
+        }
+        if (mutationCalls.length === 4) return "candidate-1";
+        throw new Error("Learning promotion attempted an unexpected mutation");
+      },
+    } as any;
+
+    const result = await functionHandler(resolveMetaLoop)(ctx, {
+      suggestionId: "candidate-1",
+      action: "ACCEPT",
+    });
+
+    expect(result).toEqual({
+      suggestionId: "candidate-1",
+      missionId: "mission-1",
+      missionPlanId: "plan-1",
+    });
+    expect(mutationCalls).toHaveLength(4);
+    expect(mutationCalls[0].args.idempotencyKey).toBe("factory-learning:candidate-1:mission");
+    expect(mutationCalls[2].args.idempotencyKey).toBe("factory-learning:candidate-1:submit-plan");
+    expect(mutationCalls[3].args).toMatchObject({
+      suggestionId: "candidate-1",
+      status: "ACCEPTED",
+      missionId: "mission-1",
+      missionPlanId: "plan-1",
+    });
+    expect(mutationCalls[1].args).toMatchObject({
+      missionId: "mission-1",
+      metadata: {
+        factoryLearningCandidateId: "candidate-1",
+        acceptanceAuthority: false,
+      },
+      workOrderBlueprints: [{
+        workflowId: "feature-dev",
+        branchStrategy: "isolated-worktree",
+        isMutating: true,
+      }],
+    });
+  });
+
+  it("has no code path that can accept work or manufacture verification evidence", () => {
+    const learningSource = readFileSync(
+      new URL("../factory/learning.ts", import.meta.url),
+      "utf8",
+    );
+    const promotionSource = readFileSync(
+      new URL("../factory/metaLoop.ts", import.meta.url),
+      "utf8",
+    );
+    for (const source of [learningSource, promotionSource]) {
+      expect(source).not.toContain("workOrders.accept");
+      expect(source).not.toMatch(/ctx\.db\.insert\(\s*["']verificationReceipts["']/);
+      expect(source).not.toMatch(/ctx\.db\.insert\(\s*["']evidenceEnvelopes["']/);
+    }
   });
 
   it("compares baseline and candidate without claiming significance or auto-promoting", () => {

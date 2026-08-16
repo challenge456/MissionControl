@@ -7049,21 +7049,22 @@ export default defineSchema({
     confidence: v.optional(v.number()),
     impact: v.optional(v.string()),
     affectedSurface: v.optional(v.string()),
+    repositoryId: v.optional(v.id("workspaceRepositories")),
+    missionId: v.optional(v.id("missions")),
+    missionPlanId: v.optional(v.id("missionPlans")),
     learningClusterId: v.optional(v.id("learningSignalClusters")),
     candidateType: v.optional(v.union(
       v.literal("ADD_DETERMINISTIC_GATE"),
       v.literal("MODIFY_GATE"),
       v.literal("UPDATE_PROMPT"),
       v.literal("UPDATE_AGENT_RULE"),
-      v.literal("ADD_SKILL"),
-      v.literal("UPDATE_SKILL"),
+      v.literal("ADD_OR_UPDATE_SKILL"),
       v.literal("UPDATE_CONTEXT_POLICY"),
-      v.literal("ADD_MEMORY_SOURCE"),
       v.literal("CHANGE_RECIPE"),
       v.literal("CHANGE_RETRY_POLICY"),
       v.literal("CHANGE_MODEL_ROUTING"),
-      v.literal("CHANGE_TOOL_CONFIGURATION"),
-      v.literal("ADD_AUTOMATION"),
+      v.literal("CHANGE_TOOL_CONFIG"),
+      v.literal("REPLACE_AGENT_WITH_CODE"),
       v.literal("ADD_DOCUMENTATION")
     )),
     problemStatement: v.optional(v.string()),
@@ -7109,6 +7110,7 @@ export default defineSchema({
   })
     .index("by_project", ["projectId"])
     .index("by_project_status", ["projectId", "status"])
+    .index("by_mission_plan", ["missionPlanId"])
     .index("by_dedupe", ["dedupeKey"])
     .index("by_status", ["status"]),
 

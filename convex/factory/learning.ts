@@ -21,6 +21,8 @@ import type { Doc, Id } from "../_generated/dataModel";
 import {
   aggregateLearningSignals,
   buildImprovementCandidate,
+  deriveObservationLearningSignals,
+  deriveRecipeMismatch,
   learningClusterKey,
   normalizeLearningSignature,
   recommendImprovementPromotion,
@@ -40,6 +42,8 @@ const MAX_SOURCE_ROWS = 200;
 const MAX_SIGNAL_ROWS = 500;
 const MAX_EVIDENCE_ITEMS = 40;
 const MINIMUM_OCCURRENCES = 3;
+const MAX_OBSERVATION_TRACES = 50;
+const MAX_OBSERVATIONS_PER_TRACE = 50;
 
 const configurationEntryArg = v.object({
   sourcePath: v.string(),
@@ -157,10 +161,10 @@ function metaLoopKind(candidateType: string): Doc<"metaLoopSuggestions">["kind"]
   if (candidateType === "MODIFY_GATE" || candidateType === "ADD_DETERMINISTIC_GATE") {
     return "VERIFIER";
   }
-  if (candidateType === "UPDATE_SKILL" || candidateType === "ADD_SKILL") {
+  if (candidateType === "ADD_OR_UPDATE_SKILL") {
     return "SKILL_UPDATE";
   }
-  if (candidateType === "ADD_AUTOMATION") return "DELEGATION";
+  if (candidateType === "REPLACE_AGENT_WITH_CODE") return "DELEGATION";
   return "MAINTENANCE";
 }
 
@@ -342,8 +346,12 @@ async function collectSourceSignals(
   for (const run of runs) {
     if (run.startedAt < windowStart || !(await sourceBelongsToRepository(ctx, scope, run))) continue;
     const runMetadata = recordValue(run.metadata);
+    const inputTokens = safeNumber(runMetadata.inputTokens);
+    const outputTokens = safeNumber(runMetadata.outputTokens);
     const observedTokens = safeNumber(runMetadata.totalTokens)
-      ?? ((safeNumber(runMetadata.inputTokens) ?? 0) + (safeNumber(runMetadata.outputTokens) ?? 0));
+      ?? (inputTokens !== undefined || outputTokens !== undefined
+        ? (inputTokens ?? 0) + (outputTokens ?? 0)
+        : undefined);
     const retryCount = run.steps.reduce((sum, step) => sum + step.retryCount, 0);
     if (retryCount > 0) {
       const errors = run.steps.filter((step) => step.retryCount > 0).map((step) => `${step.stepId}:${step.error ?? "retry"}`);
@@ -387,6 +395,30 @@ async function collectSourceSignals(
         observedTokens,
       });
     }
+    const recipeMismatch = deriveRecipeMismatch({
+      workflowId: run.workflowId,
+      steps: run.steps.map((step) => ({
+        stepId: step.stepId,
+        retryCount: step.retryCount,
+        error: step.error,
+      })),
+    });
+    if (recipeMismatch) {
+      await add({
+        ...recipeMismatch,
+        sourceType: "WORKFLOW_RUN",
+        sourceId: String(run._id),
+        reasonCode: "BUILD_BEFORE_TYPECHECK_FAILURE",
+        reasonSummary: recipeMismatch.reason,
+        evidenceRefs: [`attempt:${run._id}`, `run:${run.runId}`],
+        observedAt: run.completedAt ?? run.startedAt,
+        workOrderId: run.workOrderId,
+        workflowRunId: run._id,
+        factoryDefinitionVersionId: run.factoryDefinitionVersionId,
+        recipeId: run.workflowId,
+        affectedModel: run.model,
+      });
+    }
   }
 
   const traces = await ctx.db
@@ -394,6 +426,7 @@ async function collectSourceSignals(
     .withIndex("by_project_started", (q) => q.eq("projectId", access.project._id))
     .order("desc")
     .take(MAX_SOURCE_ROWS);
+  let observationTracesScanned = 0;
   for (const trace of traces) {
     if (trace.startedAt < windowStart || !(await sourceBelongsToRepository(ctx, scope, trace))) continue;
     if ((trace.humanInterventionCount ?? 0) > 0) {
@@ -438,6 +471,39 @@ async function collectSourceSignals(
         observedTokens: trace.tokenUsage?.total,
         observedCostUsd: trace.estimatedCostUsd,
       });
+    }
+    if (observationTracesScanned < MAX_OBSERVATION_TRACES) {
+      observationTracesScanned += 1;
+      const observations = await ctx.db
+        .query("traceObservations")
+        .withIndex("by_trace_started", (q) => q.eq("traceId", trace._id))
+        .order("desc")
+        .take(MAX_OBSERVATIONS_PER_TRACE);
+      for (const observation of observations) {
+        for (const derived of deriveObservationLearningSignals(observation)) {
+          await add({
+            ...derived,
+            sourceType: "TRACE",
+            sourceId: String(observation._id),
+            reasonCode: derived.signalType,
+            reasonSummary: derived.reason,
+            evidenceRefs: [
+              `trace:${trace.externalTraceId}`,
+              `observation:${observation._id}`,
+            ],
+            observedAt: observation.endedAt ?? observation.startedAt,
+            workOrderId: trace.workOrderId,
+            workflowRunId: trace.workflowRunId,
+            traceId: trace._id,
+            observationId: observation._id,
+            factoryDefinitionVersionId: trace.factoryDefinitionVersionId,
+            affectedModel: observation.model ?? trace.model,
+            observedModelCalls: observation.type === "AGENT" ? 1 : undefined,
+            observedTokens: observation.tokenUsage?.total,
+            observedCostUsd: observation.estimatedCostUsd,
+          });
+        }
+      }
     }
   }
 
@@ -590,6 +656,7 @@ async function projectClustersAndCandidates(
       confidence: candidate.confidence,
       impact: cluster.severity,
       affectedSurface: cluster.deterministicKey,
+      repositoryId: scope.repositoryId,
       learningClusterId: clusterId,
       candidateType: candidate.candidateType,
       problemStatement: candidate.problemStatement,

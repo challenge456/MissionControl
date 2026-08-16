@@ -42,8 +42,15 @@ test("Factory Learning is progressive, governed, responsive, and reachable from 
   await page.getByRole("button", { name: "Advanced", exact: true }).click();
   await expect(page.getByRole("button", { name: "Agent setup", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Agent setup", exact: true }).click();
-  await expect(page.getByText(/No agent configuration scan synced|Configuration registry/).first()).toBeVisible();
-  await expect(page.getByText("node scripts/mc-context.mjs agent-config", { exact: false }).first()).toBeVisible();
+  const emptyRegistry = page.getByText("No agent configuration scan synced", { exact: false }).first();
+  const populatedRegistry = page.getByRole("heading", { name: "Configuration registry", exact: true });
+  await expect(emptyRegistry.or(populatedRegistry)).toBeVisible();
+  if (await emptyRegistry.isVisible()) {
+    await expect(page.getByText("node scripts/mc-context.mjs agent-config", { exact: false }).first()).toBeVisible();
+  } else {
+    await expect(page.getByText(/\d+ sources/, { exact: true })).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: "Source", exact: true })).toBeVisible();
+  }
   const accessibility = await new AxeBuilder({ page })
     .include("main")
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])

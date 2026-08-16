@@ -16,7 +16,8 @@ Attempts / Verification / Traces / Human decisions / Configuration scans
   -> existing meta-loop Improvement Candidates
   -> human-approved canonical Evals experiment
   -> before/after comparison
-  -> human promotion to a governed WorkOrder, rejection, or rollback
+  -> human promotion to a submitted Mission Plan, rejection, or rollback
+  -> separate human Plan approval releases governed WorkOrders
 ```
 
 ## Data ownership
@@ -78,6 +79,20 @@ non-authority. Existing status maps to the V1 lifecycle:
 | `ROLLED_BACK` / `RETIRED` | Change withdrawn or no longer relevant |
 
 No automatic promotion exists.
+
+The V1 candidate classes are intentionally bounded to:
+
+- `ADD_DETERMINISTIC_GATE`, `MODIFY_GATE`, `UPDATE_PROMPT`,
+  `UPDATE_AGENT_RULE`, `ADD_OR_UPDATE_SKILL`, `UPDATE_CONTEXT_POLICY`;
+- `CHANGE_RECIPE`, `CHANGE_RETRY_POLICY`, `CHANGE_MODEL_ROUTING`,
+  `CHANGE_TOOL_CONFIG`, `REPLACE_AGENT_WITH_CODE`, and
+  `ADD_DOCUMENTATION`.
+
+Promotion creates and submits a canonical Mission Plan containing one bounded
+implementation WorkOrder blueprint. It does not release that WorkOrder. A
+separate operator must use ordinary Mission Plan approval, which atomically
+releases the WorkOrder without starting execution. This preserves the existing
+rule that a submitted plan cannot be approved by its author.
 
 ### Experiments
 

@@ -31,6 +31,8 @@ The Factory's learning loop is proposal-only.
 5. Actual repository/configuration modification occurs only through a new
    Mission/Plan/WorkOrder/Task path with normal approval, worker, verification,
    publication, and acceptance controls.
+   Factory Learning creates and submits the Mission Plan; a separate ordinary
+   Plan approval releases WorkOrders and execution remains a later decision.
 6. Learning outputs can never satisfy WorkOrder acceptance, create a
    verification receipt/evidence envelope, claim independent verification,
    alter historical Attempts, merge a PR, or call `workOrders.accept`.

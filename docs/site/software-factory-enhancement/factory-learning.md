@@ -6,7 +6,7 @@ acceptance.
 
 The V1 loop is:
 
-`persisted evidence → deterministic signal → recurring cluster → Improvement Candidate → human review → canonical experiment → governed WorkOrder`
+`persisted evidence → deterministic signal → recurring cluster → Improvement Candidate → human review → canonical experiment → Mission → Plan → WorkOrder`
 
 Factory Learning is a projection over Mission Control's existing records. It
 does not introduce another Attempt, trace, eval, evidence, routing, memory, or
@@ -87,11 +87,13 @@ The comparison may recommend promotion, hold, or rejection. It never claims
 statistical significance and never auto-promotes, including for large samples.
 Small samples are explicitly labeled.
 
-After the experiment is complete, **Create governed WorkOrder** becomes
-available. This action creates an approval-gated WorkOrder and Task with the
-candidate, cluster, experiment, and evidence lineage. It does not implement the
-change, approve the WorkOrder, accept delivery, merge code, change routing, or
-change agent configuration.
+After the experiment is complete, **Create governed Mission plan** becomes
+available. This action creates a canonical Mission, creates one bounded
+implementation WorkOrder blueprint, and submits the Plan with candidate,
+cluster, experiment, and evidence lineage. A separate operator must approve
+the Plan before Mission Control releases the WorkOrder. Approval still does not
+start execution, accept delivery, merge code, change routing, or change agent
+configuration.
 
 ## Scan agent configuration
 

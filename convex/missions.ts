@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import {
   canTransitionMission,
   evaluateMissionAcceptance,
@@ -970,6 +971,40 @@ export const approvePlan = mutation({
       workOrders.push(result.workOrder);
     }
     await ctx.db.patch(plan._id, { releasedAt: now, releasedWorkOrderIds: workOrders.map((workOrder) => workOrder._id) });
+    const factoryLearningCandidateId = plan.metadata?.factoryLearningCandidateId;
+    if (factoryLearningCandidateId) {
+      const candidate = await ctx.db.get(
+        factoryLearningCandidateId as Id<"metaLoopSuggestions">,
+      );
+      if (
+        candidate?.acceptanceAuthority === false
+        && candidate.projectId === args.projectId
+        && candidate.missionId === mission._id
+        && candidate.missionPlanId === plan._id
+      ) {
+        await ctx.db.patch(candidate._id, {
+          status: "WORK_ORDERED",
+          workOrderId: workOrders[0]?._id,
+          resolvedAt: now,
+        });
+        await ctx.db.insert("activities", {
+          tenantId: mission.tenantId,
+          projectId: mission.projectId,
+          actorType: "HUMAN",
+          actorId: operator.actorId,
+          action: "FACTORY_LEARNING_WORK_ORDERED",
+          description: `Approved the governed Mission plan and released implementation work for ${candidate.title}`,
+          targetType: "META_LOOP_SUGGESTION",
+          targetId: String(candidate._id),
+          metadata: {
+            missionId: mission._id,
+            missionPlanId: plan._id,
+            workOrderIds: workOrders.map((workOrder) => workOrder._id),
+            acceptanceAuthority: false,
+          },
+        });
+      }
+    }
     const updated = await ctx.db.get(mission._id);
     if (updated) await logMissionEvent(ctx, { mission: updated, eventType: "PLAN_APPROVED_AND_WORKORDERS_RELEASED", actorType: "HUMAN", actorId: operator.actorId, summary: `Approved mission plan revision ${plan.revisionNumber} and released ${workOrders.length} WorkOrders`, idempotencyKey: args.idempotencyKey, metadata: { planId: plan._id, releaseKey, qualityContractDigest: qualityContract.digest, workOrderIds: workOrders.map((workOrder) => workOrder._id), reason: args.decisionReason.trim(), actorSource: operator.actorSource, dispatchStarted: false } });
     return { mission: updated, plan: await ctx.db.get(plan._id), workOrders, created: true };
