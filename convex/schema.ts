@@ -2203,6 +2203,7 @@ export default defineSchema({
     evaluatedAt: v.number(),
     metadata: v.optional(v.any()),
   })
+    .index("by_project_evaluated", ["projectId", "evaluatedAt"])
     .index("by_work_order", ["workOrderId"])
     .index("by_work_order_evaluated", ["workOrderId", "evaluatedAt"])
     .index("by_run", ["workflowRunId"])
@@ -5591,6 +5592,112 @@ export default defineSchema({
     .index("by_repo_package", ["repoSlug", "packageSlug"])
     .index("by_package", ["packageSlug"]),
 
+  // Read-only projection of repository agent/harness configuration. The local
+  // scanner remains the source; these rows never grant permissions or mutate
+  // repository files.
+  agentConfigurationScans: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.id("projects"),
+    repositoryId: v.optional(v.id("workspaceRepositories")),
+    repositoryKey: v.string(),
+    commitSha: v.string(),
+    scanDigest: v.string(),
+    scannerVersion: v.string(),
+    status: v.union(
+      v.literal("RUNNING"),
+      v.literal("COMPLETED"),
+      v.literal("FAILED")
+    ),
+    fileCount: v.number(),
+    findingCount: v.number(),
+    limits: v.object({
+      maximumFiles: v.number(),
+      maximumBytesPerFile: v.number(),
+    }),
+    actorId: v.string(),
+    error: v.optional(v.string()),
+    startedAt: v.number(),
+    completedAt: v.optional(v.number()),
+    acceptanceAuthority: v.literal(false),
+  })
+    .index("by_project_repository", ["projectId", "repositoryKey"])
+    .index("by_project_completed", ["projectId", "completedAt"])
+    .index("by_scan_digest", ["scanDigest"]),
+
+  agentConfigurationEntries: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.id("projects"),
+    repositoryId: v.optional(v.id("workspaceRepositories")),
+    repositoryKey: v.string(),
+    scanId: v.id("agentConfigurationScans"),
+    sourcePath: v.string(),
+    harness: v.union(
+      v.literal("CROSS_HARNESS"),
+      v.literal("CLAUDE"),
+      v.literal("CODEX"),
+      v.literal("CURSOR"),
+      v.literal("LOOM"),
+      v.literal("GIT"),
+      v.literal("OTHER")
+    ),
+    kind: v.union(
+      v.literal("INSTRUCTIONS"),
+      v.literal("SKILL"),
+      v.literal("RULE"),
+      v.literal("HOOK"),
+      v.literal("IGNORE"),
+      v.literal("PERMISSIONS"),
+      v.literal("CONFIG")
+    ),
+    scope: v.string(),
+    digest: v.string(),
+    effectivePrecedence: v.number(),
+    lastChangedCommit: v.optional(v.string()),
+    directives: v.array(v.object({
+      key: v.string(),
+      polarity: v.union(v.literal("REQUIRE"), v.literal("FORBID")),
+      statement: v.string(),
+      line: v.number(),
+    })),
+    overlapKeys: v.array(v.string()),
+    acceptanceAuthority: v.literal(false),
+  })
+    .index("by_scan", ["scanId"])
+    .index("by_project_repository", ["projectId", "repositoryKey"])
+    .index("by_repository_path", ["repositoryKey", "sourcePath"]),
+
+  agentConfigurationFindings: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.id("projects"),
+    repositoryId: v.optional(v.id("workspaceRepositories")),
+    repositoryKey: v.string(),
+    scanId: v.id("agentConfigurationScans"),
+    findingType: v.union(
+      v.literal("CONTRADICTION"),
+      v.literal("COVERAGE_GAP"),
+      v.literal("DUPLICATE_INTENT"),
+      v.literal("PRECEDENCE_SHADOW")
+    ),
+    severity: v.union(
+      v.literal("INFO"),
+      v.literal("WARNING"),
+      v.literal("HIGH")
+    ),
+    normalizedKey: v.string(),
+    summary: v.string(),
+    sources: v.array(v.object({
+      path: v.string(),
+      harness: v.string(),
+      statement: v.string(),
+    })),
+    suggestedRemediation: v.string(),
+    createdAt: v.number(),
+    acceptanceAuthority: v.literal(false),
+  })
+    .index("by_scan", ["scanId"])
+    .index("by_project_repository", ["projectId", "repositoryKey"])
+    .index("by_project_type", ["projectId", "findingType"]),
+
   // Immutable evidence that an executor received the exact packages pinned by
   // a repository lock. Package content is returned by activation, not stored.
   contextActivationReceipts: defineTable({
@@ -6097,6 +6204,158 @@ export default defineSchema({
   })
     .index("by_experiment", ["experimentId"])
     .index("by_factory_version", ["factoryDefinitionVersionId"]),
+
+  // -------------------------------------------------------------------------
+  // FACTORY LEARNING (advisory projections; never acceptance authority)
+  // -------------------------------------------------------------------------
+  learningSignals: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.id("projects"),
+    repositoryId: v.optional(v.id("workspaceRepositories")),
+    repositoryKey: v.string(),
+    workOrderId: v.optional(v.id("workOrders")),
+    workflowRunId: v.optional(v.id("workflowRuns")),
+    traceId: v.optional(v.id("traces")),
+    observationId: v.optional(v.id("traceObservations")),
+    evalScoreId: v.optional(v.id("evalScores")),
+    factoryDefinitionVersionId: v.optional(v.id("factoryDefinitionVersions")),
+    signalType: v.union(
+      v.literal("HUMAN_CORRECTION"),
+      v.literal("REPEATED_INSTRUCTION"),
+      v.literal("VERIFICATION_FAILURE"),
+      v.literal("DETERMINISTIC_GATE_FAILURE"),
+      v.literal("RETRY_REQUIRED"),
+      v.literal("RECOVERY_REQUIRED"),
+      v.literal("CONTEXT_MISS"),
+      v.literal("CONTEXT_OVERLOAD"),
+      v.literal("MODEL_ROUTING_MISMATCH"),
+      v.literal("TOOL_SELECTION_MISMATCH"),
+      v.literal("RECIPE_MISMATCH"),
+      v.literal("PROMPT_AMBIGUITY"),
+      v.literal("AGENT_CONFIG_DRIFT"),
+      v.literal("UNNECESSARY_AGENT_USAGE"),
+      v.literal("TOKEN_WASTE"),
+      v.literal("HUMAN_INTERVENTION"),
+      v.literal("REPEATED_REVIEW_FINDING")
+    ),
+    sourceType: v.union(
+      v.literal("VERIFICATION_RECEIPT"),
+      v.literal("QUALITY_GATE_DECISION"),
+      v.literal("WORKFLOW_RUN"),
+      v.literal("RUN_EVENT"),
+      v.literal("TRACE"),
+      v.literal("HUMAN_DECISION"),
+      v.literal("CONFIGURATION_REGISTRY")
+    ),
+    sourceId: v.string(),
+    reasonCode: v.string(),
+    reasonSummary: v.string(),
+    normalizedSignature: v.string(),
+    deterministicKey: v.string(),
+    clusterKey: v.string(),
+    evidenceFingerprint: v.string(),
+    evidenceRefs: v.array(v.string()),
+    confidence: v.number(),
+    severity: v.union(
+      v.literal("LOW"),
+      v.literal("MEDIUM"),
+      v.literal("HIGH"),
+      v.literal("CRITICAL")
+    ),
+    recipeId: v.optional(v.string()),
+    affectedRole: v.optional(v.string()),
+    affectedModel: v.optional(v.string()),
+    observedModelCalls: v.optional(v.number()),
+    observedTokens: v.optional(v.number()),
+    observedCostUsd: v.optional(v.number()),
+    idempotencyKey: v.string(),
+    observedAt: v.number(),
+    createdAt: v.number(),
+    metadata: v.optional(v.any()),
+    acceptanceAuthority: v.literal(false),
+  })
+    .index("by_idempotency", ["idempotencyKey"])
+    .index("by_project_repository_observed", [
+      "projectId",
+      "repositoryKey",
+      "observedAt",
+    ])
+    .index("by_project_type", ["projectId", "signalType"])
+    .index("by_work_order", ["workOrderId"])
+    .index("by_attempt", ["workflowRunId"])
+    .index("by_trace", ["traceId"]),
+
+  learningSignalClusters: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.id("projects"),
+    repositoryId: v.optional(v.id("workspaceRepositories")),
+    repositoryKey: v.string(),
+    clusterKey: v.string(),
+    signalType: v.union(
+      v.literal("HUMAN_CORRECTION"),
+      v.literal("REPEATED_INSTRUCTION"),
+      v.literal("VERIFICATION_FAILURE"),
+      v.literal("DETERMINISTIC_GATE_FAILURE"),
+      v.literal("RETRY_REQUIRED"),
+      v.literal("RECOVERY_REQUIRED"),
+      v.literal("CONTEXT_MISS"),
+      v.literal("CONTEXT_OVERLOAD"),
+      v.literal("MODEL_ROUTING_MISMATCH"),
+      v.literal("TOOL_SELECTION_MISMATCH"),
+      v.literal("RECIPE_MISMATCH"),
+      v.literal("PROMPT_AMBIGUITY"),
+      v.literal("AGENT_CONFIG_DRIFT"),
+      v.literal("UNNECESSARY_AGENT_USAGE"),
+      v.literal("TOKEN_WASTE"),
+      v.literal("HUMAN_INTERVENTION"),
+      v.literal("REPEATED_REVIEW_FINDING")
+    ),
+    deterministicKey: v.string(),
+    reasonSummary: v.string(),
+    status: v.union(
+      v.literal("BELOW_THRESHOLD"),
+      v.literal("ACTIVE"),
+      v.literal("CANDIDATE_CREATED"),
+      v.literal("SNOOZED"),
+      v.literal("CLOSED")
+    ),
+    minimumOccurrences: v.number(),
+    occurrenceCount: v.number(),
+    signalIds: v.array(v.id("learningSignals")),
+    evidenceFingerprints: v.array(v.string()),
+    evidenceRefs: v.array(v.string()),
+    confidence: v.number(),
+    severity: v.union(
+      v.literal("LOW"),
+      v.literal("MEDIUM"),
+      v.literal("HIGH"),
+      v.literal("CRITICAL")
+    ),
+    observedCostImpact: v.optional(v.object({
+      modelCalls: v.optional(v.number()),
+      tokens: v.optional(v.number()),
+      costUsd: v.optional(v.number()),
+    })),
+    firstObservedAt: v.number(),
+    lastObservedAt: v.number(),
+    candidateId: v.optional(v.id("metaLoopSuggestions")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    acceptanceAuthority: v.literal(false),
+  })
+    .index("by_cluster_key", ["clusterKey"])
+    .index("by_project_repository_status", [
+      "projectId",
+      "repositoryKey",
+      "status",
+    ])
+    .index("by_project_repository_updated", [
+      "projectId",
+      "repositoryKey",
+      "updatedAt",
+    ])
+    .index("by_project_updated", ["projectId", "updatedAt"])
+    .index("by_candidate", ["candidateId"]),
 
 
   memoryConsolidations: defineTable({
@@ -6778,6 +7037,8 @@ export default defineSchema({
       v.literal("VERIFIED"),
       v.literal("EFFECTIVE"),
       v.literal("DISMISSED"),
+      v.literal("SNOOZED"),
+      v.literal("REJECTED"),
       v.literal("ROLLED_BACK"),
       v.literal("RETIRED")
     ),
@@ -6788,6 +7049,47 @@ export default defineSchema({
     confidence: v.optional(v.number()),
     impact: v.optional(v.string()),
     affectedSurface: v.optional(v.string()),
+    learningClusterId: v.optional(v.id("learningSignalClusters")),
+    candidateType: v.optional(v.union(
+      v.literal("ADD_DETERMINISTIC_GATE"),
+      v.literal("MODIFY_GATE"),
+      v.literal("UPDATE_PROMPT"),
+      v.literal("UPDATE_AGENT_RULE"),
+      v.literal("ADD_SKILL"),
+      v.literal("UPDATE_SKILL"),
+      v.literal("UPDATE_CONTEXT_POLICY"),
+      v.literal("ADD_MEMORY_SOURCE"),
+      v.literal("CHANGE_RECIPE"),
+      v.literal("CHANGE_RETRY_POLICY"),
+      v.literal("CHANGE_MODEL_ROUTING"),
+      v.literal("CHANGE_TOOL_CONFIGURATION"),
+      v.literal("ADD_AUTOMATION"),
+      v.literal("ADD_DOCUMENTATION")
+    )),
+    problemStatement: v.optional(v.string()),
+    proposedChange: v.optional(v.string()),
+    expectedBenefit: v.optional(v.string()),
+    risk: v.optional(v.union(
+      v.literal("LOW"),
+      v.literal("MEDIUM"),
+      v.literal("HIGH"),
+      v.literal("CRITICAL")
+    )),
+    estimatedEffort: v.optional(v.union(
+      v.literal("SMALL"),
+      v.literal("MEDIUM"),
+      v.literal("LARGE")
+    )),
+    observedCostImpact: v.optional(v.object({
+      modelCalls: v.optional(v.number()),
+      tokens: v.optional(v.number()),
+      costUsd: v.optional(v.number()),
+    })),
+    experimentId: v.optional(v.id("experiments")),
+    acceptanceAuthority: v.optional(v.literal(false)),
+    snoozedUntil: v.optional(v.number()),
+    reviewedAt: v.optional(v.number()),
+    reviewedBy: v.optional(v.string()),
     packageId: v.optional(v.id("contextPackages")),
     workOrderId: v.optional(v.id("workOrders")),
     taskId: v.optional(v.id("tasks")),

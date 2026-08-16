@@ -86,6 +86,14 @@ crons.interval(
   internal.factory.repetitiveTasks.scanScheduled
 );
 
+// Refresh deterministic Factory Learning evidence only for workspaces that
+// explicitly scheduled the scanner. The result remains proposal-only.
+crons.interval(
+  "scan opted-in factory learning evidence",
+  { hours: 1 },
+  internal.factory.learning.scanScheduled
+);
+
 // LEVEL_1 Automations create approval-gated, read-only WorkOrders only.
 crons.interval(
   "create due automation review gates",

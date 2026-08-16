@@ -94,6 +94,12 @@ export const DOCS_SITE_SECTIONS: DocsSiteSection[] = [
     icon: Layers,
     pages: [
       {
+        id: "sfe-factory-learning",
+        title: "Factory Learning and Continuous Improvement",
+        description: "Signals, candidate review, governed experiments, configuration drift, and safety boundaries",
+        path: "software-factory-enhancement/factory-learning",
+      },
+      {
         id: "sfe-progressive-factory-experience",
         title: "Progressive Factory Experience",
         description: "Experience levels, recipes, launch flow, run lanes, and safety boundaries",
