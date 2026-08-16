@@ -1,5 +1,5 @@
 import { Target } from "lucide-react";
-import { useMutation, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import { api } from "../../../../../convex/_generated/api";
@@ -7,14 +7,13 @@ import { PageHeader } from "../../components/factory/DetailLayout";
 import { StatusBadge } from "../../components/factory/badges";
 import { EmptyState } from "../../components/ui/empty-state";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { ProvenanceBadge } from "../components";
 import { missionDetailPath } from "../missionRoutes";
 import { presentMissionState } from "../missionPresentation";
+import { CreateFactoryMissionDialog } from "../../factoryExperience/CreateFactoryMissionDialog";
+import { ExperienceLevelSelector } from "../../factoryExperience/ExperienceLevelSelector";
+import { useFactoryExperienceLevel } from "../../factoryExperience/useFactoryExperienceLevel";
 
 export interface MissionPortfolioViewProps {
   projectId: Id<"projects">;
@@ -41,59 +40,23 @@ function MissionCard({ mission, onOpen }: { mission: any; onOpen: () => void }) 
   );
 }
 
-function CreateMissionDialog({ projectId, open, onOpenChange }: { projectId: Id<"projects">; open: boolean; onOpenChange: (open: boolean) => void }) {
-  const createDraft = useMutation(api.missions.createDraft);
-  const [title, setTitle] = useState("");
-  const [objective, setObjective] = useState("");
-  const [stopCondition, setStopCondition] = useState("Stop when the approved validation contract is complete or operator intervention is required.");
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const createKeyRef = useRef<string | null>(null);
-
-  async function submit() {
-    if (!title.trim() || !objective.trim() || !stopCondition.trim()) {
-      setError("Title, objective, and stop condition are required.");
-      return;
-    }
-    setSaving(true); setError(null);
-    try {
-      createKeyRef.current ??= `ui-mission:${crypto.randomUUID()}`;
-      await createDraft({ projectId, title: title.trim(), objective: objective.trim(), stopCondition: stopCondition.trim(), idempotencyKey: createKeyRef.current });
-      createKeyRef.current = null;
-      onOpenChange(false);
-    } catch (cause: any) {
-      setError(cause.message ?? "Mission could not be created.");
-    } finally { setSaving(false); }
-  }
-
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent>
-    <DialogHeader><DialogTitle>Define a Mission</DialogTitle><DialogDescription>Create a governed objective. Planning and validation approval happen before any WorkOrder is dispatched.</DialogDescription></DialogHeader>
-    <div className="space-y-4 py-2">
-      <div className="space-y-1.5"><Label htmlFor="mission-title">Title</Label><Input id="mission-title" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Improve buyer onboarding confidence" /></div>
-      <div className="space-y-1.5"><Label htmlFor="mission-objective">Objective</Label><Textarea id="mission-objective" value={objective} onChange={(event) => setObjective(event.target.value)} placeholder="Describe the outcome, not an implementation task." /></div>
-      <div className="space-y-1.5"><Label htmlFor="mission-stop">Stop condition</Label><Textarea id="mission-stop" value={stopCondition} onChange={(event) => setStopCondition(event.target.value)} /></div>
-      {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-    </div>
-    <DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button><Button onClick={submit} disabled={saving}>{saving ? "Creating…" : "Create draft"}</Button></DialogFooter>
-  </DialogContent></Dialog>;
-}
-
 export function MissionPortfolioView({ projectId }: MissionPortfolioViewProps): JSX.Element {
   const missions = useQuery(api.missions.list, { projectId });
   const navigate = useNavigate();
   const location = useLocation();
   const [createOpen, setCreateOpen] = useState(false);
+  const [experienceLevel, setExperienceLevel] = useFactoryExperienceLevel();
   const openMission = (missionId: string) => {
     navigate({ pathname: missionDetailPath(missionId), search: location.search });
   };
   return <div className="relative flex-1 overflow-auto bg-app">
-    <PageHeader title="Missions" description="Governed outcomes with explicit validation, handoffs, and operator decision gates." actions={<Button onClick={() => setCreateOpen(true)}>Define mission</Button>} />
+    <PageHeader title="Missions" description="Governed outcomes with explicit validation, handoffs, and operator decision gates." actions={<div className="flex flex-wrap items-center gap-2"><ExperienceLevelSelector value={experienceLevel} onChange={setExperienceLevel} compact /><Button onClick={() => setCreateOpen(true)}>Define mission</Button></div>} />
     <div className="mx-auto flex max-w-[1600px] flex-col gap-6 px-8 py-6">
       <div className="rounded-xl border border-line bg-surface-1 px-4 py-3 text-[12.5px] text-ink-secondary">Live Mission records from Convex. A draft remains non-executable until its plan and validation contract are approved.</div>
       {missions === undefined ? <div className="grid grid-cols-1 gap-4 md:grid-cols-2">{Array.from({ length: 2 }, (_, index) => <div key={index} className="h-44 animate-pulse rounded-xl bg-surface-2" />)}</div> : null}
       {missions?.length ? <div className="grid grid-cols-1 gap-4 md:grid-cols-2">{missions.map((mission) => <MissionCard key={mission._id} mission={mission} onOpen={() => openMission(mission._id)} />)}</div> : null}
       {missions && missions.length === 0 ? <EmptyState icon={Target} title="Define your first Mission" description="Missions turn an approved outcome into serial, evidence-backed WorkOrders." action={<Button onClick={() => setCreateOpen(true)}>Define mission</Button>} /> : null}
     </div>
-    <CreateMissionDialog projectId={projectId} open={createOpen} onOpenChange={setCreateOpen} />
+    <CreateFactoryMissionDialog projectId={projectId} open={createOpen} onOpenChange={setCreateOpen} experienceLevel={experienceLevel} onCreated={(mission) => openMission(String(mission._id))} />
   </div>;
 }

@@ -38,7 +38,7 @@ export const ROUTE_CAPABILITIES: Partial<Record<MainView, RouteCapability>> = {
   "operator-evals": { scope: "workspace", maturity: "live" },
 
   goals: { scope: "workspace", maturity: "preview" },
-  factory: { scope: "workspace", maturity: "preview" },
+  factory: { scope: "workspace", maturity: "live" },
   code: { scope: "workspace", maturity: "preview" },
   dag: { scope: "workspace", maturity: "preview" },
   analytics: { scope: "workspace", maturity: "preview" },
