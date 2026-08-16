@@ -1,5 +1,5 @@
 ---
-status: ready
+status: complete
 priority: p1
 issue_id: "046"
 tags: [software-factory, remote-sandbox, mission-to-pr, policy-v2, runtime-contract]
@@ -63,7 +63,7 @@ Use Option 2. Rebase onto exact merged main, preserve the same four Remote Sandb
 - [x] Full repository tests, lint, TypeScript, runtime guard, and production build pass
 - [x] Orchestration smoke and FakeSandboxProvider golden path pass
 - [x] Browser verification passes without live provider mutation
-- [ ] PR #109 is pushed, CI/Vercel are green, and the PR is marked ready without auto-merge
+- [x] PR #109 is pushed, CI/Vercel are green, and the PR is marked ready without auto-merge
 
 ## Work Log
 
@@ -95,6 +95,19 @@ Use Option 2. Rebase onto exact merged main, preserve the same four Remote Sandb
 **Learnings:**
 - #95 fixtures needed canonical manifest digests and the shared verification-worktree dependency now required by the merged worker path; production authority did not need to change.
 - The final extractor output remains exactly the four intended Remote Sandbox contracts on top of main runtime v24.
+
+### 2026-08-16 - Hosted validation
+
+**By:** Repository operator via Codex execution
+
+**Actions:**
+- Force-updated the existing PR #109 branch after the authorized rebase, retaining draft state and disabled auto-merge.
+- Passed GitHub Build, E2E, Lint, Smoke, TypeScript, and Unit checks.
+- Passed Vercel Preview Comments and both Vercel preview deployments.
+- Updated the existing PR description with exact baselines, authority boundaries, runtime v25, certification state, and post-deploy monitoring.
+
+**Learnings:**
+- The post-#95 reconciliation is mergeable and hosted validation reproduces the complete local result.
 
 ## Resources
 
