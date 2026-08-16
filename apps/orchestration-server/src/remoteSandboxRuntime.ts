@@ -225,7 +225,30 @@ export class RemoteSandboxRuntime {
       await emit("SANDBOX_FAILED", { reason: safeMessage(error) }).catch(() => undefined);
     } finally {
       if (!options?.deferCleanup || primaryError || !bundle) {
-        try { await cleanup(); } catch (error) { primaryError = combineErrors(primaryError, error, "Remote sandbox cleanup failed."); }
+        try {
+          await cleanup();
+        } catch (error) {
+          let cleanupFailure: unknown = error;
+          try {
+            await emit("SANDBOX_FAILED", {
+              phase: "CLEANUP",
+              reason: safeMessage(error),
+              credentialRevoked: !grant || credentialRevocation?.revoked === true,
+              resourceAbsenceProven: termination?.resourceAbsent === true,
+            });
+          } catch (journalError) {
+            cleanupFailure = combineErrors(
+              cleanupFailure,
+              journalError,
+              "Sandbox cleanup failure could not be journaled.",
+            );
+          }
+          primaryError = combineErrors(
+            primaryError,
+            cleanupFailure,
+            "Remote sandbox cleanup failed.",
+          );
+        }
       }
     }
     if (primaryError) throw primaryError;

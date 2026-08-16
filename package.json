@@ -52,6 +52,7 @@
     "ci:test:e2e": "pnpm run test:e2e:arm",
     "ci:lint": "pnpm run lint",
     "ci:runtime-contract": "node scripts/check-runtime-contract.mjs",
+    "qualify:factory": "node scripts/system-factory-e2e-qualification.mjs",
     "taskmaster:plan": "taskmaster plan docs/PRD_V2.md",
     "taskmaster": "taskmaster"
   },

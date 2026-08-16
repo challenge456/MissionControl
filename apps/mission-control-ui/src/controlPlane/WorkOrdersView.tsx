@@ -29,6 +29,7 @@ import { ArrowLeft, ClipboardList, ExternalLink, PlayCircle, Plus, ShieldCheck, 
 import {
   countByQuickFilter,
   DEFAULT_WORK_ORDER_FILTERS,
+  deriveAcceptanceReadinessPresentation,
   deriveNextAction,
   filterWorkOrders,
   parseVerificationArguments,
@@ -43,10 +44,10 @@ import { CreateTaskModal } from "../CreateTaskModal";
 import { getOrchestrationBaseUrl } from "@/lib/orchestrationUrl";
 
 const RISK_STYLES: Record<string, string> = {
-  LOW: "border-emerald-500/30 text-emerald-300",
+  LOW: "border-success/40 text-ink",
   MEDIUM: "border-registry-accent/30 text-registry-accent",
-  HIGH: "border-amber-500/30 text-amber-300",
-  CRITICAL: "border-red-500/30 text-red-300",
+  HIGH: "border-warning/30 text-warning",
+  CRITICAL: "border-danger/30 text-danger",
 };
 
 const STATE_STYLES: Record<string, string> = {
@@ -54,13 +55,13 @@ const STATE_STYLES: Record<string, string> = {
   READY: "border-registry-accent/30 text-registry-accent",
   DISPATCHED: "border-registry-accent/30 text-registry-accent",
   IN_PROGRESS: "border-primary/30 text-primary",
-  BLOCKED: "border-red-500/30 text-red-300",
-  AWAITING_APPROVAL: "border-amber-500/30 text-amber-300",
-  AWAITING_VERIFICATION: "border-amber-500/30 text-amber-300",
-  REOPENED: "border-purple-500/30 text-purple-200",
-  DONE: "border-emerald-500/30 text-emerald-300",
+  BLOCKED: "border-danger/30 text-danger",
+  AWAITING_APPROVAL: "border-warning/30 text-warning",
+  AWAITING_VERIFICATION: "border-warning/30 text-warning",
+  REOPENED: "border-info/30 text-info",
+  DONE: "border-success/30 text-success",
   CANCELED: "border-border text-muted-foreground",
-  SUPERSEDED: "border-slate-500/30 text-slate-300",
+  SUPERSEDED: "border-line text-ink-muted",
 };
 
 const QUICK_FILTERS: Array<{ id: WorkOrderQuickFilter; label: string }> = [
@@ -114,7 +115,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
   const mobileBackButtonRef = useRef<HTMLButtonElement>(null);
   const [filters, setFilters] = useState<WorkOrderQueueFilters>(DEFAULT_WORK_ORDER_FILTERS);
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("workOrder"));
-  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(() => Boolean(searchParams.get("workOrder")));
   const [createOpen, setCreateOpen] = useState(false);
   const [createTaskOpen, setCreateTaskOpen] = useState(false);
   const [approvalOpen, setApprovalOpen] = useState(false);
@@ -153,6 +154,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
       ? { workOrderId: accessibleSelectedId as Id<"workOrders"> }
       : "skip"
   );
+  const selectedDetailId = selected?.workOrder._id ?? null;
   const inspectorRunId = selected?.executionRuns.some((run) => run._id === requestedInspectorRunId)
     ? requestedInspectorRunId
     : null;
@@ -212,13 +214,13 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
   };
 
   useEffect(() => {
-    if (!mobileDetailOpen || !globalThis.matchMedia?.("(max-width: 1279px)").matches) return;
+    if (!mobileDetailOpen || !selectedDetailId || !globalThis.matchMedia?.("(max-width: 1279px)").matches) return;
     const frame = requestAnimationFrame(() => {
       mobileDetailPanelRef.current?.scrollIntoView({ block: "start" });
       mobileBackButtonRef.current?.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(frame);
-  }, [mobileDetailOpen, selectedId]);
+  }, [mobileDetailOpen, selectedDetailId]);
 
   const createWorkOrder = useMutation(api.workOrders.create);
   const dispatchWorkOrder = useMutation(api.workOrders.dispatch);
@@ -235,6 +237,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
   const filtered = useMemo(() => filterWorkOrders(workOrders ?? [], filters), [workOrders, filters]);
 
   useEffect(() => {
+    if (workOrders === undefined) return;
     if (filtered.length === 0) {
       setMobileDetailOpen(false);
       return;
@@ -248,7 +251,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
       next.set("workOrder", filtered[0]._id);
       setSearchParams(next, { replace: true });
     }
-  }, [filtered, searchParams, selectedId, setSearchParams]);
+  }, [filtered, searchParams, selectedId, setSearchParams, workOrders]);
 
   const selectWorkOrder = (workOrderId: string, history: "push" | "replace" = "push") => {
     setSelectedId(workOrderId);
@@ -321,6 +324,11 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
       ? selected.currentVerification.eligible
         && ["APPROVED", "CONDITIONAL", "NOT_REQUIRED"].includes(selected.workOrder.approvalStatus)
       : selected.acceptanceSummary?.eligible);
+
+  const acceptanceReadinessPresentation = deriveAcceptanceReadinessPresentation(
+    canAcceptSelected,
+    selected?.currentVerification?.reasons ?? []
+  );
 
   const latestReceiptMap = useMemo(
     () => latestByCriterion((selected?.verificationReceipts ?? []).map((receipt) => ({
@@ -467,8 +475,8 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
           <FilterSelect label="Verification" value={filters.verificationStatus} onChange={(value) => setFilters((current) => ({ ...current, verificationStatus: value }))} options={["PENDING", "PASS", "FAIL", "WAIVED", "STALE"]} />
         </div>
 
-        <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(360px,1.05fr)]">
-          <div className={`${mobileDetailOpen ? "hidden xl:block" : "block"} space-y-3`}>
+        <div className="mt-4 grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,480px),1fr))]">
+          <div className={`${mobileDetailOpen ? "hidden xl:block" : "block"} min-w-0 space-y-3`}>
             {filtered.length === 0 ? (
               <Card className="p-8 text-center text-sm text-muted-foreground">
                 No work orders match the current filters.
@@ -529,7 +537,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
             )}
           </div>
 
-          <Card ref={mobileDetailPanelRef} className={`${mobileDetailOpen ? "block" : "hidden xl:block"} min-h-[420px] scroll-mt-4 p-5`}>
+          <Card ref={mobileDetailPanelRef} className={`${mobileDetailOpen ? "block" : "hidden xl:block"} min-h-[420px] min-w-0 scroll-mt-4 p-5`}>
             {!selected ? (
               <div className="text-sm text-muted-foreground">Select a work order to inspect requested outcome, criteria, and linked execution.</div>
             ) : (
@@ -601,7 +609,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant="outline">{selected.workOrder.codeScopeIds?.length ?? 0} code scopes</Badge>
                       <Badge variant="outline">{scopePolicyRequirements.owningTeamIds.length} owning teams</Badge>
-                      {scopePolicyRequirements.requiresCrossTeamReview ? <Badge variant="outline" className="border-amber-500/30 text-amber-200">Cross-team review required</Badge> : null}
+                      {scopePolicyRequirements.requiresCrossTeamReview ? <Badge variant="outline" className="border-warning/30 text-warning">Cross-team review required</Badge> : null}
                     </div>
                     <dl className="mt-3 grid gap-3 text-sm md:grid-cols-2">
                       <MetaRow label="Required reviewers" value={scopePolicyRequirements.requiredReviewers.join(", ") || "No additional reviewer policy"} />
@@ -652,7 +660,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                         </li>
                       ))}
                     </ol>
-                    <p className="mt-3 text-xs text-amber-100">
+                    <p className="mt-3 text-xs text-warning">
                       This WorkOrder has not been automatically executed. The originating Automation cannot approve it.
                     </p>
                   </Section>
@@ -698,7 +706,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                             <div className="flex flex-wrap gap-2">
                               <Badge variant="outline">{task.status}</Badge>
                               <Badge variant="outline">{task.parentDelivery.governanceStatus}</Badge>
-                              {task.status === "BLOCKED" ? <Badge variant="outline" className="border-red-500/30 text-red-300">Blocked</Badge> : null}
+                              {task.status === "BLOCKED" ? <Badge variant="outline" className="border-danger/30 text-danger">Blocked</Badge> : null}
                             </div>
                           </div>
                           <div className="mt-2 text-xs text-muted-foreground">
@@ -733,12 +741,12 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                   </Section>
                   <Section title="Required attention">
                     {selected.workOrder.requiredHumanAction ? (
-                      <p className="text-sm text-amber-100">{selected.workOrder.requiredHumanAction}</p>
+                      <p className="text-sm text-warning">{selected.workOrder.requiredHumanAction}</p>
                     ) : (
                       <p className="text-sm text-muted-foreground">No active human action recorded.</p>
                     )}
                     {selected.workOrder.blockingIssue ? (
-                      <div className="mt-3 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-sm text-red-200">
+                      <div className="mt-3 rounded-lg border border-danger/20 bg-danger/5 px-3 py-2 text-sm text-danger">
                         <TriangleAlert className="mr-2 inline h-4 w-4" />
                         {selected.workOrder.blockingIssue}
                       </div>
@@ -758,17 +766,17 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                     </Card>
                     <Card className="p-3">
                       <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Missing approvals</div>
-                      <div className="mt-2 text-lg font-semibold text-amber-300">{selected.acceptanceSummary?.missingApprovalTypes?.length ?? 0}</div>
+                      <div className="mt-2 text-lg font-semibold text-warning">{selected.acceptanceSummary?.missingApprovalTypes?.length ?? 0}</div>
                     </Card>
                     <Card className="p-3">
                       <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Criteria blocked</div>
-                      <div className="mt-2 text-lg font-semibold text-red-300">{(selected.acceptanceSummary?.failedCriteriaIds?.length ?? 0) + (selected.acceptanceSummary?.staleCriteriaIds?.length ?? 0) + (selected.acceptanceSummary?.missingCriteriaIds?.length ?? 0)}</div>
+                      <div className="mt-2 text-lg font-semibold text-danger">{(selected.acceptanceSummary?.failedCriteriaIds?.length ?? 0) + (selected.acceptanceSummary?.staleCriteriaIds?.length ?? 0) + (selected.acceptanceSummary?.missingCriteriaIds?.length ?? 0)}</div>
                     </Card>
                   </div>
 
                   <div className="mt-3 rounded-xl border border-[var(--panel-line)] bg-background/40 p-4">
                     <div className="mb-2 flex items-center justify-between gap-3">
-                      <div className="text-sm font-medium text-foreground">Why this WorkOrder is blocked from acceptance</div>
+                      <div className="text-sm font-medium text-foreground">{acceptanceReadinessPresentation.heading}</div>
                       <div className="flex flex-wrap gap-2">
                         <Button size="sm" variant="outline" onClick={() => { setGovernanceError(null); setApprovalOpen(true); }}>
                           <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />
@@ -847,15 +855,15 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                         </Button>
                       </div>
                     </div>
-                    {governanceError ? <div className="mb-3 text-xs text-red-300">{governanceError}</div> : null}
-                    {(selected.currentVerification?.reasons?.length ?? 0) > 0 ? (
+                    {governanceError ? <div className="mb-3 text-xs text-danger">{governanceError}</div> : null}
+                    {acceptanceReadinessPresentation.reasons.length > 0 ? (
                       <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-                        {selected.currentVerification.reasons.map((reason: string, index: number) => (
+                        {acceptanceReadinessPresentation.reasons.map((reason: string, index: number) => (
                           <li key={`${selected.workOrder._id}-blocker-${index}`}>{reason}</li>
                         ))}
                       </ul>
                     ) : (
-                      <p className="text-sm text-emerald-300">Approvals, independent evidence, GitHub App PR lineage, and exact-head CI are complete. Explicit acceptance is now allowed.</p>
+                      <p className={`text-sm ${canAcceptSelected ? "text-success" : "text-warning"}`}>{acceptanceReadinessPresentation.summary}</p>
                     )}
                   </div>
                 </Section>
@@ -894,15 +902,15 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                     </Card>
                     <Card className="p-3">
                       <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Expiring approvals</div>
-                      <div className="mt-2 text-lg font-semibold text-amber-300">{selected.governanceStatus?.expiringApprovals?.length ?? 0}</div>
+                      <div className="mt-2 text-lg font-semibold text-warning">{selected.governanceStatus?.expiringApprovals?.length ?? 0}</div>
                     </Card>
                     <Card className="p-3">
                       <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Expired approvals</div>
-                      <div className="mt-2 text-lg font-semibold text-red-300">{selected.governanceStatus?.expiredApprovals?.length ?? 0}</div>
+                      <div className="mt-2 text-lg font-semibold text-danger">{selected.governanceStatus?.expiredApprovals?.length ?? 0}</div>
                     </Card>
                     <Card className="p-3">
                       <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Stale receipts</div>
-                      <div className="mt-2 text-lg font-semibold text-red-300">{selected.governanceStatus?.staleReceipts?.length ?? 0}</div>
+                      <div className="mt-2 text-lg font-semibold text-danger">{selected.governanceStatus?.staleReceipts?.length ?? 0}</div>
                     </Card>
                   </div>
                   <div className="mt-3 rounded-xl border border-[var(--panel-line)] bg-background/30 p-4 text-sm text-muted-foreground">
@@ -1115,7 +1123,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                           </p>
                         </>
                       ) : (
-                        <p className="mt-1.5 text-xs text-amber-200">
+                        <p className="mt-1.5 text-xs text-warning">
                           Add an active local code scope to the default repository before dispatch.
                         </p>
                       )}
@@ -1172,7 +1180,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                               : "No active Factory binding"}
                           </div>
                         </div>
-                        <Badge variant="outline" className={activeFactory?.readyForBrowserDispatch ? "border-emerald-500/30 text-emerald-300" : "border-amber-500/30 text-amber-300"}>
+                        <Badge variant="outline" className={activeFactory?.readyForBrowserDispatch ? "border-success/30 text-success" : "border-warning/30 text-warning"}>
                           {activeFactory?.readyForBrowserDispatch ? "Ready" : "Blocked"}
                         </Badge>
                       </div>
@@ -1248,27 +1256,27 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                     </div>
                   </div>
                   {governedFactoryRequired && !factoryScopeMatches ? (
-                    <div className="mb-3 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
+                    <div className="mb-3 rounded-md border border-warning/20 bg-warning/5 px-3 py-2 text-xs text-warning">
                       Select a code scope frozen into the active Factory version before dispatch.
                     </div>
                   ) : null}
                   {governedFactoryRequired && !activeFactoryVersionId ? (
-                    <div className="mb-3 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
+                    <div className="mb-3 rounded-md border border-warning/20 bg-warning/5 px-3 py-2 text-xs text-warning">
                       Activate a passing Factory version for this repository before dispatch.
                     </div>
                   ) : null}
                   {governedFactoryRequired && activeFactoryVersionId && selectedDispatchFactoryVersionId !== activeFactoryVersionId ? (
-                    <div className="mb-3 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
+                    <div className="mb-3 rounded-md border border-warning/20 bg-warning/5 px-3 py-2 text-xs text-warning">
                       Select the current approved Factory version before dispatch. The server freezes and revalidates this exact version.
                     </div>
                   ) : null}
                   {governedFactoryRequired && activeFactoryVersionId && !activeFactoryHostId ? (
-                    <div className="mb-3 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
+                    <div className="mb-3 rounded-md border border-warning/20 bg-warning/5 px-3 py-2 text-xs text-warning">
                       Report a current clean local host binding for this exact repository before dispatch.
                     </div>
                   ) : null}
                   {dispatchError ? (
-                    <div className="mb-3 rounded-md border border-red-500/20 bg-red-500/5 px-3 py-2 text-xs text-red-200">
+                    <div className="mb-3 rounded-md border border-danger/20 bg-danger/5 px-3 py-2 text-xs text-danger">
                       {dispatchError}
                     </div>
                   ) : null}
@@ -1311,7 +1319,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                             <div>Human interventions: <span className="text-foreground/85">{run.humanInterventions}</span></div>
                           </div>
                           {run.failureReason ? (
-                            <div className="mt-3 rounded-md border border-red-500/20 bg-red-500/5 px-3 py-2 text-xs text-red-200">
+                            <div className="mt-3 rounded-md border border-danger/20 bg-danger/5 px-3 py-2 text-xs text-danger">
                               {run.failureReason}
                             </div>
                           ) : null}
@@ -1783,7 +1791,7 @@ function IndependentVerificationPanel({ receipt, verificationRuns, onInspect }: 
           {receipt ? <Badge variant="outline">{receipt.requirementsPassed ?? 0} passed · {receipt.requirementsFailed ?? 0} missing</Badge> : null}
         </div>
         {receipt?.checks?.length ? (
-          <div className="mt-4 overflow-x-auto rounded-lg border border-[var(--panel-line)] bg-card">
+          <div className="mt-4 overflow-x-auto rounded-lg border border-[var(--panel-line)] bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" tabIndex={0} aria-label="Verification check results">
             <table className="w-full text-left text-xs">
               <thead className="border-b border-[var(--panel-line)] text-muted-foreground"><tr><th className="px-3 py-2 font-medium">Check</th><th className="px-3 py-2 font-medium">Status</th><th className="px-3 py-2 font-medium">Evidence</th><th className="px-3 py-2 font-medium">Summary</th></tr></thead>
               <tbody className="divide-y divide-[var(--panel-line)]">
@@ -1813,7 +1821,7 @@ function StatCard({ label, value, tone = "default" }: { label: string; value: nu
   return (
     <Card className="p-4">
       <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{label}</div>
-      <div className={`mt-2 text-2xl font-semibold ${tone === "good" ? "text-emerald-300" : tone === "warn" ? "text-amber-300" : tone === "bad" ? "text-red-300" : "text-foreground"}`}>
+      <div className={`mt-2 text-2xl font-semibold ${tone === "good" ? "text-success" : tone === "warn" ? "text-warning" : tone === "bad" ? "text-danger" : "text-foreground"}`}>
         {value}
       </div>
     </Card>
@@ -2526,7 +2534,7 @@ function CreateWorkOrderDialog({
                   <Label>Arguments (exact JSON argv)</Label>
                   <Textarea aria-label="Verification arguments" value={verificationArgsText} onChange={(event) => setVerificationArgsText(event.target.value)} rows={5} spellCheck={false} className="font-mono text-xs" />
                   <p className="text-xs text-muted-foreground">No command is inferred. Enter an executable and exact JSON argv that work inside the clean frozen worktree.</p>
-                  {verificationArgsError ? <p role="alert" className="text-xs text-red-300">{verificationArgsError}</p> : null}
+                  {verificationArgsError ? <p role="alert" className="text-xs text-danger">{verificationArgsError}</p> : null}
                 </div>
               </div>
               <div className="grid gap-3 md:grid-cols-2">
@@ -2538,11 +2546,11 @@ function CreateWorkOrderDialog({
         </div>
 
         {configurationIssue ? (
-          <div role="status" className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-sm text-amber-200">
+          <div role="status" className="rounded-lg border border-warning/20 bg-warning/5 px-3 py-2 text-sm text-warning">
             {configurationIssue}
           </div>
         ) : null}
-        {error ? <div className="text-sm text-red-300">{error}</div> : null}
+        {error ? <div className="text-sm text-danger">{error}</div> : null}
 
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>

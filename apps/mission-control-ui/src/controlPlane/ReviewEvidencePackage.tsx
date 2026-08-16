@@ -72,7 +72,7 @@ const packageTone = {
 };
 
 const evidenceTone: Record<string, string> = {
-  PASS: "border-success/30 text-success",
+  PASS: "border-success/40 text-ink",
   WAIVED: "border-info/30 text-info",
   FAIL: "border-danger/30 text-danger",
   STALE: "border-danger/30 text-danger",

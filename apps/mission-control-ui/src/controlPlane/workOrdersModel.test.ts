@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   countByQuickFilter,
   DEFAULT_WORK_ORDER_FILTERS,
+  deriveAcceptanceReadinessPresentation,
   deriveNextAction,
   filterWorkOrders,
   parseVerificationArguments,
@@ -81,6 +82,29 @@ describe("work order queue model", () => {
   it("derives the next operator action", () => {
     expect(deriveNextAction(ITEMS[0])).toBe("Review approval");
     expect(deriveNextAction(ITEMS[1])).toBe("Review outcome");
+  });
+
+  it("never claims acceptance is allowed while the composite acceptance gate is blocked", () => {
+    expect(deriveAcceptanceReadinessPresentation(false, [])).toEqual({
+      heading: "Why this WorkOrder is blocked from acceptance",
+      reasons: [],
+      summary: "Acceptance remains blocked until all required approvals, independent evidence, GitHub App PR lineage, and exact-head CI requirements are complete.",
+    });
+  });
+
+  it("preserves authoritative verification reasons for a blocked WorkOrder", () => {
+    expect(deriveAcceptanceReadinessPresentation(false, ["Exact PR head is stale."])).toEqual({
+      heading: "Why this WorkOrder is blocked from acceptance",
+      reasons: ["Exact PR head is stale."],
+      summary: null,
+    });
+  });
+
+  it("shows ready copy only when the composite acceptance gate is eligible", () => {
+    expect(deriveAcceptanceReadinessPresentation(true, [])).toMatchObject({
+      heading: "Ready for explicit human acceptance",
+      summary: expect.stringContaining("Explicit acceptance is now allowed"),
+    });
   });
 
   it("preserves exact verification argv including spaces inside one argument", () => {

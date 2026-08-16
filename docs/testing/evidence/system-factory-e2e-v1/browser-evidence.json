@@ -1,0 +1,63 @@
+{
+  "appUrl": "http://localhost:5199",
+  "workspaceId": "sn7dtgyn9pt0gq43x2wpw5mwxn8b7adt",
+  "prWorkspaceId": "sn76etsp1y10t230g4jjtxqnsn8bygtw",
+  "prWorkOrderId": "yh741dqfydd6kxw2dsj7ynjfzn8caqp8",
+  "surfaces": [
+    "mission-creation-detail-dark-1440",
+    "approved-plan-light-1440",
+    "workorder-verification-dark-1024",
+    "execution-run-inspector",
+    "pr-currentness-light-1440",
+    "factory-memory-context-light-1024",
+    "observability-evals-dark-1024",
+    "factory-learning-dark-390",
+    "mission-direct-light-390"
+  ],
+  "screenshots": [
+    "screenshots/01-mission-created-detail-1440-dark.png",
+    "screenshots/02-approved-plan-1440-light.png",
+    "screenshots/03-workorder-verification-1024-dark.png",
+    "screenshots/04-pr-currentness-1440-light.png",
+    "screenshots/05-factory-memory-context-1024-light.png",
+    "screenshots/06-observability-evals-1024-dark.png",
+    "screenshots/07-factory-learning-390-dark.png",
+    "screenshots/08-mission-direct-390-light.png"
+  ],
+  "accessibility": [
+    {
+      "surface": "mission-detail",
+      "passes": 24,
+      "incomplete": 0,
+      "violations": []
+    },
+    {
+      "surface": "workorder-pr-currentness",
+      "passes": 26,
+      "incomplete": 1,
+      "violations": []
+    },
+    {
+      "surface": "factory-memory",
+      "passes": 21,
+      "incomplete": 0,
+      "violations": []
+    },
+    {
+      "surface": "observability-evals",
+      "passes": 18,
+      "incomplete": 1,
+      "violations": []
+    },
+    {
+      "surface": "factory-learning",
+      "passes": 16,
+      "incomplete": 0,
+      "violations": []
+    }
+  ],
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [],
+  "missionUrl": "http://localhost:5199/v2/missions/gs7k7e8h4gncqa4f7j5wgyp5qn8ckhhf?workspace=sn7dtgyn9pt0gq43x2wpw5mwxn8b7adt&company=wx74rg6ftfvzpq8hhtcjh4qve58b64w8"
+}

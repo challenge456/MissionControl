@@ -102,6 +102,28 @@ export function countByQuickFilter(items: WorkOrderQueueItem[], quickFilter: Wor
   return items.filter((item) => matchesQuickFilter(item, quickFilter)).length;
 }
 
+export function deriveAcceptanceReadinessPresentation(
+  canAccept: boolean,
+  verificationReasons: string[] = []
+) {
+  if (canAccept) {
+    return {
+      heading: "Ready for explicit human acceptance",
+      reasons: [],
+      summary: "Approvals, independent evidence, GitHub App PR lineage, and exact-head CI are complete. Explicit acceptance is now allowed.",
+    };
+  }
+
+  const reasons = verificationReasons.map((reason) => reason.trim()).filter(Boolean);
+  return {
+    heading: "Why this WorkOrder is blocked from acceptance",
+    reasons,
+    summary: reasons.length === 0
+      ? "Acceptance remains blocked until all required approvals, independent evidence, GitHub App PR lineage, and exact-head CI requirements are complete."
+      : null,
+  };
+}
+
 export function parseVerificationArguments(value: string):
   | { ok: true; args: string[] }
   | { ok: false; error: string } {
