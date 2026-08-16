@@ -7,6 +7,7 @@ import {
   codexChildEnvironment,
   codexOwnedProcessGroupExists,
 } from "../codexExecutorAdapter.js";
+import type { ExecutorRequest, HarnessExecutionContext } from "@mission-control/workflow-engine";
 
 const request = {
   executionId: "execution-1",
@@ -61,7 +62,7 @@ describe("CodexV1ExecutorAdapter", () => {
     const runner = vi.fn().mockResolvedValue({ exitCode: 0, output: "Implemented and tested." });
     const adapter = new CodexV1ExecutorAdapter("/tmp/codex", runner);
     const events: any[] = [];
-    const result = await adapter.execute(request, (event) => { events.push(event); });
+    const result = await executeAdapter(adapter, request, { emit: (event) => { events.push(event); } });
 
     expect(result).toMatchObject({ status: "COMPLETED", output: "Implemented and tested." });
     expect(events.map((event) => event.type)).toEqual([
@@ -79,10 +80,13 @@ describe("CodexV1ExecutorAdapter", () => {
       signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
     }));
     const adapter = new CodexV1ExecutorAdapter("/tmp/codex", runner as any);
-    const execution = adapter.execute(request, () => undefined);
+    const prepared = await adapter.prepare(request, { emit: () => undefined });
+    const handle = await adapter.execute(prepared);
+    const execution = adapter.collectResult(handle);
     await vi.waitFor(() => expect(runner).toHaveBeenCalled());
-    expect(await adapter.cancel(request.executionId)).toBe(true);
+    expect(await adapter.cancel(handle)).toBe(true);
     await expect(execution).resolves.toMatchObject({ status: "CANCELED" });
+    await adapter.cleanup(handle);
   });
 
   it("passes only an explicit non-control-plane environment to Codex", () => {
@@ -102,6 +106,37 @@ describe("CodexV1ExecutorAdapter", () => {
     expect(child).not.toHaveProperty("OPENAI_API_KEY");
   });
 
+  it("builds a bounded remote invocation without acquiring control-plane authority", () => {
+    const adapter = new CodexV1ExecutorAdapter("/opt/codex", vi.fn() as any);
+    const invocation = adapter.createRemoteInvocation(request, {
+      repositoryRoot: "/var/lib/mission-control/attempt/repository",
+      resultPath: "/var/lib/mission-control/attempt/executor-result.json",
+    });
+
+    expect(invocation).toMatchObject({
+      command: "/opt/codex",
+      resultPath: "/var/lib/mission-control/attempt/executor-result.json",
+      prompt: request.prompt,
+      allowedPaths: request.allowedPaths,
+      timeoutMs: request.timeoutMs,
+    });
+    expect(invocation.args).toEqual(expect.arrayContaining([
+      "-C",
+      "/var/lib/mission-control/attempt/repository",
+      "-o",
+      "/var/lib/mission-control/attempt/executor-result.json",
+    ]));
+    expect(adapter.capabilities().authority).toEqual({
+      worker: "NONE",
+      verification: "NONE",
+      publication: "NONE",
+      acceptance: "NONE",
+      memory: "NONE",
+      observability: "NONE",
+      learning: "NONE",
+    });
+  });
+
   it.skipIf(process.platform === "win32")("cancels the dedicated owned executor process group", async () => {
     const repositoryRoot = await mkdtemp(path.join(tmpdir(), "mc-codex-process-group-"));
     const executable = path.join(repositoryRoot, "codex-tree-stub.sh");
@@ -117,19 +152,22 @@ wait
       const adapter = new CodexV1ExecutorAdapter(executable);
       const started = vi.fn();
       const terminated = vi.fn();
-      const execution = adapter.execute({
+      const prepared = await adapter.prepare({
         ...request,
         repositoryRoot,
         workingDirectory: repositoryRoot,
-      }, () => undefined, undefined, { started, terminated });
+      }, { emit: () => undefined, processObserver: { started, terminated } });
+      const handle = await adapter.execute(prepared);
+      const execution = adapter.collectResult(handle);
       await vi.waitFor(() => expect(access(childPidPath)).resolves.toBeUndefined());
       const childPid = Number(await readFile(childPidPath, "utf8"));
       expect(Number.isSafeInteger(childPid)).toBe(true);
       const processGroupId = started.mock.calls[0][0].pid;
       expect(codexOwnedProcessGroupExists(processGroupId)).toBe(true);
       expect(await processCanExecute(childPid)).toBe(true);
-      expect(await adapter.cancel(request.executionId)).toBe(true);
+      expect(await adapter.cancel(handle)).toBe(true);
       await expect(execution).resolves.toMatchObject({ status: "CANCELED" });
+      await adapter.cleanup(handle);
       expect(terminated).toHaveBeenCalledWith(expect.objectContaining({ pid: processGroupId }));
       await vi.waitFor(async () => {
         expect(await processCanExecute(processGroupId)).toBe(false);
@@ -163,12 +201,12 @@ printf '%s' 'Codex started after EOF.' > "$output"
       const adapter = new CodexV1ExecutorAdapter(executable);
       const started = vi.fn();
       const terminated = vi.fn();
-      const result = await adapter.execute({
+      const result = await executeAdapter(adapter, {
         ...request,
         repositoryRoot,
         workingDirectory: repositoryRoot,
         timeoutMs: 2_000,
-      }, () => undefined, undefined, { started, terminated });
+      }, { emit: () => undefined, processObserver: { started, terminated } });
 
       expect(result).toMatchObject({
         status: "COMPLETED",
@@ -183,3 +221,17 @@ printf '%s' 'Codex started after EOF.' > "$output"
     }
   });
 });
+
+async function executeAdapter(
+  adapter: CodexV1ExecutorAdapter,
+  input: ExecutorRequest,
+  context: HarnessExecutionContext,
+) {
+  const prepared = await adapter.prepare(input, context);
+  const handle = await adapter.execute(prepared);
+  try {
+    return await adapter.collectResult(handle);
+  } finally {
+    await adapter.cleanup(handle);
+  }
+}

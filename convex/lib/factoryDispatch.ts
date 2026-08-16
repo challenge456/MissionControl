@@ -70,7 +70,7 @@ export function selectCurrentFactoryHost<T extends FactoryHostCandidate>(
   return eligible[0] ?? null;
 }
 
-export function codexV1RecoveryReady(input: {
+export function genericHarnessV1RecoveryReady(input: {
   pause: boolean;
   cancel: boolean;
   retry: boolean;
@@ -94,14 +94,14 @@ const checks: Array<{
   { key: "githubReady", blocker: "github-app-not-ready", remediation: "Repair and reverify the GitHub App installation." },
   { key: "workflowMatches", blocker: "workflow-version-mismatch", remediation: "Use the workflow frozen in the Factory version." },
   { key: "workflowContractReady", blocker: "workflow-contract-unsafe", remediation: "Replace heuristic completion and provider authority with structured handoffs." },
-  { key: "executorReady", blocker: "executor-not-ready", remediation: "Use the approved codex/v1 executor." },
+  { key: "executorReady", blocker: "executor-not-ready", remediation: "Use an exact harness adapter/version advertised by the canonical worker." },
   { key: "codeScopesReady", blocker: "code-scopes-not-ready", remediation: "Create a Factory version with active repository code scopes." },
   { key: "agentManifestsReady", blocker: "agent-manifests-not-ready", remediation: "Bind every workflow agent to an approved agent version." },
   { key: "policyReady", blocker: "policy-not-ready", remediation: "Activate the Factory policy envelope." },
   { key: "verifiersReady", blocker: "verifiers-not-ready", remediation: "Restore every independent verifier frozen in the Factory version." },
   { key: "hostReady", blocker: "host-not-ready", remediation: "Report a clean, current READY repository host binding." },
   { key: "budgetReady", blocker: "budget-not-ready", remediation: "Use bounded positive V1 cost, runtime, and attempt limits." },
-  { key: "recoveryReady", blocker: "recovery-not-ready", remediation: "Use only the recovery controls supported by codex/v1: cancel and bounded retry." },
+  { key: "recoveryReady", blocker: "recovery-not-ready", remediation: "Generic Harness Contract V1 supports cancel and bounded retry, not pause or in-process resume." },
   { key: "worktreeProvided", blocker: "worktree-required", remediation: "Allocate an attempt-specific repository worktree." },
 ];
 

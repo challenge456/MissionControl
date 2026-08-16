@@ -4,7 +4,7 @@ import { access, lstat, mkdir, mkdtemp, readFile, readlink, realpath, rm } from 
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { validateChangedFileScope, type RepositoryScope } from "@mission-control/workflow-engine";
+import { runHarnessExecution, validateChangedFileScope, type RepositoryScope } from "@mission-control/workflow-engine";
 import type { ExecutorEvent } from "@mission-control/workflow-engine";
 import { CodexV1ExecutorAdapter } from "./codexExecutorAdapter.js";
 import {
@@ -228,7 +228,10 @@ export class DurableCodexWorker {
         if (estimate.estimatedCostUsd > manifest.policy.maxCostUsd) {
           throw new Error(`Executor estimate $${estimate.estimatedCostUsd.toFixed(2)} exceeds the approved $${manifest.policy.maxCostUsd.toFixed(2)} limit.`);
         }
-        const result = await this.executor.execute(executorRequest, (event) => { bufferedEvents.push(event); }, abortController.signal);
+        const result = await runHarnessExecution(this.executor, executorRequest, {
+          emit: (event) => { bufferedEvents.push(event); },
+          signal: abortController.signal,
+        });
         await this.report(manifest, `executor:${manifest.executionAttemptNumber}`, bufferedEvents.map(mapExecutorEvent), [{
           artifactType: "STRUCTURED_OUTPUT",
           name: `Codex result for Attempt ${manifest.executionAttemptNumber}`,

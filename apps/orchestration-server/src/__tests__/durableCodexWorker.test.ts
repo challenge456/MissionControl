@@ -166,11 +166,14 @@ describe("durable Codex worker Git boundary", () => {
     };
     const executor = {
       estimate: vi.fn().mockResolvedValue({ estimatedCostUsd: 1, estimatedRuntimeMinutes: 1, confidence: "HIGH" }),
-      execute: vi.fn(async (request) => {
+      prepare: vi.fn(async (request: any, context: any) => ({ request, context })),
+      execute: vi.fn(async (prepared: any) => prepared),
+      collectResult: vi.fn(async ({ request }: any) => {
         await mkdir(path.join(request.workingDirectory, "docs"), { recursive: true });
         await writeFile(path.join(request.workingDirectory, "docs", "proof.md"), "proof\n");
         return { executionId: request.executionId, status: "COMPLETED", output: "done" };
       }),
+      cleanup: vi.fn(async () => undefined),
     };
     const publisher = {
       mintInstallationToken: vi.fn(),
@@ -206,11 +209,18 @@ describe("durable Codex worker Git boundary", () => {
     const started = new Promise<void>((resolve) => { executionStarted = resolve; });
     const executor = {
       estimate: vi.fn().mockResolvedValue({ estimatedCostUsd: 1, estimatedRuntimeMinutes: 1, confidence: "HIGH" }),
-      execute: vi.fn(async (_request, _emit, signal: AbortSignal) => {
+      prepare: vi.fn(async (request: any, context: any) => ({ request, context })),
+      execute: vi.fn(async (prepared: any) => {
         executionStarted();
-        await new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve(), { once: true }));
+        return prepared;
+      }),
+      collectResult: vi.fn(async ({ context }: any) => {
+        if (!context.signal.aborted) {
+          await new Promise<void>((resolve) => context.signal.addEventListener("abort", () => resolve(), { once: true }));
+        }
         return { executionId: "run-restart:1", status: "CANCELED", error: "local child stopped" };
       }),
+      cleanup: vi.fn(async () => undefined),
     };
     const actions: string[] = [];
     let claimed = false;

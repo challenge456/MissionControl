@@ -30,12 +30,12 @@ import {
 import { planAcceptedWorkOrderParentSync } from "./lib/workOrderParentSync";
 import { validateMissionWorkOrderDispatch } from "./lib/missionGovernance";
 import {
-  codexV1RecoveryReady,
+  genericHarnessV1RecoveryReady,
   evaluateFactoryDispatchPreflight,
   factoryVersionApprovesWorkOrderScopes,
   selectCurrentFactoryHost,
 } from "./lib/factoryDispatch";
-import { validFactoryBudget, validFactoryExecutionBinding } from "./lib/factoryConfiguration";
+import { validFactoryBudget, validFactoryExecutionBinding, validFactoryExecutorBinding } from "./lib/factoryConfiguration";
 import { factoryWorkerEligibility } from "./lib/factoryWorkerRuntime";
 import { computeCanonicalHash } from "./lib/genomeHash";
 import { evaluateGithubAppCapabilities, githubInstallationIsStale } from "./lib/githubAppReadiness";
@@ -3034,7 +3034,7 @@ async function resolveFactoryDispatchBinding(
     githubReady: Boolean(installation?.status === "CONNECTED" && github?.ready && !githubInstallationIsStale(installation.verifiedAt, now)),
     workflowMatches: version.workflowId === workflow._id,
     workflowContractReady: factoryWorkflowContractIssues(workflow).length === 0,
-    executorReady: version.executor.adapter === "codex" && version.executor.version === "v1",
+    executorReady: validFactoryExecutorBinding(version.executor),
     codeScopesReady: Boolean(
       version.codeScopeIds?.length
       && repository
@@ -3067,7 +3067,7 @@ async function resolveFactoryDispatchBinding(
       && /^[a-f0-9]{40,64}$/i.test(host.baseCommit)
     ),
     budgetReady: validFactoryBudget(version.budget),
-    recoveryReady: codexV1RecoveryReady(version.recovery) && sandboxProfileReady && validFactoryExecutionBinding({
+    recoveryReady: genericHarnessV1RecoveryReady(version.recovery) && sandboxProfileReady && validFactoryExecutionBinding({
       executionBackend: selectedExecutionBackend,
       sandboxProfileId: version.sandboxProfileId ? String(version.sandboxProfileId) : undefined,
       sandboxProfileDigest: version.sandboxProfileDigest,

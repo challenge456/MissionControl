@@ -68,6 +68,12 @@ export {
   type WorkflowTopology,
 } from "./graph.js";
 
+export {
+  GENERIC_HARNESS_CONTRACT_VERSION,
+  NO_HARNESS_AUTHORITY,
+  runHarnessExecution,
+} from "./executorAdapter.js";
+
 export type {
   ExecutorAdapter,
   ExecutorCapabilities,
@@ -79,6 +85,12 @@ export type {
   ExecutorProcessObserver,
   ExecutorRequest,
   ExecutorResult,
+  HarnessAuthorityLevel,
+  HarnessAuthorityProfile,
+  HarnessExecutionBackend,
+  HarnessExecutionContext,
+  HarnessExecutorAdapter,
+  HarnessExecutorCapabilities,
 } from "./executorAdapter.js";
 
 export {

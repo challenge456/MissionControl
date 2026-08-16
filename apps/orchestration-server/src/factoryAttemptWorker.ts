@@ -1,9 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { ConvexHttpClient } from "convex/browser";
-import type { ExecutorEvent } from "@mission-control/workflow-engine";
-import { verificationIsolationBindingDigest } from "@mission-control/workflow-engine";
+import type { ExecutorEvent, HarnessExecutionBackend, HarnessExecutorCapabilities } from "@mission-control/workflow-engine";
+import { runHarnessExecution, verificationIsolationBindingDigest } from "@mission-control/workflow-engine";
 import { canonicalHash } from "@mission-control/shared";
 import { CodexV1ExecutorAdapter } from "./codexExecutorAdapter.js";
+import { HarnessAdapterRegistry, type HarnessRuntimeAdapter } from "./harnessAdapterRegistry.js";
 import { ConvexActions, ConvexQueries } from "./convexCalls.js";
 import { createSignedServiceCommand } from "./serviceCommandClient.js";
 import { assertFactoryCandidateUnchanged, commitFactoryChanges, createFactorySourceBundle, ensureFactoryWorktree, ensureVerificationWorktree, inspectCandidateChange, listChangedFiles, materializeRemoteCandidate, pushFactoryBranch } from "./factoryGitRuntime.js";
@@ -123,16 +124,21 @@ export class FactoryAttemptWorker {
   private lastError: string | null = null;
   private lastReconcileAt = 0;
   private cleanupHealth: SandboxCleanupHealth | null = null;
+  private readonly adapters: HarnessAdapterRegistry;
 
   constructor(
     private readonly client: ConvexHttpClient,
-    private readonly adapter = new CodexV1ExecutorAdapter(),
+    adapters: HarnessAdapterRegistry | HarnessRuntimeAdapter = new CodexV1ExecutorAdapter(),
     private readonly enabled = process.env.FACTORY_EXECUTION_ENABLED === "1",
     private readonly pollIntervalMs = boundedInteger(process.env.FACTORY_EXECUTION_POLL_MS, 5_000, 300_000, 15_000),
     private readonly dependencies: FactoryAttemptWorkerDependencies = DEFAULT_DEPENDENCIES,
     private readonly scope?: FactoryAttemptWorkerScope,
     private readonly identity?: FactoryAttemptWorkerIdentity,
-  ) {}
+  ) {
+    this.adapters = adapters instanceof HarnessAdapterRegistry
+      ? adapters
+      : new HarnessAdapterRegistry([adapters]);
+  }
 
   start() {
     if (!this.enabled || this.pollTimer || this.stopped) return;
@@ -180,7 +186,11 @@ export class FactoryAttemptWorker {
       ]) as [any[], any[]];
       for (const run of [...pending, ...running]) {
         if (this.stopped || this.active.size >= (this.identity?.maxConcurrentRuns ?? 1)) break;
-        if (!isBoundFactoryAttempt(run) || !matchesWorkerScope(run, this.scope) || this.active.has(String(run._id))) continue;
+        const executionBackend = run?.executionManifest?.harness?.executionBackend as HarnessExecutionBackend | undefined;
+        if (!isBoundFactoryAttempt(run)
+          || !this.adapters.supports({ adapter: run.executorAdapter, version: run.executorVersion }, executionBackend)
+          || !matchesWorkerScope(run, this.scope)
+          || this.active.has(String(run._id))) continue;
         if (run.executionManifest?.harness?.executionBackend === "remote-sandbox"
           && (!this.scope || (this.cleanupHealth?.failed ?? 0) > 0)) {
           this.lastError = !this.scope
@@ -330,6 +340,14 @@ export class FactoryAttemptWorker {
 
     try {
       const manifest = validateClaimManifest(claim);
+      const adapter = this.adapters.require({
+        adapter: manifest.harness.adapter,
+        version: manifest.harness.version,
+      });
+      const adapterCapabilities = this.adapters.requireCapabilities({
+        adapter: manifest.harness.adapter,
+        version: manifest.harness.version,
+      });
       if (verificationAttempt) {
         await this.executeVerificationAttempt({ claim, manifest, report, controller });
         this.completedCount += 1;
@@ -391,6 +409,16 @@ export class FactoryAttemptWorker {
       let traceObservations: any[] = [];
       let structuredResult: ReturnType<typeof validateFactoryResult>;
       const executionArtifacts: any[] = [];
+      const executorRequest = {
+        executionId: `${claim.runId}:${claim.executionManifestDigest}`,
+        repositoryRoot: claim.worktree,
+        workingDirectory: claim.worktree,
+        prompt: manifest.compiledPrompt,
+        model: claim.model ?? manifest.workflow.steps[0]?.modelRoute,
+        allowedPaths: manifest.repository.allowedPaths,
+        timeoutMs: manifest.harness.timeoutMs,
+        isolation: "WORKSPACE_WRITE" as const,
+      };
       if (manifest.harness.executionBackend === "remote-sandbox") {
         if (!workspaceOwner) throw new Error("Remote sandbox execution requires canonical worker ownership.");
         const profile = manifest.sandbox.profileSnapshot as SandboxProfileSnapshot;
@@ -429,10 +457,8 @@ export class FactoryAttemptWorker {
           profile,
           repositoryBundle: sourceBundle,
           supervisorSource: standaloneSandboxSupervisorSource(),
-          executor: remoteCodexExecutorContract({
-            prompt: manifest.compiledPrompt,
-            model: claim.model ?? manifest.workflow.steps[0]?.modelRoute,
-            allowedPaths: manifest.repository.allowedPaths,
+          executor: requireRemoteInvocation(adapter, adapterCapabilities, {
+            ...executorRequest,
             timeoutMs: Math.min(manifest.harness.timeoutMs, profile.runtime.maxRuntimeMs),
           }),
           signal: controller.signal,
@@ -460,38 +486,35 @@ export class FactoryAttemptWorker {
       } else {
         const executorEvents: ExecutorEvent[] = [];
         const runtimeEvents: any[] = [];
-        const result = await this.adapter.execute({
-          executionId: `${claim.runId}:${claim.executionManifestDigest}`,
-          repositoryRoot: claim.worktree,
-          workingDirectory: claim.worktree,
-          prompt: manifest.compiledPrompt,
-          model: claim.model ?? manifest.workflow.steps[0]?.modelRoute,
-          allowedPaths: manifest.repository.allowedPaths,
-          timeoutMs: manifest.harness.timeoutMs,
-          isolation: "WORKSPACE_WRITE",
-        }, (event) => {
-          executorEvents.push(event);
-        }, controller.signal, workspaceOwner ? {
-          started: async (process) => {
-            await (this.dependencies.recordFactoryExecutorStarted ?? recordFactoryExecutorStarted)(workspaceOwner, process.pid);
-          },
-          terminated: async (process) => {
-            await (this.dependencies.recordFactoryExecutorTerminated ?? recordFactoryExecutorTerminated)(workspaceOwner, process);
-            runtimeEvents.push({
-              idempotencyKey: `factory:${claim.runId}:process:${process.pid}:terminated`,
-              eventType: "CHECKPOINT_CREATED",
-              workflowStep: "factory-execution",
-              status: "COMPLETED",
-              startedAt: process.terminatedAt,
-              commandSummary: "Owned executor process terminated",
-              metadata: { lifecycleType: "PROCESS_TERMINATED", pid: process.pid, exitCode: process.exitCode },
-            });
-          },
-        } : undefined);
-        mappedEvents = [...executorEvents.map((event) => mapExecutorEvent(claim.runId, event)), ...runtimeEvents];
+        const result = await runHarnessExecution(adapter, executorRequest, {
+          emit: (event) => { executorEvents.push(event); },
+          signal: controller.signal,
+          processObserver: workspaceOwner ? {
+            started: async (process) => {
+              await (this.dependencies.recordFactoryExecutorStarted ?? recordFactoryExecutorStarted)(workspaceOwner, process.pid);
+            },
+            terminated: async (process) => {
+              await (this.dependencies.recordFactoryExecutorTerminated ?? recordFactoryExecutorTerminated)(workspaceOwner, process);
+              runtimeEvents.push({
+                idempotencyKey: `factory:${claim.runId}:process:${process.pid}:terminated`,
+                eventType: "CHECKPOINT_CREATED",
+                workflowStep: "factory-execution",
+                status: "COMPLETED",
+                startedAt: process.terminatedAt,
+                commandSummary: "Owned executor process terminated",
+                metadata: { lifecycleType: "PROCESS_TERMINATED", pid: process.pid, exitCode: process.exitCode },
+              });
+            },
+          } : undefined,
+        });
+        mappedEvents = [
+          ...executorEvents.map((event) => mapExecutorEvent(claim.runId, event, adapterCapabilities)),
+          ...runtimeEvents,
+        ];
         traceObservations = mapExecutorObservations({
           runId: claim.runId,
           events: executorEvents,
+          harness: adapterCapabilities,
           model: claim.model ?? manifest.workflow.steps[0]?.modelRoute,
           promptDigest: `sha256:${createHash("sha256").update(manifest.compiledPrompt).digest("hex")}`,
           promptVersion: manifest.causation?.factoryDefinitionVersionId
@@ -502,7 +525,7 @@ export class FactoryAttemptWorker {
           await report({
             events: mappedEvents,
             observations: traceObservations,
-            terminal: { status: result.status === "CANCELED" ? "CANCELED" : "FAILED", failureReason: result.error ?? "Codex execution failed." },
+            terminal: { status: result.status === "CANCELED" ? "CANCELED" : "FAILED", failureReason: result.error ?? `${adapterCapabilities.displayName} execution failed.` },
           });
           this.failedCount += 1;
           return;
@@ -515,7 +538,7 @@ export class FactoryAttemptWorker {
           events: mappedEvents,
           observations: traceObservations,
           artifacts: [structuredResultArtifact(claim, structuredResult), ...executionArtifacts],
-          terminal: { status: "FAILED", failureReason: `Codex reported ${structuredResult.status}: ${structuredResult.nextAction}` },
+          terminal: { status: "FAILED", failureReason: `Execution harness reported ${structuredResult.status}: ${structuredResult.nextAction}` },
         });
         this.failedCount += 1;
         return;
@@ -957,7 +980,9 @@ export function factoryRunQueryArgs(status: "PENDING" | "RUNNING", scope?: Facto
 function isBoundFactoryAttempt(run: any) {
   return Boolean(
     run?._id && run.projectId && run.repositoryId && run.factoryDefinitionVersionId
-    && run.executionManifestDigest && run.executorAdapter === "codex" && run.executorVersion === "v1"
+    && run.executionManifestDigest
+    && boundedHarnessIdentity(run.executorAdapter)
+    && boundedHarnessIdentity(run.executorVersion)
     && ["PENDING", "RUNNING"].includes(run.status)
   );
 }
@@ -966,8 +991,10 @@ function validateClaimManifest(claim: any) {
   const manifest = claim?.executionManifest;
   if (
     manifest?.version !== "factory-execution-manifest/v1"
-    || manifest?.harness?.adapter !== "codex"
-    || manifest?.harness?.version !== "v1"
+    || !boundedHarnessIdentity(manifest?.harness?.adapter)
+    || !boundedHarnessIdentity(manifest?.harness?.version)
+    || manifest.harness.adapter !== claim.executorAdapter
+    || manifest.harness.version !== claim.executorVersion
     || !["WORKSPACE_WRITE", "READ_ONLY", "DETACHED_READ_ONLY"].includes(manifest?.harness?.isolation)
     || manifest?.harness?.pullRequestAuthority !== "CONTROL_PLANE_ONLY"
     || typeof manifest?.harness?.executionBackend !== "string"
@@ -1010,7 +1037,7 @@ function validateClaimManifest(claim: any) {
   return manifest;
 }
 
-function mapExecutorEvent(runId: string, event: ExecutorEvent) {
+function mapExecutorEvent(runId: string, event: ExecutorEvent, harness: HarnessExecutorCapabilities) {
   const eventType = {
     EXECUTION_STARTED: "STEP_STARTED",
     COMMAND_STARTED: "TOOL_CALLED",
@@ -1024,7 +1051,7 @@ function mapExecutorEvent(runId: string, event: ExecutorEvent) {
     idempotencyKey: `factory:${runId}:executor:${event.sequence}`,
     eventType,
     workflowStep: "factory-execution",
-    toolName: event.type.startsWith("COMMAND") ? "codex/v1" : undefined,
+    toolName: event.type.startsWith("COMMAND") ? `${harness.adapter}/${harness.version}` : undefined,
     commandSummary: event.summary,
     status: event.type.endsWith("FAILED") ? "FAILED" : event.type.endsWith("CANCELED") ? "CANCELED" : "RECORDED",
     startedAt: event.occurredAt,
@@ -1035,6 +1062,7 @@ function mapExecutorEvent(runId: string, event: ExecutorEvent) {
 export function mapExecutorObservations(input: {
   runId: string;
   events: ExecutorEvent[];
+  harness: Pick<HarnessExecutorCapabilities, "adapter" | "version" | "displayName" | "provider">;
   model?: string;
   promptDigest: string;
   promptVersion?: string;
@@ -1047,32 +1075,33 @@ export function mapExecutorObservations(input: {
   );
   const failed = terminal?.type === "EXECUTION_FAILED" || terminal?.type === "EXECUTION_CANCELED";
   const status = terminal ? failed ? "FAILED" : "SUCCESS" : "RUNNING";
-  const agentKey = `codex-agent:${input.runId}`;
-  const generationKey = `codex-generation:${input.runId}:primary`;
+  const harnessKey = `${input.harness.adapter}/${input.harness.version}`;
+  const agentKey = `harness-agent:${input.runId}`;
+  const generationKey = `harness-generation:${input.runId}:primary`;
   const observations: any[] = [{
     idempotencyKey: agentKey,
     type: "AGENT",
-    name: "Codex implementation agent",
+    name: `${input.harness.displayName} implementation agent`,
     startedAt,
     endedAt: terminal?.occurredAt,
     status,
     model: input.model,
-    provider: "openai",
+    provider: input.harness.provider,
     promptVersion: input.promptVersion,
     input: { promptDigest: input.promptDigest },
     output: terminal ? { summary: terminal.summary } : undefined,
-    error: failed ? { message: terminal?.summary ?? "Codex execution failed." } : undefined,
-    metadata: { adapter: "codex", adapterVersion: "v1" },
+    error: failed ? { message: terminal?.summary ?? `${input.harness.displayName} execution failed.` } : undefined,
+    metadata: { adapter: input.harness.adapter, adapterVersion: input.harness.version },
   }, {
     idempotencyKey: generationKey,
     parentIdempotencyKey: agentKey,
     type: "GENERATION",
-    name: input.model ? `${input.model} execution` : "Codex model execution",
+    name: input.model ? `${input.model} execution` : `${input.harness.displayName} model execution`,
     startedAt,
     endedAt: terminal?.occurredAt,
     status,
     model: input.model,
-    provider: "openai",
+    provider: input.harness.provider,
     promptVersion: input.promptVersion,
     input: { promptDigest: input.promptDigest },
     output: terminal ? { summary: terminal.summary } : undefined,
@@ -1083,16 +1112,16 @@ export function mapExecutorObservations(input: {
   commandStarts.forEach((event, index) => {
     const completed = commandEnds[index];
     observations.push({
-      idempotencyKey: `codex-tool:${input.runId}:${index + 1}`,
+      idempotencyKey: `harness-tool:${input.runId}:${index + 1}`,
       parentIdempotencyKey: generationKey,
       type: "TOOL",
-      name: "Codex CLI",
-      toolName: "codex/v1",
+      name: input.harness.displayName,
+      toolName: harnessKey,
       startedAt: event.occurredAt,
       endedAt: completed?.occurredAt,
       status: completed ? "SUCCESS" : failed ? "FAILED" : "RUNNING",
       output: completed ? { summary: completed.summary, ...(completed.metadata ?? {}) } : undefined,
-      error: !completed && failed ? { message: terminal?.summary ?? "Codex command did not complete." } : undefined,
+      error: !completed && failed ? { message: terminal?.summary ?? `${input.harness.displayName} command did not complete.` } : undefined,
       metadata: { executorSequence: event.sequence },
     });
   });
@@ -1100,12 +1129,12 @@ export function mapExecutorObservations(input: {
 }
 
 function parseFactoryResult(output: string) {
-  if (Buffer.byteLength(output, "utf8") > MAX_RESULT_BYTES) throw new Error("Codex structured result exceeds the 64 KB context budget.");
+  if (Buffer.byteLength(output, "utf8") > MAX_RESULT_BYTES) throw new Error("Harness structured result exceeds the 64 KB context budget.");
   let result: any;
   try {
     result = JSON.parse(output);
   } catch {
-    throw new Error("Codex did not return the required factory-result/v1 JSON object.");
+    throw new Error("Execution harness did not return the required factory-result/v1 JSON object.");
   }
   return validateFactoryResult(result);
 }
@@ -1176,7 +1205,7 @@ function structuredResultArtifact(claim: any, result: ReturnType<typeof parseFac
   return {
     idempotencyKey: `factory:${claim.runId}:structured-result`,
     artifactType: "STRUCTURED_OUTPUT",
-    name: "Codex factory-result/v1",
+    name: "Execution harness factory-result/v1",
     description: result.summary,
     contentHash: `sha256:${createHash("sha256").update(JSON.stringify(result)).digest("hex")}`,
     metadata: { schema: "factory-result/v1", result },
@@ -1252,38 +1281,40 @@ function sandboxResultArtifact(claim: any, bundle: SandboxResultBundle) {
   };
 }
 
-function remoteCodexExecutorContract(input: {
-  prompt: string;
-  model?: string;
-  allowedPaths: string[];
-  timeoutMs: number;
-}) {
+function requireRemoteInvocation(
+  adapter: HarnessRuntimeAdapter,
+  capabilities: HarnessExecutorCapabilities,
+  request: {
+    executionId: string;
+    repositoryRoot: string;
+    workingDirectory: string;
+    prompt: string;
+    model?: string;
+    allowedPaths: string[];
+    timeoutMs: number;
+    isolation: "WORKSPACE_WRITE";
+  },
+) {
   const repositoryRoot = "/var/lib/mission-control/attempt/repository";
   const resultPath = "/var/lib/mission-control/attempt/executor-result.json";
-  return {
-    command: process.env.CODEX_EXECUTABLE?.trim() || "codex",
-    args: [
-      "exec",
-      "--ephemeral",
-      "--sandbox", "workspace-write",
-      "--color", "never",
-      "-C", repositoryRoot,
-      "-o", resultPath,
-      ...(input.model ? ["-m", input.model] : []),
-      [
-        input.prompt,
-        "",
-        "Repository mutation is limited to these approved repository-relative boundaries:",
-        ...input.allowedPaths.map((candidate) => `- ${candidate}`),
-        "Do not expose credentials in output, artifacts, or logs.",
-      ].join("\n"),
-    ],
-    resultPath,
-    model: input.model,
-    prompt: input.prompt,
-    allowedPaths: input.allowedPaths,
-    timeoutMs: input.timeoutMs,
-  };
+  if (!adapter.createRemoteInvocation) {
+    throw new Error(`Harness adapter ${capabilities.adapter}/${capabilities.version} does not support remote-sandbox execution.`);
+  }
+  const issues = adapter.validateConfiguration(request);
+  if (issues.length > 0) {
+    throw new Error(`Harness adapter configuration is invalid: ${issues.map((issue) => `${issue.field}: ${issue.message}`).join(" ")}`);
+  }
+  const invocation = adapter.createRemoteInvocation(request, { repositoryRoot, resultPath });
+  if (!invocation.command.trim()
+    || invocation.args.length === 0
+    || invocation.resultPath !== resultPath
+    || invocation.model !== request.model
+    || invocation.prompt !== request.prompt
+    || invocation.timeoutMs !== request.timeoutMs
+    || !sameStringSet(invocation.allowedPaths, request.allowedPaths)) {
+    throw new Error("Remote harness invocation does not preserve the frozen Attempt request.");
+  }
+  return invocation;
 }
 
 function buildPullRequestBody(claim: any, result: ReturnType<typeof parseFactoryResult>, changedFiles: string[], verification?: any) {
@@ -1317,6 +1348,14 @@ function buildPullRequestBody(claim: any, result: ReturnType<typeof parseFactory
 function boundedInteger(raw: string | undefined, min: number, max: number, fallback: number) {
   const value = Number(raw);
   return Number.isSafeInteger(value) && value >= min && value <= max ? value : fallback;
+}
+
+function boundedHarnessIdentity(value: unknown): value is string {
+  return typeof value === "string"
+    && value === value.trim()
+    && value.length > 0
+    && value.length <= 100
+    && !/[\0\r\n]/.test(value);
 }
 
 function safeError(error: unknown) {

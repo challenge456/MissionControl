@@ -4,15 +4,19 @@ import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type {
-  ExecutorAdapter,
   ExecutorCapabilities,
   ExecutorConfigurationIssue,
   ExecutorEstimate,
   ExecutorEvent,
   ExecutorHealth,
-  ExecutorProcessObserver,
   ExecutorRequest,
   ExecutorResult,
+  HarnessExecutionContext,
+  HarnessExecutorAdapter,
+} from "@mission-control/workflow-engine";
+import {
+  GENERIC_HARNESS_CONTRACT_VERSION,
+  NO_HARNESS_AUTHORITY,
 } from "@mission-control/workflow-engine";
 
 type ProcessRunner = (args: {
@@ -28,7 +32,18 @@ type ProcessRunner = (args: {
 
 const PROCESS_TERMINATION_GRACE_MS = 5_000;
 
-export class CodexV1ExecutorAdapter implements ExecutorAdapter {
+interface CodexPreparedExecution {
+  request: ExecutorRequest;
+  context: HarnessExecutionContext;
+  configurationIssues: ExecutorConfigurationIssue[];
+}
+
+interface CodexExecutionHandle {
+  executionId: string;
+  result: Promise<ExecutorResult>;
+}
+
+export class CodexV1ExecutorAdapter implements HarnessExecutorAdapter<CodexPreparedExecution, CodexExecutionHandle> {
   private readonly active = new Map<string, AbortController>();
 
   constructor(
@@ -38,8 +53,13 @@ export class CodexV1ExecutorAdapter implements ExecutorAdapter {
 
   capabilities(): ExecutorCapabilities {
     return {
+      contractVersion: GENERIC_HARNESS_CONTRACT_VERSION,
       adapter: "codex",
       version: "v1",
+      displayName: "Codex CLI",
+      provider: "openai",
+      executionBackends: ["persistent-worker", "remote-sandbox"],
+      authority: NO_HARNESS_AUTHORITY,
       supportsCancel: true,
       supportsResume: false,
       supportsRepositoryMutation: true,
@@ -84,15 +104,66 @@ export class CodexV1ExecutorAdapter implements ExecutorAdapter {
     };
   }
 
-  async execute(
+  async prepare(
     request: ExecutorRequest,
-    emit: (event: ExecutorEvent) => Promise<void> | void,
-    signal?: AbortSignal,
-    processObserver?: ExecutorProcessObserver,
-  ): Promise<ExecutorResult> {
-    const issues = this.validateConfiguration(request);
-    if (issues.length) {
-      const error = issues.map((issue) => `${issue.field}: ${issue.message}`).join(" ");
+    context: HarnessExecutionContext,
+  ): Promise<CodexPreparedExecution> {
+    return {
+      request: { ...request, allowedPaths: [...request.allowedPaths] },
+      context,
+      configurationIssues: this.validateConfiguration(request),
+    };
+  }
+
+  async execute(prepared: CodexPreparedExecution): Promise<CodexExecutionHandle> {
+    return {
+      executionId: prepared.request.executionId,
+      result: this.run(prepared),
+    };
+  }
+
+  async collectResult(handle: CodexExecutionHandle): Promise<ExecutorResult> {
+    return await handle.result;
+  }
+
+  async cancel(handle: CodexExecutionHandle): Promise<boolean> {
+    const controller = this.active.get(handle.executionId);
+    if (!controller) return false;
+    controller.abort();
+    return true;
+  }
+
+  async cleanup(handle: CodexExecutionHandle): Promise<void> {
+    // The execution promise owns its temporary output and signal listeners.
+    // Awaiting it makes cleanup idempotent even when callers invoke it after a
+    // cancellation or failed result collection.
+    await handle.result.then(() => undefined, () => undefined);
+  }
+
+  createRemoteInvocation(
+    request: ExecutorRequest,
+    context: { repositoryRoot: string; resultPath: string },
+  ) {
+    const remoteRequest = {
+      ...request,
+      repositoryRoot: context.repositoryRoot,
+      workingDirectory: context.repositoryRoot,
+    };
+    return {
+      command: this.executable,
+      args: commandArguments(remoteRequest, context.resultPath),
+      resultPath: context.resultPath,
+      model: request.model,
+      prompt: request.prompt,
+      allowedPaths: request.allowedPaths,
+      timeoutMs: request.timeoutMs,
+    };
+  }
+
+  private async run({ request, context, configurationIssues }: CodexPreparedExecution): Promise<ExecutorResult> {
+    const { emit, signal, processObserver } = context;
+    if (configurationIssues.length) {
+      const error = configurationIssues.map((issue) => `${issue.field}: ${issue.message}`).join(" ");
       await emit(event(request.executionId, 1, "EXECUTION_FAILED", error));
       return { executionId: request.executionId, status: "FAILED", error };
     }
@@ -145,13 +216,6 @@ export class CodexV1ExecutorAdapter implements ExecutorAdapter {
       this.active.delete(request.executionId);
       await rm(outputDirectory, { recursive: true, force: true });
     }
-  }
-
-  async cancel(executionId: string): Promise<boolean> {
-    const controller = this.active.get(executionId);
-    if (!controller) return false;
-    controller.abort();
-    return true;
   }
 
   async health(): Promise<ExecutorHealth> {

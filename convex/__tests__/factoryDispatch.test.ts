@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   evaluateFactoryDispatchPreflight,
   factoryVersionApprovesWorkOrderScopes,
+  genericHarnessV1RecoveryReady,
   selectCurrentFactoryHost,
   type FactoryDispatchPreflightInput,
 } from "../lib/factoryDispatch";
@@ -56,6 +57,12 @@ describe("Factory dispatch preflight", () => {
 
   it("preserves legacy non-Mission dispatch while migration is in progress", () => {
     expect(evaluateFactoryDispatchPreflight({ ...ready, factoryRequired: false, versionProvided: false })).toEqual({ ok: true });
+  });
+
+  it("preserves the qualified V1 recovery authority for every harness", () => {
+    expect(genericHarnessV1RecoveryReady({ pause: false, cancel: true, retry: true, resume: false })).toBe(true);
+    expect(genericHarnessV1RecoveryReady({ pause: true, cancel: true, retry: true, resume: false })).toBe(false);
+    expect(genericHarnessV1RecoveryReady({ pause: false, cancel: true, retry: true, resume: true })).toBe(false);
   });
 
   it("requires every WorkOrder scope to be frozen into the Factory version", () => {

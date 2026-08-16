@@ -13,6 +13,7 @@ describe("Factory executor observability", () => {
     const observations = mapExecutorObservations({
       runId: "run-1",
       events,
+      harness: { adapter: "codex", version: "v1", displayName: "Codex CLI", provider: "openai" },
       model: "gpt-fixture",
       promptDigest: "sha256:fixture-digest",
       promptVersion: "factory-v1",
@@ -41,6 +42,7 @@ describe("Factory executor observability", () => {
   it("keeps failed and incomplete command timing attributable", () => {
     const observations = mapExecutorObservations({
       runId: "run-failed",
+      harness: { adapter: "loom", version: "v1", displayName: "Loom", provider: "anthropic" },
       events: [
         { executionId: "x", sequence: 1, type: "EXECUTION_STARTED", occurredAt: 100, summary: "started" },
         { executionId: "x", sequence: 2, type: "COMMAND_STARTED", occurredAt: 120, summary: "command" },
@@ -54,7 +56,7 @@ describe("Factory executor observability", () => {
       expect.objectContaining({ type: "GENERATION", status: "FAILED", endedAt: 160 }),
       expect.objectContaining({
         type: "TOOL",
-        parentIdempotencyKey: "codex-generation:run-failed:primary",
+        parentIdempotencyKey: "harness-generation:run-failed:primary",
         status: "FAILED",
         startedAt: 120,
         error: { message: "executor failed" },

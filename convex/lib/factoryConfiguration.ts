@@ -53,6 +53,10 @@ export function validFactoryBudget(input: FactoryConfigurationInput["budget"]): 
     Number.isInteger(input.maxAttempts) && input.maxAttempts > 0 && input.maxAttempts <= 3;
 }
 
+export function validFactoryExecutorBinding(input: FactoryConfigurationInput["executor"]): boolean {
+  return boundedIdentity(input.adapter) && boundedIdentity(input.version);
+}
+
 export function validFactoryExecutionBinding(input: Pick<FactoryConfigurationInput,
   "executionBackend" | "sandboxProfileId" | "sandboxProfileDigest" | "riskBoundary" | "recovery"
 >): boolean {
@@ -65,4 +69,11 @@ export function validFactoryExecutionBinding(input: Pick<FactoryConfigurationInp
     && input.recovery.retry
     && !input.recovery.pause
     && !input.recovery.resume;
+}
+
+function boundedIdentity(value: string): boolean {
+  return value === value.trim()
+    && value.length > 0
+    && value.length <= 100
+    && !/[\0\r\n]/.test(value);
 }
