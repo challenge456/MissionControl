@@ -157,6 +157,22 @@ function recordValue(value: unknown): Record<string, unknown> {
     : {};
 }
 
+export function harnessLearningContext(value: unknown): Record<string, string> | undefined {
+  const source = recordValue(value);
+  const harness = recordValue(source.harness);
+  const candidate = Object.fromEntries([
+    ["harnessId", harness.harnessId ?? source.harnessId],
+    ["harnessVersion", harness.harnessVersion ?? source.harnessVersion],
+    ["adapter", harness.adapter ?? source.adapter],
+    ["adapterVersion", harness.version ?? source.adapterVersion],
+    ["capabilityManifestSha256", harness.capabilityManifestSha256 ?? source.capabilityManifestSha256],
+    ["effectiveConfigSha256", harness.effectiveConfigSha256 ?? source.effectiveConfigSha256],
+  ].flatMap(([key, item]) => typeof item === "string" && item.trim()
+    ? [[key, boundedText(item, 200)] as const]
+    : []));
+  return Object.keys(candidate).length ? candidate : undefined;
+}
+
 function metaLoopKind(candidateType: string): Doc<"metaLoopSuggestions">["kind"] {
   if (candidateType === "MODIFY_GATE" || candidateType === "ADD_DETERMINISTIC_GATE") {
     return "VERIFIER";
@@ -346,6 +362,7 @@ async function collectSourceSignals(
   for (const run of runs) {
     if (run.startedAt < windowStart || !(await sourceBelongsToRepository(ctx, scope, run))) continue;
     const runMetadata = recordValue(run.metadata);
+    const runHarness = harnessLearningContext(run.executionManifest);
     const inputTokens = safeNumber(runMetadata.inputTokens);
     const outputTokens = safeNumber(runMetadata.outputTokens);
     const observedTokens = safeNumber(runMetadata.totalTokens)
@@ -373,6 +390,7 @@ async function collectSourceSignals(
         affectedModel: run.model,
         observedModelCalls: run.steps.filter((step) => step.kind === "AGENT").length,
         observedTokens,
+        metadata: runHarness ? { harness: runHarness, acceptanceAuthority: false } : undefined,
       });
     }
     if (["RETRYABLE", "RECOVERABLE", "LOST"].includes(run.runtimeDisposition ?? "")) {
@@ -393,6 +411,7 @@ async function collectSourceSignals(
         recipeId: run.workflowId,
         affectedModel: run.model,
         observedTokens,
+        metadata: runHarness ? { harness: runHarness, acceptanceAuthority: false } : undefined,
       });
     }
     const recipeMismatch = deriveRecipeMismatch({
@@ -417,6 +436,7 @@ async function collectSourceSignals(
         factoryDefinitionVersionId: run.factoryDefinitionVersionId,
         recipeId: run.workflowId,
         affectedModel: run.model,
+        metadata: runHarness ? { harness: runHarness, acceptanceAuthority: false } : undefined,
       });
     }
   }
@@ -429,6 +449,7 @@ async function collectSourceSignals(
   let observationTracesScanned = 0;
   for (const trace of traces) {
     if (trace.startedAt < windowStart || !(await sourceBelongsToRepository(ctx, scope, trace))) continue;
+    const traceHarness = harnessLearningContext(trace.metadata);
     if ((trace.humanInterventionCount ?? 0) > 0) {
       await add({
         signalType: "HUMAN_INTERVENTION",
@@ -449,6 +470,7 @@ async function collectSourceSignals(
         observedModelCalls: 1,
         observedTokens: trace.tokenUsage?.total ?? ((trace.tokenUsage?.input ?? 0) + (trace.tokenUsage?.output ?? 0)),
         observedCostUsd: trace.estimatedCostUsd,
+        metadata: traceHarness ? { harness: traceHarness, acceptanceAuthority: false } : undefined,
       });
     }
     const metadata = recordValue(trace.metadata);
@@ -470,6 +492,7 @@ async function collectSourceSignals(
         affectedModel: trace.model,
         observedTokens: trace.tokenUsage?.total,
         observedCostUsd: trace.estimatedCostUsd,
+        metadata: traceHarness ? { harness: traceHarness, acceptanceAuthority: false } : undefined,
       });
     }
     if (observationTracesScanned < MAX_OBSERVATION_TRACES) {
@@ -501,6 +524,9 @@ async function collectSourceSignals(
             observedModelCalls: observation.type === "AGENT" ? 1 : undefined,
             observedTokens: observation.tokenUsage?.total,
             observedCostUsd: observation.estimatedCostUsd,
+            metadata: harnessLearningContext(observation.metadata) || traceHarness
+              ? { harness: harnessLearningContext(observation.metadata) ?? traceHarness, acceptanceAuthority: false }
+              : undefined,
           });
         }
       }

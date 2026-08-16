@@ -23,6 +23,7 @@ import {
 } from "../factoryGitRuntime.js";
 import { executeIndependentVerification } from "../factoryVerification.js";
 import { canonicalHash } from "@mission-control/shared";
+import { CODEX_V1_HARNESS_MANIFEST, harnessCapabilityManifestDigest } from "@mission-control/workflow-engine";
 
 const execFileAsync = promisify(execFile);
 const cleanup: string[] = [];
@@ -377,8 +378,15 @@ async function runFixture(
   const reports: any[] = [];
   const manifest = executionManifest({ attempt, dirtyVerification: options.dirtyVerification, baseSha });
   if (options.harness) {
+    const capabilityManifest = fixtureHarnessManifest(options.harness);
     manifest.harness.adapter = options.harness.adapter;
     manifest.harness.version = options.harness.version;
+    manifest.harness.harnessId = capabilityManifest.identity.harnessId;
+    manifest.harness.harnessVersion = capabilityManifest.identity.harnessVersion;
+    manifest.harness.capabilityManifest = capabilityManifest;
+    manifest.harness.capabilityManifestSha256 = harnessCapabilityManifestDigest(capabilityManifest);
+    manifest.harness.effectiveConfigSha256 = capabilityManifest.effectiveConfigSha256;
+    manifest.harness.provider = options.harness.provider;
   }
   const run = {
     _id: `workflow-run-${attempt}`,
@@ -484,6 +492,7 @@ async function runFixture(
     onSpawn?: (pid: number) => Promise<void> | void;
     onExit?: (pid: number, exitCode?: number) => Promise<void> | void;
   }) => {
+    const startedAt = Date.now();
     await onSpawn?.(4242);
     await writeFile(
       path.join(cwd, "src", "feature.ts"),
@@ -492,7 +501,13 @@ async function runFixture(
     await onExit?.(4242, 0);
     return {
       exitCode: 0,
+      signal: null,
       output: JSON.stringify(completedFactoryResult()),
+      stdout: '{"type":"turn.completed","usage":{"input_tokens":25,"output_tokens":10}}\n',
+      stderr: "",
+      startedAt,
+      finishedAt: Date.now(),
+      timedOut: false,
     };
   });
   const codexAdapter = new CodexV1ExecutorAdapter("codex-fixture", executeCodex);
@@ -553,18 +568,47 @@ function withHarnessIdentity(
   adapter: CodexV1ExecutorAdapter,
   identity: { adapter: string; version: string; displayName: string; provider: string },
 ) {
+  const manifest = fixtureHarnessManifest(identity);
   return {
-    capabilities: () => ({ ...adapter.capabilities(), ...identity }),
-    validateConfiguration: adapter.validateConfiguration.bind(adapter),
+    capabilities: () => ({ ...adapter.capabilities(), ...identity, capabilityManifest: manifest }),
+    validateConfiguration: () => [],
     estimate: adapter.estimate.bind(adapter),
-    prepare: adapter.prepare.bind(adapter),
+    prepare: (request: any, context: any) => adapter.prepare({ ...request, provider: "openai" }, context),
     execute: adapter.execute.bind(adapter),
-    collectResult: adapter.collectResult.bind(adapter),
+    collectResult: async (handle: Parameters<typeof adapter.collectResult>[0]) => {
+      const result = await adapter.collectResult(handle);
+      if (result.normalizedResult) {
+        result.normalizedResult.harness = manifest.identity;
+        result.normalizedResult.provenance.capabilityManifestSha256 = harnessCapabilityManifestDigest(manifest);
+        result.normalizedResult.provenance.effectiveConfigSha256 = manifest.effectiveConfigSha256;
+        result.normalizedResult.provenance.provider = identity.provider;
+      }
+      return result;
+    },
     cancel: adapter.cancel.bind(adapter),
     cleanup: adapter.cleanup.bind(adapter),
     health: adapter.health.bind(adapter),
     createRemoteInvocation: adapter.createRemoteInvocation.bind(adapter),
   } as any;
+}
+
+function fixtureHarnessManifest(
+  identity: { adapter: string; version: string; displayName: string; provider: string },
+) {
+  return {
+    ...structuredClone(CODEX_V1_HARNESS_MANIFEST),
+    identity: {
+      ...CODEX_V1_HARNESS_MANIFEST.identity,
+      harnessId: `${identity.adapter}-fixture`,
+      harnessVersion: identity.version,
+      adapterId: identity.adapter,
+      adapterVersion: identity.version,
+    },
+    models: {
+      ...CODEX_V1_HARNESS_MANIFEST.models,
+      supported: CODEX_V1_HARNESS_MANIFEST.models.supported.map((model) => ({ ...model, provider: identity.provider })),
+    },
+  };
 }
 
 function completedFactoryResult() {
@@ -587,9 +631,18 @@ function executionManifest(options: { attempt?: number; dirtyVerification?: bool
     harness: {
       adapter: "codex",
       version: "v1",
+      harnessId: "codex-cli",
+      harnessVersion: "0.146.0",
+      harnessCommit: "e363b08c9175ac1cbe5893615dd2cb9ddf95043b",
+      capabilityManifest: CODEX_V1_HARNESS_MANIFEST,
+      capabilityManifestSha256: harnessCapabilityManifestDigest(CODEX_V1_HARNESS_MANIFEST),
+      effectiveConfigSha256: CODEX_V1_HARNESS_MANIFEST.effectiveConfigSha256,
+      provider: "openai",
+      model: "gpt-5.6-terra",
       isolation: "WORKSPACE_WRITE",
       executionBackend: "persistent-worker",
       requiredCapabilities: ["git-worktree", "workspace-write"],
+      requiredHarnessCapabilities: [],
       pullRequestAuthority: "CONTROL_PLANE_ONLY",
       timeoutMs: 60_000,
     },

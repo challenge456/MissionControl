@@ -54,6 +54,9 @@ export const report = mutation({
       supportedExecutors: v.array(v.object({
         adapter: v.string(),
         version: v.string(),
+        capabilityManifestSha256: v.string(),
+        effectiveConfigSha256: v.string(),
+        capabilityManifest: v.any(),
         supportsCancel: v.boolean(),
         supportsResume: v.boolean(),
         isolationModes: v.array(v.union(v.literal("READ_ONLY"), v.literal("WORKSPACE_WRITE"))),

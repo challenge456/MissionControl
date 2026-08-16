@@ -7,11 +7,23 @@ import {
   type FactoryWorkerCandidate,
   type FactoryWorkerRequirements,
 } from "../lib/factoryWorkerRuntime";
+import { CODEX_V1_HARNESS_MANIFEST, DEEPSEEK_V1_HARNESS_MANIFEST, harnessCapabilityManifestDigest } from "@mission-control/workflow-engine";
 
 const now = 100_000;
 const requirements: FactoryWorkerRequirements = {
   repositoryId: "repository-1",
-  executor: { adapter: "codex", version: "v1" },
+  executor: {
+    adapter: "codex",
+    version: "v1",
+    capabilityManifestSha256: harnessCapabilityManifestDigest(CODEX_V1_HARNESS_MANIFEST),
+    effectiveConfigSha256: CODEX_V1_HARNESS_MANIFEST.effectiveConfigSha256,
+  },
+  provider: "openai",
+  model: "gpt-5.6-terra",
+  harnessCapabilities: [
+    { capability: "filesystem.write", minimumSupport: "SUPPORTED" },
+    { capability: "cancellation.support", minimumSupport: "PARTIAL" },
+  ],
   isolation: "WORKSPACE_WRITE",
   sandboxCapabilities: ["git-worktree", "workspace-write"],
   executionBackend: "persistent-worker",
@@ -29,6 +41,9 @@ const worker: FactoryWorkerCandidate = {
     supportedExecutors: [{
       adapter: "codex",
       version: "v1",
+      capabilityManifestSha256: harnessCapabilityManifestDigest(CODEX_V1_HARNESS_MANIFEST),
+      effectiveConfigSha256: CODEX_V1_HARNESS_MANIFEST.effectiveConfigSha256,
+      capabilityManifest: CODEX_V1_HARNESS_MANIFEST,
       supportsCancel: true,
       supportsResume: false,
       isolationModes: ["READ_ONLY", "WORKSPACE_WRITE"],
@@ -53,7 +68,7 @@ describe("Factory worker runtime", () => {
       .toEqual({ eligible: true, workerId: "worker-1", sessionId: "session-1", generation: 1 });
     expect(factoryWorkerEligibility({
       worker,
-      requirements: { ...requirements, executor: { adapter: "loom", version: "v1" } },
+      requirements: { ...requirements, executor: { ...requirements.executor, adapter: "loom", version: "v1" } },
       activeWorkerLeaseCount: 0,
       now,
     })).toMatchObject({ eligible: false, reason: "worker-executor-unsupported" });
@@ -124,5 +139,64 @@ describe("Factory worker runtime", () => {
       sandboxCapabilities: ["git-worktree"],
       repositoryAccess: [{ repositoryId: "repository-1", access: "READ_WRITE" }],
     })).toContain("executor-capabilities-invalid");
+  });
+
+  it("fails admission on stale capability/config identity, model, or required feature", () => {
+    expect(factoryWorkerEligibility({
+      worker,
+      requirements: { ...requirements, executor: { ...requirements.executor, capabilityManifestSha256: `sha256:${"0".repeat(64)}` } },
+      activeWorkerLeaseCount: 0,
+      now,
+    })).toMatchObject({ eligible: false, reason: "worker-harness-manifest-mismatch" });
+    expect(factoryWorkerEligibility({
+      worker,
+      requirements: { ...requirements, provider: "anthropic", model: "not-admitted" },
+      activeWorkerLeaseCount: 0,
+      now,
+    })).toMatchObject({ eligible: false, reason: "worker-harness-model-unsupported" });
+    expect(factoryWorkerEligibility({
+      worker,
+      requirements: { ...requirements, harnessCapabilities: [{ capability: "browser.interactiveBrowser", minimumSupport: "SUPPORTED" }] },
+      activeWorkerLeaseCount: 0,
+      now,
+    })).toMatchObject({ eligible: false, reason: "worker-harness-capability-missing" });
+  });
+
+  it("admits the exact experimental DeepSeek declaration only on its supported local route", () => {
+    const deepSeekDigest = harnessCapabilityManifestDigest(DEEPSEEK_V1_HARNESS_MANIFEST);
+    const deepSeekWorker: FactoryWorkerCandidate = {
+      ...worker,
+      workerRuntime: {
+        ...worker.workerRuntime!,
+        supportedExecutors: [{
+          adapter: "deepseek-harness",
+          version: "0.2.0",
+          capabilityManifest: DEEPSEEK_V1_HARNESS_MANIFEST,
+          capabilityManifestSha256: deepSeekDigest,
+          effectiveConfigSha256: DEEPSEEK_V1_HARNESS_MANIFEST.effectiveConfigSha256,
+          supportsCancel: true,
+          supportsResume: true,
+          isolationModes: ["READ_ONLY", "WORKSPACE_WRITE"],
+        }],
+      },
+    };
+    const deepSeekRequirements: FactoryWorkerRequirements = {
+      ...requirements,
+      executor: {
+        adapter: "deepseek-harness",
+        version: "0.2.0",
+        capabilityManifestSha256: deepSeekDigest,
+        effectiveConfigSha256: DEEPSEEK_V1_HARNESS_MANIFEST.effectiveConfigSha256,
+      },
+      provider: "local-ollama",
+      model: "qwen3.5:35b-a3b-q8_0",
+    };
+    expect(factoryWorkerEligibility({ worker: deepSeekWorker, requirements: deepSeekRequirements, activeWorkerLeaseCount: 0, now }).eligible).toBe(true);
+    expect(factoryWorkerEligibility({
+      worker: { ...deepSeekWorker, workerRuntime: { ...deepSeekWorker.workerRuntime!, executionBackends: ["persistent-worker", "remote-sandbox"] } },
+      requirements: { ...deepSeekRequirements, executionBackend: "remote-sandbox" },
+      activeWorkerLeaseCount: 0,
+      now,
+    })).toMatchObject({ eligible: false, reason: "worker-harness-backend-unsupported" });
   });
 });

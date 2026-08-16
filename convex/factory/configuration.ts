@@ -16,6 +16,8 @@ import { genericHarnessV1RecoveryReady, selectCurrentFactoryHost } from "../lib/
 import { factoryWorkflowContractIssues } from "../lib/factoryWorkflowContract";
 import { computeCanonicalHash } from "../lib/genomeHash";
 import { factoryWorkerEligibility } from "../lib/factoryWorkerRuntime";
+import { factoryHarnessCapabilityRequirements, resolveFrozenHarnessBinding } from "../lib/harnessCapabilities";
+import { KNOWN_HARNESS_MANIFESTS, harnessCapabilityManifestDigest, harnessSupportsModel } from "@mission-control/workflow-engine/harness-contract";
 
 const budget = v.object({
   maxCostUsd: v.number(),
@@ -73,7 +75,7 @@ export const getVersionOptions = query({
     if (!repository || repository.projectId !== args.projectId) {
       throw new Error("Factory repository is outside the workspace.");
     }
-    const [codeScopes, approvedVersions, sandboxProfiles] = await Promise.all([
+    const [codeScopes, approvedVersions, sandboxProfiles, hostBindings] = await Promise.all([
       ctx.db.query("repositoryCodeScopes")
         .withIndex("by_repository", (q) => q.eq("repositoryId", repository._id))
         .collect(),
@@ -82,6 +84,9 @@ export const getVersionOptions = query({
         .collect(),
       ctx.db.query("factorySandboxProfiles")
         .withIndex("by_project_status", (q) => q.eq("projectId", args.projectId).eq("status", "ACTIVE"))
+        .collect(),
+      ctx.db.query("workspaceHostBindings")
+        .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
         .collect(),
     ]);
     const agentVersions = (await Promise.all(approvedVersions
@@ -104,6 +109,22 @@ export const getVersionOptions = query({
       codeScopes: codeScopes.filter((scope) => scope.active),
       agentVersions,
       sandboxProfiles: sandboxProfiles.sort((left, right) => left.profileKey.localeCompare(right.profileKey) || right.version - left.version),
+      harnesses: KNOWN_HARNESS_MANIFESTS.map((manifest) => {
+        const capabilityManifestSha256 = harnessCapabilityManifestDigest(manifest);
+        const advertised = hostBindings.some((binding) => binding.status === "READY" && !binding.dirty
+          && binding.workerRuntime?.supportedExecutors.some((executor) =>
+            executor.adapter === manifest.identity.adapterId
+            && executor.version === manifest.identity.adapterVersion
+            && executor.capabilityManifestSha256 === capabilityManifestSha256
+            && executor.effectiveConfigSha256 === manifest.effectiveConfigSha256
+          ));
+        return {
+          manifest,
+          capabilityManifestSha256,
+          available: manifest.admission.maturity === "PRODUCTION" || advertised,
+          advertised,
+        };
+      }),
     };
   },
 });
@@ -428,6 +449,13 @@ export const createVersion = mutation({
         throw new Error("Approved agent versions require prompt, tool, and model manifests.");
       }
     }
+    const harness = resolveFrozenHarnessBinding({ executor: args.executor });
+    const firstStepAgent = workflow.steps[0]?.agent;
+    const primaryAgentIndex = args.agentBindings.findIndex((binding) => binding.workflowAgentId === firstStepAgent);
+    const primaryModel = agentVersions[primaryAgentIndex >= 0 ? primaryAgentIndex : 0]?.genome.modelConfig;
+    if (!primaryModel || !harnessSupportsModel(harness.capabilityManifest, primaryModel.provider, primaryModel.modelId)) {
+      throw new Error(`${args.executor.adapter}/${args.executor.version} does not admit the selected workflow model route.`);
+    }
     if (!validFactoryExecutorBinding(args.executor)) {
       throw new Error("Factory executor requires a bounded exact harness adapter/version binding.");
     }
@@ -438,6 +466,49 @@ export const createVersion = mutation({
       throw new Error("Factory budget must use positive V1 limits: cost <= $1,000, runtime <= 480 minutes, attempts <= 3.");
     }
     const selectedExecutionBackend = args.executionBackend ?? "persistent-worker";
+    if (!harness.capabilityManifest.admission.executionBackends.includes(selectedExecutionBackend)) {
+      throw new Error(`${args.executor.adapter}/${args.executor.version} does not support ${selectedExecutionBackend}.`);
+    }
+    if (harness.capabilityManifest.admission.maturity === "EXPERIMENTAL") {
+      const bindings = await ctx.db.query("workspaceHostBindings")
+        .withIndex("by_project", (q) => q.eq("projectId", definition.projectId))
+        .collect();
+      const requiredSandboxCapabilities = selectedExecutionBackend === "remote-sandbox"
+        ? ["git-worktree", "workspace-write", "remote-sandbox", "sandbox-provider:exe-dev"]
+        : ["git-worktree", "workspace-write"];
+      const eligible = bindings.some((binding) => factoryWorkerEligibility({
+        worker: {
+          workerId: binding.hostId,
+          status: binding.status,
+          dirty: binding.dirty,
+          capacity: binding.capacity,
+          workerRuntime: binding.workerRuntime ? {
+            ...binding.workerRuntime,
+            repositoryAccess: binding.workerRuntime.repositoryAccess.map((item) => ({ ...item, repositoryId: String(item.repositoryId) })),
+          } : undefined,
+        },
+        requirements: {
+          repositoryId: String(repository._id),
+          executor: {
+            adapter: harness.adapter,
+            version: harness.version,
+            capabilityManifestSha256: harness.capabilityManifestSha256,
+            effectiveConfigSha256: harness.effectiveConfigSha256,
+          },
+          provider: primaryModel.provider,
+          model: primaryModel.modelId,
+          harnessCapabilities: factoryHarnessCapabilityRequirements("WORKSPACE_WRITE"),
+          isolation: "WORKSPACE_WRITE",
+          sandboxCapabilities: requiredSandboxCapabilities,
+          executionBackend: selectedExecutionBackend,
+        },
+        activeWorkerLeaseCount: 0,
+        now: Date.now(),
+      }).eligible);
+      if (!eligible) {
+        throw new Error("Experimental harness selection requires a current eligible canonical worker advertising the exact manifest and configuration.");
+      }
+    }
     if (selectedExecutionBackend === "remote-sandbox") {
       if (!sandboxProfile
         || sandboxProfile.projectId !== definition.projectId
@@ -466,6 +537,9 @@ export const createVersion = mutation({
       repositoryId: String(repository._id),
       workflowId: String(workflow._id),
       executor: args.executor,
+      harnessCapabilityManifest: harness.capabilityManifest,
+      harnessCapabilityManifestDigest: harness.capabilityManifestSha256,
+      harnessEffectiveConfigSha256: harness.effectiveConfigSha256,
       executionBackend: selectedExecutionBackend,
       sandboxProfileId: args.sandboxProfileId ? String(args.sandboxProfileId) : undefined,
       sandboxProfileDigest,
@@ -498,6 +572,9 @@ export const createVersion = mutation({
       purpose: definition.purpose ?? "SOFTWARE",
       workflowId: workflow._id,
       executor: args.executor,
+      harnessCapabilityManifest: harness.capabilityManifest,
+      harnessCapabilityManifestDigest: harness.capabilityManifestSha256,
+      harnessEffectiveConfigSha256: harness.effectiveConfigSha256,
       executionBackend: selectedExecutionBackend,
       sandboxProfileId: args.sandboxProfileId,
       sandboxProfileDigest,
@@ -546,6 +623,9 @@ export const assessReadiness = mutation({
       !githubInstallationIsStale(installation.verifiedAt, now)
     );
     const selectedExecutionBackend = version.executionBackend ?? "persistent-worker";
+    const frozenHarness = resolveFrozenHarnessBinding(version);
+    const primaryAgentIndex = (version.agentBindings ?? []).findIndex((binding) => binding.workflowAgentId === workflow?.steps?.[0]?.agent);
+    const primaryModel = agentVersions[primaryAgentIndex >= 0 ? primaryAgentIndex : 0]?.genome.modelConfig;
     const requiredSandboxCapabilities = selectedExecutionBackend === "remote-sandbox"
       ? ["git-worktree", "workspace-write", "remote-sandbox", "sandbox-provider:exe-dev"]
       : ["git-worktree", "workspace-write"];
@@ -563,7 +643,15 @@ export const assessReadiness = mutation({
           },
           requirements: {
             repositoryId: String(repository._id),
-            executor: version.executor,
+            executor: {
+              adapter: frozenHarness.adapter,
+              version: frozenHarness.version,
+              capabilityManifestSha256: frozenHarness.capabilityManifestSha256,
+              effectiveConfigSha256: frozenHarness.effectiveConfigSha256,
+            },
+            provider: primaryModel?.provider ?? null,
+            model: primaryModel?.modelId ?? null,
+            harnessCapabilities: factoryHarnessCapabilityRequirements("WORKSPACE_WRITE"),
             isolation: "WORKSPACE_WRITE",
             sandboxCapabilities: requiredSandboxCapabilities,
             executionBackend: selectedExecutionBackend,

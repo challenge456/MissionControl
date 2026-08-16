@@ -5,6 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 import { FactoryHostReporter, canonicalRepositoryFromRemote, inspectFactoryCheckout } from "../factoryHostReporter.js";
+import { CODEX_V1_HARNESS_MANIFEST, harnessCapabilityManifestDigest } from "@mission-control/workflow-engine";
 
 const execFileAsync = promisify(execFile);
 const cleanup: string[] = [];
@@ -69,6 +70,9 @@ describe("Factory host reporting", () => {
       supportedExecutors: [{
         adapter: "codex",
         version: "v1",
+        capabilityManifest: CODEX_V1_HARNESS_MANIFEST,
+        capabilityManifestSha256: harnessCapabilityManifestDigest(CODEX_V1_HARNESS_MANIFEST),
+        effectiveConfigSha256: CODEX_V1_HARNESS_MANIFEST.effectiveConfigSha256,
         supportsCancel: true,
         supportsResume: false,
         isolationModes: ["READ_ONLY", "WORKSPACE_WRITE"],
@@ -81,6 +85,9 @@ describe("Factory host reporting", () => {
     expect(report.workerRuntime.supportedExecutors).toEqual([{
       adapter: "codex",
       version: "v1",
+      capabilityManifest: CODEX_V1_HARNESS_MANIFEST,
+      capabilityManifestSha256: harnessCapabilityManifestDigest(CODEX_V1_HARNESS_MANIFEST),
+      effectiveConfigSha256: CODEX_V1_HARNESS_MANIFEST.effectiveConfigSha256,
       supportsCancel: true,
       supportsResume: false,
       isolationModes: ["READ_ONLY", "WORKSPACE_WRITE"],

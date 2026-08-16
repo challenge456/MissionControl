@@ -13,14 +13,17 @@ describe("Generic Harness Contract V1", () => {
       executionId: "execution-1",
       repositoryRoot: "/tmp/repository",
       workingDirectory: "/tmp/repository",
-      prompt: "Implement the approved change.",
+      task: "Implement the approved change.",
       allowedPaths: ["src/**"],
+      deniedPaths: ["src/auth/**"],
       timeoutMs: 60_000,
       isolation: "WORKSPACE_WRITE",
+      provider: "openai",
+      model: "gpt-5.6-terra",
     };
     const adapter = {} as HarnessExecutorAdapter;
     expect(request.isolation).toBe("WORKSPACE_WRITE");
-    expectTypeOf(adapter.capabilities).toBeFunction();
+    expectTypeOf(adapter.capabilityManifest).toBeFunction();
     expectTypeOf(adapter.validateConfiguration).toBeFunction();
     expectTypeOf(adapter.estimate).toBeFunction();
     expectTypeOf(adapter.prepare).toBeFunction();

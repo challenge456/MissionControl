@@ -35,8 +35,10 @@ CODEX_WORKER_HOST_ID=<stable host identity>
 CODEX_WORKER_MAX_CONCURRENT_RUNS=1
 ```
 
-The worker reports its repository, exact default-branch commit, executor,
-backend, sandbox capabilities, slots, readiness, and session before polling.
+The worker reports its repository, exact default-branch commit, harness and
+adapter identity, adapter-effective capability manifest and digest, effective
+configuration digest, backend, sandbox capabilities, slots, readiness, and
+session before polling.
 Registration failure is fail-closed: Attempt execution does not start.
 
 Keep one stable `CODEX_WORKER_HOST_ID` per real worker installation. Do not
@@ -50,6 +52,7 @@ creates a new session and server-derived generation.
    Version, quality contract, and verification contract.
 2. `attempts.claim` atomically checks the current registration, heartbeat,
    readiness/draining state, repository access, executor, isolation, required
+   harness capabilities, exact capability/configuration digests, provider/model,
    sandbox capabilities, backend, and server-counted active leases. Capacity is
    counted across all repositories and sessions for the stable worker ID; the
    reported `currentRuns` value is observational only.
@@ -140,7 +143,7 @@ When a workspace is preserved:
 Set worker readiness to `DRAINING` in the registration interface before a
 future fleet manager stops assigning work. The current single-process runtime
 aborts active adapters on `SIGINT`/`SIGTERM` and waits for their tasks to settle.
-The Codex child runs in a dedicated process group; cancellation and timeout
+Each local harness child runs in a dedicated process group; cancellation and timeout
 signal only that live owned group and escalate from `SIGTERM` to `SIGKILL` after
 a bounded grace period. The agent child receives an explicit environment
 allowlist and never inherits service-command, Convex, GitHub App, or provider
@@ -150,22 +153,44 @@ workspace remains
 PID is never used to adopt or kill a process after restart, so PID reuse cannot
 create ownership.
 
+## Optional experimental DeepSeek Harness
+
+Codex remains the default production adapter. DeepSeek Harness is disabled by
+default and is admitted only on the persistent-worker backend when all of the
+following are set and healthy:
+
+```text
+DEEPSEEK_HARNESS_EXECUTOR_ENABLED=1
+DEEPSEEK_HARNESS_ROOT=<absolute path to exact pinned checkout>
+CODEX_WORKER_PROJECT_ID=<projects ID>
+CODEX_WORKER_REPOSITORY_ID=<workspaceRepositories ID>
+```
+
+The checkout must be version `0.1.0-rc.5` at commit
+`47f943859bef60e4160492346772ded9b24f765a`, clean for tracked files, and contain
+the evaluated built CLI digest. The provider prerequisite is the existing
+loopback Ollama `0.32.6` model `qwen3.5:35b-a3b-q8_0` at digest
+`655d273ede3adc056594f511c120d616d92bf4c4d5bcfe580f3cfa29abe8109d`.
+Mission Control does not clone, build, install, download, start, or authenticate
+these prerequisites. A failed pin or provider probe prevents worker
+registration and execution.
+
 ## Backend-first rollout
 
-1. Deploy the `v23` Convex backend first. The host-report additions and lease
-   worker fields are optional, so existing active `v22` legacy leases remain
-   readable and may renew/report with their existing service owner and lease ID.
-2. Confirm the runtime-contract guard reports only
-   `workspaceHostBindings:report` and `v22 → v23`.
-3. Deploy hardened orchestration workers one host at a time. Each worker waits
-   for its initial registration before polling.
-4. After a host advertises `workerRuntime`, new claims without the current
-   worker/session identity fail closed. Existing unexpired legacy leases remain
-   valid; once any execution lease expires or disappears, it is LOST and cannot
-   reclaim the same Attempt.
-5. Drain before rollback. Removing the worker process does not downgrade an
-   existing hardened registration; stale heartbeats stop new claims and retain
-   workspaces for inspection.
+1. Deploy the `v27` Convex backend before an updated orchestration worker. The
+   stored manifest fields are optional, so existing Factory versions and host
+   records remain readable; legacy host advertisements are not eligible for new
+   exact-manifest claims.
+2. Confirm the runtime-contract guard reports only the intended
+   `workspaceHostBindings.report` change and `v26 -> v27`.
+3. Deploy workers one host at a time. Each worker reports its exact capability
+   and configuration digests and waits for registration before polling.
+4. Confirm Codex readiness and admission before explicitly enabling DeepSeek on
+   any host. DeepSeek registration must fail closed if its pin, built artifact,
+   Ollama runtime, or model digest differs.
+5. Drain before rollback. Stale registrations stop new claims, and workspaces
+   remain preserved for inspection. Clearing
+   `DEEPSEEK_HARNESS_EXECUTOR_ENABLED` removes only the experimental adapter.
 
 ## Monitoring
 

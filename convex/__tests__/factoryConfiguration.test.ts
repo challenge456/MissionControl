@@ -6,12 +6,16 @@ import {
   validFactoryExecutionBinding,
   type FactoryConfigurationInput,
 } from "../lib/factoryConfiguration";
+import { CODEX_V1_HARNESS_MANIFEST, harnessCapabilityManifestDigest } from "@mission-control/workflow-engine";
 
 const configuration: FactoryConfigurationInput = {
   purpose: "SOFTWARE",
   repositoryId: "repository-1",
   workflowId: "workflow-1",
   executor: { adapter: "codex", version: "v1" },
+  harnessCapabilityManifest: CODEX_V1_HARNESS_MANIFEST,
+  harnessCapabilityManifestDigest: harnessCapabilityManifestDigest(CODEX_V1_HARNESS_MANIFEST),
+  harnessEffectiveConfigSha256: CODEX_V1_HARNESS_MANIFEST.effectiveConfigSha256,
   executionBackend: "persistent-worker",
   codeScopeIds: ["scope-b", "scope-a"],
   agentBindings: [
@@ -40,6 +44,12 @@ describe("Factory configuration", () => {
       factoryConfigurationDigest({
         ...configuration,
         executor: { adapter: "codex", version: "v2" },
+      })
+    );
+    expect(factoryConfigurationDigest(configuration)).not.toBe(
+      factoryConfigurationDigest({
+        ...configuration,
+        harnessEffectiveConfigSha256: "f".repeat(64),
       })
     );
   });

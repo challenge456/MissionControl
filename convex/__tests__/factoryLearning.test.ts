@@ -11,7 +11,7 @@ import {
   recommendImprovementPromotion,
   type LearningSignalInput,
 } from "../lib/factoryLearning";
-import { getDashboard, refresh } from "../factory/learning";
+import { getDashboard, harnessLearningContext, refresh } from "../factory/learning";
 import { resolve as resolveMetaLoop } from "../factory/metaLoop";
 
 function functionHandler<T extends (...args: any[]) => any>(registered: unknown): T {
@@ -211,6 +211,27 @@ describe("Factory Learning deterministic domain", () => {
       "REPLACE_AGENT_WITH_CODE",
       "ADD_DOCUMENTATION",
     ]);
+  });
+
+  it("projects bounded harness identity into advisory learning context without granting acceptance authority", () => {
+    expect(harnessLearningContext({
+      harness: {
+        harnessId: "deepseek-harness",
+        harnessVersion: "0.1.0-rc.5",
+        adapter: "deepseek-harness",
+        version: "0.2.0",
+        capabilityManifestSha256: `sha256:${"a".repeat(64)}`,
+        effectiveConfigSha256: "b".repeat(64),
+      },
+      publicationPermit: "must-not-project",
+    })).toEqual({
+      harnessId: "deepseek-harness",
+      harnessVersion: "0.1.0-rc.5",
+      adapter: "deepseek-harness",
+      adapterVersion: "0.2.0",
+      capabilityManifestSha256: `sha256:${"a".repeat(64)}`,
+      effectiveConfigSha256: "b".repeat(64),
+    });
   });
 
   it("promotes learning through a submitted Mission plan instead of direct repository work", async () => {

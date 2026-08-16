@@ -46,6 +46,11 @@
       "types": "./dist/verificationDecision.d.ts",
       "import": "./dist/verificationDecision.js",
       "default": "./dist/verificationDecision.js"
+    },
+    "./harness-contract": {
+      "types": "./dist/harnessContract.d.ts",
+      "import": "./dist/harnessContract.js",
+      "default": "./dist/harnessContract.js"
     }
   },
   "scripts": {

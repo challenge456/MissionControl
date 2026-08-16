@@ -3,6 +3,7 @@ import { promisify } from "node:util";
 import type { ConvexHttpClient } from "convex/browser";
 import { ConvexMutations } from "./convexCalls.js";
 import { canonicalGithubRepositoryFromRemote } from "./factoryRepositoryIdentity.js";
+import type { HarnessCapabilityManifest } from "@mission-control/workflow-engine";
 
 const execFileAsync = promisify(execFile);
 
@@ -22,6 +23,9 @@ export interface FactoryHostReporterConfig {
   supportedExecutors: Array<{
     adapter: string;
     version: string;
+    capabilityManifestSha256: string;
+    effectiveConfigSha256: string;
+    capabilityManifest: HarnessCapabilityManifest;
     supportsCancel: boolean;
     supportsResume: boolean;
     isolationModes: Array<"READ_ONLY" | "WORKSPACE_WRITE">;
@@ -100,6 +104,9 @@ export class FactoryHostReporter {
           supportedExecutors: this.config.supportedExecutors.map((executor) => ({
             adapter: executor.adapter,
             version: executor.version,
+            capabilityManifestSha256: executor.capabilityManifestSha256,
+            effectiveConfigSha256: executor.effectiveConfigSha256,
+            capabilityManifest: executor.capabilityManifest,
             supportsCancel: executor.supportsCancel,
             supportsResume: executor.supportsResume,
             isolationModes: executor.isolationModes,

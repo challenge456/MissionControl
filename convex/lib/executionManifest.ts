@@ -1,4 +1,12 @@
 import { computeCanonicalHash } from "./genomeHash";
+import type { HarnessCapabilityManifest } from "@mission-control/workflow-engine/harness-contract";
+import {
+  harnessCapabilityManifestDigest,
+  harnessCapabilityRequirementsSatisfied,
+  harnessManifestIssues,
+  harnessSupportsModel,
+} from "@mission-control/workflow-engine/harness-contract";
+import { factoryHarnessCapabilityRequirements } from "./harnessCapabilities";
 
 export interface FactoryExecutionManifestInput {
   runId: string;
@@ -22,6 +30,9 @@ export interface FactoryExecutionManifestInput {
   executor: {
     adapter: string;
     version: string;
+    capabilityManifest: HarnessCapabilityManifest;
+    capabilityManifestSha256: string;
+    effectiveConfigSha256: string;
   };
   executionBackend: string;
   sandboxProfile: {
@@ -111,6 +122,16 @@ export function buildFactoryExecutionManifest(input: FactoryExecutionManifestInp
   if (!input.executor.adapter.trim() || !input.executor.version.trim() || !input.executionBackend.trim()) {
     throw new Error("Execution manifest requires a provider-neutral executor and backend binding.");
   }
+  if (harnessManifestIssues(input.executor.capabilityManifest).length > 0
+    || input.executor.capabilityManifest.identity.adapterId !== input.executor.adapter
+    || input.executor.capabilityManifest.identity.adapterVersion !== input.executor.version
+    || input.executor.capabilityManifestSha256 !== harnessCapabilityManifestDigest(input.executor.capabilityManifest)
+    || input.executor.effectiveConfigSha256 !== input.executor.capabilityManifest.effectiveConfigSha256) {
+    throw new Error("Execution manifest requires an exact valid harness capability and effective-configuration binding.");
+  }
+  if (!input.executor.capabilityManifest.admission.executionBackends.includes(input.executionBackend)) {
+    throw new Error("Selected harness does not support the execution backend.");
+  }
   if (input.executionBackend === "remote-sandbox" && !input.sandbox) {
     throw new Error("Remote sandbox execution requires a frozen Sandbox Profile and lifecycle contract.");
   }
@@ -142,6 +163,14 @@ export function buildFactoryExecutionManifest(input: FactoryExecutionManifestInp
       contextHash,
     };
   });
+  const firstStep = steps[0];
+  if (!firstStep || !harnessSupportsModel(input.executor.capabilityManifest, firstStep.modelConfiguration.provider, firstStep.modelRoute)) {
+    throw new Error("Selected harness capability manifest does not admit the frozen provider/model route.");
+  }
+  const requiredHarnessCapabilities = factoryHarnessCapabilityRequirements(input.sandboxProfile.isolation);
+  if (!harnessCapabilityRequirementsSatisfied(input.executor.capabilityManifest, requiredHarnessCapabilities)) {
+    throw new Error("Selected harness does not satisfy the frozen Attempt capability requirements.");
+  }
   const compiledPrompt = compileFactoryPrompt(input, allowedPaths, excludedPaths);
   const manifest = {
     version: "factory-execution-manifest/v1",
@@ -192,9 +221,18 @@ export function buildFactoryExecutionManifest(input: FactoryExecutionManifestInp
     harness: {
       adapter: input.executor.adapter,
       version: input.executor.version,
+      harnessId: input.executor.capabilityManifest.identity.harnessId,
+      harnessVersion: input.executor.capabilityManifest.identity.harnessVersion,
+      harnessCommit: input.executor.capabilityManifest.identity.harnessCommit,
+      capabilityManifest: input.executor.capabilityManifest,
+      capabilityManifestSha256: input.executor.capabilityManifestSha256,
+      effectiveConfigSha256: input.executor.effectiveConfigSha256,
+      provider: firstStep.modelConfiguration.provider,
+      model: firstStep.modelRoute,
       isolation: input.sandboxProfile.isolation,
       executionBackend: input.executionBackend,
       requiredCapabilities: [...new Set(input.sandboxProfile.requiredCapabilities)].sort(),
+      requiredHarnessCapabilities,
       timeoutMs: input.maxRuntimeMinutes * 60_000,
       completionContract: "factory-result/v1",
       pullRequestAuthority: "CONTROL_PLANE_ONLY",

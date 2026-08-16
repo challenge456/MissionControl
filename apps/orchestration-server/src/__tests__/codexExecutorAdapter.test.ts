@@ -1,6 +1,8 @@
+import { execFile } from "node:child_process";
 import { access, chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import { describe, expect, it, vi } from "vitest";
 import {
   CodexV1ExecutorAdapter,
@@ -9,15 +11,46 @@ import {
 } from "../codexExecutorAdapter.js";
 import type { ExecutorRequest, HarnessExecutionContext } from "@mission-control/workflow-engine";
 
+const execFileAsync = promisify(execFile);
+
 const request = {
   executionId: "execution-1",
   repositoryRoot: "/tmp/repository",
   workingDirectory: "/tmp/repository/apps/ui",
   prompt: "Implement the approved UI change.",
   allowedPaths: ["apps/ui/**"],
+  deniedPaths: [],
   timeoutMs: 60_000,
   isolation: "WORKSPACE_WRITE" as const,
+  provider: "openai",
+  model: "gpt-5.6-terra",
 };
+
+function completion(overrides: Record<string, unknown> = {}) {
+  const startedAt = Date.now();
+  return {
+    exitCode: 0,
+    signal: null,
+    output: "Implemented and tested.",
+    stdout: '{"type":"turn.completed","usage":{"input_tokens":12,"output_tokens":4}}\n',
+    stderr: "",
+    startedAt,
+    finishedAt: startedAt + 10,
+    timedOut: false,
+    ...overrides,
+  };
+}
+
+async function gitRepository() {
+  const root = await mkdtemp(path.join(tmpdir(), "mc-codex-adapter-"));
+  await execFileAsync("git", ["init", "-q", root]);
+  await execFileAsync("git", ["-C", root, "config", "user.name", "Fixture"]);
+  await execFileAsync("git", ["-C", root, "config", "user.email", "fixture@example.invalid"]);
+  await writeFile(path.join(root, "README.md"), "fixture\n");
+  await execFileAsync("git", ["-C", root, "add", "README.md"]);
+  await execFileAsync("git", ["-C", root, "commit", "-qm", "fixture"]);
+  return root;
+}
 
 async function processCanExecute(pid: number): Promise<boolean> {
   try {
@@ -37,12 +70,10 @@ async function processCanExecute(pid: number): Promise<boolean> {
 describe("CodexV1ExecutorAdapter", () => {
   it("declares the frozen codex/v1 lifecycle and repository mutation capability", () => {
     const adapter = new CodexV1ExecutorAdapter("/tmp/codex", vi.fn() as any);
-    expect(adapter.capabilities()).toMatchObject({
-      adapter: "codex",
-      version: "v1",
-      supportsCancel: true,
-      supportsResume: false,
-      supportsRepositoryMutation: true,
+    expect(adapter.capabilities().capabilityManifest).toMatchObject({
+      identity: { adapterId: "codex", adapterVersion: "v1", harnessVersion: "0.146.0" },
+      cancellation: { support: "PARTIAL", idempotentCleanup: true },
+      filesystem: { write: "SUPPORTED" },
     });
   });
 
@@ -59,10 +90,15 @@ describe("CodexV1ExecutorAdapter", () => {
   });
 
   it("emits structured events without putting diagnostics or secrets in successful metadata", async () => {
-    const runner = vi.fn().mockResolvedValue({ exitCode: 0, output: "Implemented and tested." });
-    const adapter = new CodexV1ExecutorAdapter("/tmp/codex", runner);
+    const repositoryRoot = await gitRepository();
+    const runner = vi.fn().mockResolvedValue(completion());
+    const adapter = new CodexV1ExecutorAdapter("/tmp/codex", runner as any);
     const events: any[] = [];
-    const result = await executeAdapter(adapter, request, { emit: (event) => { events.push(event); } });
+    const result = await executeAdapter(adapter, {
+      ...request,
+      repositoryRoot,
+      workingDirectory: repositoryRoot,
+    }, { emit: (event) => { events.push(event); } });
 
     expect(result).toMatchObject({ status: "COMPLETED", output: "Implemented and tested." });
     expect(events.map((event) => event.type)).toEqual([
@@ -76,11 +112,16 @@ describe("CodexV1ExecutorAdapter", () => {
   });
 
   it("supports cancellation of an active execution", async () => {
+    const repositoryRoot = await gitRepository();
     const runner = vi.fn(({ signal }) => new Promise((_resolve, reject) => {
       signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
     }));
     const adapter = new CodexV1ExecutorAdapter("/tmp/codex", runner as any);
-    const prepared = await adapter.prepare(request, { emit: () => undefined });
+    const prepared = await adapter.prepare({
+      ...request,
+      repositoryRoot,
+      workingDirectory: repositoryRoot,
+    }, { emit: () => undefined });
     const handle = await adapter.execute(prepared);
     const execution = adapter.collectResult(handle);
     await vi.waitFor(() => expect(runner).toHaveBeenCalled());
@@ -138,7 +179,7 @@ describe("CodexV1ExecutorAdapter", () => {
   });
 
   it.skipIf(process.platform === "win32")("cancels the dedicated owned executor process group", async () => {
-    const repositoryRoot = await mkdtemp(path.join(tmpdir(), "mc-codex-process-group-"));
+    const repositoryRoot = await gitRepository();
     const executable = path.join(repositoryRoot, "codex-tree-stub.sh");
     const childPidPath = path.join(repositoryRoot, "child.pid");
     await writeFile(executable, `#!/bin/sh
@@ -179,7 +220,7 @@ wait
   }, 15_000);
 
   it("closes the Codex CLI stdin pipe so an explicit prompt can start", async () => {
-    const repositoryRoot = await mkdtemp(path.join(tmpdir(), "mc-codex-stdin-"));
+    const repositoryRoot = await gitRepository();
     const executable = path.join(repositoryRoot, "codex-stub.sh");
     await writeFile(executable, `#!/bin/sh
 output=""
@@ -194,6 +235,7 @@ if IFS= read -r _line; then
   exit 41
 fi
 printf '%s' 'Codex started after EOF.' > "$output"
+printf '%s\n' '{"type":"thread.started"}' '{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}'
 `);
     await chmod(executable, 0o700);
 

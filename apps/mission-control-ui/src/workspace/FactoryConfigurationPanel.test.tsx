@@ -2,6 +2,29 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FactoryConfigurationPanel } from "./FactoryConfigurationPanel";
 
+const codexHarness = {
+  manifest: {
+    identity: { harnessId: "codex-cli", harnessVersion: "0.146.0", harnessCommit: "e363b08c9175ac1cbe5893615dd2cb9ddf95043b", adapterId: "codex", adapterVersion: "v1" },
+    admission: { maturity: "PRODUCTION", executionBackends: ["persistent-worker", "remote-sandbox"] },
+    cancellation: { mode: "PROCESS_SIGNAL" },
+    telemetry: { cost: "UNSUPPORTED" },
+    limitations: ["Cost telemetry is unavailable."],
+  },
+  available: true,
+  advertised: true,
+};
+const deepSeekHarness = {
+  manifest: {
+    identity: { harnessId: "deepseek-harness", harnessVersion: "0.1.0-rc.5", harnessCommit: "47f943859bef60e4160492346772ded9b24f765a", adapterId: "deepseek-harness", adapterVersion: "0.2.0" },
+    admission: { maturity: "EXPERIMENTAL", executionBackends: ["persistent-worker"] },
+    cancellation: { mode: "PROCESS_SIGNAL" },
+    telemetry: { cost: "UNSUPPORTED" },
+    limitations: ["Developer preview is explicitly enabled only."],
+  },
+  available: false,
+  advertised: false,
+};
+
 const mocks = vi.hoisted(() => ({
   definitions: [] as any[],
   detail: undefined as any,
@@ -12,6 +35,7 @@ const mocks = vi.hoisted(() => ({
     codeScopes: [{ _id: "scope-1", name: "Application", includePaths: ["apps/example/**"] }],
     agentVersions: [{ _id: "agent-version-1", version: 2, template: { name: "Implementer" }, modelConfig: { modelId: "gpt-5" } }],
     sandboxProfiles: [] as any[],
+    harnesses: [] as any[],
   },
   createFactory: vi.fn(),
   createVersion: vi.fn(),
@@ -106,6 +130,7 @@ describe("FactoryConfigurationPanel", () => {
       codeScopes: [{ _id: "scope-1", name: "Application", includePaths: ["apps/example/**"] }],
       agentVersions: [{ _id: "agent-version-1", version: 2, template: { name: "Implementer" }, modelConfig: { modelId: "gpt-5" } }],
       sandboxProfiles: [],
+      harnesses: [codexHarness],
     };
     window.localStorage.setItem("mc.factory.experience-level", "advanced");
     mocks.createFactory.mockReset().mockResolvedValue("factory-1");
@@ -169,6 +194,7 @@ describe("FactoryConfigurationPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create configuration version" }));
 
     await waitFor(() => expect(mocks.createVersion).toHaveBeenCalledWith(expect.objectContaining({
+      executor: { adapter: "codex", version: "v1" },
       executionBackend: "persistent-worker",
       codeScopeIds: ["scope-1"],
       agentBindings: [{ workflowAgentId: "implementer", agentVersionId: "agent-version-1" }],
@@ -186,6 +212,18 @@ describe("FactoryConfigurationPanel", () => {
     expect(screen.getByLabelText("Local")).toBeInTheDocument();
     expect(screen.getByLabelText("Isolated Sandbox")).toBeInTheDocument();
     expect(screen.queryByRole("tablist", { name: /Factory configuration detail/i })).not.toBeInTheDocument();
+  });
+
+  it("shows experimental harness capability detail only in Advanced and disables selection until a worker advertises the exact pin", () => {
+    mocks.definitions = [{ _id: "factory-1", repositoryId: "repository-1", status: "DRAFT" }];
+    mocks.detail = { definition: { _id: "factory-1", status: "DRAFT" }, versions: [], assessments: [] };
+    mocks.versionOptions = { ...mocks.versionOptions, harnesses: [codexHarness, deepSeekHarness] };
+    renderPanel();
+
+    const selector = screen.getByLabelText("Harness executor");
+    expect(selector).toHaveValue("codex\0v1");
+    expect(screen.getByRole("option", { name: /deepseek-harness 0.1.0-rc.5/i })).toBeDisabled();
+    expect(screen.getByText(/Cost telemetry is unavailable/i)).toBeInTheDocument();
   });
 
   it("keeps live certification outside routine Factory configuration", () => {

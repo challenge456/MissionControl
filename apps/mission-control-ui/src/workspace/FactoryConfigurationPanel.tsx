@@ -105,6 +105,7 @@ function FactoryVersionEditor({
   const [risk, setRisk] = useState<"GREEN" | "YELLOW" | "RED">("YELLOW");
   const [experienceLevel] = useFactoryExperienceLevel();
   const [executionBackend, setExecutionBackend] = useState<"persistent-worker" | "remote-sandbox">("persistent-worker");
+  const [harnessKey, setHarnessKey] = useState("codex\0v1");
   const [sandboxProfileId, setSandboxProfileId] = useState("");
   const [pending, setPending] = useState("");
   const [message, setMessage] = useState("");
@@ -296,6 +297,9 @@ function FactoryVersionEditor({
     [detail, latestVersion]
   );
   const selectedWorkflow = workflows?.find((item) => item._id === workflowId);
+  const selectedHarness = versionOptions?.harnesses.find((item) =>
+    `${item.manifest.identity.adapterId}\0${item.manifest.identity.adapterVersion}` === harnessKey
+  ) ?? versionOptions?.harnesses[0];
   const defaultAgentVersionId = versionOptions?.agentVersions[0]?._id;
   const selectedWorkflowAgentKey = selectedWorkflow?.agents.map((agent) => agent.id).join(":") ?? "";
 
@@ -437,12 +441,23 @@ function FactoryVersionEditor({
       setError("Remote sandbox execution is limited to GREEN and YELLOW risk boundaries in N=1.");
       return;
     }
+    if (!selectedHarness?.available) {
+      setError("The selected harness is not currently advertised by an eligible canonical worker.");
+      return;
+    }
+    if (!selectedHarness.manifest.admission.executionBackends.includes(executionBackend)) {
+      setError("The selected harness does not support this execution backend.");
+      return;
+    }
     setPending("save");
     try {
       await createVersion({
         factoryDefinitionId,
         workflowId: workflowId as Id<"workflows">,
-        executor: { adapter: "codex", version: "v1" },
+        executor: {
+          adapter: selectedHarness.manifest.identity.adapterId,
+          version: selectedHarness.manifest.identity.adapterVersion,
+        },
         executionBackend,
         sandboxProfileId: executionBackend === "remote-sandbox" ? sandboxProfileId as Id<"factorySandboxProfiles"> : undefined,
         codeScopeIds: codeScopeIds as Id<"repositoryCodeScopes">[],
@@ -525,7 +540,7 @@ function FactoryVersionEditor({
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-3">
             <div className="text-[11.5px] text-ink-muted">
               {executionBackend === "persistent-worker"
-                ? "Local · canonical worker worktree · codex/v1 · independent verification"
+                ? "Local · canonical worker worktree · governed execution · independent verification"
                 : selectedSandboxProfile
                   ? `${selectedSandboxProfile.profileKey} v${selectedSandboxProfile.version} · ${selectedSandboxProfile.readinessState.toLowerCase()} · mandatory teardown`
                   : "A current Sandbox Profile is required. Advanced exposes evidence-backed profile creation."}
@@ -548,7 +563,7 @@ function FactoryVersionEditor({
             </label>
           </div>
           <div className="grid gap-3 rounded-md border border-line bg-surface-1 p-3 text-[11.5px] @md:grid-cols-2 @xl:grid-cols-4">
-            <ProfileMeta label="Provider / executor" value={`${executionBackend === "remote-sandbox" ? selectedSandboxProfile?.provider ?? "Profile required" : "Local host"} · codex/v1`} />
+            <ProfileMeta label="Harness strategy" value={`${executionBackend === "remote-sandbox" ? selectedSandboxProfile?.provider ?? "Profile required" : "Local host"} · ${selectedHarness?.manifest.identity.harnessId ?? "Approved harness"}`} />
             <ProfileMeta label="Workflow / model" value={`${selectedWorkflow?.name ?? "Default workflow"} · ${versionOptions.agentVersions[0]?.modelConfig?.modelId ?? "Approved route required"}`} />
             <ProfileMeta label="Verification / retry" value={`${verifiers.length} independent verifier${verifiers.length === 1 ? "" : "s"} · ${maxAttempts} attempts`} />
             <ProfileMeta label="Preview / teardown" value={executionBackend === "remote-sandbox" ? `${selectedSandboxProfile?.previewMode?.toLowerCase().replaceAll("_", " ") ?? "profile required"} · mandatory teardown` : "No sandbox preview · host lifecycle"} />
@@ -572,6 +587,33 @@ function FactoryVersionEditor({
             </Button>
           </div>
         ) : null}
+        <div className="@md:col-span-2 text-[11.5px] text-ink-muted">
+          <label htmlFor="factory-harness-executor">Harness executor</label>
+          <select
+            id="factory-harness-executor"
+            className="mt-1 w-full rounded-md border border-line bg-surface-1 px-2 py-2 text-[12px] text-ink"
+            value={harnessKey}
+            onChange={(event) => {
+              setHarnessKey(event.target.value);
+              const next = versionOptions.harnesses.find((item) => `${item.manifest.identity.adapterId}\0${item.manifest.identity.adapterVersion}` === event.target.value);
+              if (next && !next.manifest.admission.executionBackends.includes("remote-sandbox")) setExecutionBackend("persistent-worker");
+            }}
+          >
+            {versionOptions.harnesses.map((item) => {
+              const identity = item.manifest.identity;
+              return <option key={`${identity.adapterId}:${identity.adapterVersion}`} value={`${identity.adapterId}\0${identity.adapterVersion}`} disabled={!item.available}>
+                {identity.harnessId} {identity.harnessVersion} · {identity.adapterId}/{identity.adapterVersion}{item.available ? "" : " · worker prerequisite missing"}
+              </option>;
+            })}
+          </select>
+          {selectedHarness ? (
+            <span className="mt-2 block rounded-md border border-line bg-surface-1 p-3 leading-relaxed">
+              <span className="block font-medium text-ink">{selectedHarness.manifest.admission.maturity.toLowerCase()} · {selectedHarness.manifest.identity.harnessCommit.slice(0, 12)}</span>
+              <span className="mt-1 block">Backends: {selectedHarness.manifest.admission.executionBackends.join(", ")} · cancellation: {selectedHarness.manifest.cancellation.mode.toLowerCase().replaceAll("_", " ")} · cost telemetry: {selectedHarness.manifest.telemetry.cost.toLowerCase()}</span>
+              <span className="mt-1 block">{selectedHarness.manifest.limitations[0]}</span>
+            </span>
+          ) : null}
+        </div>
         <label className="text-[11.5px] text-ink-muted">Workflow
           <select className="mt-1 w-full rounded-md border border-line bg-surface-1 px-2 py-2 text-[12px] text-ink" value={workflowId} onChange={(event) => setWorkflowId(event.target.value)}>
             <option value="">Select workflow</option>
@@ -649,7 +691,7 @@ function FactoryVersionEditor({
           </fieldset>
         ) : null}
         <div className="@md:col-span-2 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
-          <span className="text-[11.5px] text-ink-muted">Executor: codex/v1 · cancel and bounded retry enabled · pause/resume unsupported</span>
+          <span className="text-[11.5px] text-ink-muted">Executor: {selectedHarness?.manifest.identity.adapterId}/{selectedHarness?.manifest.identity.adapterVersion} · cancel and bounded retry enabled · pause/resume unsupported</span>
           {saveButton}
         </div>
       </div>

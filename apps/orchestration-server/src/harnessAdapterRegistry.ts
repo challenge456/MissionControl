@@ -1,6 +1,9 @@
 import {
   GENERIC_HARNESS_CONTRACT_VERSION,
+  harnessCapabilityManifestDigest,
+  harnessManifestIssues,
   type ExecutorRequest,
+  type HarnessCapabilityManifest,
   type HarnessExecutionBackend,
   type HarnessExecutorAdapter,
   type HarnessExecutorCapabilities,
@@ -33,9 +36,12 @@ export type HarnessRuntimeAdapter = HarnessExecutorAdapter<any, any> & {
   ) => RemoteHarnessInvocation;
 };
 
-interface RegisteredHarnessAdapter {
+export interface RegisteredHarnessAdapter {
   adapter: HarnessRuntimeAdapter;
   capabilities: HarnessExecutorCapabilities;
+  manifest?: HarnessCapabilityManifest;
+  capabilityManifestSha256?: string;
+  effectiveConfigSha256?: string;
 }
 
 export class HarnessAdapterRegistry {
@@ -49,6 +55,8 @@ export class HarnessAdapterRegistry {
     for (const adapter of adapters) {
       const capabilities = snapshotCapabilities(adapter.capabilities());
       validateCapabilities(capabilities);
+      const manifest = capabilities.capabilityManifest;
+      if (manifest) validateManifest(capabilities, manifest);
       const key = bindingKey(capabilities);
       if (this.adapters.has(key)) throw new Error(`Duplicate harness adapter registration: ${key}.`);
       if (capabilities.executionBackends.includes("remote-sandbox") && !adapter.createRemoteInvocation) {
@@ -59,7 +67,13 @@ export class HarnessAdapterRegistry {
           throw new Error(`Harness adapter ${key} does not support required worker backend ${backend}.`);
         }
       }
-      this.adapters.set(key, { adapter, capabilities });
+      this.adapters.set(key, {
+        adapter,
+        capabilities,
+        manifest: manifest ? snapshotManifest(manifest) : undefined,
+        capabilityManifestSha256: manifest ? harnessCapabilityManifestDigest(manifest) : undefined,
+        effectiveConfigSha256: manifest?.effectiveConfigSha256,
+      });
     }
   }
 
@@ -84,8 +98,26 @@ export class HarnessAdapterRegistry {
     return snapshotCapabilities(registration.capabilities);
   }
 
+  requireRegistration(binding: HarnessAdapterBinding): RegisteredHarnessAdapter {
+    const registration = this.adapters.get(bindingKey(binding));
+    if (!registration) throw new Error(`Worker does not provide harness adapter ${bindingKey(binding)}.`);
+    return {
+      ...registration,
+      capabilities: snapshotCapabilities(registration.capabilities),
+      manifest: registration.manifest ? snapshotManifest(registration.manifest) : undefined,
+    };
+  }
+
   capabilities(): HarnessExecutorCapabilities[] {
     return [...this.adapters.values()].map(({ capabilities }) => snapshotCapabilities(capabilities));
+  }
+
+  registrations(): RegisteredHarnessAdapter[] {
+    return [...this.adapters.values()].map((registration) => ({
+      ...registration,
+      capabilities: snapshotCapabilities(registration.capabilities),
+      manifest: registration.manifest ? snapshotManifest(registration.manifest) : undefined,
+    }));
   }
 }
 
@@ -126,14 +158,44 @@ function validateCapabilities(capabilities: HarnessExecutorCapabilities) {
   }
 }
 
+function validateManifest(capabilities: HarnessExecutorCapabilities, manifest: HarnessCapabilityManifest) {
+  const issues = harnessManifestIssues(manifest);
+  if (issues.length > 0) {
+    throw new Error(`Harness manifest ${bindingKey(capabilities)} is invalid (${issues.join(", ")}).`);
+  }
+  if (manifest.identity.adapterId !== capabilities.adapter
+    || manifest.identity.adapterVersion !== capabilities.version) {
+    throw new Error(`Harness manifest identity does not match ${bindingKey(capabilities)}.`);
+  }
+  if (manifest.admission.executionBackends.length !== capabilities.executionBackends.length
+    || manifest.admission.executionBackends.some((backend) => !capabilities.executionBackends.includes(backend as HarnessExecutionBackend))) {
+    throw new Error(`Harness manifest execution backends do not match ${bindingKey(capabilities)}.`);
+  }
+  const manifestSupportsCancel = manifest.cancellation.support === "SUPPORTED" || manifest.cancellation.support === "PARTIAL";
+  const manifestSupportsResume = manifest.context.resume === "SUPPORTED" || manifest.context.resume === "PARTIAL";
+  if (manifestSupportsCancel !== capabilities.supportsCancel
+    || manifestSupportsResume !== capabilities.supportsResume
+    || manifest.sandbox.isolationModes.length !== capabilities.isolationModes.length
+    || manifest.sandbox.isolationModes.some((mode) => !capabilities.isolationModes.includes(mode))) {
+    throw new Error(`Harness manifest lifecycle capabilities do not match ${bindingKey(capabilities)}.`);
+  }
+}
+
 function snapshotCapabilities(capabilities: HarnessExecutorCapabilities): HarnessExecutorCapabilities {
   return {
     ...capabilities,
+    capabilityManifest: capabilities.capabilityManifest
+      ? snapshotManifest(capabilities.capabilityManifest)
+      : undefined,
     executionBackends: [...capabilities.executionBackends],
     authority: { ...capabilities.authority },
     isolationModes: [...capabilities.isolationModes],
     emittedEvents: [...capabilities.emittedEvents],
   };
+}
+
+function snapshotManifest(manifest: HarnessCapabilityManifest): HarnessCapabilityManifest {
+  return structuredClone(manifest);
 }
 
 function boundedIdentity(value: string, maximum = 100) {

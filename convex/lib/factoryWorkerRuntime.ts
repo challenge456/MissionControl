@@ -1,3 +1,11 @@
+import type { HarnessCapabilityManifest, HarnessCapabilityRequirement } from "@mission-control/workflow-engine/harness-contract";
+import {
+  harnessCapabilityManifestDigest,
+  harnessCapabilityRequirementsSatisfied,
+  harnessManifestIssues,
+  harnessSupportsModel,
+} from "@mission-control/workflow-engine/harness-contract";
+
 export const FACTORY_WORKER_HEARTBEAT_MAX_AGE_MS = 2 * 60_000;
 
 export type FactoryWorkerReadiness = "STARTING" | "READY" | "DRAINING" | "BLOCKED";
@@ -5,6 +13,9 @@ export type FactoryWorkerReadiness = "STARTING" | "READY" | "DRAINING" | "BLOCKE
 export interface FactoryWorkerExecutorCapability {
   adapter: string;
   version: string;
+  capabilityManifestSha256?: string;
+  effectiveConfigSha256?: string;
+  capabilityManifest?: HarnessCapabilityManifest;
   supportsCancel: boolean;
   supportsResume: boolean;
   isolationModes: Array<"READ_ONLY" | "WORKSPACE_WRITE">;
@@ -39,7 +50,15 @@ export interface FactoryWorkerCandidate {
 
 export interface FactoryWorkerRequirements {
   repositoryId: string;
-  executor: { adapter: string; version: string };
+  executor: {
+    adapter: string;
+    version: string;
+    capabilityManifestSha256: string;
+    effectiveConfigSha256: string;
+  };
+  provider: string | null;
+  model: string | null;
+  harnessCapabilities: HarnessCapabilityRequirement[];
   isolation: "READ_ONLY" | "WORKSPACE_WRITE";
   sandboxCapabilities: string[];
   executionBackend?: string;
@@ -86,12 +105,31 @@ export function factoryWorkerEligibility(input: {
     && candidate.version === requirements.executor.version
   );
   if (!executor) return { eligible: false as const, reason: "worker-executor-unsupported" };
+  if (!executor.capabilityManifest
+    || executor.capabilityManifestSha256 !== requirements.executor.capabilityManifestSha256
+    || executor.effectiveConfigSha256 !== requirements.executor.effectiveConfigSha256
+    || harnessManifestIssues(executor.capabilityManifest).length > 0
+    || executor.capabilityManifest.identity.adapterId !== executor.adapter
+    || executor.capabilityManifest.identity.adapterVersion !== executor.version
+    || harnessCapabilityManifestDigest(executor.capabilityManifest) !== executor.capabilityManifestSha256) {
+    return { eligible: false as const, reason: "worker-harness-manifest-mismatch" };
+  }
+  if (!harnessSupportsModel(executor.capabilityManifest, requirements.provider, requirements.model)) {
+    return { eligible: false as const, reason: "worker-harness-model-unsupported" };
+  }
+  if (!harnessCapabilityRequirementsSatisfied(executor.capabilityManifest, requirements.harnessCapabilities)) {
+    return { eligible: false as const, reason: "worker-harness-capability-missing" };
+  }
   if (!executor.isolationModes.includes(requirements.isolation)) {
     return { eligible: false as const, reason: "worker-isolation-unsupported" };
   }
   if (requirements.executionBackend
     && !runtime.executionBackends.includes(requirements.executionBackend)) {
     return { eligible: false as const, reason: "worker-backend-unsupported" };
+  }
+  if (requirements.executionBackend
+    && !executor.capabilityManifest?.admission.executionBackends.includes(requirements.executionBackend)) {
+    return { eligible: false as const, reason: "worker-harness-backend-unsupported" };
   }
   if (!requirements.sandboxCapabilities.every((capability) => runtime.sandboxCapabilities.includes(capability))) {
     return { eligible: false as const, reason: "worker-sandbox-capability-missing" };
@@ -142,6 +180,14 @@ export function factoryWorkerRegistrationIssues(input: {
     || input.supportedExecutors.some((executor) =>
       !boundedIdentity(executor.adapter, 100)
       || !boundedIdentity(executor.version, 100)
+      || !/^sha256:[a-f0-9]{64}$/i.test(executor.capabilityManifestSha256 ?? "")
+      || !/^[a-f0-9]{64}$/i.test(executor.effectiveConfigSha256 ?? "")
+      || !executor.capabilityManifest
+      || harnessManifestIssues(executor.capabilityManifest).length > 0
+      || executor.capabilityManifest.identity.adapterId !== executor.adapter
+      || executor.capabilityManifest.identity.adapterVersion !== executor.version
+      || harnessCapabilityManifestDigest(executor.capabilityManifest) !== executor.capabilityManifestSha256
+      || executor.capabilityManifest.effectiveConfigSha256 !== executor.effectiveConfigSha256
       || executor.isolationModes.length < 1
       || new Set(executor.isolationModes).size !== executor.isolationModes.length
     )) {

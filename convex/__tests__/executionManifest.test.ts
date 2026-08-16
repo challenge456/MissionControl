@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildFactoryExecutionManifest, type FactoryExecutionManifestInput } from "../lib/executionManifest";
+import { CODEX_V1_HARNESS_MANIFEST, DEEPSEEK_V1_HARNESS_MANIFEST, harnessCapabilityManifestDigest } from "@mission-control/workflow-engine";
 
 const input: FactoryExecutionManifestInput = {
   runId: "run-1",
@@ -19,7 +20,13 @@ const input: FactoryExecutionManifestInput = {
   baseSha: "a".repeat(40),
   branch: "mc/work-order-1",
   worktree: "/tmp/worktrees/work-order-1",
-  executor: { adapter: "codex", version: "v1" },
+  executor: {
+    adapter: "codex",
+    version: "v1",
+    capabilityManifest: CODEX_V1_HARNESS_MANIFEST,
+    capabilityManifestSha256: harnessCapabilityManifestDigest(CODEX_V1_HARNESS_MANIFEST),
+    effectiveConfigSha256: CODEX_V1_HARNESS_MANIFEST.effectiveConfigSha256,
+  },
   executionBackend: "persistent-worker",
   sandboxProfile: { isolation: "WORKSPACE_WRITE", requiredCapabilities: ["workspace-write", "git-worktree"] },
   workflow: {
@@ -78,6 +85,8 @@ describe("Factory execution manifest", () => {
       version: "v1",
       executionBackend: "persistent-worker",
       requiredCapabilities: ["git-worktree", "workspace-write"],
+      harnessId: "codex-cli",
+      capabilityManifestSha256: harnessCapabilityManifestDigest(CODEX_V1_HARNESS_MANIFEST),
     });
     expect(result.manifest.intent).toMatchObject({ title: "Add the buyer gate", acceptanceCriterionIds: ["ac-1"] });
     expect(result.manifest.workOrderSpecification).toMatchObject({ riskLevel: "MEDIUM", acceptanceCriteria: [{ id: "ac-1" }] });
@@ -137,5 +146,32 @@ describe("Factory execution manifest", () => {
 
   it("rejects a remote backend without a frozen Sandbox Profile contract", () => {
     expect(() => buildFactoryExecutionManifest({ ...input, executionBackend: "remote-sandbox" })).toThrow(/frozen Sandbox Profile/);
+  });
+
+  it("freezes the exact DeepSeek pin and rejects unsupported backend or model combinations", () => {
+    const deepSeekInput: FactoryExecutionManifestInput = {
+      ...input,
+      executor: {
+        adapter: "deepseek-harness",
+        version: "0.2.0",
+        capabilityManifest: DEEPSEEK_V1_HARNESS_MANIFEST,
+        capabilityManifestSha256: harnessCapabilityManifestDigest(DEEPSEEK_V1_HARNESS_MANIFEST),
+        effectiveConfigSha256: DEEPSEEK_V1_HARNESS_MANIFEST.effectiveConfigSha256,
+      },
+      agentBindings: input.agentBindings.map((binding) => ({
+        ...binding,
+        model: { provider: "local-ollama", modelId: "qwen3.5:35b-a3b-q8_0" },
+      })),
+      routedModel: "qwen3.5:35b-a3b-q8_0",
+    };
+    const result = buildFactoryExecutionManifest(deepSeekInput);
+    expect(result.manifest.harness).toMatchObject({
+      harnessId: "deepseek-harness",
+      harnessVersion: "0.1.0-rc.5",
+      harnessCommit: "47f943859bef60e4160492346772ded9b24f765a",
+      executionBackend: "persistent-worker",
+    });
+    expect(() => buildFactoryExecutionManifest({ ...deepSeekInput, executionBackend: "remote-sandbox" })).toThrow(/does not support the execution backend/);
+    expect(() => buildFactoryExecutionManifest({ ...deepSeekInput, routedModel: "different-model" })).toThrow(/does not admit/);
   });
 });

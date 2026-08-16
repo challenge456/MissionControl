@@ -43,6 +43,7 @@ import {
   mintInstallationToken,
 } from "./githubAppRuntime.js";
 import { CodexV1ExecutorAdapter } from "./codexExecutorAdapter.js";
+import { DeepSeekHarnessExecutorAdapter } from "./deepseekHarnessExecutorAdapter.js";
 import { HarnessAdapterRegistry } from "./harnessAdapterRegistry.js";
 import os from "node:os";
 
@@ -70,8 +71,10 @@ const TICK_INTERVAL_MS = parseInt(process.env.TICK_INTERVAL_MS ?? "30000", 10);
 const AGENTS_DIR = process.env.AGENTS_DIR ?? path.resolve(process.cwd(), "../../agents");
 const AUTOMATION_REPOSITORY_ROOT = path.resolve(process.env.AUTOMATION_REPOSITORY_ROOT ?? process.cwd());
 const CODEX_FACTORY_WORKER_ENABLED = process.env.CODEX_FACTORY_WORKER_ENABLED === "true";
+const DEEPSEEK_HARNESS_EXECUTOR_ENABLED = process.env.DEEPSEEK_HARNESS_EXECUTOR_ENABLED === "1";
 const LEGACY_FACTORY_WORKER_ENABLED = process.env.FACTORY_EXECUTION_ENABLED === "1";
-const FACTORY_WORKER_SCOPE = CODEX_FACTORY_WORKER_ENABLED
+const DURABLE_FACTORY_WORKER_ENABLED = CODEX_FACTORY_WORKER_ENABLED || DEEPSEEK_HARNESS_EXECUTOR_ENABLED;
+const FACTORY_WORKER_SCOPE = DURABLE_FACTORY_WORKER_ENABLED
   ? {
       projectId: requiredRuntimeSetting("CODEX_WORKER_PROJECT_ID"),
       repositoryId: requiredRuntimeSetting("CODEX_WORKER_REPOSITORY_ID"),
@@ -101,15 +104,17 @@ const CONVEX_SERVICE_AUTH_TOKEN = process.env.CONVEX_SERVICE_AUTH_TOKEN?.trim();
 if (CONVEX_SERVICE_AUTH_TOKEN) {
   client.setAuth(CONVEX_SERVICE_AUTH_TOKEN);
 }
-const factoryExecutorAdapter = new CodexV1ExecutorAdapter();
-const factoryHarnessAdapters = new HarnessAdapterRegistry(
-  [factoryExecutorAdapter],
-  { requiredExecutionBackends: [...FACTORY_WORKER_EXECUTION_BACKENDS] },
+const enabledFactoryHarnessAdapters = [
+  ...((CODEX_FACTORY_WORKER_ENABLED || LEGACY_FACTORY_WORKER_ENABLED) ? [new CodexV1ExecutorAdapter()] : []),
+  ...(DEEPSEEK_HARNESS_EXECUTOR_ENABLED ? [new DeepSeekHarnessExecutorAdapter()] : []),
+];
+const factoryHarnessRegistry = new HarnessAdapterRegistry(
+  enabledFactoryHarnessAdapters.length > 0 ? enabledFactoryHarnessAdapters : [new CodexV1ExecutorAdapter()],
 );
 const factoryAttemptWorker = new FactoryAttemptWorker(
   client,
-  factoryHarnessAdapters,
-  CODEX_FACTORY_WORKER_ENABLED || LEGACY_FACTORY_WORKER_ENABLED,
+  factoryHarnessRegistry,
+  DURABLE_FACTORY_WORKER_ENABLED || LEGACY_FACTORY_WORKER_ENABLED,
   undefined,
   undefined,
   FACTORY_WORKER_SCOPE,
@@ -133,7 +138,22 @@ const factoryHostReporter = FACTORY_WORKER_SCOPE
       secretPolicyStatus: attestationStatus(process.env.CODEX_WORKER_SECRET_POLICY_STATUS),
       hostRuntimeType: "persistent-worker",
       executionBackends: [...FACTORY_WORKER_EXECUTION_BACKENDS],
-      supportedExecutors: factoryHarnessAdapters.capabilities(),
+      supportedExecutors: factoryHarnessRegistry.registrations().map((registration) => {
+        const manifest = registration.manifest;
+        if (!manifest || !registration.capabilityManifestSha256 || !registration.effectiveConfigSha256) {
+          throw new Error(`Factory harness ${registration.capabilities.adapter}/${registration.capabilities.version} is missing its frozen capability manifest.`);
+        }
+        return {
+          adapter: manifest.identity.adapterId,
+          version: manifest.identity.adapterVersion,
+          capabilityManifestSha256: registration.capabilityManifestSha256,
+          effectiveConfigSha256: registration.effectiveConfigSha256,
+          capabilityManifest: manifest,
+          supportsCancel: registration.capabilities.supportsCancel,
+          supportsResume: registration.capabilities.supportsResume,
+          isolationModes: [...registration.capabilities.isolationModes],
+        };
+      }),
       sandboxCapabilities: [
         "git-worktree", "workspace-write", "read-only", "github-app-publication",
         ...(REMOTE_SANDBOX_BACKEND_READY ? ["remote-sandbox", "sandbox-provider:exe-dev"] : []),
@@ -1453,19 +1473,24 @@ export function startServer() {
   runTick().then((result) => {
     console.log(`[orchestration] Initial tick complete:`, result);
   });
-  if (CODEX_FACTORY_WORKER_ENABLED && LEGACY_FACTORY_WORKER_ENABLED) {
+  if (DURABLE_FACTORY_WORKER_ENABLED && LEGACY_FACTORY_WORKER_ENABLED) {
     throw new Error("Configure exactly one Factory execution worker; legacy and durable workers cannot run together.");
   }
   if (factoryHostReporter) {
-    void factoryHostReporter.start()
+    void assertHarnessAdaptersReady(factoryHarnessRegistry).then(() => factoryHostReporter.start())
       .then(() => factoryAttemptWorker.start())
       .catch((error) => console.error("[orchestration] Factory worker registration failed closed; execution did not start:", error));
-  } else {
-    factoryAttemptWorker.start();
+  } else if (LEGACY_FACTORY_WORKER_ENABLED) {
+    void assertHarnessAdaptersReady(factoryHarnessRegistry)
+      .then(() => factoryAttemptWorker.start())
+      .catch((error) => console.error("[orchestration] Factory adapter health check failed closed; execution did not start:", error));
   }
 
   if (CODEX_FACTORY_WORKER_ENABLED) {
-    console.log(`[orchestration] Durable verification-first harness worker enabled for one governed repository (${factoryHarnessAdapters.capabilities().map((item) => `${item.adapter}/${item.version}`).join(", ")}).`);
+    console.log(`[orchestration] Durable verification-first harness worker enabled for one governed repository (${factoryHarnessRegistry.capabilities().map((item) => `${item.adapter}/${item.version}`).join(", ")}).`);
+  }
+  if (DEEPSEEK_HARNESS_EXECUTOR_ENABLED) {
+    console.log("[orchestration] Experimental pinned DeepSeek Harness executor explicitly enabled for local persistent-worker admission.");
   }
 
   process.on("SIGINT", async () => {
@@ -1506,8 +1531,23 @@ export function startServer() {
 
 function requiredRuntimeSetting(name: string) {
   const value = process.env[name]?.trim();
-  if (!value) throw new Error(`${name} is required when CODEX_FACTORY_WORKER_ENABLED=true.`);
+  if (!value) throw new Error(`${name} is required when a durable Factory harness worker is enabled.`);
   return value;
+}
+
+async function assertHarnessAdaptersReady(registry: HarnessAdapterRegistry) {
+  const health = await Promise.all(
+    registry.registrations().map(async ({ adapter, capabilities, manifest }) => ({
+      identity: manifest?.identity ?? { adapterId: capabilities.adapter, adapterVersion: capabilities.version },
+      health: await adapter.health(),
+    })),
+  );
+  const unavailable = health.filter(({ health: result }) => result.status !== "READY");
+  if (unavailable.length > 0) {
+    throw new Error(unavailable.map(({ identity, health: result }) =>
+      `${identity.adapterId}/${identity.adapterVersion}: ${result.details ?? result.status}`
+    ).join("; "));
+  }
 }
 
 function boundedPositiveInteger(value: string | undefined, fallback: number) {
