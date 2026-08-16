@@ -2,24 +2,35 @@
 
 ## V1 identity
 
-The only production executor selected for V1 is `codex/v1`. Deterministic fake
-adapters are test fixtures only. The adapter executes an already-approved,
-already-dispatched WorkOrder attempt; it cannot approve a plan, widen repository
-scope, activate a Factory, accept evidence, merge a pull request, or release.
+Production executors implement `generic-harness-contract/v1`. `codex/v1` remains
+the only adapter registered by the default production orchestration process;
+deterministic DeepSeek Harness and Loom identities are contract fixtures only.
+The exact adapter/version is selected by the immutable Factory version,
+advertised by a current canonical worker, frozen in the Attempt manifest, and
+resolved without fallback from the worker's adapter registry.
+
+An adapter executes an already-approved, already-dispatched WorkOrder Attempt.
+Its declared worker, verification, publication, acceptance, memory,
+observability, and learning authority must all be `NONE`. The registry rejects
+any adapter that claims otherwise. See [Generic Harness Contract
+V1](generic-harness-contract-v1.md) for the integration decision and evidence.
 
 ## Required surface
 
-`ExecutorAdapter` defines:
+`HarnessExecutorAdapter` defines:
 
 - capability discovery, including mutation and isolation support;
 - configuration validation before process start;
 - an explicitly low-confidence cost/runtime estimate;
-- execution with ordered structured events;
-- cancellation and declared resume support;
+- opaque `prepare -> execute -> collectResult -> cleanup` lifecycle values;
+- cancellation of the exact opaque live handle;
+- ordered structured execution events;
 - health/readiness reporting.
 
 The contract lives in `packages/workflow-engine/src/executorAdapter.ts`. The first
 runtime implementation is `CodexV1ExecutorAdapter` in the orchestration server.
+The orchestration registry owns exact runtime selection and an optional bounded
+remote-sandbox invocation builder; it does not own control-plane policy.
 
 ## Repository sandbox
 
@@ -59,8 +70,10 @@ or application logs.
 
 ## Recovery
 
-`codex/v1` supports cancel and does not claim pause or in-process resume support.
-Factory readiness rejects configurations that advertise those capabilities.
+Generic Harness Contract V1 preserves the qualified recovery policy: cancel and
+bounded retry are enabled, while pause and in-process resume remain disabled.
+An individual adapter may describe richer native capabilities, but this
+initiative does not grant the Factory new recovery authority.
 The control plane does support crash reconciliation: an expired durable lease
 can be reclaimed against the same immutable manifest, branch, and worktree, and
 branch push / PR creation are idempotent. Once an attempt reaches a terminal

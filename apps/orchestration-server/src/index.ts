@@ -43,6 +43,7 @@ import {
   mintInstallationToken,
 } from "./githubAppRuntime.js";
 import { CodexV1ExecutorAdapter } from "./codexExecutorAdapter.js";
+import { HarnessAdapterRegistry } from "./harnessAdapterRegistry.js";
 import os from "node:os";
 
 const envSearchPaths = [
@@ -82,6 +83,9 @@ const FACTORY_WORKER_MAX_CONCURRENT_RUNS = boundedPositiveInteger(process.env.CO
 const REMOTE_SANDBOX_BACKEND_READY = process.env.CODEX_WORKER_REMOTE_SANDBOX_ENABLED === "1"
   && Boolean(process.env.EXEDEV_IDENTITY_FILE?.trim())
   && Boolean(process.env.OPENROUTER_MANAGEMENT_API_KEY?.trim());
+const FACTORY_WORKER_EXECUTION_BACKENDS = REMOTE_SANDBOX_BACKEND_READY
+  ? ["persistent-worker", "remote-sandbox"] as const
+  : ["persistent-worker"] as const;
 
 if (!CONVEX_URL) {
   console.error("[orchestration] CONVEX_URL is required. Set it in .env or environment.");
@@ -98,9 +102,13 @@ if (CONVEX_SERVICE_AUTH_TOKEN) {
   client.setAuth(CONVEX_SERVICE_AUTH_TOKEN);
 }
 const factoryExecutorAdapter = new CodexV1ExecutorAdapter();
+const factoryHarnessAdapters = new HarnessAdapterRegistry(
+  [factoryExecutorAdapter],
+  { requiredExecutionBackends: [...FACTORY_WORKER_EXECUTION_BACKENDS] },
+);
 const factoryAttemptWorker = new FactoryAttemptWorker(
   client,
-  factoryExecutorAdapter,
+  factoryHarnessAdapters,
   CODEX_FACTORY_WORKER_ENABLED || LEGACY_FACTORY_WORKER_ENABLED,
   undefined,
   undefined,
@@ -124,10 +132,8 @@ const factoryHostReporter = FACTORY_WORKER_SCOPE
       networkPolicyStatus: attestationStatus(process.env.CODEX_WORKER_NETWORK_POLICY_STATUS),
       secretPolicyStatus: attestationStatus(process.env.CODEX_WORKER_SECRET_POLICY_STATUS),
       hostRuntimeType: "persistent-worker",
-      executionBackends: REMOTE_SANDBOX_BACKEND_READY
-        ? ["persistent-worker", "remote-sandbox"]
-        : ["persistent-worker"],
-      supportedExecutors: [factoryExecutorAdapter.capabilities()],
+      executionBackends: [...FACTORY_WORKER_EXECUTION_BACKENDS],
+      supportedExecutors: factoryHarnessAdapters.capabilities(),
       sandboxCapabilities: [
         "git-worktree", "workspace-write", "read-only", "github-app-publication",
         ...(REMOTE_SANDBOX_BACKEND_READY ? ["remote-sandbox", "sandbox-provider:exe-dev"] : []),
@@ -1459,7 +1465,7 @@ export function startServer() {
   }
 
   if (CODEX_FACTORY_WORKER_ENABLED) {
-    console.log(`[orchestration] Durable verification-first codex/v1 worker enabled for one governed repository.`);
+    console.log(`[orchestration] Durable verification-first harness worker enabled for one governed repository (${factoryHarnessAdapters.capabilities().map((item) => `${item.adapter}/${item.version}`).join(", ")}).`);
   }
 
   process.on("SIGINT", async () => {

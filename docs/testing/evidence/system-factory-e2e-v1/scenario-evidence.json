@@ -1,7 +1,7 @@
 {
   "schemaVersion": "system-factory-e2e-qualification/v1",
   "result": "SYSTEM QUALIFIED WITH KNOWN LIMITATIONS",
-  "baseSha": "3de80b97c7272f64586e5d08bc7c73fcd2114faa",
+  "baseSha": "b3247cbbb7a06ccf5bae17b03fe1f67baa2ff248",
   "runtimeContractVersion": 26,
   "fixture": {
     "repository": "sellerfi/system-factory-qualification-fixture",
@@ -39,7 +39,7 @@
       "attempt-source-repaired",
       "attempt-source-current-head"
     ],
-    "executionManifestDigest": "sha256:c025f2f67ee9ac904c798fc27adead7afab95ff0ffd39085f78fc7413fc1afb1",
+    "executionManifestDigest": "sha256:0eb46be18dd0a9fc52e75118e219a317ff1baf73212ecf5f63e841eefc471b3b",
     "executionBackend": "remote-sandbox",
     "candidateShas": [
       "911cc67e464c075ddd7081ac5d72ceb2e9dc11bc",
@@ -155,9 +155,9 @@
     "sandboxHasGithubAuthority": false
   },
   "performance": {
-    "durationMs": 6195,
-    "sourceGateDurationMs": 3315,
-    "verificationDurationMs": 2431,
+    "durationMs": 6347,
+    "sourceGateDurationMs": 3419,
+    "verificationDurationMs": 2503,
     "sandboxProviderRuntimeMs": 1,
     "deterministicGateRuns": 7,
     "sourceAttempts": 5,

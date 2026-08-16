@@ -58,6 +58,37 @@ describe("FactoryAttemptWorker verification-first lifecycle", () => {
     });
   });
 
+  it("does not claim or fall back when the frozen harness identity is unsupported", async () => {
+    const unsupported = {
+      _id: "workflow-run-unsupported",
+      runId: "factory-run-unsupported",
+      projectId: "project-1",
+      repositoryId: "repository-1",
+      factoryDefinitionVersionId: "factory-version-1",
+      executionManifestDigest: "sha256:manifest",
+      executorAdapter: "loom",
+      executorVersion: "v1",
+      executionManifest: { harness: { adapter: "loom", version: "v1", executionBackend: "persistent-worker" } },
+      status: "PENDING",
+    };
+    const client = {
+      query: vi.fn(async (_query: unknown, args: any) => args.status === "PENDING" ? [unsupported] : []),
+      action: vi.fn(),
+    } as any;
+    const worker = new FactoryAttemptWorker(
+      client,
+      new CodexV1ExecutorAdapter("codex-fixture", vi.fn() as any),
+      true,
+      60_000,
+    );
+
+    await worker.tick();
+
+    expect(client.action).not.toHaveBeenCalled();
+    expect(worker.status().activeRunIds).toEqual([]);
+    await worker.stop();
+  });
+
   it("turns governed issue intent into a verified, evidence-linked pull request", async () => {
     const fixture = await runFixture("VERIFIED");
 
@@ -83,6 +114,24 @@ describe("FactoryAttemptWorker verification-first lifecycle", () => {
       headSha: expect.stringMatching(/^[a-f0-9]{40}$/),
       changedFiles: ["src/feature.ts"],
     });
+    expect(fixture.reports.at(-1)?.terminal).toEqual({ status: "COMPLETED" });
+    await fixture.worker.stop();
+  });
+
+  it("executes an independently registered harness identity through the unchanged governed lifecycle", async () => {
+    const fixture = await runFixture("VERIFIED", {
+      harness: { adapter: "loom", version: "v1", displayName: "Loom fixture", provider: "anthropic" },
+    });
+
+    await vi.waitFor(() => expect(fixture.worker.status()).toMatchObject({ completedCount: 1, failedCount: 0 }));
+    const observations = fixture.reports.flatMap((packet) => packet.observations ?? []);
+    expect(observations).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "AGENT",
+        provider: "anthropic",
+        metadata: { adapter: "loom", adapterVersion: "v1" },
+      }),
+    ]));
     expect(fixture.reports.at(-1)?.terminal).toEqual({ status: "COMPLETED" });
     await fixture.worker.stop();
   });
@@ -254,7 +303,10 @@ describe("FactoryAttemptWorker verification-first lifecycle", () => {
         return { accepted: true, verdict: "VERIFIED" };
       }),
     } as any;
-    const adapter = { execute: vi.fn(async () => { throw new Error("Implementation adapter must not run for verification Attempts."); }) } as any;
+    const executeImplementation = vi.fn(async () => {
+      throw new Error("Implementation adapter must not run for verification Attempts.");
+    });
+    const adapter = new CodexV1ExecutorAdapter("codex-fixture", executeImplementation as any);
     const dependencies: FactoryAttemptWorkerDependencies = {
       ensureFactoryWorktree,
       ensureVerificationWorktree,
@@ -273,7 +325,7 @@ describe("FactoryAttemptWorker verification-first lifecycle", () => {
     await worker.tick();
     await vi.waitFor(() => expect(worker.status().completedCount).toBe(1));
 
-    expect(adapter.execute).not.toHaveBeenCalled();
+    expect(executeImplementation).not.toHaveBeenCalled();
     expect(reports).toHaveLength(1);
     expect(reports[0]).toMatchObject({
       capability: "verification:report",
@@ -301,7 +353,12 @@ function verifiedSha() {
 
 async function runFixture(
   serverVerdict: "VERIFIED" | "NOT_VERIFIED" | "REQUIRES_HUMAN_REVIEW",
-  options: { attempt?: number; dirtyVerification?: boolean; durable?: boolean } = {},
+  options: {
+    attempt?: number;
+    dirtyVerification?: boolean;
+    durable?: boolean;
+    harness?: { adapter: string; version: string; displayName: string; provider: string };
+  } = {},
 ) {
   const attempt = options.attempt ?? 1;
   const checkoutRoot = await mkdtemp(path.join(tmpdir(), "mc-verification-first-worker-"));
@@ -319,6 +376,10 @@ async function runFixture(
   const worktree = path.join(checkoutRoot, ".mission-control", "worktrees", `attempt-${attempt}`);
   const reports: any[] = [];
   const manifest = executionManifest({ attempt, dirtyVerification: options.dirtyVerification, baseSha });
+  if (options.harness) {
+    manifest.harness.adapter = options.harness.adapter;
+    manifest.harness.version = options.harness.version;
+  }
   const run = {
     _id: `workflow-run-${attempt}`,
     runId: `factory-run-${attempt}`,
@@ -326,8 +387,8 @@ async function runFixture(
     repositoryId: "repository-1",
     factoryDefinitionVersionId: "factory-version-1",
     executionManifestDigest: `sha256:${canonicalHash(manifest)}`,
-    executorAdapter: "codex",
-    executorVersion: "v1",
+    executorAdapter: options.harness?.adapter ?? "codex",
+    executorVersion: options.harness?.version ?? "v1",
     status: "PENDING",
   };
   const claim = {
@@ -434,7 +495,8 @@ async function runFixture(
       output: JSON.stringify(completedFactoryResult()),
     };
   });
-  const adapter = new CodexV1ExecutorAdapter("codex-fixture", executeCodex);
+  const codexAdapter = new CodexV1ExecutorAdapter("codex-fixture", executeCodex);
+  const adapter = options.harness ? withHarnessIdentity(codexAdapter, options.harness) : codexAdapter;
   const createPullRequest = vi.fn(async (input: Parameters<FactoryAttemptWorkerDependencies["createOrReusePullRequest"]>[0]) => ({
     number: 42,
     url: "https://github.com/sellerfi/mission-control-fixture/pull/42",
@@ -485,6 +547,24 @@ async function runFixture(
     worktree,
     resumeAfterApproval: () => { lifecycle = "RESUME"; },
   };
+}
+
+function withHarnessIdentity(
+  adapter: CodexV1ExecutorAdapter,
+  identity: { adapter: string; version: string; displayName: string; provider: string },
+) {
+  return {
+    capabilities: () => ({ ...adapter.capabilities(), ...identity }),
+    validateConfiguration: adapter.validateConfiguration.bind(adapter),
+    estimate: adapter.estimate.bind(adapter),
+    prepare: adapter.prepare.bind(adapter),
+    execute: adapter.execute.bind(adapter),
+    collectResult: adapter.collectResult.bind(adapter),
+    cancel: adapter.cancel.bind(adapter),
+    cleanup: adapter.cleanup.bind(adapter),
+    health: adapter.health.bind(adapter),
+    createRemoteInvocation: adapter.createRemoteInvocation.bind(adapter),
+  } as any;
 }
 
 function completedFactoryResult() {

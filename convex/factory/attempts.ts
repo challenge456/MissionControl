@@ -14,6 +14,7 @@ import {
   validateFactoryPullRequestLineage,
 } from "../lib/factoryAttempt";
 import { countActiveFactoryWorkerLeases, factoryWorkerEligibility } from "../lib/factoryWorkerRuntime";
+import { validFactoryExecutorBinding } from "../lib/factoryConfiguration";
 import {
   PUBLICATION_SAFETY_WINDOW_MS,
   validatePublicationPermit,
@@ -272,7 +273,7 @@ export const claimInternal = internalMutation({
       !run.projectId || !run.repositoryId || !run.workOrderId
       || !run.factoryDefinitionVersionId || !run.factoryConfigurationDigest
       || !run.hostBindingId || !run.branch || !run.worktree
-      || run.executorAdapter !== "codex" || run.executorVersion !== "v1"
+      || !validFactoryExecutorBinding({ adapter: run.executorAdapter ?? "", version: run.executorVersion ?? "" })
       || !run.executionManifest || !run.executionManifestDigest
     ) {
       throw new Error("Factory attempt is missing its immutable execution binding.");
@@ -292,6 +293,10 @@ export const claimInternal = internalMutation({
     const frozenManifest = run.executionManifest as any;
     const executionBackend = version.executionBackend ?? "persistent-worker";
     if (frozenManifest?.version !== "factory-execution-manifest/v1"
+      || frozenManifest?.harness?.adapter !== run.executorAdapter
+      || frozenManifest?.harness?.version !== run.executorVersion
+      || version.executor.adapter !== run.executorAdapter
+      || version.executor.version !== run.executorVersion
       || frozenManifest?.harness?.executionBackend !== executionBackend
       || frozenManifest?.repository?.baseSha !== host?.baseCommit) {
       throw new Error("Factory Attempt does not match its frozen backend and source binding.");

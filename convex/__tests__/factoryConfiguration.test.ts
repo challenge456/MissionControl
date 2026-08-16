@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   factoryConfigurationDigest,
   validFactoryBudget,
+  validFactoryExecutorBinding,
   validFactoryExecutionBinding,
   type FactoryConfigurationInput,
 } from "../lib/factoryConfiguration";
@@ -79,6 +80,14 @@ describe("Factory configuration", () => {
     expect(validFactoryBudget({ ...configuration.budget, maxCostUsd: 0 })).toBe(false);
     expect(validFactoryBudget({ ...configuration.budget, maxRuntimeMinutes: 481 })).toBe(false);
     expect(validFactoryBudget({ ...configuration.budget, maxAttempts: 4 })).toBe(false);
+  });
+
+  it("accepts bounded provider-neutral harness identities without granting authority", () => {
+    expect(validFactoryExecutorBinding({ adapter: "codex", version: "v1" })).toBe(true);
+    expect(validFactoryExecutorBinding({ adapter: "deepseek-harness", version: "v1" })).toBe(true);
+    expect(validFactoryExecutorBinding({ adapter: "loom", version: "v1" })).toBe(true);
+    expect(validFactoryExecutorBinding({ adapter: " loom", version: "v1" })).toBe(false);
+    expect(validFactoryExecutorBinding({ adapter: "loom", version: "v1\nunsafe" })).toBe(false);
   });
 
   it("binds remote execution to one immutable profile and fail-closed recovery", () => {

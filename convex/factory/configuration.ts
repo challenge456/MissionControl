@@ -6,12 +6,13 @@ import { FACTORY_PERMISSIONS, requireWorkspacePermission } from "../lib/companyA
 import {
   factoryConfigurationDigest,
   validFactoryBudget,
+  validFactoryExecutorBinding,
   validFactoryExecutionBinding,
   type FactoryConfigurationInput,
 } from "../lib/factoryConfiguration";
 import { evaluateGithubAppCapabilities, githubInstallationIsStale } from "../lib/githubAppReadiness";
 import { canonicalRepositoryKey } from "../lib/workspaceRepositories";
-import { codexV1RecoveryReady, selectCurrentFactoryHost } from "../lib/factoryDispatch";
+import { genericHarnessV1RecoveryReady, selectCurrentFactoryHost } from "../lib/factoryDispatch";
 import { factoryWorkflowContractIssues } from "../lib/factoryWorkflowContract";
 import { computeCanonicalHash } from "../lib/genomeHash";
 import { factoryWorkerEligibility } from "../lib/factoryWorkerRuntime";
@@ -427,8 +428,11 @@ export const createVersion = mutation({
         throw new Error("Approved agent versions require prompt, tool, and model manifests.");
       }
     }
-    if (args.executor.adapter === "codex" && args.executor.version === "v1" && !codexV1RecoveryReady(args.recovery)) {
-      throw new Error("codex/v1 supports cancel and bounded retry, but does not support pause or in-process resume.");
+    if (!validFactoryExecutorBinding(args.executor)) {
+      throw new Error("Factory executor requires a bounded exact harness adapter/version binding.");
+    }
+    if (!genericHarnessV1RecoveryReady(args.recovery)) {
+      throw new Error("Generic Harness Contract V1 supports cancel and bounded retry, but does not support pause or in-process resume.");
     }
     if (!validFactoryBudget(args.budget)) {
       throw new Error("Factory budget must use positive V1 limits: cost <= $1,000, runtime <= 480 minutes, attempts <= 3.");
@@ -581,7 +585,7 @@ export const assessReadiness = mutation({
       check("repository", "Repository access", repository?.status === "READY", now, expiry, "Validate repository access before activation."),
       check("workflow", "Workflow version", workflow?.active === true, now, undefined, "Select an active versioned workflow."),
       check("workflow-contract", "Structured workflow contract", factoryWorkflowContractIssues(workflow).length === 0, now, undefined, "Replace heuristic completion and provider authority with schema-validated handoffs."),
-      check("executor", "Codex executor adapter", version.executor.adapter === "codex" && version.executor.version === "v1", now, undefined, "Select the approved codex/v1 executor adapter."),
+      check("executor", "Generic harness adapter", validFactoryExecutorBinding(version.executor), now, undefined, "Select an exact adapter/version advertised by the canonical worker."),
       check("code-scopes", "Frozen code scopes", Boolean(
         version.codeScopeIds?.length
         && repository
@@ -604,7 +608,7 @@ export const assessReadiness = mutation({
       check("verifiers", "Independent verifiers", verifiers.length > 0 && verifiers.every((item) => item?.active && item.projectId === version.projectId), now, expiry, "Select at least one active workspace verifier."),
       check("sandbox-profile", "Sandbox Profile", sandboxProfileReady, now, expiry, "Select a current dispatchable Sandbox Profile or use Local execution."),
       check("host", "Canonical worker admission", Boolean(host), now, expiry, `Report a clean current worker offering ${selectedExecutionBackend} and its required capabilities.`),
-      check("recovery", "Executor-compatible recovery", codexV1RecoveryReady(version.recovery), now, undefined, "Enable cancel and bounded retry; codex/v1 cannot advertise pause or in-process resume."),
+      check("recovery", "Executor-compatible recovery", genericHarnessV1RecoveryReady(version.recovery), now, undefined, "Enable cancel and bounded retry; Generic Harness Contract V1 does not add pause or in-process resume authority."),
     ];
     const status = checks.every((item) => item.status === "VERIFIED") ? "PASS" as const : "BLOCKED" as const;
     return await ctx.db.insert("factoryReadinessAssessments", {
