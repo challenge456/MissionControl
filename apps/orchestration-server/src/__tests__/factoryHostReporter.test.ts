@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
-import { canonicalRepositoryFromRemote, inspectFactoryCheckout } from "../factoryHostReporter.js";
+import { FactoryHostReporter, canonicalRepositoryFromRemote, inspectFactoryCheckout } from "../factoryHostReporter.js";
 
 const execFileAsync = promisify(execFile);
 const cleanup: string[] = [];
@@ -52,6 +52,39 @@ describe("Factory host reporting", () => {
     });
     expect(clean.observedCommit).toMatch(/^[0-9a-f]{40}$/);
     expect(clean.baseCommit).toBe(clean.observedCommit);
+
+    let report: any;
+    const reporter = new FactoryHostReporter({
+      mutation: async (_mutation: unknown, payload: unknown) => { report = payload; },
+    } as any, {
+      projectId: "project-1",
+      repositoryId: "repository-1",
+      hostId: "worker-1",
+      sessionId: "session-1",
+      checkoutRoot: repository,
+      maxConcurrentRuns: 1,
+      getCurrentRuns: () => 0,
+      hostRuntimeType: "persistent-worker",
+      executionBackends: ["persistent-worker"],
+      supportedExecutors: [{
+        adapter: "codex",
+        version: "v1",
+        supportsCancel: true,
+        supportsResume: false,
+        isolationModes: ["READ_ONLY", "WORKSPACE_WRITE"],
+        emittedEvents: ["EXECUTION_STARTED"],
+        supportsRepositoryMutation: true,
+      } as any],
+      sandboxCapabilities: ["git-worktree", "workspace-write", "read-only"],
+    });
+    await reporter.report();
+    expect(report.workerRuntime.supportedExecutors).toEqual([{
+      adapter: "codex",
+      version: "v1",
+      supportsCancel: true,
+      supportsResume: false,
+      isolationModes: ["READ_ONLY", "WORKSPACE_WRITE"],
+    }]);
 
     await writeFile(path.join(repository, "README.md"), "dirty\n");
     expect((await inspectFactoryCheckout(repository)).dirty).toBe(true);
