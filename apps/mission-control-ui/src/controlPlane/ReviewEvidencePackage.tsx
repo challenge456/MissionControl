@@ -19,6 +19,7 @@ export type ReviewEvidencePackageData = {
     headSha: string | null;
     pullRequestUrl: string | null;
     pullRequestNumber: number | null;
+    githubAppInstallationId: string | null;
     executionManifestDigest: string | null;
   };
   gate: {
@@ -139,6 +140,7 @@ export function ReviewEvidencePackage({ review }: { review: ReviewEvidencePackag
         <PackageMeta label="Base → head" value={`${shortRevision(review.identity.baseSha)} → ${shortRevision(review.identity.headSha)}`} mono />
         <PackageMeta label="Attempt" value={review.identity.runId} mono />
         <PackageMeta label="Manifest digest" value={shortRevision(review.identity.executionManifestDigest)} mono />
+        <PackageMeta label="GitHub App installation" value={review.identity.githubAppInstallationId ?? "—"} mono />
         <PackageMeta label="Attempts / recoveries" value={`${review.recovery.attempts} / ${review.recovery.staleRecoveries}`} />
         <PackageMeta label="Risk" value={review.riskLevel ?? "Not classified"} />
       </div>

@@ -8,6 +8,7 @@ import {
   expiredFactoryLeaseIdIsReplay,
   factoryAttemptMutationIsAuthorized,
   factoryAttemptRequiresReplacementOnClaim,
+  factoryExecutorIdentity,
   factoryLeaseMatchesCurrentRegistration,
   renewAttemptLease,
   validateFactoryPullRequestLineage,
@@ -33,6 +34,21 @@ import {
   legacyQualityGateStateForVerdict,
   legacyQualityGateSubjectDigest,
 } from "../lib/qualityGateDecision";
+import { createGitVerificationSubject } from "@mission-control/workflow-engine/verification-subject";
+import { deriveVerificationIndependence } from "@mission-control/workflow-engine/verification-independence";
+import { evaluateVerificationDecision } from "@mission-control/workflow-engine/verification-decision";
+import {
+  compilePolicyV2VerificationPlan,
+  effectivePolicyV2VerificationChecks,
+  normalizePolicyV2VerificationResults,
+} from "../lib/policyV2Verification";
+import { buildFactoryExecutionManifest } from "../lib/executionManifest";
+import { snapshotWorkflowDefinition } from "../lib/workflowSnapshot";
+import { selectCurrentFactoryHost } from "../lib/factoryDispatch";
+import {
+  appendCurrentVerificationQualityGateDecision,
+  getCurrentVerificationResult,
+} from "../lib/currentVerification";
 
 const EVENT_TYPES = new Set([
   "RUN_STARTED", "STEP_STARTED", "STEP_COMPLETED", "TOOL_CALLED",
@@ -76,12 +92,16 @@ export const claimInternal = internalMutation({
     leaseId: v.string(),
     ownerId: v.string(),
     leaseDurationMs: v.number(),
+    requiredAttemptPurpose: v.optional(v.union(v.literal("IMPLEMENTATION"), v.literal("VERIFICATION"))),
     workerId: v.optional(v.string()),
     workerSessionId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const run = await ctx.db.get(args.workflowRunId);
     if (!run) throw new Error("Factory attempt not found.");
+    if (args.requiredAttemptPurpose && (run.attemptPurpose ?? "IMPLEMENTATION") !== args.requiredAttemptPurpose) {
+      throw new Error(`Attempt capability is not valid for ${run.attemptPurpose ?? "IMPLEMENTATION"}.`);
+    }
     if (run.cancellationRequestedAt) {
       return { claimed: false as const, reason: "cancellation-requested", disposition: "CANCELLED" as const };
     }
@@ -291,6 +311,7 @@ export const claimInternal = internalMutation({
     const continuationPatch = run.factoryContinuation?.status === "PUBLICATION_AUTHORIZED"
       ? { ...run.factoryContinuation, publicationPermitLeaseId: decision.lease.leaseId }
       : run.factoryContinuation;
+    const claimedAt = Date.now();
     await ctx.db.patch(run._id, {
       status: "RUNNING",
       lease: decision.lease,
@@ -299,7 +320,29 @@ export const claimInternal = internalMutation({
       runtimeReconciledAt: decision.reclaimed ? now : undefined,
       executionPhase: publicationCheckpoint ? "PUBLISHING" : run.executionPhase,
       factoryContinuation: continuationPatch,
+      executionClaimId: args.leaseId,
+      executionClaimedBy: factoryExecutorIdentity({
+        ownerId: args.ownerId,
+        executorAdapter: run.executorAdapter,
+        executorVersion: run.executorVersion,
+        executorHostId: run.executorHostId!,
+      }),
+      executionClaimedAt: run.executionClaimedAt ?? claimedAt,
+      executionHeartbeatAt: claimedAt,
+      executionLeaseExpiresAt: decision.lease.expiresAt,
+      executionAttemptNumber: Math.max(1, (run.executionAttemptNumber ?? 0) + (decision.reclaimed ? 0 : 1)),
+      executionBindingDigest: run.executionManifestDigest,
+      executorInvocationId: run.executorInvocationId ?? `${run.runId}:${args.leaseId}`,
     });
+    if (run.attemptPurpose === "VERIFICATION") {
+      const verificationRun = await ctx.db.query("verificationRuns")
+        .withIndex("by_run", (q: any) => q.eq("workflowRunId", run._id))
+        .first();
+      if (!verificationRun?.verificationPlan || verificationRun.status !== "PLANNED") {
+        throw new Error("Verification Attempt cannot start without its frozen PLANNED Verification Plan.");
+      }
+      await ctx.db.patch(verificationRun._id, { status: "RUNNING", startedAt: claimedAt });
+    }
     await insertEvent(ctx, run, {
       idempotencyKey: `factory-lease:${run.runId}:${args.leaseId}:claimed`,
       eventType: decision.reclaimed ? "RUN_RESUMED" : "CHECKPOINT_CREATED",
@@ -346,6 +389,10 @@ export const claimInternal = internalMutation({
       },
       metadata: { configurationSnapshot: true, secretValuesIncluded: false },
     });
+    const verificationSourceAttempt = run.attemptPurpose === "VERIFICATION"
+      && run.verificationAttemptBinding?.sourceAttemptId
+      ? await ctx.db.get(run.verificationAttemptBinding.sourceAttemptId)
+      : null;
     return {
       claimed: true as const,
       reclaimed: decision.reclaimed,
@@ -370,6 +417,15 @@ export const claimInternal = internalMutation({
       executionManifest: run.executionManifest,
       executionManifestDigest: run.executionManifestDigest,
       publicationCheckpoint,
+      attemptPurpose: run.attemptPurpose ?? "IMPLEMENTATION",
+      verificationSubject: run.verificationAttemptBinding?.verificationSubject,
+      verificationPlan: run.attemptPurpose === "VERIFICATION"
+        ? (await ctx.db.query("verificationRuns").withIndex("by_run", (q: any) => q.eq("workflowRunId", run._id)).first())?.verificationPlan
+        : undefined,
+      sourceWorktree: run.attemptPurpose === "VERIFICATION" && run.verificationAttemptBinding?.sourceAttemptId
+        ? verificationSourceAttempt?.worktree
+        : undefined,
+      sourceRevision: verificationSourceAttempt?.executionBaseSha,
     };
   },
 });
@@ -403,6 +459,31 @@ export const authorizePublicationInternal = internalMutation({
     if (!workOrder || workOrder.currentExecutionRunId !== run._id
       || workOrder.currentRevisionNumber !== run.workOrderRevisionNumber) {
       throw new Error("Factory publication WorkOrder authority changed before publication.");
+    }
+    if (workOrder.verificationContract?.schemaVersion === 2
+      && workOrder.verificationContract.enforcementMode === "ENFORCED") {
+      if ((run.attemptPurpose ?? "IMPLEMENTATION") !== "IMPLEMENTATION" || run.factoryContinuation) {
+        throw new Error("Policy-v2 candidate publication requires a source Implementation Attempt without legacy verification continuation state.");
+      }
+      if (!/^[0-9a-f]{40,64}$/.test(args.candidateRevision)) {
+        throw new Error("Policy-v2 candidate publication requires an exact lowercase candidate SHA.");
+      }
+      const publicationValidUntil = Math.min(run.lease?.expiresAt ?? now, now + 5 * 60_000);
+      if (publicationValidUntil <= now + PUBLICATION_SAFETY_WINDOW_MS) {
+        throw new Error("Candidate publication lease expires too soon for a safe draft pull-request write.");
+      }
+      const publicationPermitId = `factory-candidate-publication:${run.runId}:${args.leaseId}:${now}`;
+      await insertEvent(ctx, run, {
+        idempotencyKey: `${publicationPermitId}:event`,
+        eventType: "COMMAND_APPROVED",
+        workflowStep: "candidate-publication",
+        actor: `service:${args.ownerId}`,
+        status: "APPROVED",
+        startedAt: now,
+        commandSummary: `Draft candidate publication authorized for ${args.candidateRevision.slice(0, 12)}`,
+        metadata: { publicationPermitId, candidateRevision: args.candidateRevision, validUntil: publicationValidUntil, policyVersion: 2 },
+      });
+      return { authorized: true as const, publicationPermitId, candidateRevision: args.candidateRevision, validUntil: publicationValidUntil };
     }
     const revisionNumber = workOrder.currentRevisionNumber ?? 1;
     let continuation = run.factoryContinuation;
@@ -510,12 +591,16 @@ export const renewInternal = internalMutation({
     leaseId: v.string(),
     ownerId: v.string(),
     leaseDurationMs: v.number(),
+    requiredAttemptPurpose: v.optional(v.union(v.literal("IMPLEMENTATION"), v.literal("VERIFICATION"))),
     workerId: v.optional(v.string()),
     workerSessionId: v.optional(v.string()),
     workerGeneration: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const run = await ctx.db.get(args.workflowRunId);
+    if (run && args.requiredAttemptPurpose && (run.attemptPurpose ?? "IMPLEMENTATION") !== args.requiredAttemptPurpose) {
+      return { renewed: false as const, reason: "attempt-purpose-mismatch" };
+    }
     if (!run || !factoryAttemptMutationIsAuthorized(run)) {
       return { renewed: false as const, reason: run?.cancellationRequestedAt ? "cancellation-requested" : "attempt-not-running" };
     }
@@ -531,7 +616,11 @@ export const renewInternal = internalMutation({
       now: Date.now(),
     });
     if (!result.ok) return { renewed: false as const, reason: result.reason };
-    await ctx.db.patch(run._id, { lease: result.lease });
+    await ctx.db.patch(run._id, {
+      lease: result.lease,
+      executionHeartbeatAt: result.lease.heartbeatAt,
+      executionLeaseExpiresAt: result.lease.expiresAt,
+    });
     return { renewed: true as const, lease: result.lease };
   },
 });
@@ -548,7 +637,7 @@ export const reportInternal = internalMutation({
   },
   handler: async (ctx, args) => {
     const run = await ctx.db.get(args.workflowRunId);
-    if (!run || !factoryAttemptMutationIsAuthorized(run)
+    if (!run || (run.attemptPurpose ?? "IMPLEMENTATION") !== "IMPLEMENTATION" || !factoryAttemptMutationIsAuthorized(run)
       || !activeLeaseMatches({
         lease: run.lease,
         leaseId: args.leaseId,
@@ -659,6 +748,10 @@ export const reportInternal = internalMutation({
       });
     }
 
+    const candidateReady = packet.candidateReady
+      ? await persistPolicyV2CandidateReady(ctx, run, packet.candidateReady, artifactResults, args.ownerId, args.leaseId)
+      : undefined;
+
     const verification = packet.verification
       ? await persistVerificationPacket(ctx, run, packet.verification, args.ownerId, args.leaseId)
       : undefined;
@@ -698,6 +791,13 @@ export const reportInternal = internalMutation({
       if (terminal.status === "COMPLETED" && run.workOrderId) {
         const workOrder = await ctx.db.get(run.workOrderId);
         if (workOrder?.verificationContract?.enforcementMode === "ENFORCED") {
+          if (workOrder.verificationContract.schemaVersion === 2) {
+            const source = candidateReady?.run ?? await ctx.db.get(run._id);
+            if ((source?.attemptPurpose ?? "IMPLEMENTATION") !== "IMPLEMENTATION"
+              || !source?.candidateReadyAt || !source.verificationSubject) {
+              throw new Error("An enforced policy-v2 source Attempt cannot complete before exact candidate publication and CANDIDATE_READY.");
+            }
+          } else {
           const latestReceipt = await ctx.db
             .query("verificationReceipts")
             .withIndex("by_work_order_scope", (q) => q.eq("workOrderId", workOrder._id).eq("receiptScope", "WORK_ORDER"))
@@ -736,6 +836,7 @@ export const reportInternal = internalMutation({
               .first();
           if (pullRequestArtifact?.metadata?.headSha !== latestReceipt.candidateRevision) {
             throw new Error("Pull-request head does not match the independently verified candidate revision.");
+          }
           }
         }
       }
@@ -811,6 +912,38 @@ export const reportInternal = internalMutation({
           eventType: terminal.status === "COMPLETED" ? "RUN_COMPLETED" : terminal.status === "CANCELED" ? "RUN_CANCELED" : "RUN_FAILED",
           summary: `Factory attempt ${run.runId} ${String(terminal.status).toLowerCase()}`,
         });
+        if (terminal.status === "COMPLETED") {
+          const completedRun = await ctx.db.get(run._id);
+          const workOrder = await ctx.db.get(run.workOrderId);
+          if (completedRun && workOrder?.verificationContract?.schemaVersion === 2
+            && workOrder.verificationContract.enforcementMode === "ENFORCED"
+            && completedRun.attemptPurpose === "IMPLEMENTATION") {
+            try {
+              await schedulePolicyV2VerificationAttempt(ctx, workOrder, completedRun);
+            } catch (error) {
+              const reason = `Independent verification dispatch is blocked: ${error instanceof Error ? error.message : String(error)}`;
+              await ctx.db.patch(workOrder._id, {
+                state: "AWAITING_VERIFICATION",
+                currentExecutionRunId: undefined,
+                verificationStatus: "PENDING",
+                blockingIssue: reason,
+                requiredHumanAction: "Configure and activate a current purpose-bound Verification Factory, then retry with a new bounded Attempt.",
+                updatedAt: Date.now(),
+              });
+              await insertEvent(ctx, completedRun, {
+                idempotencyKey: `verification-dispatch-blocked:${completedRun.runId}:${completedRun.verificationSubject?.digest}`,
+                eventType: "VERIFICATION_BLOCKED",
+                workflowStep: "independent-verification",
+                actor: "service:factory-control-plane",
+                status: "BLOCKED",
+                startedAt: Date.now(),
+                endedAt: Date.now(),
+                errorSummary: reason,
+                commandSummary: reason,
+              });
+            }
+          }
+        }
       }
     }
     return {
@@ -819,10 +952,824 @@ export const reportInternal = internalMutation({
       observationCount: observationResults.length,
       artifactCount: artifactResults.length,
       verification,
+      candidateReady,
       terminalStatus: terminal?.status,
     };
   },
 });
+
+export const reportVerificationInternal = internalMutation({
+  args: {
+    workflowRunId: v.id("workflowRuns"),
+    leaseId: v.string(),
+    ownerId: v.string(),
+    workerId: v.optional(v.string()),
+    workerSessionId: v.optional(v.string()),
+    workerGeneration: v.optional(v.number()),
+    packet: v.any(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const run = await ctx.db.get(args.workflowRunId);
+    if (!run || run.attemptPurpose !== "VERIFICATION" || run.factoryPurpose !== "VERIFICATION"
+      || !factoryAttemptMutationIsAuthorized(run)
+      || !activeLeaseMatches({
+        lease: run.lease,
+        leaseId: args.leaseId,
+        ownerId: args.ownerId,
+        worker: mutationWorkerIdentity(args),
+        now,
+      })
+      || !await factoryLeaseRegistrationIsCurrent(ctx, run)) {
+      throw new Error("Verification report requires the active matching Verification Attempt lease.");
+    }
+    if (!run.workOrderId || !run.verificationAttemptBinding || !run.factoryDefinitionVersionId) {
+      throw new Error("Verification Attempt is missing its exact subject binding.");
+    }
+    const [workOrder, sourceAttempt, verificationRun, factoryVersion] = await Promise.all([
+      ctx.db.get(run.workOrderId),
+      ctx.db.get(run.verificationAttemptBinding.sourceAttemptId),
+      ctx.db.query("verificationRuns").withIndex("by_run", (q: any) => q.eq("workflowRunId", run._id)).first(),
+      ctx.db.get(run.factoryDefinitionVersionId),
+    ]);
+    if (!workOrder || workOrder.verificationContract?.schemaVersion !== 2
+      || workOrder.verificationContract.enforcementMode !== "ENFORCED"
+      || !sourceAttempt || !verificationRun?.verificationPlan || !factoryVersion) {
+      throw new Error("Verification report is not bound to a complete enforced policy-v2 contract.");
+    }
+    const terminal = args.packet?.terminal;
+    if (!terminal || !["COMPLETED", "FAILED", "CANCELED"].includes(terminal.status)) {
+      throw new Error("Verification report requires a terminal lifecycle status.");
+    }
+    if (terminal.status !== "COMPLETED") {
+      const failureReason = optionalText(terminal.failureReason, 2_000) ?? `Verification execution ${String(terminal.status).toLowerCase()}.`;
+      const subject = run.verificationAttemptBinding.verificationSubject;
+      const candidateRevision = subject.kind === "GIT_CANDIDATE"
+        ? subject.candidateSha
+        : subject.outputSnapshotContentHash;
+      const failureEvidenceId = await ctx.db.insert("evidenceEnvelopes", {
+        tenantId: run.tenantId,
+        projectId: run.projectId,
+        missionId: run.missionId,
+        workOrderId: workOrder._id,
+        workflowRunId: run._id,
+        verificationRunId: verificationRun._id,
+        sourceAttemptId: sourceAttempt._id,
+        verificationAttemptId: run._id,
+        verificationSubjectId: verificationRun.verificationSubjectId,
+        verificationSubjectDigest: verificationRun.verificationSubjectDigest,
+        verificationContractDigest: verificationRun.verificationContractDigest,
+        verificationPlanId: verificationRun.verificationPlanId,
+        verificationPlanDigest: verificationRun.verificationPlanDigest,
+        workOrderRevisionNumber: workOrder.currentRevisionNumber ?? 1,
+        idempotencyKey: `policy-v2-verification-failure:${String(run._id)}:${terminal.status}`,
+        evidenceKey: `verification-execution:${String(run._id)}:${terminal.status}`,
+        checkId: "verification-execution",
+        category: "POLICY_RESULT",
+        result: "ERROR",
+        summary: failureReason,
+        acceptanceCriterionIds: [],
+        requirementIds: [],
+        requiredRiskIds: [],
+        discoveredRiskIds: [],
+        requiredEvidenceIds: [],
+        producer: {
+          actorType: "SERVICE",
+          actorId: args.ownerId,
+          role: "VERIFICATION_FACTORY",
+          independent: false,
+          factoryPurpose: "VERIFICATION",
+          factoryDefinitionId: factoryVersion.factoryDefinitionId,
+          factoryDefinitionVersionId: factoryVersion._id,
+          attemptId: run._id,
+          executorInvocationId: run.executorInvocationId,
+          executorAdapter: run.executorAdapter,
+        },
+        artifactIds: [],
+        artifactReferences: [],
+        sourceRevision: sourceAttempt.executionBaseSha ?? "unknown",
+        candidateRevision,
+        provenance: "LIVE",
+        recordedAt: now,
+        metadata: { serverPersistedFailure: true, terminalStatus: terminal.status },
+      });
+      await ctx.db.patch(verificationRun._id, {
+        status: terminal.status,
+        failedAt: terminal.status === "FAILED" ? now : undefined,
+        canceledAt: terminal.status === "CANCELED" ? now : undefined,
+        completedAt: now,
+        durationMs: Math.max(0, now - verificationRun.startedAt),
+        verdict: undefined,
+        verdictReasons: [failureReason],
+      });
+      await ctx.db.patch(run._id, {
+        status: terminal.status,
+        completedAt: now,
+        failureReason,
+        lease: undefined,
+        executionPhase: "TERMINAL",
+        steps: reconcileTerminalWorkflowSteps(run.steps, terminal.status, failureReason, now),
+      });
+      await insertEvent(ctx, run, {
+        idempotencyKey: `verification-terminal:${run.runId}:${terminal.status}`,
+        eventType: "VERIFICATION_EXECUTION_FAILED",
+        workflowStep: "independent-verification",
+        actor: `service:${args.ownerId}`,
+        status: terminal.status,
+        startedAt: run.startedAt,
+        endedAt: now,
+        errorSummary: failureReason,
+        commandSummary: failureReason,
+        evidenceEnvelopeIds: [failureEvidenceId],
+      });
+      await finishAttemptTrace(ctx, run, { status: terminal.status, completedAt: now, failureReason });
+      await ctx.runMutation(internal.workOrders.syncExecutionOutcome, {
+        workflowRunId: run._id,
+        eventType: terminal.status === "CANCELED" ? "RUN_CANCELED" : "RUN_FAILED",
+        summary: failureReason,
+      });
+      return { accepted: true, terminalStatus: terminal.status, verdict: null };
+    }
+    const packet = args.packet.verification;
+    const isolation = args.packet.isolation;
+    if (!packet || !Array.isArray(packet.checks) || !isolation) {
+      throw new Error("Completed Verification Attempt requires exact check evidence and an isolation attestation.");
+    }
+    const definition = await ctx.db.get(factoryVersion.factoryDefinitionId);
+    if (!definition || definition.purpose !== "VERIFICATION") {
+      throw new Error("Verification Attempt Factory definition is not purpose-bound to VERIFICATION.");
+    }
+    const expected = {
+      workOrderId: String(workOrder._id),
+      workOrderRevisionNumber: workOrder.currentRevisionNumber ?? 1,
+      verificationContractDigest: workOrder.verificationContractDigest,
+      sourceAttemptId: String(sourceAttempt._id),
+      verificationSubjectDigest: run.verificationAttemptBinding.verificationSubjectDigest,
+      verificationAttemptId: String(run._id),
+      verificationRunId: String(verificationRun._id),
+      verificationSubjectId: verificationRun.verificationSubjectId,
+      verificationPlanId: verificationRun.verificationPlanId,
+      verificationPlanDigest: verificationRun.verificationPlanDigest,
+    };
+    if (!expected.verificationContractDigest || !expected.verificationSubjectId
+      || !expected.verificationPlanId || !expected.verificationPlanDigest) {
+      throw new Error("Verification identity tuple is incomplete.");
+    }
+    const subjectCandidateRevision = run.verificationAttemptBinding.verificationSubject.kind === "GIT_CANDIDATE"
+      ? run.verificationAttemptBinding.verificationSubject.candidateSha
+      : run.verificationAttemptBinding.verificationSubject.outputSnapshotContentHash;
+    if (packet.sourceRevision !== sourceAttempt.executionBaseSha
+      || packet.candidateRevision !== subjectCandidateRevision) {
+      throw new Error("Verification report candidate identity does not match the immutable Verification Subject.");
+    }
+    const independence = deriveVerificationIndependence({
+      expected: expected as any,
+      subject: run.verificationAttemptBinding.verificationSubject as any,
+      sourceAttempt: {
+        id: String(sourceAttempt._id),
+        attemptPurpose: sourceAttempt.attemptPurpose,
+        executorInvocationId: sourceAttempt.executorInvocationId,
+        leaseId: sourceAttempt.executionClaimId,
+        worktree: sourceAttempt.worktree,
+      },
+      verificationAttempt: {
+        id: String(run._id),
+        attemptPurpose: run.attemptPurpose,
+        factoryPurpose: run.factoryPurpose,
+        factoryDefinitionVersionId: String(run.factoryDefinitionVersionId),
+        executorInvocationId: run.executorInvocationId,
+        leaseId: run.executionClaimId,
+        worktree: run.worktree,
+        binding: {
+          workOrderId: String(run.verificationAttemptBinding.workOrderId),
+          workOrderRevisionNumber: run.verificationAttemptBinding.workOrderRevisionNumber,
+          verificationContractDigest: run.verificationAttemptBinding.verificationContractDigest,
+          sourceAttemptId: String(run.verificationAttemptBinding.sourceAttemptId),
+          verificationSubjectDigest: run.verificationAttemptBinding.verificationSubjectDigest,
+        },
+      },
+      factoryVersion: { id: String(factoryVersion._id), purpose: factoryVersion.purpose },
+      verificationRun: {
+        id: String(verificationRun._id),
+        workflowRunId: String(verificationRun.workflowRunId),
+        workOrderId: String(verificationRun.workOrderId),
+        workOrderRevisionNumber: verificationRun.workOrderRevisionNumber,
+        verificationContractDigest: verificationRun.verificationContractDigest,
+        sourceAttemptId: String(verificationRun.sourceAttemptId),
+        verificationSubjectDigest: verificationRun.verificationSubjectDigest,
+        verificationSubjectId: verificationRun.verificationSubjectId,
+        verificationPlanId: verificationRun.verificationPlanId,
+        verificationPlanDigest: verificationRun.verificationPlanDigest,
+      } as any,
+      isolation,
+      reportCapability: "verification:report",
+    });
+    const plan = verificationRun.verificationPlan;
+    const requiredEvidenceById = new Map(plan.requiredEvidence.map((item: any) => [item.id, item]));
+    const evidenceInputs: any[] = [];
+    const evidenceEnvelopeIds: any[] = [];
+    const evidenceIdsByCheck = new Map<string, any[]>();
+    const reportedCheckIds = new Set<string>();
+    const reportedEvidenceKeys = new Set<string>();
+    const checkSpecsById = new Map(effectivePolicyV2VerificationChecks(workOrder).map((check: any) => [check.id, check]));
+    for (const check of packet.checks) {
+      if (reportedCheckIds.has(check.checkId)) throw new Error(`Verifier reported duplicate check identity: ${check.checkId}`);
+      if (!["PASS", "FAIL", "SKIPPED", "NOT_CONFIGURED", "ERROR"].includes(check.status)) {
+        throw new Error(`Verifier reported an invalid status for ${check.checkId}.`);
+      }
+      reportedCheckIds.add(check.checkId);
+      const required = requiredEvidenceById.get(check.checkId) as any;
+      if (!required) throw new Error(`Verifier reported evidence outside the frozen Verification Plan: ${check.checkId}`);
+      const checkSpec = checkSpecsById.get(check.checkId) as any;
+      if (!checkSpec) throw new Error(`Verifier reported an unknown policy-v2 check: ${check.checkId}`);
+      const evidenceCategory = checkSpec.evidenceCategory;
+      const drafts = Array.isArray(check.evidence) && check.evidence.length > 0
+        ? check.evidence
+        : [{ evidenceKey: `${check.checkId}:missing`, category: evidenceCategory, result: check.status, summary: check.summary }];
+      for (const draft of drafts) {
+        if (typeof draft.evidenceKey !== "string" || !draft.evidenceKey
+          || reportedEvidenceKeys.has(draft.evidenceKey)) {
+          throw new Error(`Verifier reported a missing or duplicate evidence identity for ${check.checkId}.`);
+        }
+        reportedEvidenceKeys.add(draft.evidenceKey);
+        const idempotencyKey = `policy-v2-evidence:${String(run._id)}:${plan.planDigest}:${draft.evidenceKey}`;
+        const existing = await ctx.db.query("evidenceEnvelopes").withIndex("by_idempotency", (q: any) => q.eq("idempotencyKey", idempotencyKey)).first();
+        const evidenceId = existing?._id ?? await ctx.db.insert("evidenceEnvelopes", {
+          tenantId: run.tenantId,
+          projectId: run.projectId,
+          missionId: run.missionId,
+          workOrderId: workOrder._id,
+          workflowRunId: run._id,
+          verificationRunId: verificationRun._id,
+          sourceAttemptId: sourceAttempt._id,
+          verificationAttemptId: run._id,
+          verificationSubjectId: verificationRun.verificationSubjectId,
+          verificationSubjectDigest: verificationRun.verificationSubjectDigest,
+          verificationContractDigest: verificationRun.verificationContractDigest,
+          verificationPlanId: plan.planId,
+          verificationPlanDigest: plan.planDigest,
+          workOrderRevisionNumber: workOrder.currentRevisionNumber ?? 1,
+          idempotencyKey,
+          evidenceKey: draft.evidenceKey,
+          checkId: check.checkId,
+          category: evidenceCategory,
+          result: check.status,
+          summary: String(draft.summary ?? check.summary ?? "Verification evidence").slice(0, 2_000),
+          acceptanceCriterionIds: checkSpec.acceptanceCriterionIds,
+          primaryCriterionId: checkSpec.acceptanceCriterionIds[0],
+          requirementIds: required.requirementIds,
+          requiredRiskIds: required.requiredRiskIds,
+          discoveredRiskIds: [],
+          requiredEvidenceIds: [required.id],
+          producer: {
+            actorType: "SERVICE",
+            actorId: args.ownerId,
+            role: "VERIFICATION_FACTORY",
+            independent: independence.passed,
+            factoryPurpose: "VERIFICATION",
+            factoryDefinitionId: definition._id,
+            factoryDefinitionVersionId: factoryVersion._id,
+            attemptId: run._id,
+            executorInvocationId: run.executorInvocationId,
+            executorAdapter: run.executorAdapter,
+          },
+          tool: checkSpec.command ? {
+            name: String(checkSpec.verifierId),
+            version: "v1",
+            command: [checkSpec.command.executable, ...checkSpec.command.args],
+            exitCode: check.status === "PASS" ? 0 : 1,
+            durationMs: check.durationMs,
+          } : undefined,
+          independence: independence as any,
+          artifactIds: [],
+          artifactReferences: Array.isArray(draft.artifactReferences)
+            ? draft.artifactReferences.filter((item: unknown) => typeof item === "string").slice(0, 100)
+            : [],
+          sourceRevision: sourceAttempt.executionBaseSha ?? packet.sourceRevision,
+          candidateRevision: run.verificationAttemptBinding.verificationSubject.kind === "GIT_CANDIDATE"
+            ? run.verificationAttemptBinding.verificationSubject.candidateSha
+            : run.verificationAttemptBinding.verificationSubject.outputSnapshotContentHash,
+          contentHash: draft.contentHash,
+          provenance: "LIVE",
+          recordedAt: now,
+          metadata: { serverDerivedIndependence: true, verifierMetadata: draft.metadata },
+        });
+        evidenceEnvelopeIds.push(evidenceId);
+        evidenceIdsByCheck.set(check.checkId, [...(evidenceIdsByCheck.get(check.checkId) ?? []), evidenceId]);
+        evidenceInputs.push({
+          id: String(evidenceId),
+          requiredEvidenceIds: [required.id],
+          requirementIds: required.requirementIds,
+          requiredRiskIds: required.requiredRiskIds,
+          discoveredRiskIds: [],
+          conclusion: check.status === "PASS" ? "PASSED" : check.status === "FAIL" ? "FAILED" : check.status === "ERROR" ? "UNAVAILABLE" : "INCONCLUSIVE",
+          usable: ["PASS", "FAIL"].includes(check.status),
+          materializedRiskIds: [],
+        });
+      }
+    }
+    const normalizedResults = normalizePolicyV2VerificationResults({
+      workOrder,
+      plan,
+      packetChecks: packet.checks,
+      evidenceIdsByCheck,
+    });
+    const decision = evaluateVerificationDecision({
+      plan,
+      evidence: evidenceInputs,
+      runStatus: "COMPLETED",
+      independence: independence as any,
+      requireHumanReview: workOrder.verificationContract.requireHumanReview,
+      evaluatedAt: now,
+    });
+    await ctx.db.patch(verificationRun._id, {
+      status: "COMPLETED",
+      checks: normalizedResults.checks,
+      criterionCoverage: normalizedResults.criterionCoverage,
+      coverage: decision.coverage,
+      requirementsPassed: decision.passedRequirementIds.length,
+      requirementsFailed: decision.failedRequirementIds.length + decision.uncoveredRequirementIds.length,
+      violations: [...decision.failedRequirementIds, ...decision.uncoveredRequirementIds, ...decision.uncoveredRiskIds],
+      verdict: decision.verdict ?? undefined,
+      verdictReasons: decision.reasons,
+      independence: independence as any,
+      independenceValid: independence.passed,
+      decisionInputDigest: decision.decisionInputDigest,
+      isolationAttestation: isolation,
+      completedAt: now,
+      durationMs: Math.max(0, now - verificationRun.startedAt),
+      evaluatedAt: now,
+    });
+    const validUntil = verificationValidUntil(DEFAULT_GOVERNANCE_POLICY, now);
+    const receiptId = await ctx.db.insert("verificationReceipts", {
+      tenantId: run.tenantId,
+      projectId: run.projectId,
+      missionId: run.missionId,
+      workOrderId: workOrder._id,
+      receiptScope: "WORK_ORDER",
+      workflowRunId: run._id,
+      verificationRunId: verificationRun._id,
+      sourceAttemptId: sourceAttempt._id,
+      verificationAttemptId: run._id,
+      verificationSubjectId: verificationRun.verificationSubjectId,
+      verificationSubjectDigest: verificationRun.verificationSubjectDigest,
+      verificationContractDigest: verificationRun.verificationContractDigest,
+      verificationPlanId: plan.planId,
+      verificationPlanDigest: plan.planDigest,
+      workOrderRevisionNumber: workOrder.currentRevisionNumber ?? 1,
+      idempotencyKey: `policy-v2-receipt:${String(verificationRun._id)}`,
+      verificationMethod: "COMMAND",
+      commandOrCheck: "Frozen policy-v2 Verification Plan",
+      result: decision.reasons.join(" "),
+      verifier: `service:${args.ownerId}`,
+      status: decision.verdict === "VERIFIED" ? "PASSED" : "FAILED",
+      evidenceEnvelopeIds,
+      verdict: decision.verdict ?? undefined,
+      independenceValid: independence.passed,
+      decisionInputDigest: decision.decisionInputDigest,
+      verdictReasons: decision.reasons,
+      checks: normalizedResults.checks,
+      criterionCoverage: normalizedResults.criterionCoverage,
+      requirementsPassed: decision.passedRequirementIds.length,
+      requirementsFailed: decision.failedRequirementIds.length + decision.uncoveredRequirementIds.length,
+      violations: [...decision.failedRequirementIds, ...decision.uncoveredRequirementIds, ...decision.uncoveredRiskIds],
+      approvalRequirements: workOrder.requiredApprovals,
+      riskLevel: workOrder.riskLevel,
+      riskReasons: workOrder.riskReasons,
+      sourceRevision: sourceAttempt.executionBaseSha ?? packet.sourceRevision,
+      candidateRevision: packet.candidateRevision,
+      validUntil,
+      recordedAt: now,
+      metadata: { policyVersion: 2, serverDerivedIndependence: true },
+    });
+    for (const criterion of workOrder.acceptanceCriteria) {
+      const criterionEvidence = normalizedResults.checks.filter((check: any) => check.acceptanceCriterionIds.includes(criterion.id));
+      const coverage = normalizedResults.criterionCoverage.find((item: any) => item.criterionId === criterion.id);
+      await ctx.db.insert("verificationReceipts", {
+        tenantId: run.tenantId,
+        projectId: run.projectId,
+        missionId: run.missionId,
+        workOrderId: workOrder._id,
+        receiptScope: "ACCEPTANCE_CRITERION",
+        acceptanceCriterionId: criterion.id,
+        workflowRunId: run._id,
+        verificationRunId: verificationRun._id,
+        sourceAttemptId: sourceAttempt._id,
+        verificationAttemptId: run._id,
+        verificationSubjectId: verificationRun.verificationSubjectId,
+        verificationSubjectDigest: verificationRun.verificationSubjectDigest,
+        verificationContractDigest: verificationRun.verificationContractDigest,
+        verificationPlanId: plan.planId,
+        verificationPlanDigest: plan.planDigest,
+        workOrderRevisionNumber: workOrder.currentRevisionNumber ?? 1,
+        idempotencyKey: `policy-v2-criterion:${String(verificationRun._id)}:${criterion.id}`,
+        verificationMethod: criterion.verificationMethod,
+        commandOrCheck: criterionEvidence.map((check: any) => check.checkId).join(", "),
+        result: decision.reasons.join(" "),
+        verifier: `service:${args.ownerId}`,
+        status: decision.verdict === "VERIFIED" && coverage?.status === "EVIDENCED" ? "PASSED" : "FAILED",
+        evidenceEnvelopeIds: coverage?.evidenceIds ?? [],
+        verdict: decision.verdict ?? undefined,
+        independenceValid: independence.passed,
+        decisionInputDigest: decision.decisionInputDigest,
+        verdictReasons: decision.reasons,
+        sourceRevision: sourceAttempt.executionBaseSha ?? packet.sourceRevision,
+        candidateRevision: packet.candidateRevision,
+        validUntil,
+        recordedAt: now,
+        metadata: { policyVersion: 2, workOrderReceiptId: receiptId },
+      });
+    }
+    await ctx.db.patch(run._id, {
+      status: "COMPLETED",
+      completedAt: now,
+      lease: undefined,
+      executionPhase: "TERMINAL",
+      verificationIsolationAttestation: isolation,
+      steps: run.steps.map((step: any) => ({ ...step, status: step.status === "SKIPPED" ? "SKIPPED" : "DONE", completedAt: step.completedAt ?? now })),
+      checkpointSummary: `${decision.verdict ?? "NO_VERDICT"}: ${decision.reasons.join(" ")}`,
+      checkpointAt: now,
+    });
+    await insertEvent(ctx, run, {
+      idempotencyKey: `verification-terminal:${run.runId}:COMPLETED`,
+      eventType: decision.verdict === "VERIFIED" ? "VERIFICATION_COMPLETED" : decision.verdict === "REQUIRES_HUMAN_REVIEW" ? "VERIFICATION_REQUIRES_HUMAN_REVIEW" : "VERIFICATION_BLOCKED",
+      workflowStep: "independent-verification",
+      actor: `service:${args.ownerId}`,
+      status: decision.verdict,
+      startedAt: run.startedAt,
+      endedAt: now,
+      verificationRunId: verificationRun._id,
+      verificationReceiptId: receiptId,
+      evidenceEnvelopeIds,
+      commandSummary: decision.reasons.join(" ").slice(0, 500),
+      metadata: { verificationPlanId: plan.planId, verificationPlanDigest: plan.planDigest, independenceValid: independence.passed },
+    });
+    await finishAttemptTrace(ctx, run, { status: "COMPLETED", completedAt: now, output: { verdict: decision.verdict } });
+    await ctx.runMutation(internal.workOrders.syncExecutionOutcome, {
+      workflowRunId: run._id,
+      eventType: "RUN_COMPLETED",
+      summary: `Independent Verification Attempt ${run.runId} completed with ${decision.verdict}`,
+    });
+    const refreshedWorkOrder = await ctx.db.get(workOrder._id);
+    if (refreshedWorkOrder) {
+      const current = await getCurrentVerificationResult(ctx, refreshedWorkOrder, now);
+      await appendCurrentVerificationQualityGateDecision(ctx, refreshedWorkOrder, current, `verification-result:${String(verificationRun._id)}`, now);
+    }
+    return {
+      accepted: true,
+      terminalStatus: "COMPLETED",
+      verificationRunId: verificationRun._id,
+      verificationReceiptId: receiptId,
+      evidenceEnvelopeIds,
+      verdict: decision.verdict,
+      independenceValid: independence.passed,
+    };
+  },
+});
+
+async function persistPolicyV2CandidateReady(
+  ctx: any,
+  run: any,
+  candidate: any,
+  artifactResults: any[],
+  ownerId: string,
+  leaseId: string,
+) {
+  if (!run.workOrderId || (run.attemptPurpose ?? "IMPLEMENTATION") !== "IMPLEMENTATION") {
+    throw new Error("CANDIDATE_READY requires a WorkOrder-bound Implementation Attempt.");
+  }
+  const [workOrder, repository] = await Promise.all([
+    ctx.db.get(run.workOrderId),
+    run.repositoryId ? ctx.db.get(run.repositoryId) : null,
+  ]);
+  if (!workOrder || workOrder.verificationContract?.schemaVersion !== 2
+    || workOrder.verificationContract.enforcementMode !== "ENFORCED"
+    || !workOrder.verificationContractDigest || !workOrder.qualityContractDigest) {
+    throw new Error("CANDIDATE_READY requires an enforced policy-v2 WorkOrder with frozen contract digests.");
+  }
+  if (!repository?.providerRepositoryId || workOrder.currentRevisionNumber !== run.workOrderRevisionNumber
+    || run.qualityContractDigest !== workOrder.qualityContractDigest
+    || run.verificationContractDigest !== workOrder.verificationContractDigest) {
+    throw new Error("Candidate publication lineage is stale for the WorkOrder or repository.");
+  }
+  const pullRequestArtifact = artifactResults.map((result: any) => result.artifact)
+    .find((artifact: any) => artifact?.artifactType === "PULL_REQUEST")
+    ?? await ctx.db.query("runArtifacts")
+      .withIndex("by_run_type", (q: any) => q.eq("workflowRunId", run._id).eq("artifactType", "PULL_REQUEST"))
+      .first();
+  const metadata = pullRequestArtifact?.metadata ?? {};
+  const exact = candidate
+    && /^[0-9a-f]{40,64}$/.test(candidate.candidateSha)
+    && /^[0-9a-f]{40,64}$/.test(candidate.treeSha)
+    && typeof candidate.providerPullRequestId === "string" && candidate.providerPullRequestId
+    && Number.isSafeInteger(candidate.pullRequestNumber) && candidate.pullRequestNumber > 0
+    && typeof candidate.pullRequestUrl === "string" && candidate.pullRequestUrl
+    && candidate.baseRef === repository.defaultBranch
+    && candidate.headRef === run.branch
+    && candidate.draftAtPublication === true
+    && metadata.headSha === candidate.candidateSha
+    && metadata.treeSha === candidate.treeSha
+    && metadata.pullRequestNumber === candidate.pullRequestNumber
+    && metadata.pullRequestUrl === candidate.pullRequestUrl
+    && metadata.providerPullRequestId === candidate.providerPullRequestId
+    && metadata.draftAtPublication === true;
+  if (!exact) {
+    throw new Error("CANDIDATE_READY requires one exact draft GitHub App pull-request artifact with matching commit and tree identity.");
+  }
+  const subject = createGitVerificationSubject({
+    version: 1,
+    kind: "GIT_CANDIDATE",
+    workOrderId: workOrder._id,
+    workOrderRevisionNumber: workOrder.currentRevisionNumber ?? 1,
+    verificationContractDigest: workOrder.verificationContractDigest,
+    sourceAttemptId: run._id,
+    repositoryId: repository._id,
+    provider: "GITHUB",
+    providerRepositoryId: repository.providerRepositoryId,
+    candidateSha: candidate.candidateSha,
+    treeSha: candidate.treeSha,
+    pullRequest: {
+      providerPullRequestId: candidate.providerPullRequestId,
+      number: candidate.pullRequestNumber,
+      url: candidate.pullRequestUrl,
+      baseRef: candidate.baseRef,
+      headRef: candidate.headRef,
+      headSha: candidate.candidateSha,
+      draftAtPublication: true,
+    },
+  } as any);
+  if (run.verificationSubject && run.verificationSubject.digest !== subject.digest) {
+    throw new Error("CANDIDATE_READY cannot replace an immutable Verification Subject; create a new Attempt.");
+  }
+  const candidateReadyAt = run.candidateReadyAt ?? Date.now();
+  await ctx.db.patch(run._id, {
+    verificationSubject: subject,
+    candidateReadyAt,
+    executionBaseSha: metadata.sourceRevision,
+    headSha: candidate.candidateSha,
+    treeSha: candidate.treeSha,
+    pullRequestNumber: candidate.pullRequestNumber,
+    pullRequestId: candidate.providerPullRequestId,
+    pullRequestProviderId: candidate.providerPullRequestId,
+    pullRequestUrl: candidate.pullRequestUrl,
+    pullRequestDraftAtPublication: true,
+    publishedAt: candidateReadyAt,
+  });
+  await insertEvent(ctx, run, {
+    idempotencyKey: `candidate-ready:${run.runId}:${subject.digest}`,
+    eventType: "CANDIDATE_READY",
+    workflowStep: "candidate-publication",
+    actor: `service:${ownerId}`,
+    status: "COMPLETED",
+    startedAt: candidateReadyAt,
+    endedAt: candidateReadyAt,
+    commandSummary: `Immutable draft pull-request candidate ${candidate.candidateSha.slice(0, 12)} is ready for independent verification`,
+    metadata: {
+      leaseId,
+      verificationSubjectId: subject.subjectId,
+      verificationSubjectDigest: subject.digest,
+      candidateSha: candidate.candidateSha,
+      treeSha: candidate.treeSha,
+      pullRequestNumber: candidate.pullRequestNumber,
+    },
+  });
+  return { run: await ctx.db.get(run._id), subject };
+}
+
+async function schedulePolicyV2VerificationAttempt(ctx: any, workOrder: any, sourceAttempt: any) {
+  const subject = sourceAttempt.verificationSubject;
+  if (!subject || !sourceAttempt.candidateReadyAt || sourceAttempt.status !== "COMPLETED") {
+    throw new Error("Verification scheduling requires a completed candidate-ready source Attempt.");
+  }
+  const existing = (await ctx.db.query("workflowRuns")
+    .withIndex("by_work_order_attempt_purpose", (q: any) => q.eq("workOrderId", workOrder._id).eq("attemptPurpose", "VERIFICATION"))
+    .collect())
+    .find((attempt: any) => attempt.verificationAttemptBinding?.verificationSubjectDigest === subject.digest
+      && !attempt.metadata?.verificationSupersededAt);
+  if (existing) return { workflowRun: existing, created: false };
+  const definitions = await ctx.db.query("factoryDefinitions")
+    .withIndex("by_repository", (q: any) => q.eq("repositoryId", sourceAttempt.repositoryId))
+    .collect();
+  const definition = definitions.find((candidate: any) => candidate.status === "ACTIVE"
+    && candidate.purpose === "VERIFICATION" && candidate.activeVersionId);
+  if (!definition) throw new Error("Candidate is ready, but no active Verification Factory is configured for this repository.");
+  const version = await ctx.db.get(definition.activeVersionId);
+  if (!version || version.factoryDefinitionId !== definition._id || version.purpose !== "VERIFICATION") {
+    throw new Error("Active Verification Factory version is unavailable or has the wrong purpose.");
+  }
+  const [repository, workflow, assessments, bindings, codeScopes, agentVersions] = await Promise.all([
+    ctx.db.get(version.repositoryId),
+    ctx.db.get(version.workflowId),
+    ctx.db.query("factoryReadinessAssessments").withIndex("by_version", (q: any) => q.eq("factoryDefinitionVersionId", version._id)).collect(),
+    ctx.db.query("workspaceHostBindings").withIndex("by_project", (q: any) => q.eq("projectId", version.projectId)).collect(),
+    Promise.all((version.codeScopeIds ?? []).map((id: any) => ctx.db.get(id))),
+    Promise.all((version.agentBindings ?? []).map((binding: any) => ctx.db.get(binding.agentVersionId))),
+  ]);
+  const now = Date.now();
+  const assessment = assessments.sort((left: any, right: any) => right.assessedAt - left.assessedAt)[0];
+  const host: any = repository ? selectCurrentFactoryHost(bindings as any[], repository.repository, now) : null;
+  if (!repository || repository._id !== sourceAttempt.repositoryId || repository.status !== "READY"
+    || !workflow?.active || !assessment || assessment.status !== "PASS" || assessment.expiresAt <= now
+    || assessment.configurationDigest !== version.configurationDigest || !host || host.dirty
+    || agentVersions.some((agentVersion: any) => !agentVersion)
+    || version.executor.adapter !== "codex" || version.executor.version !== "v1") {
+    throw new Error("Candidate is ready, but the active Verification Factory no longer has current readiness for the exact repository and host.");
+  }
+  const runId = Math.random().toString(36).slice(2, 10);
+  const executorInvocationId = `verification:${runId}`;
+  const worktree = `${host.checkoutRoot.replace(/\/+$/, "")}/.mission-control/worktrees/verify-${runId}`;
+  const workflowSnapshot = snapshotWorkflowDefinition(workflow);
+  const executionManifest = buildFactoryExecutionManifest({
+    runId,
+    missionId: workOrder.missionId ? String(workOrder.missionId) : undefined,
+    missionPlanId: workOrder.missionPlanId ? String(workOrder.missionPlanId) : undefined,
+    missionPlanVersion: workOrder.missionPlanRevision,
+    qualityContractDigest: workOrder.qualityContractDigest,
+    workOrderId: String(workOrder._id),
+    workOrderRevisionNumber: workOrder.currentRevisionNumber ?? 1,
+    workOrderRevisionId: workOrder.currentRevisionId ? String(workOrder.currentRevisionId) : undefined,
+    factoryDefinitionVersionId: String(version._id),
+    factoryConfigurationDigest: version.configurationDigest,
+    factoryPurpose: "VERIFICATION",
+    repositoryId: String(repository._id),
+    repository: repository.repository,
+    defaultBranch: repository.defaultBranch,
+    baseSha: subject.kind === "GIT_CANDIDATE" ? subject.candidateSha : sourceAttempt.headSha,
+    branch: sourceAttempt.branch,
+    worktree,
+    executor: version.executor,
+    executionBackend: host.workerRuntime?.executionBackends[0] ?? "persistent-worker",
+    sandboxProfile: {
+      isolation: "READ_ONLY",
+      requiredCapabilities: ["git-worktree", "read-only"],
+    },
+    workflow: workflowSnapshot as any,
+    workOrder: {
+      title: workOrder.title,
+      desiredOutcome: workOrder.desiredOutcome,
+      context: workOrder.context,
+      requirements: workOrder.requirements,
+      acceptanceCriteria: workOrder.acceptanceCriteria,
+      constraints: workOrder.constraints,
+      positiveConstraints: workOrder.positiveConstraints,
+      negativeConstraints: workOrder.negativeConstraints,
+      dataBoundaries: workOrder.dataBoundaries,
+      changeBudget: workOrder.changeBudget,
+      verificationContract: workOrder.verificationContract,
+      autonomyLevel: workOrder.autonomyLevel,
+      riskLevel: workOrder.riskLevel,
+      riskReasons: workOrder.riskReasons,
+      requiredApprovals: workOrder.requiredApprovals,
+      sourceOfTruthRefs: workOrder.sourceOfTruthRefs,
+    },
+    agentBindings: (version.agentBindings ?? []).map((binding: any, index: number) => ({
+      workflowAgentId: binding.workflowAgentId,
+      agentVersionId: String(binding.agentVersionId),
+      agentVersion: agentVersions[index].version,
+      genomeHash: agentVersions[index].genomeHash,
+      promptBundleHash: agentVersions[index].genome.promptBundleHash,
+      toolManifestHash: agentVersions[index].genome.toolManifestHash,
+      model: agentVersions[index].genome.modelConfig,
+    })),
+    codeScopes: codeScopes.map((scope: any) => ({
+      id: String(scope._id), slug: scope.slug, includePaths: scope.includePaths, excludePaths: scope.excludePaths,
+    })),
+    allowedTools: Array.isArray(workflow.metadata?.allowedTools) ? workflow.metadata.allowedTools : [],
+    maxRuntimeMinutes: version.budget.maxRuntimeMinutes,
+    initialContext: { verificationSubjectDigest: subject.digest, sourceAttemptId: String(sourceAttempt._id) },
+  });
+  const steps = workflow.steps.map((step: any, index: number) => ({
+    stepId: step.id,
+    status: "PENDING" as const,
+    dependsOn: step.dependsOn ?? (index > 0 ? [workflow.steps[index - 1].id] : []),
+    kind: step.kind ?? "VERIFY",
+    modelTier: step.modelTier,
+    isolation: "READ_ONLY" as const,
+    failurePolicy: step.failurePolicy ?? "BLOCK",
+    retryCount: 0,
+  }));
+  const binding = {
+    sourceAttemptId: sourceAttempt._id,
+    workOrderId: workOrder._id,
+    workOrderRevisionNumber: workOrder.currentRevisionNumber ?? 1,
+    verificationContractDigest: workOrder.verificationContractDigest,
+    verificationSubject: subject,
+    verificationSubjectDigest: subject.digest,
+  };
+  const workflowRunId = await ctx.db.insert("workflowRuns", {
+    tenantId: workOrder.tenantId,
+    runId,
+    workflowId: workflow.workflowId,
+    workflowVersion: workflow.version,
+    workflowSnapshot,
+    projectId: workOrder.projectId,
+    missionId: workOrder.missionId,
+    missionRole: workOrder.missionRole,
+    workOrderId: workOrder._id,
+    workOrderRevisionNumber: workOrder.currentRevisionNumber ?? 1,
+    workOrderRevisionId: workOrder.currentRevisionId,
+    verificationContractDigest: workOrder.verificationContractDigest,
+    factoryDefinitionVersionId: version._id,
+    factoryConfigurationDigest: version.configurationDigest,
+    factoryPurpose: "VERIFICATION",
+    attemptPurpose: "VERIFICATION",
+    executorInvocationId,
+    qualityContractDigest: workOrder.qualityContractDigest,
+    repositoryId: repository._id,
+    hostBindingId: host._id,
+    policyEnvelopeId: version.policyEnvelopeId,
+    environmentId: version.environmentId,
+    executorAdapter: version.executor.adapter,
+    executorVersion: version.executor.version,
+    branch: sourceAttempt.branch,
+    worktree,
+    allowedTools: Array.isArray(workflow.metadata?.allowedTools) ? workflow.metadata.allowedTools : [],
+    approvedCodeScopeIds: version.codeScopeIds,
+    isMutating: false,
+    executionManifest: executionManifest.manifest,
+    executionManifestDigest: executionManifest.digest,
+    verificationAttemptBinding: binding,
+    status: "PENDING",
+    currentStepIndex: 0,
+    totalSteps: steps.length,
+    steps,
+    context: { source: "policy-v2-verification-scheduler", sourceAttemptId: sourceAttempt._id, verificationSubjectDigest: subject.digest },
+    topology: workflow.topology ?? "LINEAR",
+    maxConcurrency: 1,
+    initialInput: `Verify immutable subject ${subject.digest}`,
+    executionEnvironment: workOrder.executionEnvironment ?? "LOCAL",
+    executorHostId: host.hostId,
+    checkpointSummary: "Exact candidate ready; awaiting independent Verification Factory claim.",
+    checkpointAt: now,
+    stopCondition: "Stop on subject mismatch, isolation failure, policy failure, or incomplete required evidence.",
+    escalationOwner: workOrder.ownerMemberId ? String(workOrder.ownerMemberId) : workOrder.requestedBy,
+    startedAt: now,
+    metadata: { sourceAttemptId: sourceAttempt._id, verificationSubjectDigest: subject.digest },
+  });
+  const plan = compilePolicyV2VerificationPlan({
+    now,
+    workOrder,
+    sourceAttempt,
+    verificationAttemptId: String(workflowRunId),
+    verificationSubject: subject,
+    factoryDefinitionId: String(definition._id),
+    factoryDefinitionVersionId: String(version._id),
+    executorInvocationId,
+  });
+  const verificationRunId = await ctx.db.insert("verificationRuns", {
+    tenantId: workOrder.tenantId,
+    projectId: workOrder.projectId,
+    missionId: workOrder.missionId,
+    workOrderId: workOrder._id,
+    workflowRunId,
+    sourceAttemptId: sourceAttempt._id,
+    idempotencyKey: `policy-v2:${String(workOrder._id)}:${subject.digest}:${String(workflowRunId)}`,
+    engineVersion: "verification-engine/v2",
+    workOrderRevisionNumber: workOrder.currentRevisionNumber ?? 1,
+    verificationContractDigest: workOrder.verificationContractDigest,
+    verificationSubject: subject,
+    verificationSubjectId: subject.subjectId,
+    verificationSubjectDigest: subject.digest,
+    verificationPlan: plan,
+    verificationPlanId: plan.planId,
+    verificationPlanDigest: plan.planDigest,
+    sourceRevision: sourceAttempt.executionBaseSha,
+    candidateRevision: subject.kind === "GIT_CANDIDATE" ? subject.candidateSha : subject.outputSnapshotContentHash,
+    status: "PLANNED",
+    checks: [],
+    criterionCoverage: [],
+    requiredRisks: plan.requiredRisks,
+    discoveredRisks: [],
+    requirementsPassed: 0,
+    requirementsFailed: 0,
+    violations: [],
+    approvalRequirements: workOrder.requiredApprovals,
+    riskLevel: workOrder.riskLevel,
+    riskReasons: workOrder.riskReasons,
+    verdictReasons: ["Verification Attempt is planned for the exact immutable subject."],
+    startedAt: now,
+    createdAt: now,
+  });
+  await insertEvent(ctx, { ...sourceAttempt, _id: workflowRunId, runId, steps, currentStepIndex: 0 }, {
+    idempotencyKey: `verification-attempt-dispatched:${runId}`,
+    eventType: "VERIFICATION_ATTEMPT_DISPATCHED",
+    workflowStep: "independent-verification",
+    actor: "service:factory-control-plane",
+    status: "PENDING",
+    startedAt: now,
+    commandSummary: `Verification Attempt ${runId} bound to source Attempt ${sourceAttempt.runId}`,
+    metadata: { sourceAttemptId: sourceAttempt._id, verificationRunId, verificationPlanId: plan.planId, verificationPlanDigest: plan.planDigest },
+  });
+  await ctx.db.patch(workOrder._id, {
+    currentExecutionRunId: workflowRunId,
+    state: "AWAITING_VERIFICATION",
+    verificationStatus: "PENDING",
+    blockingIssue: undefined,
+    requiredHumanAction: "Independent Verification Factory is evaluating the exact immutable candidate.",
+    updatedAt: now,
+  });
+  return { workflowRun: await ctx.db.get(workflowRunId), verificationRunId, created: true };
+}
 
 async function factoryLeaseRegistrationIsCurrent(ctx: any, run: any) {
   if (!run.lease) return false;

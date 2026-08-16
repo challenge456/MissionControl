@@ -1451,6 +1451,25 @@ export default defineSchema({
       estimatedCostUsd: v.optional(v.number()),
       implementationPolicy: v.optional(v.object({
         allowedCommands: v.array(v.string()),
+        independentVerification: v.optional(v.object({
+          executable: v.string(),
+          args: v.array(v.string()),
+          category: v.union(
+            v.literal("BUILD"), v.literal("TYPECHECK"), v.literal("UNIT_TEST"),
+            v.literal("INTEGRATION_TEST"), v.literal("CONTRACT_TEST"), v.literal("SECURITY"),
+          ),
+          commandClass: v.union(
+            v.literal("BUILD"), v.literal("TYPECHECK"), v.literal("TEST"),
+            v.literal("LINT"), v.literal("SECURITY_SCAN"), v.literal("DEPENDENCY_SCAN"),
+          ),
+          evidenceCategory: v.union(
+            v.literal("TEST_RESULT"), v.literal("BUILD_RESULT"), v.literal("STATIC_ANALYSIS"),
+            v.literal("SECURITY_SCAN"), v.literal("COMMAND_LOG"), v.literal("BROWSER_RESULT"),
+          ),
+          timeoutMs: v.number(),
+        })),
+        maxFilesChanged: v.optional(v.number()),
+        maxLinesChanged: v.optional(v.number()),
         maxCostUsd: v.optional(v.number()),
         maxAttempts: v.number(),
         timeoutMinutes: v.number(),

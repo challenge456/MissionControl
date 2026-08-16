@@ -10,8 +10,44 @@ export type MissionPlanVerificationMethod =
 export type MissionPlanRiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 export type MissionPlanRole = "WORKER" | "VALIDATOR";
 
+export type MissionPlanVerificationCategory =
+  | "BUILD"
+  | "TYPECHECK"
+  | "UNIT_TEST"
+  | "INTEGRATION_TEST"
+  | "CONTRACT_TEST"
+  | "SECURITY";
+
+export type MissionPlanCommandClass =
+  | "BUILD"
+  | "TYPECHECK"
+  | "TEST"
+  | "LINT"
+  | "SECURITY_SCAN"
+  | "DEPENDENCY_SCAN";
+
+export type MissionPlanEvidenceCategory =
+  | "TEST_RESULT"
+  | "BUILD_RESULT"
+  | "STATIC_ANALYSIS"
+  | "SECURITY_SCAN"
+  | "COMMAND_LOG"
+  | "BROWSER_RESULT";
+
+export interface MissionPlanIndependentVerification {
+  executable: string;
+  args: string[];
+  category: MissionPlanVerificationCategory;
+  commandClass: MissionPlanCommandClass;
+  evidenceCategory: MissionPlanEvidenceCategory;
+  timeoutMs: number;
+}
+
 export interface MissionPlanImplementationPolicy {
   allowedCommands: string[];
+  independentVerification?: MissionPlanIndependentVerification;
+  maxFilesChanged?: number;
+  maxLinesChanged?: number;
   maxCostUsd?: number;
   maxAttempts: number;
   timeoutMinutes: number;
@@ -178,6 +214,20 @@ export function validateMissionPlan(input: MissionPlanInput): MissionPlanValidat
       if ((implementationPolicy?.allowedCommands.length ?? 0) > 20 || implementationPolicy?.allowedCommands.some((command) => command.length > 1_000)) {
         errors.push({ code: "implementation-verifiers-too-large", message: "Verification policy is limited to 20 commands of 1,000 characters each.", path: `blueprints.${blueprint.id}.implementationPolicy.allowedCommands`, ...identity });
       }
+      const verification = implementationPolicy?.independentVerification;
+      push(required(verification?.executable, "independent-verifier-executable-required", "Mutating WorkOrders require an exact independent verification executable.", `blueprints.${blueprint.id}.implementationPolicy.independentVerification.executable`, identity));
+      if (!Array.isArray(verification?.args) || verification.args.length > 100 || verification.args.some((argument) => typeof argument !== "string" || argument.length > 2_000)) {
+        errors.push({ code: "independent-verifier-args-invalid", message: "Independent verification is limited to 100 exact arguments of 2,000 characters each.", path: `blueprints.${blueprint.id}.implementationPolicy.independentVerification.args`, ...identity });
+      }
+      if (!Number.isSafeInteger(verification?.timeoutMs) || (verification?.timeoutMs ?? 0) < 1_000 || (verification?.timeoutMs ?? 0) > 30 * 60_000) {
+        errors.push({ code: "independent-verifier-timeout-invalid", message: "Independent verification timeout must be from 1 second to 30 minutes.", path: `blueprints.${blueprint.id}.implementationPolicy.independentVerification.timeoutMs`, ...identity });
+      }
+      if (!Number.isSafeInteger(implementationPolicy?.maxFilesChanged) || (implementationPolicy?.maxFilesChanged ?? 0) < 1 || (implementationPolicy?.maxFilesChanged ?? 0) > 500) {
+        errors.push({ code: "implementation-max-files-invalid", message: "Maximum changed files must be a whole number from 1 to 500.", path: `blueprints.${blueprint.id}.implementationPolicy.maxFilesChanged`, ...identity });
+      }
+      if (!Number.isSafeInteger(implementationPolicy?.maxLinesChanged) || (implementationPolicy?.maxLinesChanged ?? 0) < 1 || (implementationPolicy?.maxLinesChanged ?? 0) > 100_000) {
+        errors.push({ code: "implementation-max-lines-invalid", message: "Maximum changed lines must be a whole number from 1 to 100,000.", path: `blueprints.${blueprint.id}.implementationPolicy.maxLinesChanged`, ...identity });
+      }
       if (!Number.isInteger(implementationPolicy?.maxAttempts) || (implementationPolicy?.maxAttempts ?? 0) < 1 || (implementationPolicy?.maxAttempts ?? 0) > 10) {
         errors.push({ code: "implementation-attempts-invalid", message: "Maximum attempts must be a whole number from 1 to 10.", path: `blueprints.${blueprint.id}.implementationPolicy.maxAttempts`, ...identity });
       }
@@ -206,7 +256,7 @@ export function validateMissionPlan(input: MissionPlanInput): MissionPlanValidat
         errors.push({ code: "blueprint-assertion-unknown", message: `Unknown assertion ${assertionId}.`, path: `blueprints.${blueprint.id}.assertionIds`, ...identity, assertionId });
       } else {
         assertionCoverage.set(assertionId, (assertionCoverage.get(assertionId) ?? 0) + 1);
-        if (blueprint.role === "VALIDATOR") {
+        if (blueprint.role === "VALIDATOR" || (blueprint.role === "WORKER" && Boolean(blueprint.implementationPolicy?.independentVerification))) {
           validatorAssertionCoverage.set(assertionId, (validatorAssertionCoverage.get(assertionId) ?? 0) + 1);
         }
       }
@@ -234,7 +284,7 @@ export function validateMissionPlan(input: MissionPlanInput): MissionPlanValidat
       errors.push({ code: "assertion-uncovered", message: `Assertion ${assertion.assertionId} is not covered by a WorkOrder.`, path: `assertions.${assertion.assertionId}`, ...identity });
     }
     if (assertion.requiresIndependentValidation && (validatorAssertionCoverage.get(assertion.assertionId) ?? 0) === 0) {
-      errors.push({ code: "assertion-validator-required", message: `Assertion ${assertion.assertionId} requires a Validator WorkOrder.`, path: `assertions.${assertion.assertionId}`, ...identity });
+      errors.push({ code: "assertion-validator-required", message: `Assertion ${assertion.assertionId} requires either a Validator WorkOrder or an enforced independent Factory verifier.`, path: `assertions.${assertion.assertionId}`, ...identity });
     }
   }
 

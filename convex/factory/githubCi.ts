@@ -9,6 +9,8 @@ import {
 } from "../lib/harnessPrChecks";
 import {
   normalizeTrustedGithubPrProjection,
+  shouldBlockForPrHeadMismatch,
+  shouldClearRecoveredPrHeadBlock,
   verificationReceiptsInvalidatedByPrHead,
 } from "../lib/githubCiIngest";
 import { ciBlockedHead, ciBlockCanRecover } from "../lib/prEvaluation";
@@ -211,10 +213,59 @@ export const applyCiIngest = internalMutation({
       await ctx.db.patch(existing._id, doc);
     }
     const linkedWorkOrderId = doc.workOrderId;
+    let currentWorkOrder: any;
+    let currentQualityGateDecisionId: any;
+    let currentVerificationEligible: boolean | undefined;
     if (linkedWorkOrderId && doc.headSha && doc.provider === "GITHUB"
       && doc.repositoryId && doc.installationId && doc.providerRepositoryId
       && doc.providerPullRequestId && doc.attestationExpiresAt) {
-      const workOrder = await ctx.db.get(linkedWorkOrderId);
+      currentWorkOrder = await ctx.db.get(linkedWorkOrderId);
+      const policyV2Enforced = currentWorkOrder?.verificationContract?.schemaVersion === 2
+        && currentWorkOrder.verificationContract.enforcementMode === "ENFORCED";
+      if (policyV2Enforced) {
+        const current = await getCurrentVerificationResult(ctx, currentWorkOrder, now);
+        currentVerificationEligible = current.eligible;
+        const decision = await appendCurrentVerificationQualityGateDecision(
+          ctx,
+          currentWorkOrder,
+          current,
+          `github-pr-sync:${id}:${doc.headSha}:${now}`,
+          now,
+        );
+        currentQualityGateDecisionId = decision?._id;
+        if (shouldClearRecoveredPrHeadBlock({
+          policyV2Enforced,
+          currentVerificationEligible,
+          blockingIssue: currentWorkOrder.blockingIssue,
+        })) {
+          await ctx.db.patch(linkedWorkOrderId, {
+            state: "AWAITING_VERIFICATION",
+            blockingIssue: undefined,
+            requiredHumanAction: "Ready for explicit acceptance.",
+            updatedAt: now,
+          });
+          await ctx.db.insert("workOrderEvents", {
+            tenantId: currentWorkOrder.tenantId,
+            projectId: currentWorkOrder.projectId,
+            workOrderId: currentWorkOrder._id,
+            eventType: "STATE_SYNCED",
+            actorType: "SYSTEM",
+            summary: `Exact-current verification recovered on pull-request head ${doc.headSha}`,
+            timestamp: now,
+            metadata: {
+              evaluationId: id,
+              headSha: doc.headSha,
+              qualityGateDecisionId: currentQualityGateDecisionId,
+              exactCurrentVerificationRecovered: true,
+            },
+          });
+        }
+      }
+    }
+    if (linkedWorkOrderId && doc.headSha && doc.provider === "GITHUB"
+      && doc.repositoryId && doc.installationId && doc.providerRepositoryId
+      && doc.providerPullRequestId && doc.attestationExpiresAt) {
+      const workOrder = currentWorkOrder ?? await ctx.db.get(linkedWorkOrderId);
       const receipts = await ctx.db
         .query("verificationReceipts")
         .withIndex("by_work_order", (q) => q.eq("workOrderId", linkedWorkOrderId))
@@ -223,68 +274,55 @@ export const applyCiIngest = internalMutation({
         receipts,
         doc.headSha,
       );
-      if (workOrder && mismatchedReceipts.length > 0 && !["CANCELED", "SUPERSEDED"].includes(workOrder.state)) {
+      if (workOrder && !["CANCELED", "SUPERSEDED"].includes(workOrder.state)) {
         const policyV2Enforced = workOrder.verificationContract?.schemaVersion === 2
           && workOrder.verificationContract.enforcementMode === "ENFORCED";
-        const priorCandidateRevisions = [...new Set(
-          mismatchedReceipts
-            .map((receipt) => receipt.candidateRevision)
-            .filter((candidate): candidate is string => Boolean(candidate))
-        )];
-        let staleQualityGateDecisionId: any;
-        if (policyV2Enforced) {
-          const current = await getCurrentVerificationResult(ctx, workOrder, now);
-          const staleDecision = await appendCurrentVerificationQualityGateDecision(
-            ctx,
-            workOrder,
-            {
-              ...current,
-              eligible: false,
-              current: false,
-              reasons: [
-                `Trusted GitHub pull-request head changed to ${doc.headSha}; live eligibility is stale.`,
-                ...current.reasons,
-              ],
-            },
-            `github-pr-head:${id}:${doc.headSha}`,
-            now,
-          );
-          staleQualityGateDecisionId = staleDecision?._id;
-        } else {
-          for (const receipt of mismatchedReceipts) {
-            await ctx.db.patch(receipt._id, {
-              status: "STALE",
-              invalidatedAt: now,
-              invalidationReason: `pr-head-mismatch:${doc.headSha}`,
-            });
+        if (shouldBlockForPrHeadMismatch({
+          policyV2Enforced,
+          currentVerificationEligible,
+          mismatchedReceiptCount: mismatchedReceipts.length,
+        })) {
+          const priorCandidateRevisions = [...new Set(
+            mismatchedReceipts
+              .map((receipt) => receipt.candidateRevision)
+              .filter((candidate): candidate is string => Boolean(candidate))
+          )];
+          if (!policyV2Enforced) {
+            for (const receipt of mismatchedReceipts) {
+              await ctx.db.patch(receipt._id, {
+                status: "STALE",
+                invalidatedAt: now,
+                invalidationReason: `pr-head-mismatch:${doc.headSha}`,
+              });
+            }
           }
+          await ctx.db.patch(linkedWorkOrderId, {
+            state: "BLOCKED",
+            blockingIssue: `Verified candidate head does not match pull-request head ${doc.headSha}`,
+            requiredHumanAction: "Create one bounded recovery Attempt and independently reverify the exact pull-request head before acceptance.",
+            updatedAt: now,
+          });
+          await ctx.db.insert("workOrderEvents", {
+            tenantId: workOrder.tenantId,
+            projectId: workOrder.projectId,
+            workOrderId: workOrder._id,
+            workflowRunId: doc.workflowRunId,
+            eventType: "VERIFICATION_STALE",
+            actorType: "SYSTEM",
+            summary: `Pull-request head ${doc.headSha} invalidated evidence for ${priorCandidateRevisions.join(", ")}`,
+            timestamp: now,
+            metadata: {
+              evaluationId: id,
+              prUrl: doc.prUrl,
+              priorCandidateRevisions,
+              observedHeadSha: doc.headSha,
+              invalidatedReceiptIds: policyV2Enforced ? [] : mismatchedReceipts.map((receipt) => receipt._id),
+              liveEligibilityInvalidatedReceiptIds: mismatchedReceipts.map((receipt) => receipt._id),
+              staleQualityGateDecisionId: currentQualityGateDecisionId,
+              historicalEvidencePreserved: policyV2Enforced,
+            },
+          });
         }
-        await ctx.db.patch(linkedWorkOrderId, {
-          state: "BLOCKED",
-          blockingIssue: `Verified candidate head does not match pull-request head ${doc.headSha}`,
-          requiredHumanAction: "Create one bounded recovery Attempt and independently reverify the exact pull-request head before acceptance.",
-          updatedAt: now,
-        });
-        await ctx.db.insert("workOrderEvents", {
-          tenantId: workOrder.tenantId,
-          projectId: workOrder.projectId,
-          workOrderId: workOrder._id,
-          workflowRunId: doc.workflowRunId,
-          eventType: "VERIFICATION_STALE",
-          actorType: "SYSTEM",
-          summary: `Pull-request head ${doc.headSha} invalidated evidence for ${priorCandidateRevisions.join(", ")}`,
-          timestamp: now,
-          metadata: {
-            evaluationId: id,
-            prUrl: doc.prUrl,
-            priorCandidateRevisions,
-            observedHeadSha: doc.headSha,
-            invalidatedReceiptIds: policyV2Enforced ? [] : mismatchedReceipts.map((receipt) => receipt._id),
-            liveEligibilityInvalidatedReceiptIds: mismatchedReceipts.map((receipt) => receipt._id),
-            staleQualityGateDecisionId,
-            historicalEvidencePreserved: policyV2Enforced,
-          },
-        });
       }
     }
     if (linkedWorkOrderId && doc.ciStatus === "FAIL") {

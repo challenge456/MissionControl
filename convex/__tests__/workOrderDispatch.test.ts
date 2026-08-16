@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   dispatchApprovalAllowed,
+  dispatchInvalidatesVerificationReceipts,
   findActiveRun,
   nextStateForRunStatus,
   publicDispatchActorAllowed,
@@ -18,6 +19,19 @@ describe("public work order dispatch authority", () => {
 });
 
 describe("work order dispatch policy", () => {
+  it("preserves immutable policy-v2 receipt history across recovery dispatch", () => {
+    expect(dispatchInvalidatesVerificationReceipts({
+      verificationContract: { schemaVersion: 2 },
+    })).toBe(false);
+  });
+
+  it("retains legacy receipt invalidation on dispatch", () => {
+    expect(dispatchInvalidatesVerificationReceipts({})).toBe(true);
+    expect(dispatchInvalidatesVerificationReceipts({
+      verificationContract: { schemaVersion: 1 },
+    })).toBe(true);
+  });
+
   it("requires approval for high-risk work orders", () => {
     expect(
       dispatchApprovalAllowed({

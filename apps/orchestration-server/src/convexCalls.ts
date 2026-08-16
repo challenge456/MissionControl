@@ -35,6 +35,12 @@ export const ConvexQueries = {
   missions: {
     get: "missions:get",
   },
+  factoryConfiguration: {
+    getActiveForWorkOrder: "factory/configuration:getActiveForWorkOrder",
+  },
+  githubAppConnections: {
+    getRepositoryReadiness: "githubAppConnections:getRepositoryReadiness",
+  },
 } as const;
 
 export const ConvexActions = {
@@ -47,6 +53,9 @@ export const ConvexActions = {
     renewFactoryAttempt: "serviceCommands:renewFactoryAttempt",
     reportFactoryAttempt: "serviceCommands:reportFactoryAttempt",
     authorizeFactoryPublication: "serviceCommands:authorizeFactoryPublication",
+    claimVerificationAttempt: "serviceCommands:claimVerificationAttempt",
+    renewVerificationAttempt: "serviceCommands:renewVerificationAttempt",
+    reportVerificationAttempt: "serviceCommands:reportVerificationAttempt",
     claimExecution: "serviceCommands:claimExecution",
     heartbeatExecution: "serviceCommands:heartbeatExecution",
     reportExecution: "serviceCommands:reportExecution",

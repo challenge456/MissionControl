@@ -21,7 +21,17 @@ describe("Mission plan model", () => {
       workflowVersion: 3,
       assertionIds: ["assertion-1"],
       implementationPolicy: {
-        allowedCommands: ["git diff --check"],
+        allowedCommands: ["pnpm test"],
+        independentVerification: {
+          executable: "pnpm",
+          args: ["test"],
+          category: "UNIT_TEST",
+          commandClass: "TEST",
+          evidenceCategory: "TEST_RESULT",
+          timeoutMs: 1_800_000,
+        },
+        maxFilesChanged: 40,
+        maxLinesChanged: 3_000,
         maxAttempts: 2,
         timeoutMinutes: 30,
       },

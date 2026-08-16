@@ -37,6 +37,11 @@ import { executeAutomation } from "./automationAdapter.js";
 import { discoverLocalInference } from "./localInference.js";
 import { FactoryAttemptWorker } from "./factoryAttemptWorker.js";
 import { FactoryHostReporter } from "./factoryHostReporter.js";
+import {
+  fetchGithubPullRequestEvidence,
+  loadGithubAppPrivateKey,
+  mintInstallationToken,
+} from "./githubAppRuntime.js";
 import { CodexV1ExecutorAdapter } from "./codexExecutorAdapter.js";
 import os from "node:os";
 
@@ -504,6 +509,119 @@ app.post("/workorders/:workOrderId/dispatch", async (c) => {
     return c.json({ success: true, result, executorBinding });
   } catch (err: any) {
     return c.json({ error: err.message }, 400);
+  }
+});
+
+// Trusted exact-head PR evidence stays behind the local orchestration boundary:
+// the browser supplies lineage only, while this service reads the App key path,
+// mints a repository-scoped token, and submits a signed service command.
+app.post("/orchestration/workorders/:workOrderId/github-pr-evidence", async (c) => {
+  try {
+    const workOrderId = c.req.param("workOrderId");
+    const body = await c.req.json().catch(() => ({}));
+    if (!body.projectId || !body.repositoryId || !body.workflowRunId || !body.prUrl) {
+      return c.json({ error: "projectId, repositoryId, workflowRunId, and prUrl are required" }, 400);
+    }
+    const activeFactory = await client.query(
+      ConvexQueries.factoryConfiguration.getActiveForWorkOrder as any,
+      { workOrderId },
+    ) as any;
+    const repository = activeFactory?.repository;
+    if (!repository
+      || String(repository._id) !== String(body.repositoryId)
+      || String(repository.projectId) !== String(body.projectId)
+      || repository.status !== "READY"
+      || !repository.providerRepositoryId) {
+      return c.json({ error: "The WorkOrder repository binding is unavailable or not ready" }, 409);
+    }
+    const readiness = await client.query(
+      ConvexQueries.githubAppConnections.getRepositoryReadiness as any,
+      { repositoryId: body.repositoryId },
+    ) as any;
+    const installation = readiness?.installation;
+    if (readiness?.overall !== "VERIFIED" || installation?.status !== "CONNECTED") {
+      return c.json({ error: "The repository-scoped GitHub App installation is not verified" }, 409);
+    }
+    const parsed = parseGithubPullRequestUrl(body.prUrl);
+    if (!parsed || parsed.repository.toLowerCase() !== String(repository.repository).toLowerCase()) {
+      return c.json({ error: "The pull request does not match the frozen WorkOrder repository" }, 400);
+    }
+    const configuredAppId = process.env.GITHUB_APP_ID?.trim();
+    const privateKey = loadGithubAppPrivateKey();
+    if (!configuredAppId || !privateKey || configuredAppId !== installation.appId) {
+      return c.json({ error: "The file-scoped GitHub App runtime identity does not match the repository installation" }, 503);
+    }
+    const issued = await mintInstallationToken({
+      appId: configuredAppId,
+      installationId: installation.installationId,
+      providerRepositoryId: repository.providerRepositoryId,
+      privateKey,
+    });
+    let installationToken = issued.token;
+    try {
+      const evidence = await fetchGithubPullRequestEvidence({
+        repository: parsed.repository,
+        prNumber: parsed.prNumber,
+        token: installationToken,
+      });
+      const attestationExpiresAt = Date.now() + 15 * 60_000;
+      const command = createSignedServiceCommand({
+        capability: "github.pr-evidence.ingest",
+        projectId: body.projectId,
+        repositoryId: body.repositoryId,
+        payload: {
+          projectId: body.projectId,
+          repositoryId: body.repositoryId,
+          workOrderId,
+          workflowRunId: body.workflowRunId,
+          evidence: {
+            projectId: body.projectId,
+            repositoryId: body.repositoryId,
+            installationId: installation.installationId,
+            workOrderId,
+            workflowRunId: body.workflowRunId,
+            lineageStatus: "EXPLICIT_ARTIFACT",
+            prUrl: evidence.prUrl,
+            prNumber: evidence.prNumber,
+            repoFullName: evidence.repoFullName,
+            branch: evidence.branch,
+            title: evidence.title,
+            prState: evidence.prState,
+            mergeActor: evidence.mergeActor,
+            mergedAt: evidence.mergedAt,
+            mergeCommitSha: evidence.mergeCommitSha,
+            ciStatus: evidence.ciStatus,
+            ciRunUrl: evidence.ciRunUrl,
+            headSha: evidence.headSha,
+            checkRuns: evidence.checkRuns,
+            signals: evidence.signals,
+            sourceRef: evidence.headSha,
+            provider: "GITHUB",
+            providerRepositoryId: repository.providerRepositoryId,
+            providerPullRequestId: evidence.providerPullRequestId,
+            draft: evidence.draft,
+            attestationExpiresAt,
+          },
+        },
+      });
+      const result = await client.action(
+        ConvexActions.serviceCommands.ingestGithubPrEvidence as any,
+        command,
+      ) as any;
+      return c.json({
+        success: true,
+        evaluationId: result?.evaluationId,
+        prUrl: evidence.prUrl,
+        headSha: evidence.headSha,
+        ciStatus: evidence.ciStatus,
+        checkCount: evidence.checkRuns.length,
+        attestationExpiresAt,
+      });
+    } finally {
+      installationToken = "";
+    }
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : "GitHub PR evidence sync failed" }, 500);
   }
 });
 
@@ -1393,6 +1511,23 @@ function attestationStatus(value: string | undefined) {
   return normalized === "READY" || normalized === "BLOCKED" || normalized === "UNKNOWN"
     ? normalized
     : undefined;
+}
+
+function parseGithubPullRequestUrl(value: unknown): { repository: string; prNumber: number } | null {
+  if (typeof value !== "string") return null;
+  try {
+    const url = new URL(value);
+    const match = url.hostname === "github.com"
+      ? url.pathname.match(/^\/([^/]+)\/([^/]+)\/pull\/(\d+)\/?$/)
+      : null;
+    if (!match) return null;
+    const prNumber = Number(match[3]);
+    return Number.isSafeInteger(prNumber) && prNumber > 0
+      ? { repository: `${match[1]}/${match[2]}`, prNumber }
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 const entryUrl = process.argv[1] ? pathToFileURL(process.argv[1]).href : null;

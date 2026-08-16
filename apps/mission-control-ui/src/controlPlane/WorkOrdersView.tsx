@@ -37,8 +37,10 @@ import {
   type WorkOrderQuickFilter,
 } from "./workOrdersModel";
 import { ExecutionRunInspector } from "./ExecutionRunInspector";
+import { ReviewEvidencePackage, type ReviewEvidencePackageData } from "./ReviewEvidencePackage";
 import { splitCurrentAndHistoricalRevisions, summarizeRevisionEffects } from "./workOrderLifecycleModel";
 import { CreateTaskModal } from "../CreateTaskModal";
+import { getOrchestrationBaseUrl } from "@/lib/orchestrationUrl";
 
 const RISK_STYLES: Record<string, string> = {
   LOW: "border-emerald-500/30 text-emerald-300",
@@ -123,6 +125,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
   const [createRequestKey, setCreateRequestKey] = useState<string | null>(null);
   const [dispatchingId, setDispatchingId] = useState<string | null>(null);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  const [syncingGithubEvidence, setSyncingGithubEvidence] = useState(false);
   const [revisingId, setRevisingId] = useState<string | null>(null);
   const [reopeningId, setReopeningId] = useState<string | null>(null);
   const [supersedingId, setSupersedingId] = useState<string | null>(null);
@@ -132,6 +135,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
   const [dispatchError, setDispatchError] = useState<string | null>(null);
   const [dispatchTaskSelections, setDispatchTaskSelections] = useState<Record<string, string>>({});
   const [dispatchCodeScopeSelections, setDispatchCodeScopeSelections] = useState<Record<string, string>>({});
+  const [dispatchFactorySelections, setDispatchFactorySelections] = useState<Record<string, string>>({});
   const [governanceError, setGovernanceError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [seeding, setSeeding] = useState(false);
@@ -313,7 +317,10 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
     && !["DONE", "SUPERSEDED", "CANCELED"].includes(selected.workOrder.state)
     && !selected.executionRuns.some((run) => ["PENDING", "RUNNING", "PAUSED"].includes(run.status))
     && selected.executionRuns[0]?.status === "COMPLETED"
-    && selected.acceptanceSummary?.eligible;
+    && (selected.currentVerification
+      ? selected.currentVerification.eligible
+        && ["APPROVED", "CONDITIONAL", "NOT_REQUIRED"].includes(selected.workOrder.approvalStatus)
+      : selected.acceptanceSummary?.eligible);
 
   const latestReceiptMap = useMemo(
     () => latestByCriterion((selected?.verificationReceipts ?? []).map((receipt) => ({
@@ -361,6 +368,9 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
       ? [dispatchCodeScopeSelections[selected.workOrder._id] as Id<"repositoryCodeScopes">]
       : selected.workOrder.codeScopeIds ?? []
     : [];
+  const selectedDispatchFactoryVersionId = selected
+    ? dispatchFactorySelections[selected.workOrder._id] ?? ""
+    : "";
   const activeLocalCodeScopes = (dispatchCodeScopes ?? []).filter((scope) =>
     scope.active
     && scope.allowedEnvironments.includes("LOCAL")
@@ -580,6 +590,12 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                   }}
                 />
 
+                {selected.reviewPackage ? (
+                  <Section title="Candidate decision">
+                    <ReviewEvidencePackage review={selected.reviewPackage as ReviewEvidencePackageData} />
+                  </Section>
+                ) : null}
+
                 {scopePolicyRequirements ? (
                   <Section title="Governed execution scope">
                     <div className="flex flex-wrap items-center gap-2">
@@ -769,6 +785,46 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                         </Button>
                         <Button
                           size="sm"
+                          variant="outline"
+                          disabled={
+                            syncingGithubEvidence
+                            || !projectId
+                            || !selected.workOrder.repositoryId
+                            || !selected.reviewPackage?.identity?.pullRequestUrl
+                            || !selected.currentVerification?.sourceAttemptId
+                          }
+                          title="Fetch authoritative GitHub state through the repository-scoped App boundary without exposing credentials to the browser."
+                          onClick={async () => {
+                            const prUrl = selected.reviewPackage?.identity?.pullRequestUrl;
+                            const repositoryId = selected.workOrder.repositoryId;
+                            const sourceAttemptId = selected.currentVerification?.sourceAttemptId;
+                            if (!projectId || !repositoryId || !prUrl || !sourceAttemptId) return;
+                            try {
+                              setGovernanceError(null);
+                              setSyncingGithubEvidence(true);
+                              const response = await fetch(`${getOrchestrationBaseUrl()}/orchestration/workorders/${selected.workOrder._id}/github-pr-evidence`, {
+                                method: "POST",
+                                headers: { "content-type": "application/json" },
+                                body: JSON.stringify({
+                                  projectId,
+                                  repositoryId,
+                                  workflowRunId: sourceAttemptId,
+                                  prUrl,
+                                }),
+                              });
+                              const result = await response.json().catch(() => ({}));
+                              if (!response.ok) throw new Error(result.error ?? "GitHub evidence sync failed");
+                            } catch (err) {
+                              setGovernanceError(err instanceof Error ? err.message : "GitHub evidence sync failed");
+                            } finally {
+                              setSyncingGithubEvidence(false);
+                            }
+                          }}
+                        >
+                          {syncingGithubEvidence ? "Syncing GitHub CI…" : "Sync exact GitHub CI"}
+                        </Button>
+                        <Button
+                          size="sm"
                           onClick={async () => {
                             try {
                               setGovernanceError(null);
@@ -792,14 +848,14 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                       </div>
                     </div>
                     {governanceError ? <div className="mb-3 text-xs text-red-300">{governanceError}</div> : null}
-                    {(selected.acceptanceSummary?.blockingReasons?.length ?? 0) > 0 ? (
+                    {(selected.currentVerification?.reasons?.length ?? 0) > 0 ? (
                       <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-                        {selected.acceptanceSummary.blockingReasons.map((reason, index) => (
+                        {selected.currentVerification.reasons.map((reason: string, index: number) => (
                           <li key={`${selected.workOrder._id}-blocker-${index}`}>{reason}</li>
                         ))}
                       </ul>
                     ) : (
-                      <p className="text-sm text-emerald-300">All required approvals and verification receipts are present. Explicit acceptance is now allowed.</p>
+                      <p className="text-sm text-emerald-300">Approvals, independent evidence, GitHub App PR lineage, and exact-head CI are complete. Explicit acceptance is now allowed.</p>
                     )}
                   </div>
                 </Section>
@@ -1125,6 +1181,22 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                         <span>Environment: <span className="text-foreground/85">{selected.workOrder.executionEnvironment ?? "LOCAL"}</span></span>
                         <span>Host: <span className="text-foreground/85">{activeFactory?.host?.hostId ?? "No current clean host"}</span></span>
                       </div>
+                      {governedFactoryRequired ? <div className="mt-3 max-w-md space-y-1.5">
+                        <Label htmlFor={`dispatch-factory-${selected.workOrder._id}`}>Factory version for this Attempt</Label>
+                        <Select
+                          value={selectedDispatchFactoryVersionId}
+                          onValueChange={(versionId) => setDispatchFactorySelections((current) => ({ ...current, [selected.workOrder._id]: versionId }))}
+                          disabled={!activeFactoryVersionId}
+                        >
+                          <SelectTrigger id={`dispatch-factory-${selected.workOrder._id}`} aria-label="Factory version for this Attempt">
+                            <SelectValue placeholder="Select the current approved Factory version" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {activeFactoryVersionId ? <SelectItem value={activeFactoryVersionId}>Factory v{activeFactory?.version.version} · {activeFactoryVersionId}</SelectItem> : null}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">Selection is revalidated and frozen into the immutable Attempt manifest at dispatch.</p>
+                      </div> : null}
                     </div>
                     <div className="flex items-end justify-end md:col-span-2">
                     <Button
@@ -1148,7 +1220,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                             executionEnvironment: selected.workOrder.executionEnvironment ?? "LOCAL",
                             executorHostId: governedFactoryRequired ? activeFactoryHostId : undefined,
                             factoryDefinitionVersionId: governedFactoryRequired
-                              ? activeFactoryVersionId
+                              ? selectedDispatchFactoryVersionId as Id<"factoryDefinitionVersions">
                               : undefined,
                           });
                           if (result.reason === "routing-exhausted") {
@@ -1166,6 +1238,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                         (selected.childTasks.length > 0 && !selectedDispatchTaskId) ||
                         (governedFactoryRequired && !factoryScopeMatches) ||
                         (governedFactoryRequired && !activeFactoryVersionId) ||
+                        (governedFactoryRequired && selectedDispatchFactoryVersionId !== activeFactoryVersionId) ||
                         (governedFactoryRequired && !activeFactoryHostId) ||
                         (governedFactoryRequired && !activeFactory?.readyForBrowserDispatch)
                       }
@@ -1182,6 +1255,11 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                   {governedFactoryRequired && !activeFactoryVersionId ? (
                     <div className="mb-3 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
                       Activate a passing Factory version for this repository before dispatch.
+                    </div>
+                  ) : null}
+                  {governedFactoryRequired && activeFactoryVersionId && selectedDispatchFactoryVersionId !== activeFactoryVersionId ? (
+                    <div className="mb-3 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
+                      Select the current approved Factory version before dispatch. The server freezes and revalidates this exact version.
                     </div>
                   ) : null}
                   {governedFactoryRequired && activeFactoryVersionId && !activeFactoryHostId ? (

@@ -108,6 +108,25 @@ export function verificationReceiptsInvalidatedByPrHead<
   );
 }
 
+export function shouldBlockForPrHeadMismatch(input: {
+  policyV2Enforced: boolean;
+  currentVerificationEligible?: boolean;
+  mismatchedReceiptCount: number;
+}) {
+  return input.mismatchedReceiptCount > 0
+    && (!input.policyV2Enforced || input.currentVerificationEligible !== true);
+}
+
+export function shouldClearRecoveredPrHeadBlock(input: {
+  policyV2Enforced: boolean;
+  currentVerificationEligible?: boolean;
+  blockingIssue?: string;
+}) {
+  return input.policyV2Enforced
+    && input.currentVerificationEligible === true
+    && input.blockingIssue?.startsWith("Verified candidate head does not match pull-request head ") === true;
+}
+
 export function canonicalGithubPullRequestUrl(owner: string, repo: string, prNumber: number) {
   return `https://github.com/${owner}/${repo}/pull/${prNumber}`;
 }
@@ -243,6 +262,7 @@ export async function fetchPullRequestCi(
   }
   const pr = (await prRes.json()) as {
     id?: number;
+    node_id?: string;
     title?: string;
     body?: string | null;
     draft?: boolean;
@@ -259,7 +279,7 @@ export async function fetchPullRequestCi(
   if (!headSha) {
     throw new Error("PR head SHA missing");
   }
-  if (!Number.isSafeInteger(pr.id) || Number(pr.id) < 1) {
+  if (!pr.node_id?.trim()) {
     throw new Error("PR provider identity missing");
   }
 
@@ -306,7 +326,7 @@ export async function fetchPullRequestCi(
   return {
     prUrl,
     prNumber,
-    providerPullRequestId: String(pr.id),
+    providerPullRequestId: pr.node_id,
     repoFullName: `${owner}/${repo}`,
     branch: pr.head?.ref,
     title: pr.title,

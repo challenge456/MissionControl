@@ -80,6 +80,7 @@ export interface FactoryExecutionManifestInput {
   routedModel?: string;
   maxRuntimeMinutes: number;
   initialContext: unknown;
+  harnessIsolation?: "WORKSPACE_WRITE" | "DETACHED_READ_ONLY";
 }
 
 export function buildFactoryExecutionManifest(input: FactoryExecutionManifestInput) {

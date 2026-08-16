@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CodexV1ExecutorAdapter } from "../codexExecutorAdapter.js";
 import {
+  FACTORY_ATTEMPT_LEASE_DURATION_MS,
   FactoryAttemptWorker,
   factoryRunQueryArgs,
   matchesWorkerScope,
@@ -15,6 +16,7 @@ import {
   assertFactoryCandidateUnchanged,
   commitFactoryChanges,
   ensureFactoryWorktree,
+  ensureVerificationWorktree,
   inspectCandidateChange,
   listChangedFiles,
   pushFactoryBranch,
@@ -37,6 +39,11 @@ afterEach(async () => {
 });
 
 describe("FactoryAttemptWorker verification-first lifecycle", () => {
+  it("keeps the renewable Attempt lease beyond the publication safety window", () => {
+    expect(FACTORY_ATTEMPT_LEASE_DURATION_MS).toBe(120_000);
+    expect(FACTORY_ATTEMPT_LEASE_DURATION_MS).toBeGreaterThan(60_000);
+  });
+
   it("claims only the repository bound by the documented durable-worker configuration", () => {
     const scope = { projectId: "project-1", repositoryId: "repository-1" };
     expect(matchesWorkerScope({ projectId: "project-1", repositoryId: "repository-1" }, scope)).toBe(true);
@@ -136,6 +143,152 @@ describe("FactoryAttemptWorker verification-first lifecycle", () => {
     expect(fixture.reports.at(-1)?.terminal).toEqual({ status: "COMPLETED" });
     await restartedWorker.stop();
   });
+
+  it("persists a verification mismatch, blocks publication, and recovers with a new immutable Attempt", async () => {
+    const mismatched = await runFixture("VERIFIED", { attempt: 1, dirtyVerification: true });
+    await vi.waitFor(() => expect(mismatched.worker.status().failedCount).toBe(1));
+
+    const failurePacket = mismatched.reports.at(-1);
+    const failureEvidence = failurePacket?.artifacts?.find((artifact: any) => artifact.artifactType === "VERIFICATION_EVIDENCE");
+    expect(failureEvidence).toMatchObject({
+      metadata: {
+        failureClass: "CANDIDATE_INTEGRITY_MISMATCH",
+        candidateRevision: expect.stringMatching(/^[a-f0-9]{40}$/),
+      },
+    });
+    expect(failureEvidence.metadata.checkSummary).toEqual(
+      expect.arrayContaining([expect.objectContaining({ status: "PASS", verifierId: "factory-command/v1" })]),
+    );
+    expect(failurePacket?.terminal).toMatchObject({
+      status: "FAILED",
+      failureReason: expect.stringContaining("Verification left repository changes behind"),
+    });
+    expect(mismatched.createPullRequest).not.toHaveBeenCalled();
+    const historicalPackets = structuredClone(mismatched.reports);
+    await mismatched.worker.stop();
+
+    const recovered = await runFixture("VERIFIED", { attempt: 2 });
+    await vi.waitFor(() => expect(recovered.worker.status().completedCount).toBe(1));
+    const recoveredArtifact = recovered.reports.at(-1)?.artifacts?.find((artifact: any) => artifact.artifactType === "PULL_REQUEST");
+
+    expect(recovered.createPullRequest).toHaveBeenCalledOnce();
+    expect(recoveredArtifact?.metadata).toMatchObject({
+      workflowRunId: "workflow-run-2",
+      headSha: expect.stringMatching(/^[a-f0-9]{40}$/),
+      installationId: "303",
+    });
+    expect(recoveredArtifact?.metadata.headSha).not.toBe(failureEvidence.metadata.candidateRevision);
+    expect(mismatched.reports).toEqual(historicalPackets);
+    await recovered.worker.stop();
+  });
+
+  it("runs policy-v2 verification in a distinct detached exact-subject Attempt", async () => {
+    const checkoutRoot = await mkdtemp(path.join(tmpdir(), "mc-policy-v2-verifier-"));
+    cleanup.push(checkoutRoot);
+    await git(checkoutRoot, ["init", "-b", "main"]);
+    await git(checkoutRoot, ["config", "user.name", "Mission Control Test"]);
+    await git(checkoutRoot, ["config", "user.email", "factory@example.test"]);
+    await mkdir(path.join(checkoutRoot, "src"), { recursive: true });
+    await writeFile(path.join(checkoutRoot, "src", "feature.ts"), "export const value = 1;\n");
+    await git(checkoutRoot, ["add", "."]);
+    await git(checkoutRoot, ["commit", "-m", "base"]);
+    const sourceRevision = (await git(checkoutRoot, ["rev-parse", "HEAD"])).stdout.trim();
+    await git(checkoutRoot, ["checkout", "-b", "mc/candidate"]);
+    await writeFile(path.join(checkoutRoot, "src", "feature.ts"), "export const value = 2;\n");
+    await git(checkoutRoot, ["add", "."]);
+    await git(checkoutRoot, ["commit", "-m", "candidate"]);
+    const candidateSha = (await git(checkoutRoot, ["rev-parse", "HEAD"])).stdout.trim();
+    const treeSha = (await git(checkoutRoot, ["rev-parse", "HEAD^{tree}"])).stdout.trim();
+    const run = {
+      _id: "verification-attempt-1", runId: "verify-1", projectId: "project-1", repositoryId: "repository-1",
+      factoryDefinitionVersionId: "verification-factory-v1", executionManifestDigest: "sha256:manifest-v2",
+      executorAdapter: "codex", executorVersion: "v1", attemptPurpose: "VERIFICATION", status: "PENDING",
+    };
+    const subject = {
+      version: 1, kind: "GIT_CANDIDATE", subjectId: "subject-1", digest: "sha256:subject",
+      workOrderId: "work-order-1", workOrderRevisionNumber: 1, verificationContractDigest: "sha256:contract",
+      sourceAttemptId: "implementation-attempt-1", repositoryId: "repository-1", provider: "GITHUB",
+      providerRepositoryId: "101", candidateSha, treeSha,
+      pullRequest: { providerPullRequestId: "PR_1", number: 101, url: "https://github.com/sellerfi/mission-control-fixture/pull/101", baseRef: "main", headRef: "mc/candidate", headSha: candidateSha, draftAtPublication: true },
+    };
+    const worktree = path.join(checkoutRoot, ".mission-control", "worktrees", "verify-1");
+    const claim = {
+      claimed: true, ...run, workflowRunId: run._id, workOrderId: "work-order-1", checkoutRoot, worktree,
+      sourceWorktree: path.join(checkoutRoot, ".mission-control", "worktrees", "source-1"),
+      sourceRevision,
+      branch: "mc/candidate", defaultBranch: "main", repository: "sellerfi/mission-control-fixture",
+      providerRepositoryId: "101", installation: { appId: "202", installationId: "303" },
+      verificationSubject: subject, verificationPlan: { planId: "plan-1", planDigest: "sha256:plan" },
+      executionManifest: {
+        ...executionManifest(),
+        causation: { workflowRunId: run._id, workOrderRevisionNumber: 1 },
+        harness: {
+          ...executionManifest().harness,
+          isolation: "READ_ONLY",
+          requiredCapabilities: ["git-worktree", "read-only"],
+        },
+        workOrderSpecification: {
+          ...executionManifest().workOrderSpecification,
+          verificationContract: {
+            ...executionManifest().workOrderSpecification.verificationContract,
+            schemaVersion: 2,
+            requiredRisks: [],
+            independence: { required: true, minimumBoundary: "SEPARATE_ATTEMPT" },
+          },
+        },
+      },
+    };
+    const reports: any[] = [];
+    let pending = true;
+    const client = {
+      query: vi.fn(async (_query: unknown, args: any) => args.status === "PENDING" && pending ? [run] : []),
+      action: vi.fn(async (_action: unknown, command: any) => {
+        const payload = JSON.parse(command.payloadJson);
+        if (!payload.packet) return claim;
+        pending = false;
+        reports.push({ capability: command.envelope.capability, packet: payload.packet });
+        return { accepted: true, verdict: "VERIFIED" };
+      }),
+    } as any;
+    const adapter = { execute: vi.fn(async () => { throw new Error("Implementation adapter must not run for verification Attempts."); }) } as any;
+    const dependencies: FactoryAttemptWorkerDependencies = {
+      ensureFactoryWorktree,
+      ensureVerificationWorktree,
+      listChangedFiles,
+      commitFactoryChanges,
+      inspectCandidateChange,
+      assertFactoryCandidateUnchanged,
+      executeIndependentVerification,
+      loadGithubAppPrivateKey: () => undefined,
+      getGithubAppId: () => undefined,
+      mintInstallationToken: vi.fn() as any,
+      pushFactoryBranch: vi.fn() as any,
+      createOrReusePullRequest: vi.fn() as any,
+    };
+    const worker = new FactoryAttemptWorker(client, adapter, true, 60_000, dependencies);
+    await worker.tick();
+    await vi.waitFor(() => expect(worker.status().completedCount).toBe(1));
+
+    expect(adapter.execute).not.toHaveBeenCalled();
+    expect(reports).toHaveLength(1);
+    expect(reports[0]).toMatchObject({
+      capability: "verification:report",
+      packet: {
+        terminal: { status: "COMPLETED" },
+        verification: { sourceRevision, candidateRevision: candidateSha },
+        isolation: {
+          mode: "DETACHED_GIT_WORKTREE",
+          headSha: candidateSha,
+          treeSha,
+          initialClean: true,
+          finalSubjectMatch: true,
+          attestedAt: expect.any(Number),
+        },
+      },
+    });
+    expect(dependencies.createOrReusePullRequest).not.toHaveBeenCalled();
+    await worker.stop();
+  });
 });
 
 function verifiedSha() {
@@ -144,8 +297,9 @@ function verifiedSha() {
 
 async function runFixture(
   serverVerdict: "VERIFIED" | "NOT_VERIFIED" | "REQUIRES_HUMAN_REVIEW",
-  options: { durable?: boolean } = {},
+  options: { attempt?: number; dirtyVerification?: boolean; durable?: boolean } = {},
 ) {
+  const attempt = options.attempt ?? 1;
   const checkoutRoot = await mkdtemp(path.join(tmpdir(), "mc-verification-first-worker-"));
   cleanup.push(checkoutRoot);
   await git(checkoutRoot, ["init", "-b", "main"]);
@@ -158,11 +312,11 @@ async function runFixture(
   await git(checkoutRoot, ["commit", "-m", "Initial fixture"]);
   const baseSha = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: checkoutRoot })).stdout.trim();
 
-  const worktree = path.join(checkoutRoot, ".mission-control", "worktrees", "attempt-1");
+  const worktree = path.join(checkoutRoot, ".mission-control", "worktrees", `attempt-${attempt}`);
   const reports: any[] = [];
   const run = {
-    _id: "workflow-run-1",
-    runId: "factory-run-1",
+    _id: `workflow-run-${attempt}`,
+    runId: `factory-run-${attempt}`,
     projectId: "project-1",
     repositoryId: "repository-1",
     factoryDefinitionVersionId: "factory-version-1",
@@ -178,12 +332,12 @@ async function runFixture(
     workOrderId: "work-order-1",
     checkoutRoot,
     worktree,
-    branch: "mc/verification-first-fixture",
+    branch: `mc/verification-first-fixture-${attempt}`,
     defaultBranch: "main",
     repository: "sellerfi/mission-control-fixture",
     providerRepositoryId: "101",
     installation: { appId: "202", installationId: "303" },
-    executionManifest: executionManifest(baseSha),
+    executionManifest: executionManifest({ attempt, dirtyVerification: options.dirtyVerification, baseSha }),
   };
   let lifecycle: "INITIAL" | "PAUSED" | "RESUME" | "COMPLETED" = "INITIAL";
   let verifiedCandidate: { sourceRevision: string; candidateRevision: string } | null = null;
@@ -265,7 +419,10 @@ async function runFixture(
     onExit?: (pid: number, exitCode?: number) => Promise<void> | void;
   }) => {
     await onSpawn?.(4242);
-    await writeFile(path.join(cwd, "src", "feature.ts"), "export const verified = true;\n");
+    await writeFile(
+      path.join(cwd, "src", "feature.ts"),
+      `export const verified = true; // corrected Attempt ${attempt}\n`,
+    );
     await onExit?.(4242, 0);
     return {
       exitCode: 0,
@@ -278,14 +435,16 @@ async function runFixture(
     url: "https://github.com/sellerfi/mission-control-fixture/pull/42",
     nodeId: "PR_fixture",
     headSha: input.headSha,
+    draft: input.draft === true,
     reused: false,
   }));
   const executeVerification = vi.fn(executeIndependentVerification);
   const pushFactoryBranchMock = vi.fn(async (input) => {
-    expect(input.branch).toBe("mc/verification-first-fixture");
+    expect(input.branch).toBe(`mc/verification-first-fixture-${attempt}`);
   });
   const dependencies: FactoryAttemptWorkerDependencies = {
     ensureFactoryWorktree,
+    ensureVerificationWorktree,
     listChangedFiles,
     commitFactoryChanges,
     inspectCandidateChange,
@@ -336,10 +495,10 @@ function completedFactoryResult() {
   };
 }
 
-function executionManifest(baseSha: string) {
+function executionManifest(options: { attempt?: number; dirtyVerification?: boolean; baseSha?: string } = {}) {
   return {
     version: "factory-execution-manifest/v1",
-    causation: { workOrderRevisionNumber: 1, sourceIssue: "sellerfi/mission-control-fixture#17" },
+    causation: { workflowRunId: `workflow-run-${options.attempt ?? 1}`, workOrderRevisionNumber: 1, sourceIssue: "sellerfi/mission-control-fixture#17" },
     harness: {
       adapter: "codex",
       version: "v1",
@@ -349,7 +508,7 @@ function executionManifest(baseSha: string) {
       pullRequestAuthority: "CONTROL_PLANE_ONLY",
       timeoutMs: 60_000,
     },
-    repository: { baseSha, allowedPaths: ["src/**"], excludedPaths: [] },
+    repository: { baseSha: options.baseSha ?? "a".repeat(40), allowedPaths: ["src/**"], excludedPaths: [] },
     workflow: { steps: [] },
     compiledPrompt: "Implement the approved issue intent within the frozen Work Order contract.",
     intent: { title: "Governed issue intent becomes a verified pull request" },
@@ -387,7 +546,14 @@ function executionManifest(baseSha: string) {
           mandatory: true,
           acceptanceCriterionIds: ["ac-1"],
           evidenceCategory: "TEST_RESULT",
-          command: { executable: "node", args: ["-e", "console.log('verified')"], commandClass: "TEST", timeoutMs: 5_000 },
+          command: {
+            executable: "node",
+            args: ["-e", options.dirtyVerification
+              ? "require('fs').writeFileSync('src/verifier-touch.ts', 'mismatch')"
+              : "console.log('verified')"],
+            commandClass: "TEST",
+            timeoutMs: 5_000,
+          },
         }],
       },
     },
@@ -395,5 +561,5 @@ function executionManifest(baseSha: string) {
 }
 
 async function git(cwd: string, args: string[]) {
-  await execFileAsync("git", args, { cwd });
+  return await execFileAsync("git", args, { cwd });
 }

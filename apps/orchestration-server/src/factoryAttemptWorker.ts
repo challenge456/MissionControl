@@ -1,10 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { ConvexHttpClient } from "convex/browser";
 import type { ExecutorEvent } from "@mission-control/workflow-engine";
+import { verificationIsolationBindingDigest } from "@mission-control/workflow-engine";
 import { CodexV1ExecutorAdapter } from "./codexExecutorAdapter.js";
 import { ConvexActions, ConvexQueries } from "./convexCalls.js";
 import { createSignedServiceCommand } from "./serviceCommandClient.js";
-import { assertFactoryCandidateUnchanged, commitFactoryChanges, ensureFactoryWorktree, inspectCandidateChange, listChangedFiles, pushFactoryBranch } from "./factoryGitRuntime.js";
+import { assertFactoryCandidateUnchanged, commitFactoryChanges, ensureFactoryWorktree, ensureVerificationWorktree, inspectCandidateChange, listChangedFiles, pushFactoryBranch } from "./factoryGitRuntime.js";
 import { validateChangedFileScope } from "./factoryPathScope.js";
 import { createOrReusePullRequest, loadGithubAppPrivateKey, mintInstallationToken } from "./githubAppRuntime.js";
 import { executeIndependentVerification } from "./factoryVerification.js";
@@ -17,7 +18,7 @@ import {
   type FactoryWorkspaceOwner,
 } from "./factoryWorkspaceOwnership.js";
 
-const LEASE_DURATION_MS = 60_000;
+export const FACTORY_ATTEMPT_LEASE_DURATION_MS = 120_000;
 const HEARTBEAT_INTERVAL_MS = 20_000;
 const MAX_RESULT_BYTES = 64_000;
 
@@ -33,6 +34,7 @@ export interface FactoryAttemptWorkerStatus {
 
 export interface FactoryAttemptWorkerDependencies {
   ensureFactoryWorktree: typeof ensureFactoryWorktree;
+  ensureVerificationWorktree: typeof ensureVerificationWorktree;
   listChangedFiles: typeof listChangedFiles;
   commitFactoryChanges: typeof commitFactoryChanges;
   inspectCandidateChange: typeof inspectCandidateChange;
@@ -63,6 +65,7 @@ export interface FactoryAttemptWorkerIdentity {
 
 const DEFAULT_DEPENDENCIES: FactoryAttemptWorkerDependencies = {
   ensureFactoryWorktree,
+  ensureVerificationWorktree,
   listChangedFiles,
   commitFactoryChanges,
   inspectCandidateChange,
@@ -167,10 +170,15 @@ export class FactoryAttemptWorker {
 
   private async execute(run: any, controller: AbortController) {
     const leaseId = randomUUID();
-    const claim = await this.command("claimFactoryAttempt", "attempts.claim", run, {
+    const verificationAttempt = run.attemptPurpose === "VERIFICATION";
+    const claim = await this.command(
+      verificationAttempt ? "claimVerificationAttempt" : "claimFactoryAttempt",
+      verificationAttempt ? "verification:claim" : "attempts.claim",
+      run,
+      {
       workflowRunId: run._id,
       leaseId,
-      leaseDurationMs: LEASE_DURATION_MS,
+      leaseDurationMs: FACTORY_ATTEMPT_LEASE_DURATION_MS,
       workerId: this.identity?.workerId,
       workerSessionId: this.identity?.sessionId,
     });
@@ -187,10 +195,14 @@ export class FactoryAttemptWorker {
       if (heartbeatTask || controller.signal.aborted) return;
       heartbeatTask = (async () => {
         try {
-          const result = await this.command("renewFactoryAttempt", "attempts.renew", run, {
+          const result = await this.command(
+            verificationAttempt ? "renewVerificationAttempt" : "renewFactoryAttempt",
+            verificationAttempt ? "verification:renew" : "attempts.renew",
+            run,
+            {
             workflowRunId: run._id,
             leaseId,
-            leaseDurationMs: LEASE_DURATION_MS,
+            leaseDurationMs: FACTORY_ATTEMPT_LEASE_DURATION_MS,
             ...workerLeaseIdentity,
           });
           if (!result?.renewed) throw new Error(`Attempt lease renewal rejected (${result?.reason ?? "unknown"}).`);
@@ -210,7 +222,11 @@ export class FactoryAttemptWorker {
         if (heartbeatTask) await heartbeatTask;
       }
       if (!leaseHealthy) throw new Error("Factory attempt lease was lost before evidence could be recorded.");
-      return await this.command("reportFactoryAttempt", "attempts.report", run, {
+      return await this.command(
+        verificationAttempt ? "reportVerificationAttempt" : "reportFactoryAttempt",
+        verificationAttempt ? "verification:report" : "attempts.report",
+        run,
+        {
         workflowRunId: run._id,
         leaseId,
         packet,
@@ -220,6 +236,12 @@ export class FactoryAttemptWorker {
 
     try {
       const manifest = validateClaimManifest(claim);
+      if (verificationAttempt) {
+        await this.executeVerificationAttempt({ claim, manifest, report, controller });
+        this.completedCount += 1;
+        this.lastError = null;
+        return;
+      }
       const workspaceOwner = workspaceOwnerFromClaim(claim, manifest);
       if (claim.publicationCheckpoint && workspaceOwner && claim.previousLease?.workerId) {
         await (this.dependencies.transferFactoryPublicationWorkspace ?? transferFactoryPublicationWorkspace)({
@@ -390,12 +412,14 @@ export class FactoryAttemptWorker {
             branch: claim.branch,
             sourceRevision: candidate.sourceRevision,
             headSha,
+            treeSha: candidate.treeRevision,
           },
         },
       ];
       let verificationRecord: any;
       let verificationResult: any;
-      if (manifest.workOrderSpecification?.verificationContract) {
+      const policyV2 = manifest.workOrderSpecification?.verificationContract?.schemaVersion === 2;
+      if (manifest.workOrderSpecification?.verificationContract && !policyV2) {
         verificationResult = await this.dependencies.executeIndependentVerification({
           workflowRunId: String(claim.workflowRunId),
           workOrderId: String(claim.workOrderId),
@@ -406,7 +430,21 @@ export class FactoryAttemptWorker {
           repositoryRoot: claim.worktree,
           signal: controller.signal,
         });
-        await this.dependencies.assertFactoryCandidateUnchanged(claim.worktree, headSha);
+        try {
+          await this.dependencies.assertFactoryCandidateUnchanged(claim.worktree, headSha);
+        } catch (error) {
+          const reason = safeError(error);
+          await report({
+            events: mappedEvents,
+            artifacts: [
+              ...baseArtifacts,
+              verificationMismatchArtifact(claim, candidate, verificationResult, reason),
+            ],
+            terminal: { status: "FAILED", failureReason: reason },
+          });
+          this.failedCount += 1;
+          return;
+        }
         const verificationReport = await report({
           events: mappedEvents,
           observations: traceObservations,
@@ -434,6 +472,8 @@ export class FactoryAttemptWorker {
         verificationRecord,
         sourceRevision: candidate.sourceRevision,
         headSha,
+        treeSha: candidate.treeRevision,
+        policyV2,
         report,
         leaseId,
         requirePublicationPermit: true,
@@ -459,7 +499,8 @@ export class FactoryAttemptWorker {
 
   private async command(
     action: keyof typeof ConvexActions.serviceCommands,
-    capability: "attempts.claim" | "attempts.renew" | "attempts.report" | "attempts.authorize-publication",
+    capability: "attempts.claim" | "attempts.renew" | "attempts.report" | "attempts.authorize-publication"
+      | "verification:claim" | "verification:renew" | "verification:report",
     run: any,
     payload: unknown
   ) {
@@ -480,6 +521,8 @@ export class FactoryAttemptWorker {
     verificationRecord: any;
     sourceRevision: string;
     headSha: string;
+    treeSha?: string;
+    policyV2?: boolean;
     report: (packet: any) => Promise<any>;
     leaseId: string;
     publicationPermit?: { id: string; leaseId: string; validUntil: number };
@@ -542,6 +585,7 @@ export class FactoryAttemptWorker {
       body: buildPullRequestBody(input.claim, input.structuredResult, input.changedFiles, input.verificationRecord),
       token: installationToken.token,
       headSha: input.headSha,
+      draft: input.policyV2 === true,
     });
     const pullRequestLineage = {
       ...input.manifest.causation,
@@ -551,8 +595,11 @@ export class FactoryAttemptWorker {
       branch: input.claim.branch,
       sourceRevision: input.sourceRevision,
       headSha: input.headSha,
+      treeSha: input.treeSha,
       pullRequestNumber: pullRequest.number,
       pullRequestUrl: pullRequest.url,
+      providerPullRequestId: pullRequest.nodeId,
+      draftAtPublication: pullRequest.draft,
       changedFiles: input.changedFiles,
       executionManifestDigest: input.claim.executionManifestDigest,
       publicationPermitId: publicationPermit?.id,
@@ -573,6 +620,18 @@ export class FactoryAttemptWorker {
         observations: input.observations ?? [],
         artifacts: [...(input.artifacts ?? []), pullRequestArtifact],
         terminal: { status: "COMPLETED" },
+        ...(input.policyV2 ? {
+          candidateReady: {
+            candidateSha: input.headSha,
+            treeSha: input.treeSha,
+            providerPullRequestId: pullRequest.nodeId,
+            pullRequestNumber: pullRequest.number,
+            pullRequestUrl: pullRequest.url,
+            baseRef: input.claim.defaultBranch,
+            headRef: input.claim.branch,
+            draftAtPublication: pullRequest.draft,
+          },
+        } : {}),
       });
       return;
     }
@@ -603,6 +662,77 @@ export class FactoryAttemptWorker {
         commandSummary: cleanup.outcome === "COMPLETED" ? "Owned Factory workspace cleanup completed" : "Factory workspace preserved for operator inspection",
         metadata: { lifecycleType: `WORKSPACE_CLEANUP_${cleanup.outcome}`, reason: cleanup.reason },
       }],
+      terminal: { status: "COMPLETED" },
+      ...(input.policyV2 ? {
+        candidateReady: {
+          candidateSha: input.headSha,
+          treeSha: input.treeSha,
+          providerPullRequestId: pullRequest.nodeId,
+          pullRequestNumber: pullRequest.number,
+          pullRequestUrl: pullRequest.url,
+          baseRef: input.claim.defaultBranch,
+          headRef: input.claim.branch,
+          draftAtPublication: pullRequest.draft,
+        },
+      } : {}),
+    });
+  }
+
+  private async executeVerificationAttempt(input: {
+    claim: any;
+    manifest: any;
+    report: (packet: any) => Promise<any>;
+    controller: AbortController;
+  }) {
+    const subject = input.claim.verificationSubject;
+    const plan = input.claim.verificationPlan;
+    if (subject?.kind !== "GIT_CANDIDATE" || !plan?.planDigest) {
+      throw new Error("Verification Attempt is missing its frozen Git subject or Verification Plan.");
+    }
+    await this.dependencies.ensureVerificationWorktree({
+      checkoutRoot: input.claim.checkoutRoot,
+      worktree: input.claim.worktree,
+      candidateSha: subject.candidateSha,
+      treeSha: subject.treeSha,
+    });
+    const candidate = await this.dependencies.inspectCandidateChange(
+      input.claim.worktree,
+      input.claim.defaultBranch,
+      input.claim.sourceRevision,
+    );
+    if (candidate.candidateRevision !== subject.candidateSha || candidate.treeRevision !== subject.treeSha) {
+      throw new Error("Detached verification checkout does not match the immutable Verification Subject.");
+    }
+    const verification = await this.dependencies.executeIndependentVerification({
+      workflowRunId: String(input.claim.workflowRunId),
+      workOrderId: String(input.claim.workOrderId),
+      workOrderRevisionNumber: input.manifest.causation.workOrderRevisionNumber,
+      title: String(input.manifest.intent.title),
+      specification: input.manifest.workOrderSpecification,
+      candidate,
+      repositoryRoot: input.claim.worktree,
+      signal: input.controller.signal,
+    });
+    await this.dependencies.assertFactoryCandidateUnchanged(input.claim.worktree, subject.candidateSha);
+    const isolationWithoutDigest = {
+      mode: "DETACHED_GIT_WORKTREE" as const,
+      sandboxId: `local-worktree:${input.claim.runId}`,
+      subjectDigest: subject.digest,
+      verifierRoot: input.claim.worktree,
+      sourceRoot: input.claim.sourceWorktree,
+      initialClean: true,
+      finalSubjectMatch: true,
+      repositoryId: String(input.claim.repositoryId),
+      headSha: subject.candidateSha,
+      treeSha: subject.treeSha,
+      attestedAt: Date.now(),
+    };
+    await input.report({
+      verification,
+      isolation: {
+        ...isolationWithoutDigest,
+        rootBindingDigest: verificationIsolationBindingDigest(isolationWithoutDigest),
+      },
       terminal: { status: "COMPLETED" },
     });
   }
@@ -661,7 +791,7 @@ function validateClaimManifest(claim: any) {
     manifest?.version !== "factory-execution-manifest/v1"
     || manifest?.harness?.adapter !== "codex"
     || manifest?.harness?.version !== "v1"
-    || manifest?.harness?.isolation !== "WORKSPACE_WRITE"
+    || !["WORKSPACE_WRITE", "READ_ONLY", "DETACHED_READ_ONLY"].includes(manifest?.harness?.isolation)
     || manifest?.harness?.pullRequestAuthority !== "CONTROL_PLANE_ONLY"
     || typeof manifest?.harness?.executionBackend !== "string"
     || !manifest.harness.executionBackend.trim()
@@ -851,6 +981,38 @@ function structuredResultArtifact(claim: any, result: ReturnType<typeof parseFac
     description: result.summary,
     contentHash: `sha256:${createHash("sha256").update(JSON.stringify(result)).digest("hex")}`,
     metadata: { schema: "factory-result/v1", result },
+  };
+}
+
+function verificationMismatchArtifact(claim: any, candidate: any, verification: any, reason: string) {
+  const checkSummary = (verification?.checks ?? []).map((check: any) => ({
+    checkId: check.checkId,
+    verifierId: check.verifierId,
+    status: check.status,
+    evidence: (check.evidence ?? []).map((item: any) => ({
+      evidenceKey: item.evidenceKey,
+      contentHash: item.contentHash,
+      producer: item.producer,
+    })),
+  }));
+  return {
+    idempotencyKey: `factory:${claim.runId}:verification-candidate-mismatch:${candidate.candidateRevision}`,
+    artifactType: "VERIFICATION_EVIDENCE",
+    name: "Independent verification candidate-integrity failure",
+    description: reason,
+    contentHash: `sha256:${createHash("sha256").update(JSON.stringify({
+      sourceRevision: candidate.sourceRevision,
+      candidateRevision: candidate.candidateRevision,
+      checkSummary,
+      reason,
+    })).digest("hex")}`,
+    metadata: {
+      failureClass: "CANDIDATE_INTEGRITY_MISMATCH",
+      sourceRevision: candidate.sourceRevision,
+      candidateRevision: candidate.candidateRevision,
+      checkSummary,
+      reason,
+    },
   };
 }
 

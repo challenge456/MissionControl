@@ -18,7 +18,17 @@ export interface MissionPlanWorkflowOption {
 
 export function defaultImplementationPolicy() {
   return {
-    allowedCommands: ["git diff --check"],
+    allowedCommands: ["pnpm test"],
+    independentVerification: {
+      executable: "pnpm",
+      args: ["test"],
+      category: "UNIT_TEST" as const,
+      commandClass: "TEST" as const,
+      evidenceCategory: "TEST_RESULT" as const,
+      timeoutMs: 30 * 60_000,
+    },
+    maxFilesChanged: 40,
+    maxLinesChanged: 3_000,
     maxAttempts: 2,
     timeoutMinutes: 30,
     stopCondition: "Stop after the approved file scope and verification commands pass and the review-ready pull request identity is persisted.",
@@ -138,8 +148,16 @@ export function planToMissionPlanValues(plan: any, repository?: string, reposito
       riskLevel: blueprint.riskLevel ?? "MEDIUM",
       constraints: blueprint.constraints ?? [],
       requiredApprovals: blueprint.requiredApprovals ?? [],
-      implementationPolicy: blueprint.implementationPolicy
-        ?? (blueprint.isMutating ? defaultImplementationPolicy() : undefined),
+      implementationPolicy: blueprint.isMutating
+        ? {
+            ...defaultImplementationPolicy(),
+            ...(blueprint.implementationPolicy ?? {}),
+            independentVerification: {
+              ...defaultImplementationPolicy().independentVerification,
+              ...(blueprint.implementationPolicy?.independentVerification ?? {}),
+            },
+          }
+        : undefined,
     })),
     assertions: plan?.assertions ?? plan?.metadata?.assertions ?? [],
   };
@@ -163,6 +181,13 @@ export function missionPlanPayload(values: MissionPlanValues) {
         ? {
             ...blueprint.implementationPolicy,
             allowedCommands: blueprint.implementationPolicy.allowedCommands.map((item) => item.trim()).filter(Boolean),
+            independentVerification: blueprint.implementationPolicy.independentVerification
+              ? {
+                  ...blueprint.implementationPolicy.independentVerification,
+                  executable: blueprint.implementationPolicy.independentVerification.executable.trim(),
+                  args: blueprint.implementationPolicy.independentVerification.args.map((item) => item.trim()),
+                }
+              : undefined,
             stopCondition: blueprint.implementationPolicy.stopCondition.trim(),
           }
         : undefined,

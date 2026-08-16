@@ -8,6 +8,40 @@ export interface InstallationToken {
   expiresAt: number;
 }
 
+export interface GithubPullRequestEvidence {
+  prUrl: string;
+  prNumber: number;
+  providerPullRequestId: string;
+  repoFullName: string;
+  branch?: string;
+  title?: string;
+  draft: boolean;
+  prState: "OPEN" | "CLOSED" | "MERGED";
+  mergeActor?: string;
+  mergedAt?: number;
+  mergeCommitSha?: string;
+  headSha: string;
+  ciStatus: "PASS" | "FAIL" | "PENDING" | "UNKNOWN";
+  ciRunUrl?: string;
+  checkRuns: Array<{
+    name: string;
+    status: string;
+    conclusion?: string | null;
+    html_url?: string;
+    details_url?: string;
+  }>;
+  diffLineCount?: number;
+  signals: {
+    testPassCount: number;
+    testFailCount: number;
+    verificationPassRate?: number;
+    diffLineCount?: number;
+    ciStatus: "PASS" | "FAIL" | "PENDING" | "UNKNOWN";
+    securityFindingCount: number;
+    qcFindings: Array<{ title: string; category: string; severity: string }>;
+  };
+}
+
 export function loadGithubAppPrivateKey(
   env: NodeJS.ProcessEnv = process.env
 ): string | undefined {
@@ -58,18 +92,23 @@ export async function createOrReusePullRequest(input: {
   body: string;
   token: string;
   headSha: string;
+  draft?: boolean;
   fetchImpl?: typeof fetch;
+  sleepImpl?: (milliseconds: number) => Promise<void>;
+  headPropagationAttempts?: number;
+  headPropagationDelayMs?: number;
 }) {
   const [owner] = input.repository.split("/");
   if (!owner || input.repository.split("/").length !== 2) throw new Error("GitHub repository must use owner/name format.");
-  const existing = await githubJson<Array<any>>(
+  const listOpenPullRequests = () => githubJson<Array<any>>(
     `https://api.github.com/repos/${input.repository}/pulls?state=open&head=${encodeURIComponent(`${owner}:${input.branch}`)}&per_page=10`,
     { method: "GET", headers: { Authorization: `Bearer ${input.token}` } },
     input.fetchImpl
   );
+  const existing = await listOpenPullRequests();
   const exact = existing.find((pull) => pull?.head?.ref === input.branch && pull?.base?.ref === input.base);
   if (exact) {
-    return normalizePullRequest(exact, input, true);
+    return await normalizeReusedPullRequestAfterPush(exact, input, listOpenPullRequests);
   }
   if (existing.length > 0) throw new Error("An open pull request exists for the branch with a different base branch.");
   const created = await githubJson<any>(
@@ -82,12 +121,144 @@ export async function createOrReusePullRequest(input: {
         body: input.body.slice(0, 60_000),
         head: input.branch,
         base: input.base,
-        draft: false,
+        draft: input.draft === true,
       }),
     },
     input.fetchImpl
   );
   return normalizePullRequest(created, input, false);
+}
+
+async function normalizeReusedPullRequestAfterPush(
+  initialPullRequest: any,
+  expected: {
+    branch: string;
+    base: string;
+    headSha: string;
+    sleepImpl?: (milliseconds: number) => Promise<void>;
+    headPropagationAttempts?: number;
+    headPropagationDelayMs?: number;
+  },
+  listOpenPullRequests: () => Promise<Array<any>>,
+) {
+  const attempts = Math.max(1, expected.headPropagationAttempts ?? 8);
+  const delayMs = Math.max(0, expected.headPropagationDelayMs ?? 750);
+  const sleepImpl = expected.sleepImpl ?? ((milliseconds: number) => new Promise<void>((resolve) => {
+    setTimeout(resolve, milliseconds);
+  }));
+  let pullRequest = initialPullRequest;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    if (pullRequest?.head?.sha === expected.headSha) {
+      return normalizePullRequest(pullRequest, expected, true);
+    }
+    if (attempt < attempts) {
+      await sleepImpl(delayMs);
+      const openPullRequests = await listOpenPullRequests();
+      const refreshed = openPullRequests.find((pull) =>
+        pull?.head?.ref === expected.branch && pull?.base?.ref === expected.base
+      );
+      if (!refreshed) throw new Error("The exact open GitHub pull request disappeared while confirming its candidate head.");
+      pullRequest = refreshed;
+    }
+  }
+  return normalizePullRequest(pullRequest, expected, true);
+}
+
+export async function fetchGithubPullRequestEvidence(input: {
+  repository: string;
+  prNumber: number;
+  token: string;
+  fetchImpl?: typeof fetch;
+}): Promise<GithubPullRequestEvidence> {
+  const fetchImpl = input.fetchImpl ?? fetch;
+  const headers = { Authorization: `Bearer ${input.token}` };
+  const pullRequest = await githubJson<any>(
+    `https://api.github.com/repos/${input.repository}/pulls/${input.prNumber}`,
+    { method: "GET", headers },
+    fetchImpl,
+  );
+  const headSha = pullRequest?.head?.sha;
+  if (!headSha || typeof pullRequest?.node_id !== "string" || !pullRequest.node_id.trim()) {
+    throw new Error("GitHub pull request is missing its immutable provider identity.");
+  }
+  const checksPayload = await githubJson<{ check_runs?: GithubPullRequestEvidence["checkRuns"] }>(
+    `https://api.github.com/repos/${input.repository}/commits/${headSha}/check-runs?per_page=100`,
+    { method: "GET", headers },
+    fetchImpl,
+  );
+  const checkRuns = (checksPayload.check_runs ?? []).map((check) => ({
+    name: check.name,
+    status: check.status,
+    conclusion: check.conclusion,
+    html_url: check.html_url,
+    details_url: check.details_url,
+  }));
+  const completed = checkRuns.filter((check) => check.status === "completed");
+  const hasPending = checkRuns.some((check) => ["queued", "in_progress", "pending"].includes(check.status));
+  const hasFailure = completed.some((check) => [
+    "failure", "timed_out", "cancelled", "action_required", "startup_failure",
+  ].includes(check.conclusion ?? ""));
+  const ciStatus = hasFailure
+    ? "FAIL" as const
+    : hasPending
+      ? "PENDING" as const
+      : completed.length > 0 && completed.every((check) => ["success", "skipped", "neutral"].includes(check.conclusion ?? ""))
+        ? "PASS" as const
+        : completed.length > 0
+          ? "PENDING" as const
+          : "UNKNOWN" as const;
+  const testChecks = checkRuns.filter((check) => /test|vitest|jest|pytest|mutation|coverage|ci/i.test(check.name));
+  const testPassCount = testChecks.filter((check) => check.conclusion === "success").length;
+  const testFailCount = testChecks.filter((check) => ["failure", "timed_out"].includes(check.conclusion ?? "")).length;
+  const diffResponse = await fetchImpl(
+    `https://api.github.com/repos/${input.repository}/pulls/${input.prNumber}`,
+    {
+      method: "GET",
+      headers: {
+        ...githubHeaders(headers),
+        Accept: "application/vnd.github.v3.diff",
+      },
+    },
+  );
+  const diffLineCount = diffResponse.ok
+    ? (await diffResponse.text()).split("\n").filter((line) => line.startsWith("+") || line.startsWith("-")).length
+    : undefined;
+  const mergedAt = pullRequest.merged_at ? Date.parse(pullRequest.merged_at) : Number.NaN;
+  return {
+    prUrl: pullRequest.html_url ?? `https://github.com/${input.repository}/pull/${input.prNumber}`,
+    prNumber: input.prNumber,
+    providerPullRequestId: pullRequest.node_id,
+    repoFullName: input.repository,
+    branch: pullRequest.head?.ref,
+    title: pullRequest.title,
+    draft: pullRequest.draft === true,
+    prState: pullRequest.merged ? "MERGED" : pullRequest.state === "open" ? "OPEN" : "CLOSED",
+    mergeActor: pullRequest.merged ? pullRequest.merged_by?.login : undefined,
+    mergedAt: pullRequest.merged && Number.isFinite(mergedAt) ? mergedAt : undefined,
+    mergeCommitSha: pullRequest.merged ? pullRequest.merge_commit_sha ?? undefined : undefined,
+    headSha,
+    ciStatus,
+    ciRunUrl: checkRuns.find((check) => check.html_url)?.html_url ?? checkRuns[0]?.details_url,
+    checkRuns,
+    diffLineCount,
+    signals: {
+      testPassCount,
+      testFailCount,
+      verificationPassRate: testPassCount + testFailCount > 0
+        ? Math.round((testPassCount / (testPassCount + testFailCount)) * 100)
+        : undefined,
+      diffLineCount,
+      ciStatus,
+      securityFindingCount: checkRuns.filter((check) => /security/i.test(check.name) && check.conclusion === "failure").length,
+      qcFindings: checkRuns
+        .filter((check) => check.conclusion === "failure")
+        .map((check) => ({
+          title: check.name,
+          category: /security/i.test(check.name) ? "SECURITY_GAP" : "DELIVERY_GATE",
+          severity: "RED",
+        })),
+    },
+  };
 }
 
 export function createGithubAppJwt(input: { appId: string; privateKey: string; now?: number }) {
@@ -105,18 +276,26 @@ export function createGithubAppJwt(input: { appId: string; privateKey: string; n
 async function githubJson<T>(url: string, init: RequestInit, fetchImpl: typeof fetch = fetch): Promise<T> {
   const response = await fetchImpl(url, {
     ...init,
-    headers: {
-      Accept: "application/vnd.github+json",
-      "X-GitHub-Api-Version": GITHUB_API_VERSION,
-      "User-Agent": "Mission-Control-Factory-Worker",
-      ...init.headers,
-    },
+    headers: githubHeaders(init.headers),
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({})) as { message?: string };
     throw new Error(`GitHub request failed (${response.status}): ${String(error.message ?? "request rejected").slice(0, 300)}`);
   }
   return await response.json() as T;
+}
+
+function githubHeaders(headers?: HeadersInit): Record<string, string> {
+  const normalized: Record<string, string> = {};
+  new Headers(headers).forEach((value, key) => {
+    normalized[key] = value;
+  });
+  return {
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": GITHUB_API_VERSION,
+    "User-Agent": "Mission-Control-Factory-Worker",
+    ...normalized,
+  };
 }
 
 function normalizePullRequest(
@@ -138,6 +317,7 @@ function normalizePullRequest(
     url: pull.html_url as string,
     nodeId: typeof pull.node_id === "string" ? pull.node_id : undefined,
     headSha: pull.head.sha,
+    draft: pull.draft === true,
     reused,
   };
 }

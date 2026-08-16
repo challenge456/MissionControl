@@ -18,24 +18,39 @@ function assertionStatusForReceipt(status: ReceiptStatus): MissionAssertionStatu
 export function assertionEvidenceCanSatisfy(args: {
   missionRole?: string;
   requiresIndependentValidation: boolean;
+  serverDerivedIndependentVerification?: boolean;
 }) {
   return args.missionRole === "VALIDATOR"
     || ((args.missionRole ?? "WORKER") === "WORKER"
-      && !args.requiresIndependentValidation);
+      && (!args.requiresIndependentValidation || args.serverDerivedIndependentVerification === true));
 }
 
 export function missionReceiptMatchesExecution(args: {
   workOrder: { _id: string; missionId?: string; missionRole?: string; currentRevisionNumber?: number };
-  workflowRun: { _id: string; workOrderId?: string; missionId?: string; missionRole?: string; status: string };
-  verificationReceipt: { workflowRunId: string; workOrderRevisionNumber?: number };
+  workflowRun: { _id: string; workOrderId?: string; missionId?: string; missionRole?: string; status: string; executionBaseSha?: string; headSha?: string; attemptPurpose?: string; verificationAttemptBinding?: any };
+  verificationReceipt: { workflowRunId: string; workOrderRevisionNumber?: number; status?: string; sourceRevision?: string; candidateRevision?: string; sourceAttemptId?: string; verificationAttemptId?: string; independenceValid?: boolean };
 }) {
   const role = args.workOrder.missionRole ?? "WORKER";
-  return args.workflowRun.status === "COMPLETED"
+  const terminalStatusMatches = args.verificationReceipt.status && args.verificationReceipt.status !== "PASSED"
+    ? ["COMPLETED", "FAILED"].includes(args.workflowRun.status)
+    : args.workflowRun.status === "COMPLETED";
+  const policyV2 = args.workflowRun.attemptPurpose === "VERIFICATION";
+  const subject = args.workflowRun.verificationAttemptBinding?.verificationSubject;
+  const exactCandidateMatches = policyV2
+    ? args.verificationReceipt.independenceValid === true
+      && args.verificationReceipt.verificationAttemptId === args.workflowRun._id
+      && args.verificationReceipt.sourceAttemptId === args.workflowRun.verificationAttemptBinding?.sourceAttemptId
+      && (!args.verificationReceipt.candidateRevision
+        || args.verificationReceipt.candidateRevision === (subject?.kind === "GIT_CANDIDATE" ? subject.candidateSha : subject?.outputSnapshotContentHash))
+    : (!args.verificationReceipt.sourceRevision || args.verificationReceipt.sourceRevision === args.workflowRun.executionBaseSha)
+      && (!args.verificationReceipt.candidateRevision || args.verificationReceipt.candidateRevision === args.workflowRun.headSha);
+  return terminalStatusMatches
     && args.workflowRun.workOrderId === args.workOrder._id
     && args.workflowRun.missionId === args.workOrder.missionId
     && (args.workflowRun.missionRole ?? "WORKER") === role
     && args.verificationReceipt.workflowRunId === args.workflowRun._id
-    && args.verificationReceipt.workOrderRevisionNumber === (args.workOrder.currentRevisionNumber ?? 1);
+    && args.verificationReceipt.workOrderRevisionNumber === (args.workOrder.currentRevisionNumber ?? 1)
+    && exactCandidateMatches;
 }
 
 async function insertMissionEvent(ctx: any, args: {
@@ -183,9 +198,18 @@ export async function syncMissionValidationReceipt(ctx: any, args: {
   if (args.verificationReceipt.validationAssertionId !== assertion._id) {
     throw new Error("Verification receipt does not bind the linked Mission assertion");
   }
+  const serverDerivedIndependentVerification = Boolean(
+    args.workOrder.verificationContract?.schemaVersion === 2
+    && args.workflowRun.attemptPurpose === "VERIFICATION"
+    && args.verificationReceipt.independenceValid === true
+    && args.verificationReceipt.verificationAttemptId === args.workflowRun._id
+    && args.verificationReceipt.sourceAttemptId
+    && args.verificationReceipt.sourceAttemptId !== args.workflowRun._id,
+  );
   if (!assertionEvidenceCanSatisfy({
     missionRole: args.workOrder.missionRole,
     requiresIndependentValidation: assertion.requiresIndependentValidation,
+    serverDerivedIndependentVerification,
   })) {
     return { synced: false };
   }

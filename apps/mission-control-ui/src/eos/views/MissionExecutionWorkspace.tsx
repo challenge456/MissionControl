@@ -81,6 +81,16 @@ export function MissionExecutionWorkspace({
     <ol className="space-y-3">
       {workOrders.map((workOrder, index) => {
         const next = deriveMissionExecutionAction(workOrder);
+        const implementationAttempt = workOrder.executionRuns?.find((attempt: any) => (attempt.attemptPurpose ?? "IMPLEMENTATION") === "IMPLEMENTATION") ?? null;
+        const verificationAttempt = workOrder.executionRuns?.find((attempt: any) => attempt.attemptPurpose === "VERIFICATION") ?? null;
+        const latestAttempt = verificationAttempt ?? implementationAttempt;
+        const latestVerificationRun = workOrder.verificationRuns?.[0] ?? null;
+        const latestQualityGate = workOrder.qualityGateDecisions?.[0] ?? null;
+        const review = workOrder.reviewPackage;
+        const canonicalVerification = workOrder.currentVerification;
+        const evidenceIds = [...new Set((workOrder.evidenceEnvelopes ?? [])
+          .filter((evidence: any) => !canonicalVerification?.verificationRunId || evidence.verificationRunId === canonicalVerification.verificationRunId)
+          .map((evidence: any) => String(evidence._id)))];
         const isComplete = next.action === "COMPLETE";
         const isRecovery = next.action === "RETRY_RUN";
         const Icon = isComplete ? CheckCircle2 : isRecovery ? RotateCcw : workOrder.missionRole === "VALIDATOR" ? ShieldCheck : CircleDot;
@@ -89,6 +99,27 @@ export function MissionExecutionWorkspace({
             <div className="flex min-w-0 gap-3">
               <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${isComplete ? "bg-success/10 text-success" : isRecovery ? "bg-destructive/10 text-destructive" : "bg-accent/10 text-accent"}`}><Icon className="h-4 w-4" /></div>
               <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="text-xs text-ink-muted">Stage {index + 1}</span><StatusBadge tone={isComplete ? "success" : isRecovery ? "error" : "info"}>{workOrder.missionRole ?? "WORKER"}</StatusBadge><StatusBadge>{workOrder.state}</StatusBadge></div><h3 className="mt-1 text-sm font-semibold text-ink">{workOrder.title}</h3><p className="mt-1 text-xs text-ink-secondary">{next.detail}</p><div className="mt-2 text-xs font-medium text-ink">Next: {next.label}</div></div>
+            </div>
+            <div className="grid gap-2 rounded-lg border border-line bg-surface-2 p-3 text-xs sm:grid-cols-2 lg:grid-cols-4">
+              <EvidenceField label="Implementation Attempt" value={implementationAttempt?.runId ?? "Not dispatched"} mono />
+              <EvidenceField label="Verification Attempt" value={verificationAttempt?.runId ?? "Not dispatched"} mono />
+              <EvidenceField label="Factory version" value={latestAttempt?.factoryDefinitionVersionId ?? "Not frozen"} mono />
+              <EvidenceField label="Executor" value={latestAttempt ? `${latestAttempt.executorAdapter ?? "unknown"}/${latestAttempt.executorVersion ?? "unknown"} · ${latestAttempt.executionClaimedBy ?? "unclaimed"}` : "Not claimed"} />
+              <EvidenceField label="Candidate SHA" value={review?.identity?.headSha ?? implementationAttempt?.headSha ?? "Not created"} mono />
+              <EvidenceField label="Verification subject" value={latestVerificationRun?.verificationSubjectDigest ?? "Not frozen"} mono />
+              <EvidenceField label="Verification plan" value={latestVerificationRun?.verificationPlanId ?? "Not frozen"} mono />
+              <EvidenceField label="Independent verifier" value={latestVerificationRun?.independenceValid === true ? "Server-derived independence passed" : latestVerificationRun?.independenceValid === false ? "Server-derived independence failed" : "Not verified"} />
+              <EvidenceField label="Durable evidence" value={evidenceIds.length ? `${evidenceIds.length} envelope(s) · ${evidenceIds.slice(0, 2).join(", ")}` : "No evidence"} mono />
+              <EvidenceField label="GitHub App PR" value={review?.identity?.pullRequestNumber ? `#${review.identity.pullRequestNumber} · installation ${review.identity.githubAppInstallationId ?? "missing"}` : "Not published"} />
+              <EvidenceField label="Exact-current verification" value={canonicalVerification ? canonicalVerification.eligible ? "ELIGIBLE" : "INELIGIBLE" : review?.status ?? "NOT EVALUATED"} />
+              <EvidenceField label="Quality Gate audit" value={latestQualityGate ? `${latestQualityGate.state} · non-authoritative projection` : "Not evaluated"} />
+              {review?.identity?.pullRequestUrl ? <div className="sm:col-span-2 lg:col-span-4"><a className="inline-flex items-center text-accent hover:underline" href={review.identity.pullRequestUrl} target="_blank" rel="noreferrer">Open exact candidate pull request <ExternalLink className="ml-1 h-3 w-3" /></a></div> : null}
+              {(canonicalVerification?.reasons?.length ?? 0) > 0 ? <div className="text-warning sm:col-span-2 lg:col-span-4">
+                <div>Canonical verification status</div>
+                <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                  {canonicalVerification.reasons.map((reason: string) => <li key={reason}>{reason}</li>)}
+                </ul>
+              </div> : null}
             </div>
             <div className="flex flex-wrap justify-end gap-2 border-t border-line pt-3">
               {next.action === "CREATE_TASK" ? <Button size="sm" onClick={() => setCreateTaskFor(workOrder._id)}>Create Task</Button> : null}
@@ -108,4 +139,8 @@ export function MissionExecutionWorkspace({
     </ol>
     {createTaskFor ? <CreateTaskModal projectId={projectId} defaultWorkOrderId={createTaskFor} onClose={() => setCreateTaskFor(null)} /> : null}
   </div>;
+}
+
+function EvidenceField({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+  return <div className="min-w-0"><div className="text-[10px] uppercase tracking-wide text-ink-muted">{label}</div><div className={`mt-1 break-all text-ink ${mono ? "font-mono" : ""}`}>{value}</div></div>;
 }

@@ -9,15 +9,14 @@ import { mutation, query, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { appendOpEvent } from "./lib/armAudit";
 import { resolveAgentRef } from "./lib/agentResolver";
-import { buildContinuousEvidenceLineage, buildEvidenceLineage, buildFileChanges, buildRetryTimeline, orderRunEvents, summarizeRunEvents } from "./lib/runInspector";
+import { buildContinuousEvidenceLineage, buildEvidenceLineage, buildRetryTimeline, orderRunEvents, summarizeRunEvents } from "./lib/runInspector";
 import { summarizeWorkflowObservability } from "./lib/workflowObservability";
 import { reconcileTerminalWorkflowSteps } from "./lib/workflowRunState";
 import { snapshotWorkflowDefinition } from "./lib/workflowSnapshot";
 import { assertAuthorizedDeliveryRecord, requireAuthorizedDeliveryScope } from "./lib/deliveryAuthorization";
 import { COMPANY_PERMISSIONS } from "./lib/companyAccess";
 import { buildExecutionRecoverySummary } from "./lib/executionRecovery";
-import { buildReviewPackage } from "./lib/reviewPackage";
-import { deriveFactoryPublicationLineage } from "./lib/factoryAttempt";
+import { buildFactoryAttemptReviewReadModel } from "./lib/factoryReviewReadModel";
 import { getEffectiveOperatorControl } from "./lib/operatorControls";
 import {
   automationDesignValidator,
@@ -513,36 +512,6 @@ export const getInspector = query({
 
     const orderedEvents = orderRunEvents(events as any);
     const eventSummary = summarizeRunEvents(orderedEvents as any);
-    const eventFileChanges = buildFileChanges(orderedEvents as any);
-    const pullRequestArtifact = artifacts.find((artifact) => artifact.artifactType === "PULL_REQUEST");
-    const codeDiffArtifact = artifacts.find((artifact) => artifact.artifactType === "CODE_DIFF");
-    const exactGateReceipt = receipts
-      .filter((receipt) => receipt.receiptScope === "WORK_ORDER")
-      .sort((left, right) => right.recordedAt - left.recordedAt)[0];
-    const publicationLineage = deriveFactoryPublicationLineage({
-      pullRequestArtifact,
-      codeDiffArtifact,
-      verifiedSourceRevision: exactGateReceipt?.sourceRevision,
-      completedAt: run.completedAt,
-    });
-    const projectedRun = { ...run, ...publicationLineage.patch };
-    const eventPaths = new Set(eventFileChanges
-      .map((change) => change.repositoryPath)
-      .filter((path): path is string => Boolean(path)));
-    const fileChanges = [
-      ...eventFileChanges,
-      ...publicationLineage.changedFiles
-        .filter((path) => !eventPaths.has(path))
-        .map((repositoryPath) => ({
-          sequenceNumber: 0,
-          workflowStep: run.steps[run.currentStepIndex]?.stepId,
-          repositoryPath,
-          changeType: "modified",
-          diffLocation: null,
-          pullRequestUrl: publicationLineage.patch.pullRequestUrl ?? null,
-          commandSummary: "Changed file recorded in the exact Attempt code-diff artifact.",
-        })),
-    ];
     const retryTimeline = buildRetryTimeline(orderedEvents as any);
     const evidenceLineage = buildEvidenceLineage({
       verificationReceiptId: args.verificationReceiptId ?? null,
@@ -554,13 +523,6 @@ export const getInspector = query({
       ? ctx.db.normalizeId("approvals", run.context.approvalId)
       : null;
     const approval = approvalId ? await ctx.db.get(approvalId) : null;
-    const continuousEvidenceLineage = buildContinuousEvidenceLineage({
-      context: run.context,
-      approval: approval as any,
-      fileChanges,
-      artifacts: artifacts as any,
-      receipts: receipts as any,
-    });
     const [prChecks, missionPlan, factoryVersion, repository] = await Promise.all([
       workOrder
         ? ctx.db.query("harnessPrChecks").withIndex("by_work_order", (q) => q.eq("workOrderId", workOrder._id)).collect()
@@ -569,6 +531,27 @@ export const getInspector = query({
       run.factoryDefinitionVersionId ? ctx.db.get(run.factoryDefinitionVersionId) : null,
       run.repositoryId ? ctx.db.get(run.repositoryId) : null,
     ]);
+    const reviewReadModel = buildFactoryAttemptReviewReadModel({
+      now: Date.now(),
+      run,
+      workOrder,
+      events: orderedEvents,
+      artifacts,
+      receipts,
+      evidenceEnvelopes,
+      prChecks,
+      missionPlan,
+      repository,
+    });
+    const projectedRun = reviewReadModel.run;
+    const fileChanges = reviewReadModel.fileChanges;
+    const continuousEvidenceLineage = buildContinuousEvidenceLineage({
+      context: run.context,
+      approval: approval as any,
+      fileChanges,
+      artifacts: artifacts as any,
+      receipts: receipts as any,
+    });
     const configuredMaxAttempts = Number(
       workOrder?.metadata?.implementationPolicy?.maxAttempts
       ?? factoryVersion?.budget?.maxAttempts,
@@ -578,20 +561,7 @@ export const getInspector = query({
       now: Date.now(),
       maxAttempts: Number.isFinite(configuredMaxAttempts) ? configuredMaxAttempts : null,
     });
-    const reviewPackage = buildReviewPackage({
-      now: Date.now(),
-      run: projectedRun,
-      workOrder,
-      receipts,
-      prChecks,
-      events: orderedEvents,
-      fileChanges,
-      rollbackApproach: missionPlan?.rollbackApproach
-        ?? (typeof workOrder?.metadata?.rollbackApproach === "string"
-          ? workOrder.metadata.rollbackApproach
-          : null),
-      expectedRepository: repository?.repository ?? null,
-    });
+    const reviewPackage = reviewReadModel.reviewPackage;
     const inspectorRun = projectedRun.executionManifest
       ? {
           ...projectedRun,
