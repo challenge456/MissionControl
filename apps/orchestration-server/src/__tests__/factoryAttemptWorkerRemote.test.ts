@@ -15,6 +15,7 @@ import {
   commitFactoryChanges,
   createFactorySourceBundle,
   ensureFactoryWorktree,
+  ensureVerificationWorktree,
   inspectCandidateChange,
   listChangedFiles,
   materializeRemoteCandidate,
@@ -163,10 +164,11 @@ describe("FactoryAttemptWorker remote Sandbox backend", () => {
     } as any;
     const createPullRequest = vi.fn(async () => {
       operationOrder.push("create-pr");
-      return { number: 73, url: "https://github.com/sellerfi/mission-control-fixture/pull/73", nodeId: "PR_remote", headSha: "", reused: false };
+      return { number: 73, url: "https://github.com/sellerfi/mission-control-fixture/pull/73", nodeId: "PR_remote", headSha: "", draft: true, reused: false };
     });
     const dependencies: FactoryAttemptWorkerDependencies = {
       ensureFactoryWorktree,
+      ensureVerificationWorktree,
       listChangedFiles,
       commitFactoryChanges,
       inspectCandidateChange,

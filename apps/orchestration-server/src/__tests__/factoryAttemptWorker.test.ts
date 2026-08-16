@@ -239,6 +239,9 @@ describe("FactoryAttemptWorker verification-first lifecycle", () => {
         },
       },
     };
+    const executionManifestDigest = `sha256:${canonicalHash(claim.executionManifest)}`;
+    run.executionManifestDigest = executionManifestDigest;
+    claim.executionManifestDigest = executionManifestDigest;
     const reports: any[] = [];
     let pending = true;
     const client = {

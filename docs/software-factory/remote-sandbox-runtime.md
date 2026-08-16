@@ -2,6 +2,7 @@
 
 **Status:** Preview / Not Live Certified
 **Canonical worker prerequisite:** PR #102, merged as `c97b31d59911543c6f95b2cd35fded957b2eddc6`
+**Canonical Mission-to-PR prerequisite:** PR #95, merged as `d0e5ff2ff57da7e5037da6f6ee8083ed275d911f`
 **Deterministic implementation proof:** `FakeSandboxProvider`
 
 Remote Sandbox is an execution backend beneath the canonical worker runtime. It does not introduce a second worker, lease, recovery state machine, verifier, publication path, or acceptance authority.
@@ -97,4 +98,4 @@ Routine Factory configuration cannot self-assert certification; profiles created
 
 ## Runtime contract
 
-This integration adds public Factory profile/version and scoped reconciliation service contracts. The contract extractor identified a public change from the merged-main v23 baseline, so the runtime contract advances atomically to v24.
+This integration adds public Factory profile/version and scoped reconciliation service contracts. PR #95 advanced the merged-main runtime baseline to v24. The post-merge extractor still identifies the same four Remote Sandbox public changes, so the combined runtime contract advances atomically to v25.
