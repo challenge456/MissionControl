@@ -3,8 +3,9 @@
 ## V1 identity
 
 Production executors implement `generic-harness-contract/v1`. `codex/v1` remains
-the only adapter registered by the default production orchestration process;
-deterministic DeepSeek Harness and Loom identities are contract fixtures only.
+the default adapter. Exact `deepseek-harness/0.2.0` can be registered only when
+its experimental feature flag is enabled; Loom identities remain contract
+fixtures because no real pinned Loom adapter is installed.
 The exact adapter/version is selected by the immutable Factory version,
 advertised by a current canonical worker, frozen in the Attempt manifest, and
 resolved without fallback from the worker's adapter registry.
@@ -27,8 +28,9 @@ V1](generic-harness-contract-v1.md) for the integration decision and evidence.
 - ordered structured execution events;
 - health/readiness reporting.
 
-The contract lives in `packages/workflow-engine/src/executorAdapter.ts`. The first
-runtime implementation is `CodexV1ExecutorAdapter` in the orchestration server.
+The contract lives in `packages/workflow-engine/src/executorAdapter.ts`. The real
+runtime implementations are `CodexV1ExecutorAdapter` and the optional
+`DeepSeekHarnessExecutorAdapter` in the orchestration server.
 The orchestration registry owns exact runtime selection and an optional bounded
 remote-sandbox invocation builder; it does not own control-plane policy.
 

@@ -1,6 +1,6 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { constants } from "node:fs";
-import { access, mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type {
@@ -11,13 +11,45 @@ import type {
   ExecutorHealth,
   ExecutorRequest,
   ExecutorResult,
+  HarnessCapabilityManifest,
   HarnessExecutionContext,
   HarnessExecutorAdapter,
+  HarnessNormalizedResult,
 } from "@mission-control/workflow-engine";
 import {
   GENERIC_HARNESS_CONTRACT_VERSION,
   NO_HARNESS_AUTHORITY,
 } from "@mission-control/workflow-engine";
+import {
+  CODEX_V1_HARNESS_MANIFEST,
+  boundedProviderMetadata,
+  harnessCapabilityManifestDigest,
+  harnessExecutionRequestDigest,
+} from "@mission-control/workflow-engine";
+import { captureHarnessRepositoryBaseline, collectHarnessRepositoryResult } from "./harnessRepository.js";
+
+interface ProcessCompletion {
+  exitCode: number | null;
+  signal: NodeJS.Signals | null;
+  output: string;
+  stdout: string;
+  stderr: string;
+  diagnostics?: string;
+  startedAt: number;
+  finishedAt: number;
+  timedOut: boolean;
+}
+
+interface CodexProcessError extends Error {
+  code?: number;
+  signal?: NodeJS.Signals | null;
+}
+
+interface CodexJsonlEvent {
+  type?: unknown;
+  usage?: Record<string, unknown>;
+  item?: { type?: unknown; text?: unknown };
+}
 
 type ProcessRunner = (args: {
   executable: string;
@@ -28,27 +60,56 @@ type ProcessRunner = (args: {
   outputPath: string;
   onSpawn?: (pid: number) => Promise<void> | void;
   onExit?: (pid: number, exitCode?: number) => Promise<void> | void;
-}) => Promise<{ exitCode: number; output: string; diagnostics?: string }>;
-
-const PROCESS_TERMINATION_GRACE_MS = 5_000;
+}) => Promise<ProcessCompletion>;
 
 interface CodexPreparedExecution {
   request: ExecutorRequest;
   context: HarnessExecutionContext;
   configurationIssues: ExecutorConfigurationIssue[];
+  outputDirectory: string;
+  outputPath: string;
+  outputSchemaPath: string;
+  baselineCommit: string | null;
+  requestSha256: string;
+  executableSha256: string | null;
 }
 
 interface CodexExecutionHandle {
-  executionId: string;
-  result: Promise<ExecutorResult>;
+  prepared: CodexPreparedExecution;
+  controller: AbortController;
+  completion: Promise<ProcessCompletion>;
+  events: ExecutorEvent[];
+  cancellationRequested: boolean;
+  completed: boolean;
+  removeExternalAbort: () => void;
+  cleanupPromise?: Promise<void>;
+  result?: ExecutorResult;
 }
 
-export class CodexV1ExecutorAdapter implements HarnessExecutorAdapter<CodexPreparedExecution, CodexExecutionHandle> {
-  private readonly active = new Map<string, AbortController>();
+const PROCESS_TERMINATION_GRACE_MS = 5_000;
+const CODEX_PINNED_NATIVE_DIGESTS: Record<string, string> = {
+  "darwin-arm64": "ae1d3ffe6d48aec6a4dc3f50e7eb8e0d11962485a6a9406c5a7012139383da02",
+};
+const FACTORY_RESULT_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["status", "summary", "completedAcceptanceCriterionIds", "incompleteAcceptanceCriterionIds", "unknownAcceptanceCriterionIds", "verificationCommands", "knownRisks", "nextAction"],
+  properties: {
+    status: { enum: ["COMPLETED", "BLOCKED", "FAILED"] },
+    summary: { type: "string" },
+    completedAcceptanceCriterionIds: { type: "array", items: { type: "string" } },
+    incompleteAcceptanceCriterionIds: { type: "array", items: { type: "string" } },
+    unknownAcceptanceCriterionIds: { type: "array", items: { type: "string" } },
+    verificationCommands: { type: "array", items: { type: "string" } },
+    knownRisks: { type: "array", items: { type: "string" } },
+    nextAction: { type: "string" },
+  },
+};
 
+export class CodexV1ExecutorAdapter implements HarnessExecutorAdapter<CodexPreparedExecution, CodexExecutionHandle> {
   constructor(
     private readonly executable = process.env.CODEX_EXECUTABLE ?? "codex",
-    private readonly runner: ProcessRunner = runCodexProcess
+    private readonly runner: ProcessRunner = runCodexProcess,
   ) {}
 
   capabilities(): ExecutorCapabilities {
@@ -76,6 +137,10 @@ export class CodexV1ExecutorAdapter implements HarnessExecutorAdapter<CodexPrepa
     };
   }
 
+  capabilityManifest(): HarnessCapabilityManifest {
+    return CODEX_V1_HARNESS_MANIFEST;
+  }
+
   validateConfiguration(request: ExecutorRequest): ExecutorConfigurationIssue[] {
     const issues: ExecutorConfigurationIssue[] = [];
     if (!path.isAbsolute(request.repositoryRoot)) issues.push({ field: "repositoryRoot", message: "Repository root must be absolute." });
@@ -86,19 +151,20 @@ export class CodexV1ExecutorAdapter implements HarnessExecutorAdapter<CodexPrepa
     }
     if (!request.prompt.trim()) issues.push({ field: "prompt", message: "Execution prompt is required." });
     if (request.allowedPaths.length === 0) issues.push({ field: "allowedPaths", message: "At least one repository-relative path boundary is required." });
-    if (request.allowedPaths.some((candidate) => path.isAbsolute(candidate) || candidate.split(/[\\/]/).includes(".."))) {
-      issues.push({ field: "allowedPaths", message: "Allowed paths must be repository-relative and cannot traverse upward." });
+    if ([...request.allowedPaths, ...(request.deniedPaths ?? [])].some((candidate) => path.isAbsolute(candidate) || candidate.split(/[\\/]/).includes(".."))) {
+      issues.push({ field: "allowedPaths", message: "Path boundaries must be repository-relative and cannot traverse upward." });
     }
     if (!Number.isSafeInteger(request.timeoutMs) || request.timeoutMs < 1_000 || request.timeoutMs > 8 * 60 * 60 * 1_000) {
       issues.push({ field: "timeoutMs", message: "Timeout must be between one second and eight hours." });
     }
+    if (request.provider && request.provider !== "openai") issues.push({ field: "provider", message: "codex/v1 uses the OpenAI provider route." });
     return issues;
   }
 
   async estimate(request: ExecutorRequest): Promise<ExecutorEstimate> {
     const complexity = Math.max(1, Math.ceil(request.prompt.length / 2_000));
     return {
-      estimatedCostUsd: Math.min(100, Number((complexity * 1.5).toFixed(2))),
+      estimatedCostUsd: null,
       estimatedRuntimeMinutes: Math.min(Math.ceil(request.timeoutMs / 60_000), complexity * 15),
       confidence: "LOW",
     };
@@ -108,47 +174,244 @@ export class CodexV1ExecutorAdapter implements HarnessExecutorAdapter<CodexPrepa
     request: ExecutorRequest,
     context: HarnessExecutionContext,
   ): Promise<CodexPreparedExecution> {
-    return {
-      request: { ...request, allowedPaths: [...request.allowedPaths] },
-      context,
-      configurationIssues: this.validateConfiguration(request),
-    };
+    const outputDirectory = await mkdtemp(path.join(tmpdir(), "mc-codex-v1-"));
+    try {
+      const outputSchemaPath = path.join(outputDirectory, "factory-result.schema.json");
+      await writeFile(outputSchemaPath, JSON.stringify(FACTORY_RESULT_SCHEMA), { mode: 0o600 });
+      return {
+        request: {
+          ...request,
+          allowedPaths: [...request.allowedPaths],
+          deniedPaths: [...(request.deniedPaths ?? [])],
+        },
+        context,
+        configurationIssues: this.validateConfiguration(request),
+        outputDirectory,
+        outputPath: path.join(outputDirectory, "result.txt"),
+        outputSchemaPath,
+        baselineCommit: await captureHarnessRepositoryBaseline(request.repositoryRoot).catch(() => null),
+        requestSha256: harnessExecutionRequestDigest(request),
+        executableSha256: await executableDigest(this.executable),
+      };
+    } catch (error) {
+      await rm(outputDirectory, { recursive: true, force: true });
+      throw error;
+    }
   }
 
   async execute(prepared: CodexPreparedExecution): Promise<CodexExecutionHandle> {
-    return {
-      executionId: prepared.request.executionId,
-      result: this.run(prepared),
+    const { emit, signal, processObserver } = prepared.context;
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    if (signal?.aborted) controller.abort();
+    else signal?.addEventListener("abort", abort, { once: true });
+    let sequence = 0;
+    const events: ExecutorEvent[] = [];
+    const send = async (type: ExecutorEvent["type"], summary: string, metadata?: Record<string, unknown>) => {
+      const item = event(prepared.request.executionId, ++sequence, type, summary, metadata);
+      events.push(item);
+      await emit(item);
     };
+    try {
+      await send("EXECUTION_STARTED", "Codex execution started.", {
+        adapter: "codex/v1",
+        harness: "codex-cli/0.146.0",
+        isolation: prepared.request.isolation,
+        allowedPaths: prepared.request.allowedPaths,
+      });
+      if (prepared.configurationIssues.length) {
+        const error = prepared.configurationIssues.map((issue) => `${issue.field}: ${issue.message}`).join(" ");
+        await send("EXECUTION_FAILED", error);
+      } else {
+        await send("COMMAND_STARTED", "Codex CLI command started.");
+      }
+    } catch (error) {
+      signal?.removeEventListener("abort", abort);
+      await rm(prepared.outputDirectory, { recursive: true, force: true });
+      throw error;
+    }
+    const handle: CodexExecutionHandle = {
+      prepared,
+      controller,
+      events,
+      cancellationRequested: controller.signal.aborted,
+      completed: false,
+      removeExternalAbort: () => signal?.removeEventListener("abort", abort),
+      completion: Promise.resolve(undefined as never),
+    };
+    const startedAt = Date.now();
+    handle.completion = prepared.configurationIssues.length > 0
+      ? Promise.resolve({
+          exitCode: null,
+          signal: null,
+          output: "",
+          stdout: "",
+          stderr: "",
+          diagnostics: prepared.configurationIssues.map((issue) => `${issue.field}: ${issue.message}`).join(" "),
+          startedAt,
+          finishedAt: Date.now(),
+          timedOut: false,
+        })
+      : this.runner({
+      executable: this.executable,
+      argv: commandArguments(prepared.request, prepared.outputPath, prepared.outputSchemaPath),
+      cwd: prepared.request.workingDirectory,
+      timeoutMs: prepared.request.timeoutMs,
+      signal: controller.signal,
+      outputPath: prepared.outputPath,
+      onSpawn: (pid) => processObserver?.started({ pid, startedAt: Date.now() }),
+      onExit: (pid, exitCode) => processObserver?.terminated({ pid, exitCode, terminatedAt: Date.now() }),
+      }).catch((cause): ProcessCompletion => ({
+      exitCode: null,
+      signal: null,
+      output: "",
+      stdout: "",
+      stderr: "",
+      diagnostics: redact(cause instanceof Error ? cause.message : String(cause)),
+      startedAt,
+      finishedAt: Date.now(),
+      timedOut: false,
+      })).then(async (completion) => {
+      if (prepared.configurationIssues.length > 0) {
+        handle.completed = true;
+        return completion;
+      }
+      const telemetry = parseCodexJsonl(completion.stdout);
+      for (const tool of telemetry.toolEvents) {
+        await send("TOOL_CALLED", `Codex tool item completed: ${tool}.`, { itemType: tool });
+      }
+      await send("COMMAND_COMPLETED", "Codex CLI command completed.", { exitCode: completion.exitCode, signal: completion.signal });
+      if (controller.signal.aborted) {
+        await send("EXECUTION_CANCELED", "Codex execution canceled.");
+      } else if (completion.timedOut) {
+        await send("EXECUTION_FAILED", "Codex execution timed out.", { timeoutMs: prepared.request.timeoutMs });
+      } else if (completion.exitCode === 0 && telemetry.turnCompleted && !telemetry.terminalError) {
+        await send("ARTIFACT_PRODUCED", "Codex produced the execution result.", { artifactType: "CODEX_RESULT" });
+        await send("EXECUTION_COMPLETED", "Codex execution completed.");
+      } else {
+        await send("EXECUTION_FAILED", completion.diagnostics || `Codex exited with status ${completion.exitCode ?? "unknown"}.`);
+      }
+      handle.completed = true;
+      return completion;
+    });
+    return handle;
   }
 
   async collectResult(handle: CodexExecutionHandle): Promise<ExecutorResult> {
-    return await handle.result;
+    if (handle.result) return handle.result;
+    const completion = await handle.completion;
+    const telemetry = parseCodexJsonl(completion.stdout);
+    const repository = await collectHarnessRepositoryResult({
+      repositoryRoot: handle.prepared.request.repositoryRoot,
+      workingDirectory: handle.prepared.request.workingDirectory,
+      baselineCommit: handle.prepared.baselineCommit,
+      allowedPaths: handle.prepared.request.allowedPaths,
+      deniedPaths: handle.prepared.request.deniedPaths ?? [],
+    }).catch(() => ({
+      root: handle.prepared.request.repositoryRoot,
+      workingDirectory: handle.prepared.request.workingDirectory,
+      baselineCommit: handle.prepared.baselineCommit,
+      headCommit: null,
+      headChanged: false,
+      changedFiles: [],
+      scopeViolations: [],
+    }));
+    const canceled = handle.cancellationRequested || handle.controller.signal.aborted;
+    const normalizedStatus = canceled
+      ? "CANCELED"
+      : completion.timedOut
+        ? "TIMED_OUT"
+        : completion.exitCode === 0 && telemetry.turnCompleted && !telemetry.terminalError
+          ? "COMPLETED"
+          : "FAILED";
+    const normalizedResult: HarnessNormalizedResult = {
+      schemaVersion: "harness-result/v1",
+      executionId: handle.prepared.request.executionId,
+      status: normalizedStatus,
+      harness: this.capabilityManifest().identity,
+      provenance: {
+        provider: handle.prepared.request.provider ?? null,
+        model: handle.prepared.request.model ?? null,
+        capabilityManifestSha256: harnessCapabilityManifestDigest(this.capabilityManifest()),
+        effectiveConfigSha256: this.capabilityManifest().effectiveConfigSha256,
+        executableSha256: handle.prepared.executableSha256,
+        requestSha256: handle.prepared.requestSha256,
+        providerMetadata: boundedProviderMetadata({
+          protocol: "codex-jsonl",
+          harnessCompletionObserved: telemetry.turnCompleted,
+          sandbox: handle.prepared.request.isolation,
+        }),
+      },
+      timing: {
+        startedAt: completion.startedAt,
+        finishedAt: completion.finishedAt,
+        wallClockMs: Math.max(0, completion.finishedAt - completion.startedAt),
+      },
+      repository,
+      events: {
+        items: handle.events,
+        toolCalls: telemetry.toolCalls,
+        modelRequests: null,
+        retries: null,
+        sessionCount: telemetry.sessionCount,
+      },
+      usage: {
+        inputTokens: telemetry.inputTokens,
+        outputTokens: telemetry.outputTokens,
+        cacheReadTokens: telemetry.cacheReadTokens,
+        cacheWriteTokens: telemetry.cacheWriteTokens,
+        costUsd: null,
+      },
+      exitCode: completion.exitCode,
+      signal: completion.signal,
+      output: completion.output,
+      structuredOutput: structuredOutputSummary(completion.output),
+      error: normalizedStatus === "COMPLETED" ? null : redact(completion.diagnostics || completion.stderr || (completion.exitCode === 0
+        ? "Codex protocol ended without a successful turn.completed event."
+        : `Codex execution ${normalizedStatus.toLowerCase()}.`)),
+      cancellation: { requested: canceled, mode: canceled ? "PROCESS_SIGNAL" : "NONE" },
+      cleanup: { status: "NOT_RUN", completedAt: null, error: null },
+    };
+    handle.result = {
+      executionId: normalizedResult.executionId,
+      status: normalizedStatus === "COMPLETED" ? "COMPLETED" : normalizedStatus === "CANCELED" ? "CANCELED" : "FAILED",
+      exitCode: completion.exitCode ?? undefined,
+      output: normalizedResult.output,
+      error: normalizedResult.error ?? undefined,
+      normalizedResult,
+    };
+    return handle.result;
   }
 
   async cancel(handle: CodexExecutionHandle): Promise<boolean> {
-    const controller = this.active.get(handle.executionId);
-    if (!controller) return false;
-    controller.abort();
+    if (handle.completed || handle.cancellationRequested) return false;
+    handle.cancellationRequested = true;
+    handle.controller.abort();
     return true;
   }
 
   async cleanup(handle: CodexExecutionHandle): Promise<void> {
-    // The execution promise owns its temporary output and signal listeners.
-    // Awaiting it makes cleanup idempotent even when callers invoke it after a
-    // cancellation or failed result collection.
-    await handle.result.then(() => undefined, () => undefined);
+    handle.cleanupPromise ??= (async () => {
+      if (!handle.controller.signal.aborted && !handle.completed) await this.cancel(handle);
+      await handle.completion.catch(() => undefined);
+      handle.removeExternalAbort();
+      try {
+        await rm(handle.prepared.outputDirectory, { recursive: true, force: true });
+        if (handle.result?.normalizedResult) {
+          handle.result.normalizedResult.cleanup = { status: "COMPLETED", completedAt: Date.now(), error: null };
+        }
+      } catch (error) {
+        if (handle.result?.normalizedResult) {
+          handle.result.normalizedResult.cleanup = { status: "FAILED", completedAt: Date.now(), error: redact(error instanceof Error ? error.message : String(error)) };
+        }
+        throw error;
+      }
+    })();
+    await handle.cleanupPromise;
   }
 
-  createRemoteInvocation(
-    request: ExecutorRequest,
-    context: { repositoryRoot: string; resultPath: string },
-  ) {
-    const remoteRequest = {
-      ...request,
-      repositoryRoot: context.repositoryRoot,
-      workingDirectory: context.repositoryRoot,
-    };
+  createRemoteInvocation(request: ExecutorRequest, context: { repositoryRoot: string; resultPath: string }) {
+    const remoteRequest = { ...request, repositoryRoot: context.repositoryRoot, workingDirectory: context.repositoryRoot };
     return {
       command: this.executable,
       args: commandArguments(remoteRequest, context.resultPath),
@@ -160,72 +423,19 @@ export class CodexV1ExecutorAdapter implements HarnessExecutorAdapter<CodexPrepa
     };
   }
 
-  private async run({ request, context, configurationIssues }: CodexPreparedExecution): Promise<ExecutorResult> {
-    const { emit, signal, processObserver } = context;
-    if (configurationIssues.length) {
-      const error = configurationIssues.map((issue) => `${issue.field}: ${issue.message}`).join(" ");
-      await emit(event(request.executionId, 1, "EXECUTION_FAILED", error));
-      return { executionId: request.executionId, status: "FAILED", error };
-    }
-    if (this.active.has(request.executionId)) {
-      return { executionId: request.executionId, status: "FAILED", error: "Execution ID is already active." };
-    }
-
-    const controller = new AbortController();
-    const abort = () => controller.abort();
-    if (signal?.aborted) controller.abort();
-    else signal?.addEventListener("abort", abort, { once: true });
-    this.active.set(request.executionId, controller);
-    const outputDirectory = await mkdtemp(path.join(tmpdir(), "mc-codex-v1-"));
-    const outputPath = path.join(outputDirectory, "result.txt");
-    let sequence = 0;
-    const send = async (type: ExecutorEvent["type"], summary: string, metadata?: Record<string, unknown>) => {
-      sequence += 1;
-      await emit(event(request.executionId, sequence, type, summary, metadata));
-    };
-
-    try {
-      await send("EXECUTION_STARTED", "Codex execution started.", {
-        adapter: "codex/v1",
-        isolation: request.isolation,
-        allowedPaths: request.allowedPaths,
-      });
-      await send("COMMAND_STARTED", "Codex CLI command started.");
-      const result = await this.runner({
-        executable: this.executable,
-        argv: commandArguments(request, outputPath),
-        cwd: request.workingDirectory,
-        timeoutMs: request.timeoutMs,
-        signal: controller.signal,
-        outputPath,
-        onSpawn: (pid) => processObserver?.started({ pid, startedAt: Date.now() }),
-        onExit: (pid, exitCode) => processObserver?.terminated({ pid, exitCode, terminatedAt: Date.now() }),
-      });
-      await send("COMMAND_COMPLETED", "Codex CLI command completed.", { exitCode: result.exitCode });
-      if (result.exitCode !== 0) throw new Error(result.diagnostics || `Codex exited with status ${result.exitCode}.`);
-      await send("ARTIFACT_PRODUCED", "Codex produced the execution result.", { artifactType: "CODEX_RESULT" });
-      await send("EXECUTION_COMPLETED", "Codex execution completed.");
-      return { executionId: request.executionId, status: "COMPLETED", exitCode: 0, output: result.output };
-    } catch (cause) {
-      const canceled = controller.signal.aborted;
-      const message = redact(cause instanceof Error ? cause.message : String(cause));
-      await send(canceled ? "EXECUTION_CANCELED" : "EXECUTION_FAILED", canceled ? "Codex execution canceled." : message);
-      return { executionId: request.executionId, status: canceled ? "CANCELED" : "FAILED", error: message };
-    } finally {
-      signal?.removeEventListener("abort", abort);
-      this.active.delete(request.executionId);
-      await rm(outputDirectory, { recursive: true, force: true });
-    }
-  }
-
   async health(): Promise<ExecutorHealth> {
     try {
       if (path.isAbsolute(this.executable) || this.executable.includes(path.sep)) {
         await access(this.executable, constants.X_OK);
-      } else {
-        await new Promise<void>((resolve, reject) => {
-          execFile(this.executable, ["--version"], { timeout: 5_000 }, (error) => error ? reject(error) : resolve());
-        });
+      }
+      const version = await executableVersion(this.executable);
+      if (version !== "codex-cli 0.146.0") {
+        return { status: "UNAVAILABLE", checkedAt: Date.now(), adapter: "codex", version: "v1", details: `Expected codex-cli 0.146.0, found ${version || "unknown"}.` };
+      }
+      const executableSha256 = await executableDigest(this.executable);
+      const expectedSha256 = CODEX_PINNED_NATIVE_DIGESTS[`${process.platform}-${process.arch}`];
+      if (!expectedSha256 || executableSha256 !== expectedSha256) {
+        return { status: "UNAVAILABLE", checkedAt: Date.now(), adapter: "codex", version: "v1", details: "Codex native executable does not match the evaluated platform digest." };
       }
       return { status: "READY", checkedAt: Date.now(), adapter: "codex", version: "v1" };
     } catch {
@@ -234,39 +444,47 @@ export class CodexV1ExecutorAdapter implements HarnessExecutorAdapter<CodexPrepa
   }
 }
 
-function commandArguments(request: ExecutorRequest, outputPath: string): string[] {
+function commandArguments(request: ExecutorRequest, outputPath: string, outputSchemaPath?: string): string[] {
   return [
+    "-a",
+    "never",
     "exec",
+    "--json",
     "--ephemeral",
+    "--ignore-user-config",
+    "--ignore-rules",
     "--sandbox",
     request.isolation === "READ_ONLY" ? "read-only" : "workspace-write",
     "--color",
     "never",
     "-C",
-    request.repositoryRoot,
+    request.workingDirectory,
     "-o",
     outputPath,
+    ...(outputSchemaPath ? ["--output-schema", outputSchemaPath] : []),
     ...(request.model ? ["-m", request.model] : []),
     [
       request.prompt,
       "",
       "Repository mutation is limited to these approved repository-relative boundaries:",
       ...request.allowedPaths.map((candidate) => `- ${candidate}`),
+      ...(request.deniedPaths?.length ? ["Denied repository-relative boundaries:", ...request.deniedPaths.map((candidate) => `- ${candidate}`)] : []),
       "Do not expose credentials in output, artifacts, or logs.",
     ].join("\n"),
   ];
 }
 
-async function runCodexProcess(args: Parameters<ProcessRunner>[0]): Promise<{ exitCode: number; output: string; diagnostics?: string }> {
+async function runCodexProcess(args: Parameters<ProcessRunner>[0]): Promise<ProcessCompletion> {
   return await new Promise((resolve, reject) => {
     let child: ChildProcess;
-    let settled = false;
+    let settledValue = false;
     let timedOut = false;
     let lifecycleError: unknown;
     let ownedProcessGroupId: number | undefined;
     let startedNotification: Promise<void> = Promise.resolve();
     let forcedTermination: ReturnType<typeof setTimeout> | undefined;
     let timeout: ReturnType<typeof setTimeout> | undefined;
+    const startedAt = Date.now();
     const cleanup = () => {
       args.signal.removeEventListener("abort", requestTermination);
       if (forcedTermination) clearTimeout(forcedTermination);
@@ -279,15 +497,14 @@ async function runCodexProcess(args: Parameters<ProcessRunner>[0]): Promise<{ ex
           process.kill(-ownedProcessGroupId, signal);
           return;
         } catch {
-          // The group may have already exited. Fall back only while the exact
-          // child object still proves that its owned process is live.
+          // The group may already have exited; fall back to the exact child.
         }
       }
       if (child.exitCode === null && child.signalCode === null) child.kill(signal);
     };
     let terminationRequested = false;
     const requestTermination = () => {
-      if (settled || terminationRequested) return;
+      if (settledValue || terminationRequested) return;
       terminationRequested = true;
       try {
         signalOwnedProcessTree("SIGTERM");
@@ -295,7 +512,7 @@ async function runCodexProcess(args: Parameters<ProcessRunner>[0]): Promise<{ ex
         lifecycleError ??= error;
       }
       forcedTermination = setTimeout(() => {
-        if (settled) return;
+        if (settledValue) return;
         try {
           signalOwnedProcessTree("SIGKILL");
         } catch (error) {
@@ -304,9 +521,9 @@ async function runCodexProcess(args: Parameters<ProcessRunner>[0]): Promise<{ ex
       }, PROCESS_TERMINATION_GRACE_MS);
       forcedTermination.unref?.();
     };
-    const complete = async (error: any, stdout: string, stderr: string) => {
-      if (settled) return;
-      settled = true;
+    const complete = async (error: CodexProcessError | undefined, stdout: string, stderr: string, signal: NodeJS.Signals | null) => {
+      if (settledValue) return;
+      settledValue = true;
       cleanup();
       try {
         await startedNotification;
@@ -317,14 +534,19 @@ async function runCodexProcess(args: Parameters<ProcessRunner>[0]): Promise<{ ex
         lifecycleError ??= observerError;
       }
       if (lifecycleError) return reject(lifecycleError);
-      if (args.signal.aborted) return reject(error ?? new Error("Codex execution was canceled."));
-      const output = await readFile(args.outputPath, "utf8").catch(() => stdout || "");
+      const output = await readFile(args.outputPath, "utf8").catch(() => "");
       resolve({
         exitCode: typeof error?.code === "number" ? error.code : error ? 1 : 0,
-        output: output.trim(),
+        signal,
+        output: (output || lastAgentOutput(stdout)).trim(),
+        stdout,
+        stderr,
         diagnostics: error
           ? redact(timedOut ? `Codex execution timed out after ${args.timeoutMs}ms.` : stderr || error.message)
           : undefined,
+        startedAt,
+        finishedAt: Date.now(),
+        timedOut,
       });
     };
     let stdout = "";
@@ -353,17 +575,14 @@ async function runCodexProcess(args: Parameters<ProcessRunner>[0]): Promise<{ ex
         new Error(signal ? `Codex exited after ${signal}.` : `Codex exited with status ${code ?? 1}.`),
         { code: code ?? 1, signal },
       ));
-      void complete(error, stdout, stderr).catch(reject);
+      void complete(error, stdout, stderr, signal).catch(reject);
     });
     if (typeof child.pid === "number") {
-      // Node guarantees that a detached POSIX spawn is the leader of a new
-      // process group, so the owned PGID is the exact live child PID.
       ownedProcessGroupId = process.platform === "win32" ? undefined : child.pid;
       startedNotification = Promise.resolve(args.onSpawn?.(child.pid)).catch((error) => {
         lifecycleError = error;
         requestTermination();
       });
-      if (lifecycleError) requestTermination();
     } else {
       lifecycleError = new Error("Codex executor did not expose an owned process identity.");
       requestTermination();
@@ -375,9 +594,6 @@ async function runCodexProcess(args: Parameters<ProcessRunner>[0]): Promise<{ ex
       requestTermination();
     }, args.timeoutMs);
     timeout.unref?.();
-    // `codex exec` appends piped stdin to an explicit prompt. `execFile` opens
-    // a stdin pipe by default, so close it immediately or the CLI waits
-    // indefinitely for EOF before it starts the model request.
     child.stdin?.end();
   });
 }
@@ -403,16 +619,106 @@ export function codexOwnedProcessGroupExists(processGroupId: number) {
   }
 }
 
-function event(
-  executionId: string,
-  sequence: number,
-  type: ExecutorEvent["type"],
-  summary: string,
-  metadata?: Record<string, unknown>
-): ExecutorEvent {
+function parseCodexJsonl(stdout: string) {
+  let inputTokens: number | null = null;
+  let outputTokens: number | null = null;
+  let cacheReadTokens: number | null = null;
+  let cacheWriteTokens: number | null = null;
+  let sessionCount = 0;
+  let turnCompleted = false;
+  let terminalError = false;
+  const toolEvents: string[] = [];
+  for (const line of stdout.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const item = JSON.parse(line) as CodexJsonlEvent;
+      if (item.type === "thread.started") sessionCount += 1;
+      if (item.type === "turn.completed") {
+        turnCompleted = true;
+        const usage = item.usage ?? {};
+        inputTokens = finiteInteger(usage.input_tokens ?? usage.inputTokens);
+        outputTokens = finiteInteger(usage.output_tokens ?? usage.outputTokens);
+        cacheReadTokens = finiteInteger(usage.cached_input_tokens ?? usage.cache_read_tokens ?? usage.cacheReadTokens);
+        cacheWriteTokens = finiteInteger(usage.cache_write_tokens ?? usage.cacheWriteTokens);
+      }
+      if (item.type === "turn.failed" || item.type === "error") terminalError = true;
+      const itemType = item.item?.type;
+      if (item.type === "item.completed" && typeof itemType === "string" && ["command_execution", "file_change", "mcp_tool_call", "web_search"].includes(itemType)) {
+        toolEvents.push(itemType);
+      }
+    } catch {
+      // Preserve malformed protocol output as raw diagnostics; never invent telemetry.
+    }
+  }
+  return { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, sessionCount, turnCompleted, terminalError, toolCalls: toolEvents.length, toolEvents };
+}
+
+function lastAgentOutput(stdout: string) {
+  let output = "";
+  for (const line of stdout.split("\n")) {
+    try {
+      const item = JSON.parse(line) as CodexJsonlEvent;
+      if (item.type === "item.completed" && item.item?.type === "agent_message" && typeof item.item.text === "string") output = item.item.text;
+    } catch {
+      // Ignore non-protocol lines.
+    }
+  }
+  return output;
+}
+
+function finiteInteger(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+function structuredOutputSummary(output: string) {
+  try {
+    const value = JSON.parse(output) as { summary?: unknown };
+    return { schema: "factory-result/v1", summary: typeof value.summary === "string" ? value.summary.slice(0, 4_000) : null };
+  } catch {
+    return { schema: null, summary: null };
+  }
+}
+
+function event(executionId: string, sequence: number, type: ExecutorEvent["type"], summary: string, metadata?: Record<string, unknown>): ExecutorEvent {
   return { executionId, sequence, type, occurredAt: Date.now(), summary, metadata };
 }
 
 function redact(value: string): string {
   return value.replace(/(authorization|cookie|token|secret|password|api[-_]?key)\s*[:=]\s*([^\s,;]+)/gi, "$1=[REDACTED]").slice(0, 2_000);
+}
+
+async function executableVersion(executable: string) {
+  return await new Promise<string>((resolve, reject) => {
+    execFile(executable, ["--version"], { timeout: 5_000 }, (error, stdout) => error ? reject(error) : resolve(stdout.trim()));
+  });
+}
+
+async function executableDigest(executable: string) {
+  let resolved = path.isAbsolute(executable) || executable.includes(path.sep) ? executable : undefined;
+  if (!resolved) {
+    for (const directory of process.env.PATH?.split(path.delimiter) ?? []) {
+      const candidate = path.join(directory, executable);
+      if (await access(candidate, constants.X_OK).then(() => true).catch(() => false)) {
+        resolved = candidate;
+        break;
+      }
+    }
+  }
+  if (!resolved) return null;
+  const wrapper = await realpath(resolved).catch(() => resolved!);
+  const native = await codexNativeExecutable(wrapper);
+  const data = await readFile(native).catch(() => null);
+  if (!data) return null;
+  const { createHash } = await import("node:crypto");
+  return createHash("sha256").update(data).digest("hex");
+}
+
+async function codexNativeExecutable(wrapper: string) {
+  if (!wrapper.endsWith(".js")) return wrapper;
+  const target = process.platform === "darwin" && process.arch === "arm64"
+    ? ["@openai", "codex-darwin-arm64", "vendor", "aarch64-apple-darwin", "bin", "codex"]
+    : null;
+  if (!target) return wrapper;
+  const packageRoot = path.dirname(path.dirname(wrapper));
+  return path.join(packageRoot, "node_modules", ...target);
 }

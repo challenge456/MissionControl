@@ -1,0 +1,105 @@
+import { describe, expect, it } from "vitest";
+import {
+  CODEX_V1_HARNESS_MANIFEST,
+  DEEPSEEK_V1_HARNESS_MANIFEST,
+  boundedProviderMetadata,
+  harnessCapabilityManifestDigest,
+  harnessCapabilityRequirementsSatisfied,
+  harnessManifestIssues,
+  harnessNormalizedResultIssues,
+  type HarnessNormalizedResult,
+} from "../index.js";
+
+function normalizedResult(): HarnessNormalizedResult {
+  return {
+    schemaVersion: "harness-result/v1",
+    executionId: "attempt-1",
+    status: "COMPLETED",
+    harness: CODEX_V1_HARNESS_MANIFEST.identity,
+    provenance: {
+      provider: "openai",
+      model: "gpt-5.6-terra",
+      capabilityManifestSha256: harnessCapabilityManifestDigest(CODEX_V1_HARNESS_MANIFEST),
+      effectiveConfigSha256: CODEX_V1_HARNESS_MANIFEST.effectiveConfigSha256,
+      executableSha256: null,
+      requestSha256: `sha256:${"a".repeat(64)}`,
+      providerMetadata: { protocol: "jsonl" },
+    },
+    timing: { startedAt: 10, finishedAt: 20, wallClockMs: 10 },
+    repository: {
+      root: "/tmp/repository",
+      workingDirectory: "/tmp/repository",
+      baselineCommit: null,
+      headCommit: null,
+      headChanged: false,
+      changedFiles: [],
+      scopeViolations: [],
+    },
+    events: { items: [], toolCalls: null, modelRequests: null, retries: null, sessionCount: null },
+    usage: { inputTokens: null, outputTokens: null, cacheReadTokens: null, cacheWriteTokens: null, costUsd: null },
+    exitCode: 0,
+    signal: null,
+    output: "{}",
+    structuredOutput: { schema: null, summary: null },
+    error: null,
+    cancellation: { requested: false, mode: "NONE" },
+    cleanup: { status: "NOT_RUN", completedAt: null, error: null },
+  };
+}
+
+describe("generic harness contract", () => {
+  it("keeps exact stable adapter-effective manifests for both concrete adapters", () => {
+    expect(harnessManifestIssues(CODEX_V1_HARNESS_MANIFEST)).toEqual([]);
+    expect(harnessManifestIssues(DEEPSEEK_V1_HARNESS_MANIFEST)).toEqual([]);
+    expect(harnessCapabilityManifestDigest(CODEX_V1_HARNESS_MANIFEST)).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(harnessCapabilityManifestDigest({ ...CODEX_V1_HARNESS_MANIFEST })).toBe(harnessCapabilityManifestDigest(CODEX_V1_HARNESS_MANIFEST));
+    expect(DEEPSEEK_V1_HARNESS_MANIFEST.identity).toMatchObject({
+      harnessVersion: "0.1.0-rc.5",
+      harnessCommit: "47f943859bef60e4160492346772ded9b24f765a",
+    });
+  });
+
+  it("records capability differences instead of flattening them", () => {
+    expect(CODEX_V1_HARNESS_MANIFEST.telemetry.modelRequests).toBe("UNSUPPORTED");
+    expect(DEEPSEEK_V1_HARNESS_MANIFEST.telemetry.modelRequests).toBe("SUPPORTED");
+    expect(CODEX_V1_HARNESS_MANIFEST.context.resume).toBe("UNSUPPORTED");
+    expect(DEEPSEEK_V1_HARNESS_MANIFEST.context.resume).toBe("UNSUPPORTED");
+    expect(DEEPSEEK_V1_HARNESS_MANIFEST.streaming.modelDeltas).toBe("UNSUPPORTED");
+    expect(harnessCapabilityRequirementsSatisfied(CODEX_V1_HARNESS_MANIFEST, [
+      { capability: "filesystem.write", minimumSupport: "SUPPORTED" },
+      { capability: "cancellation.support", minimumSupport: "PARTIAL" },
+    ])).toBe(true);
+  });
+
+  it("accepts unavailable telemetry as null and rejects fabricated invalid values", () => {
+    const result = normalizedResult();
+    expect(harnessNormalizedResultIssues(result)).toEqual([]);
+    expect(harnessNormalizedResultIssues({
+      ...result,
+      events: { ...result.events, modelRequests: -1 },
+    })).toContain("result-telemetry-invalid");
+    expect(harnessNormalizedResultIssues({
+      ...result,
+      harness: { ...result.harness, harnessCommit: "not-a-commit" },
+    })).toContain("result-harness-identity-invalid");
+    expect(harnessNormalizedResultIssues({
+      ...result,
+      events: { ...result.events, items: [{
+        executionId: result.executionId,
+        sequence: 1,
+        type: "EXECUTION_COMPLETED",
+        occurredAt: 20,
+        summary: "done",
+        metadata: Object.fromEntries(Array.from({ length: 101 }, (_, index) => [`key${index}`, index])),
+      }] },
+    })).toContain("result-events-invalid");
+  });
+
+  it("bounds provider-specific metadata to scalar diagnostic values", () => {
+    expect(boundedProviderMetadata({ route: "chatgpt", cached: false, calls: 2, cost: null })).toEqual({
+      route: "chatgpt", cached: false, calls: 2, cost: null,
+    });
+    expect(() => boundedProviderMetadata({ nested: { secret: true } })).toThrow(/scalar/);
+    expect(() => boundedProviderMetadata(Object.fromEntries(Array.from({ length: 51 }, (_, index) => [`K${index}`, index])))).toThrow(/50/);
+  });
+});

@@ -79,6 +79,9 @@ export function genericHarnessV1RecoveryReady(input: {
   return !input.pause && input.cancel && input.retry && !input.resume;
 }
 
+/** @deprecated Use the provider-neutral harness recovery predicate. */
+export const codexV1RecoveryReady = genericHarnessV1RecoveryReady;
+
 const checks: Array<{
   key: keyof FactoryDispatchPreflightInput;
   blocker: string;

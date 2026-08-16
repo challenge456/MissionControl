@@ -51,6 +51,7 @@ import {
   getCurrentVerificationResult,
 } from "../lib/currentVerification";
 import { computeCanonicalHash } from "../lib/genomeHash";
+import { resolveFrozenHarnessBinding } from "../lib/harnessCapabilities";
 
 const EVENT_TYPES = new Set([
   "RUN_STARTED", "STEP_STARTED", "STEP_COMPLETED", "TOOL_CALLED",
@@ -389,7 +390,15 @@ export const claimInternal = internalMutation({
         },
         requirements: {
           repositoryId: String(repository._id),
-          executor: { adapter: run.executorAdapter, version: run.executorVersion },
+          executor: {
+            adapter: run.executorAdapter,
+            version: run.executorVersion,
+            capabilityManifestSha256: manifest.harness?.capabilityManifestSha256,
+            effectiveConfigSha256: manifest.harness?.effectiveConfigSha256,
+          },
+          provider: manifest.harness?.provider ?? null,
+          model: manifest.harness?.model ?? null,
+          harnessCapabilities: manifest.harness?.requiredHarnessCapabilities ?? [],
           isolation: manifest.harness?.isolation,
           sandboxCapabilities: manifest.harness?.requiredCapabilities ?? [],
           executionBackend: manifest.harness?.executionBackend,
@@ -1788,8 +1797,7 @@ async function schedulePolicyV2VerificationAttempt(ctx: any, workOrder: any, sou
   if (!repository || repository._id !== sourceAttempt.repositoryId || repository.status !== "READY"
     || !workflow?.active || !assessment || assessment.status !== "PASS" || assessment.expiresAt <= now
     || assessment.configurationDigest !== version.configurationDigest || !host || host.dirty
-    || agentVersions.some((agentVersion: any) => !agentVersion)
-    || version.executor.adapter !== "codex" || version.executor.version !== "v1") {
+    || agentVersions.some((agentVersion: any) => !agentVersion)) {
     throw new Error("Candidate is ready, but the active Verification Factory no longer has current readiness for the exact repository and host.");
   }
   const runId = Math.random().toString(36).slice(2, 10);
@@ -1814,7 +1822,7 @@ async function schedulePolicyV2VerificationAttempt(ctx: any, workOrder: any, sou
     baseSha: subject.kind === "GIT_CANDIDATE" ? subject.candidateSha : sourceAttempt.headSha,
     branch: sourceAttempt.branch,
     worktree,
-    executor: version.executor,
+    executor: resolveFrozenHarnessBinding(version),
     executionBackend: host.workerRuntime?.executionBackends[0] ?? "persistent-worker",
     sandboxProfile: {
       isolation: "READ_ONLY",

@@ -69,7 +69,14 @@ export {
 } from "./graph.js";
 
 export {
+  boundedProviderMetadata,
   GENERIC_HARNESS_CONTRACT_VERSION,
+  harnessCapabilityManifestDigest,
+  harnessCapabilityRequirementsSatisfied,
+  harnessCapabilitySupport,
+  harnessExecutionRequestDigest,
+  harnessManifestIssues,
+  harnessNormalizedResultIssues,
   NO_HARNESS_AUTHORITY,
   runHarnessExecution,
 } from "./executorAdapter.js";
@@ -87,11 +94,35 @@ export type {
   ExecutorResult,
   HarnessAuthorityLevel,
   HarnessAuthorityProfile,
+  HarnessCapabilityManifest,
+  HarnessCapabilityRequirement,
+  HarnessChangedFile,
+  HarnessConfigurationIssue,
   HarnessExecutionBackend,
   HarnessExecutionContext,
+  HarnessExecutionRequest,
+  HarnessExecutionStatus,
   HarnessExecutorAdapter,
   HarnessExecutorCapabilities,
+  HarnessEstimate,
+  HarnessEvent,
+  HarnessHealth,
+  HarnessModelCapability,
+  HarnessNormalizedResult,
+  HarnessProcessObserver,
+  HarnessSupportLevel,
+  IsolationMode,
 } from "./executorAdapter.js";
+
+export {
+  CODEX_HARNESS_EFFECTIVE_CONFIG,
+  CODEX_V1_HARNESS_MANIFEST,
+  DEEPSEEK_HARNESS_EFFECTIVE_CONFIG,
+  DEEPSEEK_V1_HARNESS_MANIFEST,
+  KNOWN_HARNESS_MANIFESTS,
+  findKnownHarnessManifest,
+  harnessSupportsModel,
+} from "./harnessManifests.js";
 
 export {
   matchesRepositoryGlob,

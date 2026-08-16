@@ -3,6 +3,9 @@ export interface FactoryConfigurationInput {
   repositoryId: string;
   workflowId: string;
   executor: { adapter: string; version: string };
+  harnessCapabilityManifest: unknown;
+  harnessCapabilityManifestDigest: string;
+  harnessEffectiveConfigSha256: string;
   executionBackend: "persistent-worker" | "remote-sandbox";
   sandboxProfileId?: string;
   sandboxProfileDigest?: string;

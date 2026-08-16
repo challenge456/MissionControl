@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { activeLeaseMatches, classifyFactoryAttemptReconciliation, evaluateAttemptClaim, releaseAttemptLease, renewAttemptLease } from "../lib/factoryAttempt";
 import { factoryWorkerEligibility, type FactoryWorkerCandidate } from "../lib/factoryWorkerRuntime";
+import { CODEX_V1_HARNESS_MANIFEST, harnessCapabilityManifestDigest } from "@mission-control/workflow-engine";
+
+const capabilityManifestSha256 = harnessCapabilityManifestDigest(CODEX_V1_HARNESS_MANIFEST);
 
 describe("Factory worker runtime golden path", () => {
   it("moves WorkOrder execution through eligibility, lease, heartbeat, completion, and release", () => {
@@ -17,6 +20,9 @@ describe("Factory worker runtime golden path", () => {
         supportedExecutors: [{
           adapter: "codex",
           version: "v1",
+          capabilityManifest: CODEX_V1_HARNESS_MANIFEST,
+          capabilityManifestSha256,
+          effectiveConfigSha256: CODEX_V1_HARNESS_MANIFEST.effectiveConfigSha256,
           supportsCancel: true,
           supportsResume: false,
           isolationModes: ["WORKSPACE_WRITE"],
@@ -32,7 +38,15 @@ describe("Factory worker runtime golden path", () => {
       worker,
       requirements: {
         repositoryId: "repository-1",
-        executor: { adapter: "codex", version: "v1" },
+        executor: {
+          adapter: "codex",
+          version: "v1",
+          capabilityManifestSha256,
+          effectiveConfigSha256: CODEX_V1_HARNESS_MANIFEST.effectiveConfigSha256,
+        },
+        provider: "openai",
+        model: "gpt-5.6-terra",
+        harnessCapabilities: [{ capability: "filesystem.write", minimumSupport: "SUPPORTED" }],
         isolation: "WORKSPACE_WRITE",
         sandboxCapabilities: ["git-worktree", "workspace-write"],
         executionBackend: "persistent-worker",

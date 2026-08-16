@@ -219,13 +219,15 @@ export class DurableCodexWorker {
           repositoryRoot: manifest.worktree,
           workingDirectory: manifest.worktree,
           prompt: frozenPrompt(manifest),
-          model: manifest.model,
+          provider: undefined,
+          model: manifest.model ?? undefined,
           allowedPaths: manifest.scopes.flatMap((scope) => scope.includePaths),
+          deniedPaths: manifest.scopes.flatMap((scope) => scope.excludePaths ?? []),
           timeoutMs: manifest.policy.timeoutMinutes * 60_000,
           isolation: "WORKSPACE_WRITE" as const,
         };
         const estimate = await this.executor.estimate(executorRequest);
-        if (estimate.estimatedCostUsd > manifest.policy.maxCostUsd) {
+        if (estimate.estimatedCostUsd !== null && estimate.estimatedCostUsd > manifest.policy.maxCostUsd) {
           throw new Error(`Executor estimate $${estimate.estimatedCostUsd.toFixed(2)} exceeds the approved $${manifest.policy.maxCostUsd.toFixed(2)} limit.`);
         }
         const result = await runHarnessExecution(this.executor, executorRequest, {
@@ -568,6 +570,7 @@ function mapExecutorEvent(event: ExecutorEvent) {
     EXECUTION_STARTED: "STEP_STARTED",
     COMMAND_STARTED: "TOOL_CALLED",
     COMMAND_COMPLETED: "COMMAND_EXECUTED",
+    TOOL_CALLED: "TOOL_CALLED",
     ARTIFACT_PRODUCED: "ARTIFACT_CREATED",
     EXECUTION_COMPLETED: "STEP_COMPLETED",
     EXECUTION_FAILED: "RUN_FAILED",

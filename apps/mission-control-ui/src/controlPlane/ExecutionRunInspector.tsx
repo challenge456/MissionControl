@@ -190,6 +190,12 @@ export function ExecutionRunInspector({
                     <Meta label="Compiled prompt hash" value={inspector.run.executionManifest.compiledPromptHash ?? "—"} />
                     <Meta label="Context hash" value={inspector.run.executionManifest.workflow?.contextHash ?? "—"} />
                     <Meta label="Completion contract" value={inspector.run.executionManifest.harness?.completionContract ?? "—"} />
+                    <Meta label="Harness" value={[inspector.run.executionManifest.harness?.harnessId, inspector.run.executionManifest.harness?.harnessVersion].filter(Boolean).join(" / ") || "—"} />
+                    <Meta label="Adapter" value={[inspector.run.executionManifest.harness?.adapter, inspector.run.executionManifest.harness?.version].filter(Boolean).join(" / ") || "—"} />
+                    <Meta label="Harness commit" value={inspector.run.executionManifest.harness?.harnessCommit ?? "—"} />
+                    <Meta label="Capability manifest" value={inspector.run.executionManifest.harness?.capabilityManifestSha256 ?? "—"} />
+                    <Meta label="Effective config" value={inspector.run.executionManifest.harness?.effectiveConfigSha256 ?? "—"} />
+                    <Meta label="Provider / model" value={[inspector.run.executionManifest.harness?.provider, inspector.run.executionManifest.harness?.model].filter(Boolean).join(" / ") || "—"} />
                     <Meta label="PR authority" value={inspector.run.executionManifest.harness?.pullRequestAuthority ?? "—"} />
                     <Meta label="Allowed paths" value={inspector.run.executionManifest.repository?.allowedPaths?.join(", ") || "—"} />
                     <Meta label="Excluded paths" value={inspector.run.executionManifest.repository?.excludedPaths?.join(", ") || "None"} />

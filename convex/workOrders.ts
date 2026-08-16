@@ -37,6 +37,7 @@ import {
 } from "./lib/factoryDispatch";
 import { validFactoryBudget, validFactoryExecutionBinding, validFactoryExecutorBinding } from "./lib/factoryConfiguration";
 import { factoryWorkerEligibility } from "./lib/factoryWorkerRuntime";
+import { factoryHarnessCapabilityRequirements, resolveFrozenHarnessBinding } from "./lib/harnessCapabilities";
 import { computeCanonicalHash } from "./lib/genomeHash";
 import { evaluateGithubAppCapabilities, githubInstallationIsStale } from "./lib/githubAppReadiness";
 import { canonicalRepositoryKey } from "./lib/workspaceRepositories";
@@ -2373,7 +2374,7 @@ async function dispatchWorkOrder(
           baseSha: factoryBinding.baseSha,
           branch: factoryBinding.branch,
           worktree: factoryBinding.worktree,
-          executor: factoryBinding.version.executor,
+          executor: resolveFrozenHarnessBinding(factoryBinding.version),
           executionBackend: factoryBinding.executionBackend,
           sandboxProfile: {
             isolation: "WORKSPACE_WRITE",
@@ -2978,6 +2979,9 @@ async function resolveFactoryDispatchBinding(
     agentVersion ? ctx.db.get(agentVersion.templateId) : null
   ));
   const selectedExecutionBackend = version.executionBackend ?? "persistent-worker";
+  const frozenHarness = resolveFrozenHarnessBinding(version);
+  const primaryAgentIndex = (version.agentBindings ?? []).findIndex((binding) => binding.workflowAgentId === workflow.steps?.[0]?.agent);
+  const primaryModel = agentVersions[primaryAgentIndex >= 0 ? primaryAgentIndex : 0]?.genome.modelConfig;
   const requiredSandboxCapabilities = selectedExecutionBackend === "remote-sandbox"
     ? ["git-worktree", "workspace-write", "remote-sandbox", "sandbox-provider:exe-dev"]
     : ["git-worktree", "workspace-write"];
@@ -2996,7 +3000,15 @@ async function resolveFactoryDispatchBinding(
       },
       requirements: {
         repositoryId: String(repository._id),
-        executor: version.executor,
+        executor: {
+          adapter: frozenHarness.adapter,
+          version: frozenHarness.version,
+          capabilityManifestSha256: frozenHarness.capabilityManifestSha256,
+          effectiveConfigSha256: frozenHarness.effectiveConfigSha256,
+        },
+        provider: primaryModel?.provider ?? null,
+        model: primaryModel?.modelId ?? null,
+        harnessCapabilities: factoryHarnessCapabilityRequirements("WORKSPACE_WRITE"),
         isolation: "WORKSPACE_WRITE",
         sandboxCapabilities: requiredSandboxCapabilities,
         executionBackend: selectedExecutionBackend,

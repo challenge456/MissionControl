@@ -26,6 +26,10 @@ import {
   verificationIsolationBindingDigest,
   type VerificationIdentityTuple,
 } from "@mission-control/workflow-engine";
+import {
+  CODEX_V1_HARNESS_MANIFEST,
+  harnessCapabilityManifestDigest,
+} from "@mission-control/workflow-engine/harness-contract";
 import { afterAll, describe, expect, it } from "vitest";
 import { aggregateLearningSignals, deriveObservationLearningSignals, recommendImprovementPromotion } from "../../../../convex/lib/factoryLearning.js";
 import { buildFactoryExecutionManifest } from "../../../../convex/lib/executionManifest.js";
@@ -43,6 +47,7 @@ import {
   factoryWorkerEligibility,
   type FactoryWorkerCandidate,
 } from "../../../../convex/lib/factoryWorkerRuntime.js";
+import { factoryHarnessCapabilityRequirements } from "../../../../convex/lib/harnessCapabilities.js";
 import { executeIndependentVerification } from "../factoryVerification.js";
 import { FakeSandboxProvider } from "../fakeSandboxProvider.js";
 import { RemoteSandboxRuntime, InMemoryRemoteSandboxJournal } from "../remoteSandboxRuntime.js";
@@ -66,6 +71,7 @@ const PLAN_ID = "plan-system-factory-e2e-v1";
 const WORK_ORDER_ID = "work-order-system-factory-e2e-v1";
 const FACTORY_VERSION_ID = "factory-version-progressive-software-v1";
 const VERIFICATION_FACTORY_VERSION_ID = "factory-version-independent-verification-v1";
+const CODEX_CAPABILITY_MANIFEST_SHA256 = harnessCapabilityManifestDigest(CODEX_V1_HARNESS_MANIFEST);
 
 type GateResult = {
   passed: boolean;
@@ -339,7 +345,15 @@ describe("Mission Control full-system Factory qualification V1", () => {
       worker,
       requirements: {
         repositoryId: REPOSITORY_ID,
-        executor: { adapter: "codex", version: "v1" },
+        executor: {
+          adapter: "codex",
+          version: "v1",
+          capabilityManifestSha256: CODEX_CAPABILITY_MANIFEST_SHA256,
+          effectiveConfigSha256: CODEX_V1_HARNESS_MANIFEST.effectiveConfigSha256,
+        },
+        provider: "openai",
+        model: "gpt-5.6-terra",
+        harnessCapabilities: factoryHarnessCapabilityRequirements("WORKSPACE_WRITE"),
         isolation: "WORKSPACE_WRITE",
         sandboxCapabilities: ["remote-sandbox", "workspace-write"],
         executionBackend: "remote-sandbox",
@@ -408,7 +422,13 @@ describe("Mission Control full-system Factory qualification V1", () => {
       baseSha,
       branch: "mc/system-factory-e2e-v1",
       worktree: repositoryRoot,
-      executor: { adapter: "codex", version: "v1" },
+      executor: {
+        adapter: "codex",
+        version: "v1",
+        capabilityManifest: CODEX_V1_HARNESS_MANIFEST,
+        capabilityManifestSha256: CODEX_CAPABILITY_MANIFEST_SHA256,
+        effectiveConfigSha256: CODEX_V1_HARNESS_MANIFEST.effectiveConfigSha256,
+      },
       executionBackend: "remote-sandbox",
       sandboxProfile: {
         isolation: "WORKSPACE_WRITE",
@@ -472,7 +492,7 @@ describe("Mission Control full-system Factory qualification V1", () => {
         genomeHash: `sha256:${"1".repeat(64)}`,
         promptBundleHash: `sha256:${"2".repeat(64)}`,
         toolManifestHash: `sha256:${"3".repeat(64)}`,
-        model: { provider: "fixture", modelId: "deterministic/no-model" },
+        model: { provider: "openai", modelId: "gpt-5.6-terra" },
       }],
       codeScopes: [{
         id: "scope-fixture",
@@ -481,7 +501,7 @@ describe("Mission Control full-system Factory qualification V1", () => {
         excludePaths: [".git/**"],
       }],
       allowedTools: ["read", "write", "shell"],
-      routedModel: "deterministic/no-model",
+      routedModel: "gpt-5.6-terra",
       maxRuntimeMinutes: 10,
       initialContext: finalContext.contextPackage,
       harnessIsolation: "WORKSPACE_WRITE",
@@ -535,7 +555,7 @@ describe("Mission Control full-system Factory qualification V1", () => {
       executor: {
         command: "fixture-executor",
         args: ["run"],
-        model: "deterministic/no-model",
+        model: "gpt-5.6-terra",
         prompt: "Execute the frozen fixture WorkOrder.",
         allowedPaths: ["src/**", "tests/**", "scripts/**", "docs/**"],
         timeoutMs: 60_000,
@@ -1322,6 +1342,9 @@ function eligibleWorker(): FactoryWorkerCandidate {
       supportedExecutors: [{
         adapter: "codex",
         version: "v1",
+        capabilityManifestSha256: CODEX_CAPABILITY_MANIFEST_SHA256,
+        effectiveConfigSha256: CODEX_V1_HARNESS_MANIFEST.effectiveConfigSha256,
+        capabilityManifest: CODEX_V1_HARNESS_MANIFEST,
         supportsCancel: true,
         supportsResume: false,
         isolationModes: ["WORKSPACE_WRITE"],

@@ -1,10 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { ConvexHttpClient } from "convex/browser";
-import type { ExecutorEvent, HarnessExecutionBackend, HarnessExecutorCapabilities } from "@mission-control/workflow-engine";
-import { runHarnessExecution, verificationIsolationBindingDigest } from "@mission-control/workflow-engine";
+import type { ExecutorEvent, ExecutorRequest, HarnessExecutionBackend, HarnessExecutorCapabilities, HarnessNormalizedResult } from "@mission-control/workflow-engine";
+import { harnessCapabilityManifestDigest, harnessNormalizedResultIssues, runHarnessExecution, verificationIsolationBindingDigest } from "@mission-control/workflow-engine";
 import { canonicalHash } from "@mission-control/shared";
 import { CodexV1ExecutorAdapter } from "./codexExecutorAdapter.js";
-import { HarnessAdapterRegistry, type HarnessRuntimeAdapter } from "./harnessAdapterRegistry.js";
+import { HarnessAdapterRegistry, type HarnessRuntimeAdapter, type RegisteredHarnessAdapter } from "./harnessAdapterRegistry.js";
 import { ConvexActions, ConvexQueries } from "./convexCalls.js";
 import { createSignedServiceCommand } from "./serviceCommandClient.js";
 import { assertFactoryCandidateUnchanged, commitFactoryChanges, createFactorySourceBundle, ensureFactoryWorktree, ensureVerificationWorktree, inspectCandidateChange, listChangedFiles, materializeRemoteCandidate, pushFactoryBranch } from "./factoryGitRuntime.js";
@@ -33,6 +33,21 @@ import { reconcileSandboxOrphans, type SandboxCleanupHealth } from "./sandboxRec
 export const FACTORY_ATTEMPT_LEASE_DURATION_MS = 120_000;
 const HEARTBEAT_INTERVAL_MS = 20_000;
 const MAX_RESULT_BYTES = 64_000;
+
+interface FrozenHarnessExecutionManifest {
+  harness: {
+    adapter: string;
+    version: string;
+    harnessId: string;
+    harnessVersion: string;
+    capabilityManifestSha256: string;
+    effectiveConfigSha256: string;
+    executionBackend: string;
+    provider?: string;
+    model?: string;
+    isolation: "READ_ONLY" | "WORKSPACE_WRITE" | "DETACHED_READ_ONLY";
+  };
+}
 
 export interface FactoryAttemptWorkerStatus {
   enabled: boolean;
@@ -348,6 +363,11 @@ export class FactoryAttemptWorker {
         adapter: manifest.harness.adapter,
         version: manifest.harness.version,
       });
+      const adapterRegistration = this.adapters.requireRegistration({
+        adapter: manifest.harness.adapter,
+        version: manifest.harness.version,
+      });
+      assertHarnessAdapterIdentity(manifest, adapterRegistration);
       if (verificationAttempt) {
         await this.executeVerificationAttempt({ claim, manifest, report, controller });
         this.completedCount += 1;
@@ -409,15 +429,17 @@ export class FactoryAttemptWorker {
       let traceObservations: any[] = [];
       let structuredResult: ReturnType<typeof validateFactoryResult>;
       const executionArtifacts: any[] = [];
-      const executorRequest = {
+      const executorRequest: ExecutorRequest = {
         executionId: `${claim.runId}:${claim.executionManifestDigest}`,
         repositoryRoot: claim.worktree,
         workingDirectory: claim.worktree,
         prompt: manifest.compiledPrompt,
+        provider: manifest.harness.provider ?? manifest.workflow.steps[0]?.modelConfiguration?.provider,
         model: claim.model ?? manifest.workflow.steps[0]?.modelRoute,
         allowedPaths: manifest.repository.allowedPaths,
+        deniedPaths: manifest.repository.excludedPaths,
         timeoutMs: manifest.harness.timeoutMs,
-        isolation: "WORKSPACE_WRITE" as const,
+        isolation: manifest.harness.isolation === "READ_ONLY" ? "READ_ONLY" : "WORKSPACE_WRITE",
       };
       if (manifest.harness.executionBackend === "remote-sandbox") {
         if (!workspaceOwner) throw new Error("Remote sandbox execution requires canonical worker ownership.");
@@ -507,6 +529,7 @@ export class FactoryAttemptWorker {
             },
           } : undefined,
         });
+        const normalizedResult = assertHarnessResultIdentity(executorRequest, manifest, result.normalizedResult);
         mappedEvents = [
           ...executorEvents.map((event) => mapExecutorEvent(claim.runId, event, adapterCapabilities)),
           ...runtimeEvents,
@@ -515,12 +538,15 @@ export class FactoryAttemptWorker {
           runId: claim.runId,
           events: executorEvents,
           harness: adapterCapabilities,
-          model: claim.model ?? manifest.workflow.steps[0]?.modelRoute,
+          model: normalizedResult.provenance.model ?? claim.model ?? manifest.workflow.steps[0]?.modelRoute,
+          usage: normalizedResult.usage,
+          toolCalls: normalizedResult.events.toolCalls,
           promptDigest: `sha256:${createHash("sha256").update(manifest.compiledPrompt).digest("hex")}`,
           promptVersion: manifest.causation?.factoryDefinitionVersionId
             ? String(manifest.causation.factoryDefinitionVersionId)
             : undefined,
         });
+        executionArtifacts.push(harnessResultArtifact(claim, normalizedResult));
         if (result.status !== "COMPLETED") {
           await report({
             events: mappedEvents,
@@ -530,7 +556,7 @@ export class FactoryAttemptWorker {
           this.failedCount += 1;
           return;
         }
-        structuredResult = parseFactoryResult(result.output ?? "");
+        structuredResult = parseFactoryResult(normalizedResult.output);
       }
       if (structuredResult.status !== "COMPLETED") {
         await cleanupRemote();
@@ -575,7 +601,7 @@ export class FactoryAttemptWorker {
           events: mappedEvents,
           observations: traceObservations,
           artifacts: [structuredResultArtifact(claim, structuredResult), ...executionArtifacts],
-          terminal: { status: "FAILED", failureReason: "Codex completed without producing a reviewable code change." },
+          terminal: { status: "FAILED", failureReason: "Harness completed without producing a reviewable code change." },
         });
         this.failedCount += 1;
         return;
@@ -995,6 +1021,10 @@ function validateClaimManifest(claim: any) {
     || !boundedHarnessIdentity(manifest?.harness?.version)
     || manifest.harness.adapter !== claim.executorAdapter
     || manifest.harness.version !== claim.executorVersion
+    || !boundedHarnessIdentity(manifest?.harness?.harnessId)
+    || !boundedHarnessIdentity(manifest?.harness?.harnessVersion)
+    || !/^sha256:[a-f0-9]{64}$/i.test(manifest?.harness?.capabilityManifestSha256 ?? "")
+    || !/^[a-f0-9]{64}$/i.test(manifest?.harness?.effectiveConfigSha256 ?? "")
     || !["WORKSPACE_WRITE", "READ_ONLY", "DETACHED_READ_ONLY"].includes(manifest?.harness?.isolation)
     || manifest?.harness?.pullRequestAuthority !== "CONTROL_PLANE_ONLY"
     || typeof manifest?.harness?.executionBackend !== "string"
@@ -1037,11 +1067,53 @@ function validateClaimManifest(claim: any) {
   return manifest;
 }
 
+function assertHarnessAdapterIdentity(
+  manifest: FrozenHarnessExecutionManifest,
+  registration: RegisteredHarnessAdapter,
+) {
+  const capabilityManifest = registration.manifest;
+  if (!capabilityManifest
+    || capabilityManifest.identity.adapterId !== manifest.harness.adapter
+    || capabilityManifest.identity.adapterVersion !== manifest.harness.version
+    || capabilityManifest.identity.harnessId !== manifest.harness.harnessId
+    || capabilityManifest.identity.harnessVersion !== manifest.harness.harnessVersion
+    || harnessCapabilityManifestDigest(capabilityManifest) !== manifest.harness.capabilityManifestSha256
+    || capabilityManifest.effectiveConfigSha256 !== manifest.harness.effectiveConfigSha256) {
+    throw new Error("Registered harness adapter does not match the frozen Attempt capability/configuration identity.");
+  }
+  if (!capabilityManifest.admission.executionBackends.includes(manifest.harness.executionBackend)) {
+    throw new Error("Registered harness adapter does not support the frozen execution backend.");
+  }
+}
+
+function assertHarnessResultIdentity(
+  request: ExecutorRequest,
+  manifest: FrozenHarnessExecutionManifest,
+  result: HarnessNormalizedResult | undefined,
+): HarnessNormalizedResult {
+  if (!result) throw new Error("Harness did not return the required normalized harness-result/v1 bundle.");
+  const issues = harnessNormalizedResultIssues(result);
+  if (issues.length > 0
+    || result.executionId !== request.executionId
+    || result.harness.adapterId !== manifest.harness.adapter
+    || result.harness.adapterVersion !== manifest.harness.version
+    || result.harness.harnessId !== manifest.harness.harnessId
+    || result.harness.harnessVersion !== manifest.harness.harnessVersion
+    || result.provenance.capabilityManifestSha256 !== manifest.harness.capabilityManifestSha256
+    || result.provenance.effectiveConfigSha256 !== manifest.harness.effectiveConfigSha256
+    || result.provenance.provider !== (request.provider ?? null)
+    || result.provenance.model !== (request.model ?? null)) {
+    throw new Error(`Harness normalized result does not match the frozen Attempt identity${issues.length ? ` (${issues.join(", ")})` : ""}.`);
+  }
+  return result;
+}
+
 function mapExecutorEvent(runId: string, event: ExecutorEvent, harness: HarnessExecutorCapabilities) {
   const eventType = {
     EXECUTION_STARTED: "STEP_STARTED",
     COMMAND_STARTED: "TOOL_CALLED",
     COMMAND_COMPLETED: "COMMAND_EXECUTED",
+    TOOL_CALLED: "TOOL_CALLED",
     ARTIFACT_PRODUCED: "COMMAND_EXECUTED",
     EXECUTION_COMPLETED: "STEP_COMPLETED",
     EXECUTION_FAILED: "RUN_FAILED",
@@ -1055,7 +1127,13 @@ function mapExecutorEvent(runId: string, event: ExecutorEvent, harness: HarnessE
     commandSummary: event.summary,
     status: event.type.endsWith("FAILED") ? "FAILED" : event.type.endsWith("CANCELED") ? "CANCELED" : "RECORDED",
     startedAt: event.occurredAt,
-    metadata: { executorEventType: event.type, executorSequence: event.sequence, ...(event.metadata ?? {}) },
+    metadata: {
+      executorEventType: event.type,
+      executorSequence: event.sequence,
+      harnessAdapter: harness.adapter,
+      harnessAdapterVersion: harness.version,
+      ...(event.metadata ?? {}),
+    },
   };
 }
 
@@ -1064,6 +1142,8 @@ export function mapExecutorObservations(input: {
   events: ExecutorEvent[];
   harness: Pick<HarnessExecutorCapabilities, "adapter" | "version" | "displayName" | "provider">;
   model?: string;
+  usage?: HarnessNormalizedResult["usage"];
+  toolCalls?: number | null;
   promptDigest: string;
   promptVersion?: string;
 }) {
@@ -1149,7 +1229,7 @@ function validateFactoryResult(result: any) {
     || typeof result.summary !== "string" || !result.summary.trim()
     || typeof result.nextAction !== "string"
     || arrayFields.some((field) => !Array.isArray(result[field]) || result[field].some((item: unknown) => typeof item !== "string"))) {
-    throw new Error("Codex factory-result/v1 JSON failed schema validation.");
+    throw new Error("Harness factory-result/v1 JSON failed schema validation.");
   }
   return result as {
     status: "COMPLETED" | "BLOCKED" | "FAILED";
@@ -1202,13 +1282,57 @@ function sameStringSet(left: string[], right: string[]) {
 }
 
 function structuredResultArtifact(claim: any, result: ReturnType<typeof parseFactoryResult>) {
+  const persistedResult = {
+    ...result,
+    summary: redactHarnessText(result.summary, 4_000),
+    nextAction: redactHarnessText(result.nextAction, 4_000),
+    verificationCommands: result.verificationCommands.map((item) => redactHarnessText(item, 2_000)),
+    knownRisks: result.knownRisks.map((item) => redactHarnessText(item, 2_000)),
+  };
   return {
     idempotencyKey: `factory:${claim.runId}:structured-result`,
     artifactType: "STRUCTURED_OUTPUT",
     name: "Execution harness factory-result/v1",
-    description: result.summary,
-    contentHash: `sha256:${createHash("sha256").update(JSON.stringify(result)).digest("hex")}`,
-    metadata: { schema: "factory-result/v1", result },
+    description: persistedResult.summary,
+    contentHash: `sha256:${createHash("sha256").update(JSON.stringify(persistedResult)).digest("hex")}`,
+    metadata: { schema: "factory-result/v1", acceptanceAuthority: false, result: persistedResult },
+  };
+}
+
+function harnessResultArtifact(claim: { runId: string }, result: HarnessNormalizedResult) {
+  const persistedResult = {
+    ...result,
+    provenance: {
+      ...result.provenance,
+      providerMetadata: Object.fromEntries(Object.entries(result.provenance.providerMetadata).map(([key, value]) => [
+        key,
+        typeof value === "string" ? redactHarnessText(value, 500) : value,
+      ])),
+    },
+    events: {
+      ...result.events,
+      items: result.events.items.slice(0, 500).map((event) => ({
+        ...event,
+        summary: redactHarnessText(event.summary, 2_000),
+        metadata: sanitizeHarnessMetadata(event.metadata),
+      })),
+    },
+    output: redactHarnessText(result.output, MAX_RESULT_BYTES),
+    structuredOutput: {
+      schema: result.structuredOutput.schema,
+      summary: result.structuredOutput.summary ? redactHarnessText(result.structuredOutput.summary, 4_000) : null,
+    },
+    error: result.error ? redactHarnessText(result.error, 2_000) : null,
+  };
+  return {
+    idempotencyKey: `factory:${claim.runId}:harness-result:${result.provenance.requestSha256}`,
+    artifactType: "STRUCTURED_OUTPUT",
+    name: `${result.harness.harnessId} normalized harness-result/v1`,
+    description: `Untrusted execution result: ${result.status}. Independent verification remains authoritative.`,
+    contentHash: `sha256:${createHash("sha256").update(JSON.stringify(persistedResult)).digest("hex")}`,
+    retentionPolicy: "ATTEMPT_EVIDENCE",
+    sensitivity: "INTERNAL",
+    metadata: { schema: "harness-result/v1", acceptanceAuthority: false, result: persistedResult },
   };
 }
 
@@ -1292,7 +1416,7 @@ function requireRemoteInvocation(
     model?: string;
     allowedPaths: string[];
     timeoutMs: number;
-    isolation: "WORKSPACE_WRITE";
+    isolation: "READ_ONLY" | "WORKSPACE_WRITE";
   },
 ) {
   const repositoryRoot = "/var/lib/mission-control/attempt/repository";
@@ -1359,7 +1483,28 @@ function boundedHarnessIdentity(value: unknown): value is string {
 }
 
 function safeError(error: unknown) {
-  return (error instanceof Error ? error.message : String(error))
+  return redactHarnessText(error instanceof Error ? error.message : String(error), 2_000);
+}
+
+function redactHarnessText(value: string, maximum: number) {
+  return value
     .replace(/(authorization|cookie|token|secret|password|api[-_]?key)\s*[:=]\s*([^\s,;]+)/gi, "$1=[REDACTED]")
-    .slice(0, 2_000);
+    .replace(/\b(?:gh[opsu]_|github_pat_)[A-Za-z0-9_]{20,}\b/g, "[REDACTED_GITHUB_TOKEN]")
+    .replace(/\bsk-[A-Za-z0-9_-]{20,}\b/g, "[REDACTED_PROVIDER_TOKEN]")
+    .replace(/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/g, "[REDACTED_PRIVATE_KEY]")
+    .slice(0, maximum);
+}
+
+function sanitizeHarnessMetadata(value: unknown, depth = 0): unknown {
+  if (value === null || typeof value === "number" || typeof value === "boolean") return value;
+  if (typeof value === "string") return redactHarnessText(value, 500);
+  if (depth >= 3) return "[OMITTED]";
+  if (Array.isArray(value)) return value.slice(0, 100).map((item) => sanitizeHarnessMetadata(item, depth + 1));
+  if (!value || typeof value !== "object") return undefined;
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>).slice(0, 50).map(([key, item]) => [
+    key,
+    /authorization|cookie|token|secret|password|api[-_]?key/i.test(key)
+      ? "[REDACTED]"
+      : sanitizeHarnessMetadata(item, depth + 1),
+  ]));
 }

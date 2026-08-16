@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ExecutorEvent } from "@mission-control/workflow-engine";
+import { CODEX_V1_HARNESS_MANIFEST, type ExecutorEvent } from "@mission-control/workflow-engine";
 import { mapExecutorObservations } from "../factoryAttemptWorker.js";
 
 describe("Factory executor observability", () => {

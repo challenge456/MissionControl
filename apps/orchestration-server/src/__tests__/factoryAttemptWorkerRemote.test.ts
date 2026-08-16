@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { canonicalHash } from "@mission-control/shared";
+import { CODEX_V1_HARNESS_MANIFEST, harnessCapabilityManifestDigest } from "@mission-control/workflow-engine";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FactoryAttemptWorker, type FactoryAttemptWorkerDependencies } from "../factoryAttemptWorker.js";
 import { FakeSandboxProvider } from "../fakeSandboxProvider.js";
@@ -245,8 +246,20 @@ function executionManifest(selectedProfile: SandboxProfileSnapshot, baseSha: str
       factoryDefinitionVersionId: "factory-version-1", factoryConfigurationDigest: "factory-v1-test", factoryPurpose: "SOFTWARE",
     },
     harness: {
-      adapter: "codex", version: "v1", isolation: "WORKSPACE_WRITE", executionBackend: "remote-sandbox",
+      adapter: "codex",
+      version: "v1",
+      harnessId: "codex-cli",
+      harnessVersion: "0.146.0",
+      harnessCommit: "e363b08c9175ac1cbe5893615dd2cb9ddf95043b",
+      capabilityManifest: CODEX_V1_HARNESS_MANIFEST,
+      capabilityManifestSha256: harnessCapabilityManifestDigest(CODEX_V1_HARNESS_MANIFEST),
+      effectiveConfigSha256: CODEX_V1_HARNESS_MANIFEST.effectiveConfigSha256,
+      provider: "openai",
+      model: "gpt-5",
+      isolation: "WORKSPACE_WRITE",
+      executionBackend: "remote-sandbox",
       requiredCapabilities: ["git-worktree", "workspace-write", "remote-sandbox", "sandbox-provider:exe-dev"],
+      requiredHarnessCapabilities: [],
       pullRequestAuthority: "CONTROL_PLANE_ONLY", timeoutMs: 60_000,
     },
     repository: { baseSha, worktree, allowedPaths: ["src/**"], excludedPaths: [] },
