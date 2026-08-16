@@ -56,6 +56,8 @@ export const ConvexActions = {
     claimVerificationAttempt: "serviceCommands:claimVerificationAttempt",
     renewVerificationAttempt: "serviceCommands:renewVerificationAttempt",
     reportVerificationAttempt: "serviceCommands:reportVerificationAttempt",
+    listFactorySandboxReconcileCandidates: "serviceCommands:listFactorySandboxReconcileCandidates",
+    reportFactorySandboxReconcile: "serviceCommands:reportFactorySandboxReconcile",
     claimExecution: "serviceCommands:claimExecution",
     heartbeatExecution: "serviceCommands:heartbeatExecution",
     reportExecution: "serviceCommands:reportExecution",

@@ -247,6 +247,17 @@ const runEventType = v.union(
   v.literal("INDEPENDENT_REVIEW_STARTED"),
   v.literal("VERIFICATION_RECEIPT_CREATED"),
   v.literal("CANDIDATE_READY"),
+  v.literal("SANDBOX_REQUESTED"),
+  v.literal("SANDBOX_ALLOCATED"),
+  v.literal("SANDBOX_STARTED"),
+  v.literal("SANDBOX_RESULT_RECEIVED"),
+  v.literal("SANDBOX_CANCELLATION_REQUESTED"),
+  v.literal("SANDBOX_CREDENTIAL_REVOKED"),
+  v.literal("SANDBOX_TERMINATION_REQUESTED"),
+  v.literal("SANDBOX_TERMINATED"),
+  v.literal("SANDBOX_ORPHANED"),
+  v.literal("ORPHAN_RECONCILED"),
+  v.literal("SANDBOX_FAILED"),
   v.literal("RUN_PAUSED"),
   v.literal("RUN_RESUMED"),
   v.literal("RUN_CANCELED"),
@@ -981,6 +992,49 @@ export default defineSchema({
     .index("by_repository_purpose_status", ["repositoryId", "purpose", "status"])
     .index("by_project_status", ["projectId", "status"]),
 
+  factorySandboxProfiles: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.id("projects"),
+    profileKey: v.string(),
+    version: v.number(),
+    profileDigest: v.string(),
+    provider: v.union(v.literal("EXE_DEV"), v.literal("FAKE")),
+    providerProfile: v.string(),
+    providerProfileVersion: v.string(),
+    machineImage: v.string(),
+    cpu: v.number(),
+    memoryMb: v.number(),
+    diskGb: v.number(),
+    supervisorVersion: v.string(),
+    executorTransport: v.literal("SSH"),
+    maxRuntimeMs: v.number(),
+    resultPollIntervalMs: v.number(),
+    resultRetentionMs: v.number(),
+    networkEgress: v.union(v.literal("UNRESTRICTED"), v.literal("RESTRICTED_ALLOWLIST")),
+    egressAllowlist: v.array(v.string()),
+    publicIngress: v.literal(false),
+    exposedPorts: v.array(v.number()),
+    inferenceCredentialMode: v.union(v.literal("ATTEMPT_SCOPED_OPENROUTER"), v.literal("NONE")),
+    repositoryAccessMode: v.literal("CONTROL_PLANE_SNAPSHOT"),
+    spendLimitUsd: v.number(),
+    spendEnforcement: v.union(v.literal("PROVIDER_KEY_LIMIT"), v.literal("OBSERVATION_ONLY")),
+    previewMode: v.union(v.literal("DISABLED"), v.literal("PRIVATE_PROXY")),
+    previewPort: v.optional(v.number()),
+    readinessState: v.union(v.literal("READY"), v.literal("DEGRADED"), v.literal("BLOCKED")),
+    readinessReason: v.string(),
+    readinessCheckedAt: v.number(),
+    readinessExpiresAt: v.number(),
+    egressEnforcementProven: v.boolean(),
+    immutableSnapshot: v.any(),
+    status: v.union(v.literal("ACTIVE"), v.literal("ARCHIVED")),
+    createdBy: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_status", ["projectId", "status"])
+    .index("by_profile_version", ["projectId", "profileKey", "version"])
+    .index("by_digest", ["profileDigest"]),
+
   factoryDefinitionVersions: defineTable({
     tenantId: v.optional(v.id("tenants")),
     projectId: v.id("projects"),
@@ -991,6 +1045,10 @@ export default defineSchema({
     purpose: v.optional(factoryPurposeValidator),
     workflowId: v.id("workflows"),
     executor: v.object({ adapter: v.string(), version: v.string() }),
+    executionBackend: v.optional(v.union(v.literal("persistent-worker"), v.literal("remote-sandbox"))),
+    sandboxProfileId: v.optional(v.id("factorySandboxProfiles")),
+    sandboxProfileDigest: v.optional(v.string()),
+    sandboxProfileSnapshot: v.optional(v.any()),
     codeScopeIds: v.optional(v.array(v.id("repositoryCodeScopes"))),
     agentBindings: v.optional(v.array(v.object({
       workflowAgentId: v.string(),
@@ -1039,6 +1097,79 @@ export default defineSchema({
     .index("by_version", ["factoryDefinitionVersionId"])
     .index("by_factory", ["factoryDefinitionId"])
     .index("by_assessed", ["assessedAt"]),
+
+  sandboxAllocations: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.id("projects"),
+    workOrderId: v.id("workOrders"),
+    workflowRunId: v.id("workflowRuns"),
+    factoryDefinitionVersionId: v.id("factoryDefinitionVersions"),
+    attemptId: v.string(),
+    attemptLeaseId: v.string(),
+    manifestDigest: v.string(),
+    profileId: v.id("factorySandboxProfiles"),
+    profileDigest: v.string(),
+    profileSnapshot: v.any(),
+    sourceSha: v.string(),
+    provider: v.union(v.literal("EXE_DEV"), v.literal("FAKE")),
+    providerResourceId: v.optional(v.string()),
+    resourceName: v.string(),
+    state: v.union(
+      v.literal("REQUESTED"), v.literal("ALLOCATING"), v.literal("READY"),
+      v.literal("RUNNING"), v.literal("RESULT_READY"), v.literal("CANCELING"),
+      v.literal("TERMINATING"), v.literal("TERMINATED"), v.literal("FAILED"),
+      v.literal("ORPHANED")
+    ),
+    requestedAt: v.number(),
+    createdAt: v.optional(v.number()),
+    readyAt: v.optional(v.number()),
+    startedAt: v.optional(v.number()),
+    lastHeartbeatAt: v.optional(v.number()),
+    resultDigest: v.optional(v.string()),
+    resultStatus: v.optional(v.string()),
+    providerCostUsd: v.optional(v.number()),
+    inferenceCostUsd: v.optional(v.number()),
+    privatePreviewUrl: v.optional(v.string()),
+    terminationRequestedAt: v.optional(v.number()),
+    terminatedAt: v.optional(v.number()),
+    resourceAbsentAt: v.optional(v.number()),
+    teardownReceipt: v.optional(v.any()),
+    failureReason: v.optional(v.string()),
+    providerMetadata: v.optional(v.any()),
+    updatedAt: v.number(),
+  })
+    .index("by_run", ["workflowRunId"])
+    .index("by_attempt", ["attemptId"])
+    .index("by_resource", ["provider", "resourceName"])
+    .index("by_project_state", ["projectId", "state"])
+    .index("by_state", ["state"])
+    .index("by_attempt_lease", ["attemptLeaseId"]),
+
+  sandboxCredentialGrants: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.id("projects"),
+    workflowRunId: v.id("workflowRuns"),
+    sandboxAllocationId: v.id("sandboxAllocations"),
+    attemptId: v.string(),
+    attemptLeaseId: v.string(),
+    grantKey: v.string(),
+    provider: v.union(v.literal("OPENROUTER"), v.literal("FAKE")),
+    externalCredentialId: v.string(),
+    environmentVariable: v.literal("OPENAI_API_KEY"),
+    secretFingerprint: v.string(),
+    maxCostUsd: v.number(),
+    issuedAt: v.number(),
+    expiresAt: v.number(),
+    state: v.union(v.literal("ISSUED"), v.literal("REVOCATION_PENDING"), v.literal("REVOKED"), v.literal("EXPIRED")),
+    revocationRequestedAt: v.optional(v.number()),
+    revokedAt: v.optional(v.number()),
+    observedCostUsd: v.optional(v.number()),
+    updatedAt: v.number(),
+  })
+    .index("by_run", ["workflowRunId"])
+    .index("by_allocation", ["sandboxAllocationId"])
+    .index("by_grant_key", ["grantKey"])
+    .index("by_state", ["state"]),
 
   // Replay-resistant service command ledger. Credentials and command payloads
   // are deliberately excluded; the digest and scoped identity are sufficient
@@ -3983,6 +4114,9 @@ export default defineSchema({
     isMutating: v.optional(v.boolean()),
     executionManifest: v.optional(v.any()),
     executionManifestDigest: v.optional(v.string()),
+    sandboxAllocationId: v.optional(v.id("sandboxAllocations")),
+    sandboxResultDigest: v.optional(v.string()),
+    sandboxTeardownVerifiedAt: v.optional(v.number()),
     lease: v.optional(v.object({
       leaseId: v.string(),
       ownerId: v.string(),

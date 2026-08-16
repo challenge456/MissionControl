@@ -198,6 +198,47 @@ export async function currentHead(worktree: string) {
   return (await runGit(worktree, ["rev-parse", "HEAD"])).stdout.trim();
 }
 
+export async function createFactorySourceBundle(worktree: string, sourceSha: string) {
+  if (!/^[a-f0-9]{40,64}$/i.test(sourceSha)) throw new Error("Factory source SHA is invalid.");
+  const observed = await currentHead(worktree);
+  if (observed !== sourceSha) throw new Error("Factory worktree does not match the frozen source SHA before sandbox upload.");
+  const result = await execFileAsync("git", ["bundle", "create", "-", "HEAD"], {
+    cwd: worktree,
+    env: process.env,
+    encoding: "buffer",
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  return Buffer.from(result.stdout);
+}
+
+export async function materializeRemoteCandidate(input: {
+  worktree: string;
+  sourceSha: string;
+  patch: Buffer;
+}) {
+  if (!/^[a-f0-9]{40,64}$/i.test(input.sourceSha)) throw new Error("Remote candidate source SHA is invalid.");
+  const [head, status] = await Promise.all([
+    currentHead(input.worktree),
+    runGit(input.worktree, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]),
+  ]);
+  if (head !== input.sourceSha) throw new Error("Host worktree moved after the remote sandbox source was frozen.");
+  if (status.stdout.length > 0) throw new Error("Host worktree is not clean before remote result materialization.");
+  if (input.patch.byteLength === 0) return;
+  const patchDirectory = await mkdtemp(path.join(tmpdir(), "mc-factory-patch-"));
+  const patchPath = path.join(patchDirectory, "candidate.patch");
+  try {
+    await writeFile(patchPath, input.patch, { mode: 0o600 });
+    await execFileAsync("git", ["apply", "--binary", "--whitespace=nowarn", patchPath], {
+      cwd: input.worktree, env: process.env, maxBuffer: 20 * 1024 * 1024,
+    });
+  } catch (cause: any) {
+    const detail = String(cause?.stderr ?? cause?.message ?? "git apply failed").slice(0, 1_000);
+    throw new Error(`Remote candidate patch could not be materialized: ${detail}`);
+  } finally {
+    await rm(patchDirectory, { recursive: true, force: true });
+  }
+}
+
 function assertFactoryBranch(branch: string) {
   if (!/^mc\/[A-Za-z0-9._/-]+$/.test(branch) || branch.includes("..") || branch.endsWith("/")) {
     throw new Error("Factory branch must use a safe server-owned mc/ namespace.");

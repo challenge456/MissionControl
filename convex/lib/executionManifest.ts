@@ -28,6 +28,27 @@ export interface FactoryExecutionManifestInput {
     isolation: "READ_ONLY" | "WORKSPACE_WRITE";
     requiredCapabilities: string[];
   };
+  sandbox?: {
+    resourceName: string;
+    profileId: string;
+    profileDigest: string;
+    profileSnapshot: unknown;
+    supervisorVersion: "mission-control-supervisor/v1";
+    resultContract: {
+      schema: "factory-sandbox-result/v1";
+      independentHostValidationRequired: true;
+    };
+    credentialGrants: Array<{
+      kind: "INFERENCE";
+      secretValueIncluded: false;
+      githubAuthority: "NONE";
+      providerAuthority: "NONE";
+    }>;
+    teardown: {
+      credentialsRevokedBeforePublication: true;
+      resourceAbsenceRequiredBeforePublication: true;
+    };
+  };
   workflow: {
     workflowId: string;
     version: number;
@@ -89,6 +110,12 @@ export function buildFactoryExecutionManifest(input: FactoryExecutionManifestInp
   }
   if (!input.executor.adapter.trim() || !input.executor.version.trim() || !input.executionBackend.trim()) {
     throw new Error("Execution manifest requires a provider-neutral executor and backend binding.");
+  }
+  if (input.executionBackend === "remote-sandbox" && !input.sandbox) {
+    throw new Error("Remote sandbox execution requires a frozen Sandbox Profile and lifecycle contract.");
+  }
+  if (input.executionBackend !== "remote-sandbox" && input.sandbox) {
+    throw new Error("A Sandbox Profile cannot be attached to a non-sandbox execution backend.");
   }
   const allowedPaths = Array.from(new Set(input.codeScopes.flatMap((scope) => scope.includePaths))).sort();
   const excludedPaths = Array.from(new Set(input.codeScopes.flatMap((scope) => scope.excludePaths))).sort();
@@ -172,6 +199,7 @@ export function buildFactoryExecutionManifest(input: FactoryExecutionManifestInp
       completionContract: "factory-result/v1",
       pullRequestAuthority: "CONTROL_PLANE_ONLY",
     },
+    sandbox: input.sandbox,
     workflow: {
       workflowId: input.workflow.workflowId,
       workflowVersion: input.workflow.version,

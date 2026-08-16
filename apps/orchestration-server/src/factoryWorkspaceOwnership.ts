@@ -26,8 +26,12 @@ export interface FactoryWorkspaceOwner {
 export interface FactoryWorkspaceOwnershipManifest extends FactoryWorkspaceOwner {
   version: "factory-workspace-ownership/v1";
   process: {
+    kind?: "LOCAL_PROCESS" | "REMOTE_SANDBOX";
     state: "NOT_STARTED" | "RUNNING" | "TERMINATED" | "UNKNOWN";
     pid?: number;
+    externalProcessId?: string;
+    providerResourceId?: string;
+    resourceAbsentAt?: number;
     startedAt?: number;
     terminatedAt?: number;
     exitCode?: number;
@@ -81,7 +85,7 @@ export async function recordFactoryExecutorStarted(owner: FactoryWorkspaceOwner,
     }
     return {
       ...manifest,
-      process: { state: "RUNNING", pid, startedAt: Date.now() },
+      process: { kind: "LOCAL_PROCESS", state: "RUNNING", pid, startedAt: Date.now() },
     };
   });
 }
@@ -91,7 +95,9 @@ export async function recordFactoryExecutorTerminated(owner: FactoryWorkspaceOwn
   exitCode?: number;
 }) {
   return await updateOwnedManifest(owner, (manifest) => {
-    if (manifest.process.state !== "RUNNING" || manifest.process.pid !== process.pid) {
+    if (manifest.process.state !== "RUNNING"
+      || (manifest.process.kind && manifest.process.kind !== "LOCAL_PROCESS")
+      || manifest.process.pid !== process.pid) {
       throw new Error("Executor termination does not match the owned running process; workspace was preserved.");
     }
     return {
@@ -101,6 +107,53 @@ export async function recordFactoryExecutorTerminated(owner: FactoryWorkspaceOwn
         state: "TERMINATED",
         terminatedAt: Date.now(),
         exitCode: process.exitCode,
+      },
+    };
+  });
+}
+
+export async function recordFactorySandboxStarted(owner: FactoryWorkspaceOwner, process: {
+  providerResourceId: string;
+  externalProcessId: string;
+}) {
+  if (!owner.sandboxId?.trim() || !process.providerResourceId.trim() || !process.externalProcessId.trim()) {
+    throw new Error("Remote sandbox process identity is incomplete.");
+  }
+  return await updateOwnedManifest(owner, (manifest) => {
+    if (manifest.process.state !== "NOT_STARTED") {
+      throw new Error("Execution process ownership was already established; workspace was preserved.");
+    }
+    return {
+      ...manifest,
+      process: {
+        kind: "REMOTE_SANDBOX",
+        state: "RUNNING",
+        providerResourceId: process.providerResourceId,
+        externalProcessId: process.externalProcessId,
+        startedAt: Date.now(),
+      },
+    };
+  });
+}
+
+export async function recordFactorySandboxTerminated(owner: FactoryWorkspaceOwner, receipt: {
+  providerResourceId: string;
+  resourceName: string;
+  confirmedAbsentAt: number;
+  resourceAbsent: true;
+}) {
+  return await updateOwnedManifest(owner, (manifest) => {
+    if (!owner.sandboxId || receipt.resourceName !== owner.sandboxId) throw new Error("Sandbox termination resource name does not match canonical workspace ownership; workspace was preserved.");
+    if (receipt.resourceAbsent !== true || !Number.isFinite(receipt.confirmedAbsentAt)) throw new Error("Sandbox termination receipt does not prove exact resource absence; workspace was preserved.");
+    if (manifest.process.state !== "RUNNING" || manifest.process.kind !== "REMOTE_SANDBOX") throw new Error("Sandbox termination does not match an owned running remote process; workspace was preserved.");
+    if (manifest.process.providerResourceId !== receipt.providerResourceId) throw new Error("Sandbox termination provider identity does not match canonical workspace ownership; workspace was preserved.");
+    return {
+      ...manifest,
+      process: {
+        ...manifest.process,
+        state: "TERMINATED",
+        terminatedAt: receipt.confirmedAbsentAt,
+        resourceAbsentAt: receipt.confirmedAbsentAt,
       },
     };
   });

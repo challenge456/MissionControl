@@ -35,7 +35,9 @@ import {
   factoryVersionApprovesWorkOrderScopes,
   selectCurrentFactoryHost,
 } from "./lib/factoryDispatch";
-import { validFactoryBudget } from "./lib/factoryConfiguration";
+import { validFactoryBudget, validFactoryExecutionBinding } from "./lib/factoryConfiguration";
+import { factoryWorkerEligibility } from "./lib/factoryWorkerRuntime";
+import { computeCanonicalHash } from "./lib/genomeHash";
 import { evaluateGithubAppCapabilities, githubInstallationIsStale } from "./lib/githubAppReadiness";
 import { canonicalRepositoryKey } from "./lib/workspaceRepositories";
 import {
@@ -2375,8 +2377,33 @@ async function dispatchWorkOrder(
           executionBackend: factoryBinding.executionBackend,
           sandboxProfile: {
             isolation: "WORKSPACE_WRITE",
-            requiredCapabilities: ["git-worktree", "workspace-write"],
+            requiredCapabilities: factoryBinding.requiredSandboxCapabilities,
           },
+          sandbox: factoryBinding.executionBackend === "remote-sandbox" ? {
+            resourceName: stableSandboxResourceName({
+              projectId: String(refreshedWorkOrder.projectId),
+              workflowRunId: runId,
+              attemptId: runId,
+            }),
+            profileId: String(factoryBinding.sandboxProfile._id),
+            profileDigest: factoryBinding.sandboxProfile.profileDigest,
+            profileSnapshot: factoryBinding.sandboxProfile.immutableSnapshot,
+            supervisorVersion: "mission-control-supervisor/v1",
+            resultContract: {
+              schema: "factory-sandbox-result/v1",
+              independentHostValidationRequired: true,
+            },
+            credentialGrants: [{
+              kind: "INFERENCE",
+              secretValueIncluded: false,
+              githubAuthority: "NONE",
+              providerAuthority: "NONE",
+            }],
+            teardown: {
+              credentialsRevokedBeforePublication: true,
+              resourceAbsenceRequiredBeforePublication: true,
+            },
+          } : undefined,
           workflow: workflowSnapshot as any,
           workOrder: {
             title: refreshedWorkOrder.title,
@@ -2933,7 +2960,7 @@ async function resolveFactoryDispatchBinding(
   const now = Date.now();
   const version = await ctx.db.get(args.factoryDefinitionVersionId);
   if (!version) throw new Error("Factory dispatch blocked (factory-version-not-found): Select an available Factory version.");
-  const [definition, repository, policy, installation, assessments, bindings, verifiers, codeScopes, agentVersions] = await Promise.all([
+  const [definition, repository, policy, installation, assessments, bindings, verifiers, codeScopes, agentVersions, sandboxProfile] = await Promise.all([
     ctx.db.get(version.factoryDefinitionId),
     ctx.db.get(version.repositoryId),
     version.policyEnvelopeId ? ctx.db.get(version.policyEnvelopeId) : null,
@@ -2943,15 +2970,52 @@ async function resolveFactoryDispatchBinding(
     Promise.all(version.verifierIds.map((id) => ctx.db.get(id))),
     Promise.all((version.codeScopeIds ?? []).map((id) => ctx.db.get(id))),
     Promise.all((version.agentBindings ?? []).map((binding) => ctx.db.get(binding.agentVersionId))),
+    version.sandboxProfileId ? ctx.db.get(version.sandboxProfileId) : null,
   ]);
   const latestAssessment = assessments.sort((left, right) => right.assessedAt - left.assessedAt)[0];
   const github = installation ? evaluateGithubAppCapabilities(installation) : null;
   const agentTemplates = await Promise.all(agentVersions.map((agentVersion) =>
     agentVersion ? ctx.db.get(agentVersion.templateId) : null
   ));
+  const selectedExecutionBackend = version.executionBackend ?? "persistent-worker";
+  const requiredSandboxCapabilities = selectedExecutionBackend === "remote-sandbox"
+    ? ["git-worktree", "workspace-write", "remote-sandbox", "sandbox-provider:exe-dev"]
+    : ["git-worktree", "workspace-write"];
+  const eligibleBindings = repository ? bindings.filter((binding) => {
+    if (args.executorHostId && binding.hostId !== args.executorHostId) return false;
+    return factoryWorkerEligibility({
+      worker: {
+        workerId: binding.hostId,
+        status: binding.status,
+        dirty: binding.dirty,
+        capacity: binding.capacity,
+        workerRuntime: binding.workerRuntime ? {
+          ...binding.workerRuntime,
+          repositoryAccess: binding.workerRuntime.repositoryAccess.map((item) => ({ ...item, repositoryId: String(item.repositoryId) })),
+        } : undefined,
+      },
+      requirements: {
+        repositoryId: String(repository._id),
+        executor: version.executor,
+        isolation: "WORKSPACE_WRITE",
+        sandboxCapabilities: requiredSandboxCapabilities,
+        executionBackend: selectedExecutionBackend,
+      },
+      activeWorkerLeaseCount: 0,
+      now,
+    }).eligible;
+  }) : [];
   const host = repository
-    ? selectCurrentFactoryHost(bindings, repository.repository, now, args.executorHostId)
+    ? selectCurrentFactoryHost(eligibleBindings, repository.repository, now, args.executorHostId)
     : null;
+  const sandboxProfileReady = selectedExecutionBackend !== "remote-sandbox" || Boolean(
+    sandboxProfile
+    && sandboxProfile.projectId === version.projectId
+    && sandboxProfile.status === "ACTIVE"
+    && sandboxProfile.profileDigest === version.sandboxProfileDigest
+    && sandboxProfile.readinessState !== "BLOCKED"
+    && sandboxProfile.readinessExpiresAt > now
+  );
   const activeStatuses = ["PENDING", "RUNNING", "PAUSED"] as const;
   const activeRuns = repository
     ? (await Promise.all(activeStatuses.map((status) => ctx.db.query("workflowRuns")
@@ -3003,7 +3067,13 @@ async function resolveFactoryDispatchBinding(
       && /^[a-f0-9]{40,64}$/i.test(host.baseCommit)
     ),
     budgetReady: validFactoryBudget(version.budget),
-    recoveryReady: codexV1RecoveryReady(version.recovery),
+    recoveryReady: codexV1RecoveryReady(version.recovery) && sandboxProfileReady && validFactoryExecutionBinding({
+      executionBackend: selectedExecutionBackend,
+      sandboxProfileId: version.sandboxProfileId ? String(version.sandboxProfileId) : undefined,
+      sandboxProfileDigest: version.sandboxProfileDigest,
+      riskBoundary: version.riskBoundary,
+      recovery: version.recovery,
+    }),
     worktreeProvided: Boolean(args.worktree?.trim() || host?.checkoutRoot?.trim()),
     mutating: workOrder.isMutating !== false,
     activeRepositoryMutation: activeRuns.some((run) => run.isMutating !== false),
@@ -3018,7 +3088,9 @@ async function resolveFactoryDispatchBinding(
     repository,
     host,
     baseSha: host.baseCommit,
-    executionBackend: host.workerRuntime?.executionBackends[0] ?? "persistent-worker",
+    executionBackend: selectedExecutionBackend,
+    requiredSandboxCapabilities,
+    sandboxProfile,
     branch: args.branch?.trim() || `mc/${String(workOrder._id).slice(-12)}`,
     worktree: args.worktree?.trim() || `${host.checkoutRoot.replace(/\/+$/, "")}/.mission-control/worktrees/${String(workOrder._id).slice(-12)}`,
     allowedTools: Array.isArray(workflow.metadata?.allowedTools) ? workflow.metadata.allowedTools.filter((item: unknown): item is string => typeof item === "string") : [],
@@ -3028,6 +3100,11 @@ async function resolveFactoryDispatchBinding(
       agentVersion: agentVersions[index],
     })),
   };
+}
+
+function stableSandboxResourceName(input: { projectId: string; workflowRunId: string; attemptId: string }) {
+  const identity = computeCanonicalHash({ namespace: "factory-sandbox-resource/v1", value: input }).slice(0, 16);
+  return `mc-attempt-${identity}`;
 }
 
 /**

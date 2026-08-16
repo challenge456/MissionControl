@@ -577,6 +577,65 @@ export const authorizeFactoryPublication = action({
   },
 });
 
+export const listFactorySandboxReconcileCandidates = action({
+  args: { envelope, payloadJson: v.string() },
+  handler: async (ctx, args): Promise<any> => {
+    const payload = await authorize(ctx, args.envelope, args.payloadJson, "sandboxes.list-reconcile");
+    const scope = await ctx.runQuery(internal.serviceCommands.resolveRepositoryScope, {
+      projectId: payload.projectId,
+      repositoryId: payload.repositoryId,
+    });
+    const receipt = await claimScoped(ctx, args.envelope, scope);
+    try {
+      const result = await ctx.runQuery(internal.factory.attempts.listSandboxReconcileCandidatesInternal, {
+        projectId: payload.projectId,
+        repositoryId: payload.repositoryId,
+      });
+      await ctx.runMutation(internal.factory.attempts.markSandboxOrphansInternal, {
+        projectId: payload.projectId,
+        repositoryId: payload.repositoryId,
+        allocationIds: result.map((candidate: any) => candidate.allocation._id),
+      });
+      await ctx.runMutation(internal.serviceCommands.complete, {
+        receiptId: receipt.receiptId,
+        status: "SUCCEEDED",
+        resultReference: `${result.length} candidates`,
+      });
+      return result;
+    } catch (error) {
+      await fail(ctx, receipt.receiptId, error);
+      throw error;
+    }
+  },
+});
+
+export const reportFactorySandboxReconcile = action({
+  args: { envelope, payloadJson: v.string() },
+  handler: async (ctx, args): Promise<any> => {
+    const payload = await authorize(ctx, args.envelope, args.payloadJson, "sandboxes.report-reconcile");
+    const scope = await ctx.runQuery(internal.serviceCommands.resolveExecutionScope, { workflowRunId: payload.workflowRunId });
+    const receipt = await claimScoped(ctx, args.envelope, scope);
+    try {
+      const result = await ctx.runMutation(internal.factory.attempts.reportSandboxReconcileInternal, {
+        workflowRunId: payload.workflowRunId,
+        resourceName: payload.resourceName,
+        ownerId: args.envelope.serviceId,
+        termination: payload.termination,
+        credentialRevocation: payload.credentialRevocation,
+      });
+      await ctx.runMutation(internal.serviceCommands.complete, {
+        receiptId: receipt.receiptId,
+        status: "SUCCEEDED",
+        resultReference: payload.resourceName,
+      });
+      return result;
+    } catch (error) {
+      await fail(ctx, receipt.receiptId, error);
+      throw error;
+    }
+  },
+});
+
 export const claimExecution = action({
   args: { envelope, payloadJson: v.string() },
   handler: async (ctx, args): Promise<any> => {

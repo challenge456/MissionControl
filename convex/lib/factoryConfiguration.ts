@@ -3,6 +3,9 @@ export interface FactoryConfigurationInput {
   repositoryId: string;
   workflowId: string;
   executor: { adapter: string; version: string };
+  executionBackend: "persistent-worker" | "remote-sandbox";
+  sandboxProfileId?: string;
+  sandboxProfileDigest?: string;
   codeScopeIds: string[];
   agentBindings: Array<{ workflowAgentId: string; agentVersionId: string }>;
   policyEnvelopeId?: string;
@@ -48,4 +51,18 @@ export function validFactoryBudget(input: FactoryConfigurationInput["budget"]): 
   return input.maxCostUsd > 0 && input.maxCostUsd <= 1_000 &&
     input.maxRuntimeMinutes > 0 && input.maxRuntimeMinutes <= 480 &&
     Number.isInteger(input.maxAttempts) && input.maxAttempts > 0 && input.maxAttempts <= 3;
+}
+
+export function validFactoryExecutionBinding(input: Pick<FactoryConfigurationInput,
+  "executionBackend" | "sandboxProfileId" | "sandboxProfileDigest" | "riskBoundary" | "recovery"
+>): boolean {
+  if (input.executionBackend === "persistent-worker") {
+    return !input.sandboxProfileId && !input.sandboxProfileDigest;
+  }
+  return Boolean(input.sandboxProfileId && input.sandboxProfileDigest)
+    && input.riskBoundary !== "RED"
+    && input.recovery.cancel
+    && input.recovery.retry
+    && !input.recovery.pause
+    && !input.recovery.resume;
 }

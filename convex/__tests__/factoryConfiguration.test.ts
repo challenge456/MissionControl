@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   factoryConfigurationDigest,
   validFactoryBudget,
+  validFactoryExecutionBinding,
   type FactoryConfigurationInput,
 } from "../lib/factoryConfiguration";
 
@@ -10,6 +11,7 @@ const configuration: FactoryConfigurationInput = {
   repositoryId: "repository-1",
   workflowId: "workflow-1",
   executor: { adapter: "codex", version: "v1" },
+  executionBackend: "persistent-worker",
   codeScopeIds: ["scope-b", "scope-a"],
   agentBindings: [
     { workflowAgentId: "implementer", agentVersionId: "agent-version-1" },
@@ -77,5 +79,40 @@ describe("Factory configuration", () => {
     expect(validFactoryBudget({ ...configuration.budget, maxCostUsd: 0 })).toBe(false);
     expect(validFactoryBudget({ ...configuration.budget, maxRuntimeMinutes: 481 })).toBe(false);
     expect(validFactoryBudget({ ...configuration.budget, maxAttempts: 4 })).toBe(false);
+  });
+
+  it("binds remote execution to one immutable profile and fail-closed recovery", () => {
+    expect(validFactoryExecutionBinding(configuration)).toBe(true);
+    expect(validFactoryExecutionBinding({
+      executionBackend: "remote-sandbox",
+      sandboxProfileId: "profile-1",
+      sandboxProfileDigest: "sha256:profile",
+      riskBoundary: "YELLOW",
+      recovery: { pause: false, cancel: true, retry: true, resume: false },
+    })).toBe(true);
+    expect(validFactoryExecutionBinding({
+      executionBackend: "remote-sandbox",
+      sandboxProfileId: "profile-1",
+      sandboxProfileDigest: "sha256:profile",
+      riskBoundary: "RED",
+      recovery: { pause: false, cancel: true, retry: true, resume: false },
+    })).toBe(false);
+    expect(validFactoryExecutionBinding({
+      executionBackend: "remote-sandbox",
+      riskBoundary: "GREEN",
+      recovery: { pause: false, cancel: true, retry: true, resume: false },
+    })).toBe(false);
+  });
+
+  it("changes the Factory digest when execution backend or profile authority changes", () => {
+    const remote = {
+      ...configuration,
+      executionBackend: "remote-sandbox" as const,
+      sandboxProfileId: "profile-1",
+      sandboxProfileDigest: "sha256:profile-1",
+      recovery: { pause: false, cancel: true, retry: true, resume: false },
+    };
+    expect(factoryConfigurationDigest(remote)).not.toBe(factoryConfigurationDigest(configuration));
+    expect(factoryConfigurationDigest({ ...remote, sandboxProfileDigest: "sha256:profile-2" })).not.toBe(factoryConfigurationDigest(remote));
   });
 });

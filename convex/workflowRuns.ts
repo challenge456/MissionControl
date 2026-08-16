@@ -494,7 +494,7 @@ export const getInspector = query({
     const access = await requireAuthorizedDeliveryScope(ctx, workOrder?.projectId ?? run.projectId);
     if (workOrder) assertAuthorizedDeliveryRecord(access, workOrder);
 
-    const [installedWorkflow, events, artifacts, receipts, verificationRuns, evidenceEnvelopes, linkedAgentRuns] = await Promise.all([
+    const [installedWorkflow, events, artifacts, receipts, verificationRuns, evidenceEnvelopes, linkedAgentRuns, sandboxAllocation, sandboxCredentialGrants] = await Promise.all([
       ctx.db.query("workflows").withIndex("by_workflow_id", (q) => q.eq("workflowId", run.workflowId)).first(),
       ctx.db.query("runEvents").withIndex("by_run_sequence", (q) => q.eq("workflowRunId", run._id)).collect(),
       ctx.db.query("runArtifacts").withIndex("by_run", (q) => q.eq("workflowRunId", run._id)).order("desc").collect(),
@@ -508,6 +508,8 @@ export const getInspector = query({
         ? ctx.db.query("evidenceEnvelopes").withIndex("by_run", (q) => q.eq("workflowRunId", run._id)).order("desc").collect()
         : [],
       ctx.db.query("runs").withIndex("by_workflow_run", (q) => q.eq("workflowRunId", run._id)).take(201),
+      ctx.db.query("sandboxAllocations").withIndex("by_run", (q) => q.eq("workflowRunId", run._id)).order("desc").first(),
+      ctx.db.query("sandboxCredentialGrants").withIndex("by_run", (q) => q.eq("workflowRunId", run._id)).order("desc").collect(),
     ]);
 
     const orderedEvents = orderRunEvents(events as any);
@@ -602,6 +604,17 @@ export const getInspector = query({
       continuousEvidenceLineage,
       recovery,
       reviewPackage,
+      sandbox: sandboxAllocation ? {
+        allocation: sandboxAllocation,
+        credentialGrants: sandboxCredentialGrants.map((grant) => ({
+          ...grant,
+          // Plaintext secrets are not part of the schema. Keep this projection
+          // explicit so future credential fields cannot leak through the UI.
+          secret: undefined,
+        })),
+        profileSnapshot: factoryVersion?.sandboxProfileSnapshot,
+        lifecycleEvents: orderedEvents.filter((event: any) => event.eventType.startsWith("SANDBOX_") || event.eventType === "ORPHAN_RECONCILED"),
+      } : null,
     };
   },
 });

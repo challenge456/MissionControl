@@ -6,12 +6,15 @@ import { FACTORY_PERMISSIONS, requireWorkspacePermission } from "../lib/companyA
 import {
   factoryConfigurationDigest,
   validFactoryBudget,
+  validFactoryExecutionBinding,
   type FactoryConfigurationInput,
 } from "../lib/factoryConfiguration";
 import { evaluateGithubAppCapabilities, githubInstallationIsStale } from "../lib/githubAppReadiness";
 import { canonicalRepositoryKey } from "../lib/workspaceRepositories";
 import { codexV1RecoveryReady, selectCurrentFactoryHost } from "../lib/factoryDispatch";
 import { factoryWorkflowContractIssues } from "../lib/factoryWorkflowContract";
+import { computeCanonicalHash } from "../lib/genomeHash";
+import { factoryWorkerEligibility } from "../lib/factoryWorkerRuntime";
 
 const budget = v.object({
   maxCostUsd: v.number(),
@@ -26,6 +29,7 @@ const recovery = v.object({
 });
 const riskBoundary = v.union(v.literal("GREEN"), v.literal("YELLOW"), v.literal("RED"));
 const factoryPurpose = v.union(v.literal("SOFTWARE"), v.literal("VERIFICATION"), v.literal("INTELLIGENT_AUTOMATION"));
+const executionBackend = v.union(v.literal("persistent-worker"), v.literal("remote-sandbox"));
 
 export const list = query({
   args: { projectId: v.id("projects") },
@@ -68,12 +72,15 @@ export const getVersionOptions = query({
     if (!repository || repository.projectId !== args.projectId) {
       throw new Error("Factory repository is outside the workspace.");
     }
-    const [codeScopes, approvedVersions] = await Promise.all([
+    const [codeScopes, approvedVersions, sandboxProfiles] = await Promise.all([
       ctx.db.query("repositoryCodeScopes")
         .withIndex("by_repository", (q) => q.eq("repositoryId", repository._id))
         .collect(),
       ctx.db.query("agentVersions")
         .withIndex("by_status", (q) => q.eq("status", "APPROVED"))
+        .collect(),
+      ctx.db.query("factorySandboxProfiles")
+        .withIndex("by_project_status", (q) => q.eq("projectId", args.projectId).eq("status", "ACTIVE"))
         .collect(),
     ]);
     const agentVersions = (await Promise.all(approvedVersions
@@ -95,6 +102,7 @@ export const getVersionOptions = query({
     return {
       codeScopes: codeScopes.filter((scope) => scope.active),
       agentVersions,
+      sandboxProfiles: sandboxProfiles.sort((left, right) => left.profileKey.localeCompare(right.profileKey) || right.version - left.version),
     };
   },
 });
@@ -219,11 +227,143 @@ export const create = mutation({
   },
 });
 
+export const createSandboxProfile = mutation({
+  args: {
+    projectId: v.id("projects"),
+    profileKey: v.string(),
+    providerProfile: v.string(),
+    providerProfileVersion: v.string(),
+    machineImage: v.string(),
+    cpu: v.number(),
+    memoryMb: v.number(),
+    diskGb: v.number(),
+    maxRuntimeMs: v.number(),
+    resultPollIntervalMs: v.number(),
+    resultRetentionMs: v.number(),
+    networkEgress: v.union(v.literal("UNRESTRICTED"), v.literal("RESTRICTED_ALLOWLIST")),
+    egressAllowlist: v.array(v.string()),
+    spendLimitUsd: v.number(),
+    spendEnforcement: v.union(v.literal("PROVIDER_KEY_LIMIT"), v.literal("OBSERVATION_ONLY")),
+    previewMode: v.union(v.literal("DISABLED"), v.literal("PRIVATE_PROXY")),
+    previewPort: v.optional(v.number()),
+    readinessEvidence: v.object({
+      providerReachable: v.boolean(),
+      capacityAvailable: v.boolean(),
+      automaticCredentialCount: v.number(),
+      egressEnforcementProven: v.boolean(),
+      evidenceReference: v.string(),
+    }),
+  },
+  handler: async (ctx, args) => {
+    const access = await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.MANAGE_AUTOMATION);
+    const project = await ctx.db.get(args.projectId);
+    if (!project) throw new Error("Sandbox Profile workspace is unavailable.");
+    const profileKey = args.profileKey.trim();
+    if (!/^[a-z0-9][a-z0-9-]{2,63}$/.test(profileKey)) throw new Error("Sandbox Profile key must be a stable lowercase identifier.");
+    if (!args.providerProfile.trim() || !args.providerProfileVersion.trim() || !args.machineImage.trim()) throw new Error("Sandbox provider and image identity are required.");
+    if (!Number.isInteger(args.cpu) || args.cpu < 1 || args.cpu > 64
+      || !Number.isInteger(args.memoryMb) || args.memoryMb < 512 || args.memoryMb > 262_144
+      || !Number.isInteger(args.diskGb) || args.diskGb < 5 || args.diskGb > 2_048) throw new Error("Sandbox machine resources are outside allowed bounds.");
+    if (!Number.isInteger(args.maxRuntimeMs) || args.maxRuntimeMs < 60_000 || args.maxRuntimeMs > 8 * 60 * 60 * 1_000) throw new Error("Sandbox runtime is outside the one-minute to eight-hour bound.");
+    if (!Number.isInteger(args.resultPollIntervalMs) || args.resultPollIntervalMs < 250 || args.resultPollIntervalMs > 60_000) throw new Error("Sandbox result polling interval is invalid.");
+    if (!Number.isInteger(args.resultRetentionMs) || args.resultRetentionMs < args.maxRuntimeMs || args.resultRetentionMs > 7 * 24 * 60 * 60 * 1_000) throw new Error("Sandbox result retention must cover the runtime and remain within seven days.");
+    if (!Number.isFinite(args.spendLimitUsd) || args.spendLimitUsd <= 0 || args.spendLimitUsd > 100) throw new Error("Sandbox spend limit must be between $0 and $100.");
+    if (args.previewMode === "PRIVATE_PROXY" && (!Number.isInteger(args.previewPort) || args.previewPort! < 1 || args.previewPort! > 65_535)) throw new Error("Private preview requires a valid port.");
+    if (args.networkEgress === "RESTRICTED_ALLOWLIST" && !args.readinessEvidence.egressEnforcementProven) throw new Error("Restricted egress requires provider enforcement evidence.");
+    if (!args.readinessEvidence.evidenceReference.trim()) throw new Error("Provider readiness evidence reference is required.");
+    const existing = await ctx.db.query("factorySandboxProfiles")
+      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .filter((q) => q.eq(q.field("profileKey"), profileKey))
+      .collect();
+    const version = existing.reduce((latest, profile) => Math.max(latest, profile.version), 0) + 1;
+    const now = Date.now();
+    const blockedReasons = [
+      !args.readinessEvidence.providerReachable ? "Provider API is unreachable." : null,
+      !args.readinessEvidence.capacityAvailable ? "Provider account has no allocation capacity." : null,
+      args.readinessEvidence.automaticCredentialCount > 0 ? "Automatic provider credentials are attached." : null,
+      "Live exe.dev lifecycle certification is not recorded.",
+    ].filter((reason): reason is string => Boolean(reason));
+    const readinessState = blockedReasons.length > 0
+      ? "BLOCKED" as const
+      : args.networkEgress === "UNRESTRICTED"
+        ? "DEGRADED" as const
+        : "READY" as const;
+    const readinessReason = blockedReasons.join(" ") || (readinessState === "DEGRADED"
+      ? "Provider egress is unrestricted and represented honestly."
+      : "Provider reachability, capacity, credential isolation, and restricted egress are evidenced.");
+    const snapshot = {
+      schema: "factory-sandbox-profile/v1",
+      profileKey,
+      version,
+      provider: "EXE_DEV",
+      providerProfile: args.providerProfile.trim(),
+      providerProfileVersion: args.providerProfileVersion.trim(),
+      machine: { image: args.machineImage.trim(), cpu: args.cpu, memoryMb: args.memoryMb, diskGb: args.diskGb },
+      supervisor: { version: "mission-control-supervisor/v1", transport: "SSH" },
+      runtime: { maxRuntimeMs: args.maxRuntimeMs, resultPollIntervalMs: args.resultPollIntervalMs, resultRetentionMs: args.resultRetentionMs },
+      network: { egress: args.networkEgress, egressAllowlist: [...new Set(args.egressAllowlist)].sort(), publicIngress: false, exposedPorts: [] },
+      credentials: { inference: "ATTEMPT_SCOPED_OPENROUTER", repositoryAccess: "CONTROL_PLANE_SNAPSHOT", githubAuthority: "NONE", providerAuthority: "NONE" },
+      spend: { maxUsd: args.spendLimitUsd, enforcement: args.spendEnforcement },
+      teardown: { terminateOnEveryTerminalState: true, verifyResourceAbsent: true, supportsResume: false },
+      preview: { mode: args.previewMode, ...(args.previewPort ? { port: args.previewPort } : {}) },
+      readiness: {
+        state: readinessState,
+        checkedAt: now,
+        reason: readinessReason,
+        egressEnforcementProven: args.readinessEvidence.egressEnforcementProven,
+        liveCertified: false,
+        evidenceReference: args.readinessEvidence.evidenceReference.trim(),
+      },
+    };
+    const profileDigest = `sha256:${computeCanonicalHash({ namespace: "factory-sandbox-profile/v1", value: snapshot })}`;
+    return await ctx.db.insert("factorySandboxProfiles", {
+      tenantId: project.tenantId,
+      projectId: args.projectId,
+      profileKey,
+      version,
+      profileDigest,
+      provider: "EXE_DEV",
+      providerProfile: snapshot.providerProfile,
+      providerProfileVersion: snapshot.providerProfileVersion,
+      machineImage: snapshot.machine.image,
+      cpu: args.cpu,
+      memoryMb: args.memoryMb,
+      diskGb: args.diskGb,
+      supervisorVersion: "mission-control-supervisor/v1",
+      executorTransport: "SSH",
+      maxRuntimeMs: args.maxRuntimeMs,
+      resultPollIntervalMs: args.resultPollIntervalMs,
+      resultRetentionMs: args.resultRetentionMs,
+      networkEgress: args.networkEgress,
+      egressAllowlist: snapshot.network.egressAllowlist,
+      publicIngress: false,
+      exposedPorts: [],
+      inferenceCredentialMode: "ATTEMPT_SCOPED_OPENROUTER",
+      repositoryAccessMode: "CONTROL_PLANE_SNAPSHOT",
+      spendLimitUsd: args.spendLimitUsd,
+      spendEnforcement: args.spendEnforcement,
+      previewMode: args.previewMode,
+      previewPort: args.previewPort,
+      readinessState,
+      readinessReason,
+      readinessCheckedAt: now,
+      readinessExpiresAt: now + 24 * 60 * 60 * 1_000,
+      egressEnforcementProven: args.readinessEvidence.egressEnforcementProven,
+      immutableSnapshot: snapshot,
+      status: "ACTIVE",
+      createdBy: access.actorId,
+      createdAt: now,
+    });
+  },
+});
+
 export const createVersion = mutation({
   args: {
     factoryDefinitionId: v.id("factoryDefinitions"),
     workflowId: v.id("workflows"),
     executor: v.object({ adapter: v.string(), version: v.string() }),
+    executionBackend: v.optional(executionBackend),
+    sandboxProfileId: v.optional(v.id("factorySandboxProfiles")),
     codeScopeIds: v.array(v.id("repositoryCodeScopes")),
     agentBindings: v.array(v.object({
       workflowAgentId: v.string(),
@@ -244,10 +384,11 @@ export const createVersion = mutation({
     const workflow = await ctx.db.get(args.workflowId);
     const policy = args.policyEnvelopeId ? await ctx.db.get(args.policyEnvelopeId) : null;
     const environment = args.environmentId ? await ctx.db.get(args.environmentId) : null;
-    const [verifiers, codeScopes, agentVersions] = await Promise.all([
+    const [verifiers, codeScopes, agentVersions, sandboxProfile] = await Promise.all([
       Promise.all(args.verifierIds.map((id) => ctx.db.get(id))),
       Promise.all(args.codeScopeIds.map((id) => ctx.db.get(id))),
       Promise.all(args.agentBindings.map((binding) => ctx.db.get(binding.agentVersionId))),
+      args.sandboxProfileId ? ctx.db.get(args.sandboxProfileId) : null,
     ]);
     if (!repository || repository.projectId !== definition.projectId) throw new Error("Factory repository scope is invalid.");
     if (!workflow) throw new Error("Workflow not found.");
@@ -292,12 +433,38 @@ export const createVersion = mutation({
     if (!validFactoryBudget(args.budget)) {
       throw new Error("Factory budget must use positive V1 limits: cost <= $1,000, runtime <= 480 minutes, attempts <= 3.");
     }
+    const selectedExecutionBackend = args.executionBackend ?? "persistent-worker";
+    if (selectedExecutionBackend === "remote-sandbox") {
+      if (!sandboxProfile
+        || sandboxProfile.projectId !== definition.projectId
+        || sandboxProfile.status !== "ACTIVE"
+        || sandboxProfile.readinessState === "BLOCKED"
+        || sandboxProfile.readinessExpiresAt <= Date.now()) {
+        throw new Error("Remote sandbox execution requires a current dispatchable Sandbox Profile in this workspace.");
+      }
+    } else if (args.sandboxProfileId) {
+      throw new Error("A Sandbox Profile can only be attached to the remote-sandbox execution backend.");
+    }
+
+    const sandboxProfileDigest = selectedExecutionBackend === "remote-sandbox" ? sandboxProfile!.profileDigest : undefined;
+    if (!validFactoryExecutionBinding({
+      executionBackend: selectedExecutionBackend,
+      sandboxProfileId: args.sandboxProfileId ? String(args.sandboxProfileId) : undefined,
+      sandboxProfileDigest,
+      riskBoundary: args.riskBoundary,
+      recovery: args.recovery,
+    })) {
+      throw new Error("Factory execution backend, risk, Sandbox Profile, and recovery settings are incompatible.");
+    }
 
     const configuration: FactoryConfigurationInput = {
       purpose: definition.purpose ?? "SOFTWARE",
       repositoryId: String(repository._id),
       workflowId: String(workflow._id),
       executor: args.executor,
+      executionBackend: selectedExecutionBackend,
+      sandboxProfileId: args.sandboxProfileId ? String(args.sandboxProfileId) : undefined,
+      sandboxProfileDigest,
       codeScopeIds: args.codeScopeIds.map(String),
       agentBindings: args.agentBindings.map((binding) => ({
         workflowAgentId: binding.workflowAgentId,
@@ -327,6 +494,10 @@ export const createVersion = mutation({
       purpose: definition.purpose ?? "SOFTWARE",
       workflowId: workflow._id,
       executor: args.executor,
+      executionBackend: selectedExecutionBackend,
+      sandboxProfileId: args.sandboxProfileId,
+      sandboxProfileDigest,
+      sandboxProfileSnapshot: selectedExecutionBackend === "remote-sandbox" ? sandboxProfile!.immutableSnapshot : undefined,
       codeScopeIds: args.codeScopeIds,
       agentBindings: args.agentBindings,
       policyEnvelopeId: args.policyEnvelopeId,
@@ -351,7 +522,7 @@ export const assessReadiness = mutation({
     const access = await requireWorkspacePermission(ctx, version.projectId, FACTORY_PERMISSIONS.MANAGE_AUTOMATION);
     const now = Date.now();
     const expiry = now + 24 * 60 * 60 * 1_000;
-    const [repository, workflow, policy, installation, bindings, verifiers, codeScopes, agentVersions] = await Promise.all([
+    const [repository, workflow, policy, installation, bindings, verifiers, codeScopes, agentVersions, sandboxProfile] = await Promise.all([
       ctx.db.get(version.repositoryId),
       ctx.db.get(version.workflowId),
       version.policyEnvelopeId ? ctx.db.get(version.policyEnvelopeId) : null,
@@ -360,6 +531,7 @@ export const assessReadiness = mutation({
       Promise.all(version.verifierIds.map((id) => ctx.db.get(id))),
       Promise.all((version.codeScopeIds ?? []).map((id) => ctx.db.get(id))),
       Promise.all((version.agentBindings ?? []).map((binding) => ctx.db.get(binding.agentVersionId))),
+      version.sandboxProfileId ? ctx.db.get(version.sandboxProfileId) : null,
     ]);
     const github = installation ? evaluateGithubAppCapabilities(installation) : null;
     const agentTemplates = await Promise.all(agentVersions.map((agentVersion) =>
@@ -369,9 +541,41 @@ export const assessReadiness = mutation({
       repository && installation?.status === "CONNECTED" && github?.ready &&
       !githubInstallationIsStale(installation.verifiedAt, now)
     );
+    const selectedExecutionBackend = version.executionBackend ?? "persistent-worker";
+    const requiredSandboxCapabilities = selectedExecutionBackend === "remote-sandbox"
+      ? ["git-worktree", "workspace-write", "remote-sandbox", "sandbox-provider:exe-dev"]
+      : ["git-worktree", "workspace-write"];
     const host = repository
-      ? selectCurrentFactoryHost(bindings, canonicalRepositoryKey(repository.repository), now)
+      ? bindings.find((binding) => factoryWorkerEligibility({
+          worker: {
+            workerId: binding.hostId,
+            status: binding.status,
+            dirty: binding.dirty,
+            capacity: binding.capacity,
+            workerRuntime: binding.workerRuntime ? {
+              ...binding.workerRuntime,
+              repositoryAccess: binding.workerRuntime.repositoryAccess.map((item) => ({ ...item, repositoryId: String(item.repositoryId) })),
+            } : undefined,
+          },
+          requirements: {
+            repositoryId: String(repository._id),
+            executor: version.executor,
+            isolation: "WORKSPACE_WRITE",
+            sandboxCapabilities: requiredSandboxCapabilities,
+            executionBackend: selectedExecutionBackend,
+          },
+          activeWorkerLeaseCount: 0,
+          now,
+        }).eligible) ?? null
       : null;
+    const sandboxProfileReady = selectedExecutionBackend !== "remote-sandbox" || Boolean(
+      sandboxProfile
+      && sandboxProfile._id === version.sandboxProfileId
+      && sandboxProfile.profileDigest === version.sandboxProfileDigest
+      && sandboxProfile.status === "ACTIVE"
+      && sandboxProfile.readinessState !== "BLOCKED"
+      && sandboxProfile.readinessExpiresAt > now
+    );
     const checks = [
       check("github", "GitHub App connection", githubReady, now, expiry, "Install or repair the exact least-privilege GitHub App connection."),
       check("repository", "Repository access", repository?.status === "READY", now, expiry, "Validate repository access before activation."),
@@ -398,7 +602,8 @@ export const assessReadiness = mutation({
       check("policy", "Governance policy", Boolean(policy?.active), now, undefined, "Select an active workspace policy envelope."),
       check("budget", "Bounded budget", validFactoryBudget(version.budget), now, undefined, "Set positive V1 limits: cost <= $1,000, runtime <= 480 minutes, attempts <= 3."),
       check("verifiers", "Independent verifiers", verifiers.length > 0 && verifiers.every((item) => item?.active && item.projectId === version.projectId), now, expiry, "Select at least one active workspace verifier."),
-      check("host", "Sandbox host binding", Boolean(host), now, expiry, "Report a clean, current READY checkout for this repository."),
+      check("sandbox-profile", "Sandbox Profile", sandboxProfileReady, now, expiry, "Select a current dispatchable Sandbox Profile or use Local execution."),
+      check("host", "Canonical worker admission", Boolean(host), now, expiry, `Report a clean current worker offering ${selectedExecutionBackend} and its required capabilities.`),
       check("recovery", "Executor-compatible recovery", codexV1RecoveryReady(version.recovery), now, undefined, "Enable cancel and bounded retry; codex/v1 cannot advertise pause or in-process resume."),
     ];
     const status = checks.every((item) => item.status === "VERIFIED") ? "PASS" as const : "BLOCKED" as const;
