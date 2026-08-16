@@ -108,6 +108,25 @@ export function verificationReceiptsInvalidatedByPrHead<
   );
 }
 
+export function shouldBlockForPrHeadMismatch(input: {
+  policyV2Enforced: boolean;
+  currentVerificationEligible?: boolean;
+  mismatchedReceiptCount: number;
+}) {
+  return input.mismatchedReceiptCount > 0
+    && (!input.policyV2Enforced || input.currentVerificationEligible !== true);
+}
+
+export function shouldClearRecoveredPrHeadBlock(input: {
+  policyV2Enforced: boolean;
+  currentVerificationEligible?: boolean;
+  blockingIssue?: string;
+}) {
+  return input.policyV2Enforced
+    && input.currentVerificationEligible === true
+    && input.blockingIssue?.startsWith("Verified candidate head does not match pull-request head ") === true;
+}
+
 export function canonicalGithubPullRequestUrl(owner: string, repo: string, prNumber: number) {
   return `https://github.com/${owner}/${repo}/pull/${prNumber}`;
 }

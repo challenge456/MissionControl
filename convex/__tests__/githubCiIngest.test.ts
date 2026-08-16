@@ -7,6 +7,8 @@ import {
   mapCheckRunsToSignals,
   normalizeTrustedGithubPrProjection,
   parseMissionControlPullRequestLineage,
+  shouldBlockForPrHeadMismatch,
+  shouldClearRecoveredPrHeadBlock,
   verificationReceiptsInvalidatedByPrHead,
   verifyGithubWebhookSignature,
 } from "../lib/githubCiIngest";
@@ -159,6 +161,37 @@ describe("githubCiIngest", () => {
       status: "STALE",
       candidateRevision: "head-oldest",
     });
+  });
+
+  it("keeps policy-v2 historical receipts non-authoritative after exact-current recovery", () => {
+    expect(shouldBlockForPrHeadMismatch({
+      policyV2Enforced: true,
+      currentVerificationEligible: true,
+      mismatchedReceiptCount: 2,
+    })).toBe(false);
+    expect(shouldClearRecoveredPrHeadBlock({
+      policyV2Enforced: true,
+      currentVerificationEligible: true,
+      blockingIssue: "Verified candidate head does not match pull-request head prior-sha",
+    })).toBe(true);
+  });
+
+  it("still blocks stale policy-v2 currentness and legacy receipt mismatch", () => {
+    expect(shouldBlockForPrHeadMismatch({
+      policyV2Enforced: true,
+      currentVerificationEligible: false,
+      mismatchedReceiptCount: 1,
+    })).toBe(true);
+    expect(shouldBlockForPrHeadMismatch({
+      policyV2Enforced: false,
+      currentVerificationEligible: true,
+      mismatchedReceiptCount: 1,
+    })).toBe(true);
+    expect(shouldClearRecoveredPrHeadBlock({
+      policyV2Enforced: true,
+      currentVerificationEligible: true,
+      blockingIssue: "Required CI failed for another head",
+    })).toBe(false);
   });
 });
 
