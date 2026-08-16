@@ -8,7 +8,7 @@ The canonical Mission Control factory composes successfully from governed intent
 
 This is not live-provider certification. Remote Sandbox is exercised through `FakeSandboxProvider`; the deferred PR #89 two-company identity proof is not reopened; and product pull-request lineage is represented by a deterministic provider fixture rather than a mutation to an external repository.
 
-The exact qualified-content commit is recorded in `delivery-metadata.json` after the passing working tree is committed. That metadata-only commit does not change qualified runtime or test behavior.
+The exact qualified-content commit is `89416477c2ad044a268594eed16bc257cc32e7ad`, recorded with draft PR #111 in `delivery-metadata.json`. The metadata-only delivery commit does not change qualified runtime or test behavior.
 
 ## Authoritative baseline
 

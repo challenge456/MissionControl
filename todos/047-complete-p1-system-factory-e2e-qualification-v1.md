@@ -1,5 +1,5 @@
 ---
-status: ready
+status: complete
 priority: p1
 issue_id: "047"
 tags: [software-factory, system-qualification, e2e, policy-v2, factory-learning]
@@ -86,7 +86,7 @@ Use Option 2. Build the smallest composed qualification around existing canonica
 - [x] One top-level deterministic qualification command fails non-zero on invariant violations.
 - [x] Focused and full validation matrices pass, including runtime guard, build, orchestration smoke, browser E2E, accessibility, and `git diff --check`.
 - [x] A durable evidence packet records a justified final decision and contains no credentials or secrets.
-- [ ] A draft PR is opened only if the complete qualification gate passes; it is not marked ready or merged.
+- [x] A draft PR is opened only if the complete qualification gate passes; it is not marked ready or merged.
 
 ## Work Log
 
