@@ -172,6 +172,8 @@ export function ExecutionRunInspector({
 
               <ExecutionRecoveryCard recovery={inspector.recovery as ExecutionRecoveryData} />
 
+              {inspector.sandbox ? <RemoteSandboxCard sandbox={inspector.sandbox} /> : null}
+
               {inspector.run.executionManifest ? (
                 <Card className="p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
@@ -577,6 +579,77 @@ export function ExecutionRunInspector({
       </DialogContent>
     </Dialog>
   );
+}
+
+export function RemoteSandboxCard({ sandbox }: { sandbox: any }) {
+  const allocation = sandbox.allocation ?? {};
+  const profile = sandbox.profileSnapshot ?? allocation.profileSnapshot ?? {};
+  const credentialGrants = sandbox.credentialGrants ?? [];
+  const currentCredential = credentialGrants[0];
+  const lifecycleEvents = sandbox.lifecycleEvents ?? [];
+  const latestLifecycle = lifecycleEvents[lifecycleEvents.length - 1];
+  const readiness = profile.readiness?.state ?? "UNKNOWN";
+  const degraded = readiness === "DEGRADED" || profile.network?.egress === "UNRESTRICTED";
+  const resourceAbsent = Boolean(allocation.resourceAbsentAt || allocation.teardownReceipt?.resourceAbsent);
+  const privatePreviewUrl = safePrivatePreviewUrl(allocation.privatePreviewUrl);
+  const totalCost = [allocation.providerCostUsd, allocation.inferenceCostUsd]
+    .reduce((sum: number, value: unknown) => sum + (typeof value === "number" ? value : 0), 0);
+
+  return (
+    <Card className="p-4" aria-labelledby="remote-sandbox-title">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div id="remote-sandbox-title" className="text-sm font-medium text-foreground">Remote sandbox boundary</div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            Attempt-scoped execution only. Acceptance, independent verification, publication, and merge authority remain on the Mission Control host.
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Badge variant="outline" className={readiness === "BLOCKED" ? "border-danger/30 text-danger" : degraded ? "border-warning/30 text-warning" : "border-success/30 text-success"}>{readiness}</Badge>
+          <Badge variant="outline">{allocation.state ?? "UNKNOWN"}</Badge>
+          <Badge variant="outline" className={resourceAbsent ? "border-success/30 text-success" : "border-warning/30 text-warning"}>{resourceAbsent ? "Resource absent" : "Teardown unverified"}</Badge>
+        </div>
+      </div>
+
+      {degraded ? (
+        <div role="status" className="mt-4 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+          Degraded isolation: provider network egress is unrestricted. No public ingress is exposed, but destination allowlisting is not enforced.
+        </div>
+      ) : null}
+
+      <div className="mt-4 grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
+        <Meta label="Profile" value={[profile.profileKey, profile.version ? `v${profile.version}` : null].filter(Boolean).join(" · ") || "—"} />
+        <Meta label="Profile digest" value={allocation.profileDigest ?? "—"} />
+        <Meta label="Provider / allocation" value={[allocation.provider, allocation.providerResourceId].filter(Boolean).join(" / ") || "—"} />
+        <Meta label="Resource name" value={allocation.resourceName ?? "—"} />
+        <Meta label="Machine" value={profile.machine ? `${profile.machine.cpu} CPU · ${Math.round(profile.machine.memoryMb / 1024)} GB RAM · ${profile.machine.diskGb} GB disk` : "—"} />
+        <Meta label="Runtime cap" value={profile.runtime?.maxRuntimeMs ? `${Math.round(profile.runtime.maxRuntimeMs / 60_000)} minutes` : "—"} />
+        <Meta label="Network" value={profile.network ? `${String(profile.network.egress).toLowerCase().replace(/_/g, " ")} · no public ports` : "—"} />
+        <Meta label="Spend cap / observed" value={profile.spend ? `$${Number(profile.spend.maxUsd).toFixed(2)} / $${totalCost.toFixed(4)}` : `$${totalCost.toFixed(4)}`} />
+        <Meta label="Provider heartbeat" value={allocation.lastHeartbeatAt ? new Date(allocation.lastHeartbeatAt).toLocaleString() : "—"} />
+        <Meta label="Latest lifecycle" value={latestLifecycle ? `${latestLifecycle.eventType} · ${new Date(latestLifecycle.occurredAt).toLocaleString()}` : "—"} />
+        <Meta label="Result" value={[allocation.resultStatus, allocation.resultDigest].filter(Boolean).join(" · ") || "Awaiting result"} />
+        <Meta label="Attempt credential" value={currentCredential ? `${currentCredential.provider} · ${currentCredential.state} · cap $${Number(currentCredential.maxCostUsd).toFixed(2)}` : "No runtime credential recorded"} />
+        <Meta label="Credential expiry" value={currentCredential?.expiresAt ? new Date(currentCredential.expiresAt).toLocaleString() : "—"} />
+        <Meta label="Teardown" value={resourceAbsent ? `Confirmed absent ${new Date(allocation.resourceAbsentAt ?? allocation.teardownReceipt.confirmedAbsentAt).toLocaleString()}` : allocation.failureReason ?? "Awaiting exact absence receipt"} />
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--panel-line)] pt-3 text-xs text-muted-foreground">
+        <span>No repository, GitHub App, provider-management, or long-lived inference credentials are stored in this record.</span>
+        {privatePreviewUrl ? <Button asChild size="sm" variant="outline"><a href={privatePreviewUrl} target="_blank" rel="noreferrer">Open private preview</a></Button> : <span>Private preview unavailable</span>}
+      </div>
+    </Card>
+  );
+}
+
+function safePrivatePreviewUrl(value: unknown) {
+  if (typeof value !== "string") return null;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:" && parsed.hostname.endsWith(".exe.xyz") ? parsed.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 function Meta({ label, value }: { label: string; value?: string | null }) {

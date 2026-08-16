@@ -5,7 +5,8 @@ import type { Id } from "../../../../convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/factory/badges";
-import { CheckCircle2, Factory, ShieldAlert } from "lucide-react";
+import { useFactoryExperienceLevel } from "@/factoryExperience/useFactoryExperienceLevel";
+import { CheckCircle2, Cpu, Factory, Server, ShieldAlert, SlidersHorizontal } from "lucide-react";
 
 export function FactoryConfigurationPanel({
   projectId,
@@ -37,7 +38,7 @@ export function FactoryConfigurationPanel({
   }
 
   return (
-    <section className="mt-5 border-t border-line pt-5" aria-labelledby="factory-configuration-title">
+    <section className="@container mt-5 border-t border-line pt-5" aria-labelledby="factory-configuration-title">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div id="factory-configuration-title" className="flex items-center gap-2 text-[12.5px] font-medium text-ink-secondary">
@@ -85,6 +86,7 @@ function FactoryVersionEditor({
   const agentTemplates = useQuery(api["registry/agentTemplates"].listTemplates, { projectId, activeOnly: true });
   const versionOptions = useQuery(api["factory/configuration"].getVersionOptions, { projectId, repositoryId });
   const createVersion = useMutation(api["factory/configuration"].createVersion);
+  const createSandboxProfile = useMutation(api["factory/configuration"].createSandboxProfile);
   const assess = useMutation(api["factory/configuration"].assessReadiness);
   const activate = useMutation(api["factory/configuration"].activate);
   const createPolicy = useMutation(api["governance/policyEnvelopes"].createPolicyEnvelope);
@@ -101,6 +103,9 @@ function FactoryVersionEditor({
   const [maxRuntimeMinutes, setMaxRuntimeMinutes] = useState("120");
   const [maxAttempts, setMaxAttempts] = useState("2");
   const [risk, setRisk] = useState<"GREEN" | "YELLOW" | "RED">("YELLOW");
+  const [experienceLevel] = useFactoryExperienceLevel();
+  const [executionBackend, setExecutionBackend] = useState<"persistent-worker" | "remote-sandbox">("persistent-worker");
+  const [sandboxProfileId, setSandboxProfileId] = useState("");
   const [pending, setPending] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -309,6 +314,17 @@ function FactoryVersionEditor({
     });
   }, [defaultAgentVersionId, selectedWorkflowAgentKey]);
 
+  useEffect(() => {
+    if (!workflowId && workflows?.[0]?._id) setWorkflowId(workflows[0]._id);
+    if (!policyId && policies?.[0]?._id) setPolicyId(policies[0]._id);
+    if (verifierIds.length === 0 && verifiers?.[0]?._id) setVerifierIds([verifiers[0]._id]);
+    if (codeScopeIds.length === 0 && versionOptions?.codeScopes?.[0]?._id) setCodeScopeIds([versionOptions.codeScopes[0]._id]);
+    if (!sandboxProfileId) {
+      const dispatchableProfile = versionOptions?.sandboxProfiles?.find((profile) => profile.readinessState !== "BLOCKED");
+      if (dispatchableProfile?._id) setSandboxProfileId(dispatchableProfile._id);
+    }
+  }, [workflows, policies, verifiers, versionOptions, workflowId, policyId, verifierIds.length, codeScopeIds.length, sandboxProfileId]);
+
   if (!detail || !workflows || !policies || !verifiers || !agentTemplates || !versionOptions) {
     return <div className="mt-3 h-28 animate-pulse rounded-lg bg-surface-2" aria-label="Loading Factory version editor" />;
   }
@@ -413,12 +429,22 @@ function FactoryVersionEditor({
       setError("Bind every workflow agent to an approved agent version.");
       return;
     }
+    if (executionBackend === "remote-sandbox" && !sandboxProfileId) {
+      setError("Select a dispatchable Sandbox Profile before creating an isolated Factory version.");
+      return;
+    }
+    if (executionBackend === "remote-sandbox" && risk === "RED") {
+      setError("Remote sandbox execution is limited to GREEN and YELLOW risk boundaries in N=1.");
+      return;
+    }
     setPending("save");
     try {
       await createVersion({
         factoryDefinitionId,
         workflowId: workflowId as Id<"workflows">,
         executor: { adapter: "codex", version: "v1" },
+        executionBackend,
+        sandboxProfileId: executionBackend === "remote-sandbox" ? sandboxProfileId as Id<"factorySandboxProfiles"> : undefined,
         codeScopeIds: codeScopeIds as Id<"repositoryCodeScopes">[],
         agentBindings: workflow.agents.map((agent) => ({
           workflowAgentId: agent.id,
@@ -470,11 +496,71 @@ function FactoryVersionEditor({
     }
   };
 
+  const selectedSandboxProfile = (versionOptions.sandboxProfiles ?? []).find((profile) => profile._id === sandboxProfileId);
+  const saveButton = <Button size="sm" disabled={Boolean(pending)} onClick={save}>{pending === "save" ? "Saving…" : "Create configuration version"}</Button>;
+
   return (
     <div className="mt-3 space-y-3">
-      <div className="grid gap-3 rounded-lg border border-line bg-surface-2 p-3 md:grid-cols-2">
+      <div className="rounded-lg border border-line bg-surface-2 p-4">
+        <div className="flex items-start gap-3">
+          <div className="rounded-md border border-line bg-surface-1 p-2 text-ink-secondary"><Server size={16} aria-hidden /></div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2 text-[12.5px] font-medium text-ink">
+              Execution boundary
+              <StatusBadge tone="neutral">{experienceLevel}</StatusBadge>
+              {executionBackend === "remote-sandbox" ? <StatusBadge tone="warning">Preview · Not Live Certified</StatusBadge> : null}
+            </div>
+            <div className="mt-1 text-[11.5px] leading-relaxed text-ink-muted">The Factory experience level selected in the operator shell controls disclosure here. Acceptance, independent verification, publication, and merge authority stay outside the execution backend.</div>
+          </div>
+        </div>
+        <ExecutionBackendSelector
+          backend={executionBackend}
+          onBackendChange={setExecutionBackend}
+          profiles={versionOptions.sandboxProfiles ?? []}
+          profileId={sandboxProfileId}
+          onProfileChange={setSandboxProfileId}
+          showProfileDetails={experienceLevel !== "basic"}
+        />
+        {experienceLevel === "basic" ? (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-3">
+            <div className="text-[11.5px] text-ink-muted">
+              {executionBackend === "persistent-worker"
+                ? "Local · canonical worker worktree · codex/v1 · independent verification"
+                : selectedSandboxProfile
+                  ? `${selectedSandboxProfile.profileKey} v${selectedSandboxProfile.version} · ${selectedSandboxProfile.readinessState.toLowerCase()} · mandatory teardown`
+                  : "A current Sandbox Profile is required. Advanced exposes evidence-backed profile creation."}
+            </div>
+            {saveButton}
+          </div>
+        ) : null}
+      </div>
+
+      {experienceLevel === "intermediate" ? (
+        <div className="space-y-3 rounded-lg border border-line bg-surface-2 p-4">
+          <div className="grid gap-3 @md:grid-cols-2 @xl:grid-cols-4">
+            <label className="text-[11.5px] text-ink-muted">Attempt cost cap (USD)<Input className="mt-1" type="number" value={maxCostUsd} onChange={(event) => setMaxCostUsd(event.target.value)} /></label>
+            <label className="text-[11.5px] text-ink-muted">Attempt timeout (minutes)<Input className="mt-1" type="number" value={maxRuntimeMinutes} onChange={(event) => setMaxRuntimeMinutes(event.target.value)} /></label>
+            <label className="text-[11.5px] text-ink-muted">Maximum attempts<Input className="mt-1" type="number" value={maxAttempts} onChange={(event) => setMaxAttempts(event.target.value)} /></label>
+            <label className="text-[11.5px] text-ink-muted">Risk boundary
+              <select className="mt-1 w-full rounded-md border border-line bg-surface-1 px-2 py-2 text-[12px] text-ink" value={risk} onChange={(event) => setRisk(event.target.value as typeof risk)}>
+                <option value="GREEN">Green</option><option value="YELLOW">Yellow</option><option value="RED" disabled={executionBackend === "remote-sandbox"}>Red</option>
+              </select>
+            </label>
+          </div>
+          <div className="grid gap-3 rounded-md border border-line bg-surface-1 p-3 text-[11.5px] @md:grid-cols-2 @xl:grid-cols-4">
+            <ProfileMeta label="Provider / executor" value={`${executionBackend === "remote-sandbox" ? selectedSandboxProfile?.provider ?? "Profile required" : "Local host"} · codex/v1`} />
+            <ProfileMeta label="Workflow / model" value={`${selectedWorkflow?.name ?? "Default workflow"} · ${versionOptions.agentVersions[0]?.modelConfig?.modelId ?? "Approved route required"}`} />
+            <ProfileMeta label="Verification / retry" value={`${verifiers.length} independent verifier${verifiers.length === 1 ? "" : "s"} · ${maxAttempts} attempts`} />
+            <ProfileMeta label="Preview / teardown" value={executionBackend === "remote-sandbox" ? `${selectedSandboxProfile?.previewMode?.toLowerCase().replaceAll("_", " ") ?? "profile required"} · mandatory teardown` : "No sandbox preview · host lifecycle"} />
+          </div>
+          <div className="flex justify-end border-t border-line pt-3">{saveButton}</div>
+        </div>
+      ) : null}
+
+      {experienceLevel === "advanced" ? (
+      <div className="grid gap-3 rounded-lg border border-line bg-surface-2 p-3 @md:grid-cols-2">
         {policies.length === 0 || verifiers.length === 0 || versionOptions.agentVersions.length === 0 ? (
-          <div className="md:col-span-2 flex flex-wrap items-start justify-between gap-3 rounded-md border border-warning/30 bg-warning/10 px-3 py-3">
+          <div className="@md:col-span-2 flex flex-wrap items-start justify-between gap-3 rounded-md border border-warning/30 bg-warning/10 px-3 py-3">
             <div className="max-w-2xl">
               <div className="text-[12.5px] font-medium text-ink">Governance records required</div>
               <div className="mt-1 text-[11.5px] leading-relaxed text-ink-muted">
@@ -511,10 +597,10 @@ function FactoryVersionEditor({
         <label className="text-[11.5px] text-ink-muted">Maximum attempts<Input className="mt-1" type="number" value={maxAttempts} onChange={(event) => setMaxAttempts(event.target.value)} /></label>
         <label className="text-[11.5px] text-ink-muted">Risk boundary
           <select className="mt-1 w-full rounded-md border border-line bg-surface-1 px-2 py-2 text-[12px] text-ink" value={risk} onChange={(event) => setRisk(event.target.value as typeof risk)}>
-            <option value="GREEN">Green</option><option value="YELLOW">Yellow</option><option value="RED">Red</option>
+            <option value="GREEN">Green</option><option value="YELLOW">Yellow</option><option value="RED" disabled={executionBackend === "remote-sandbox"}>Red</option>
           </select>
         </label>
-        <fieldset className="md:col-span-2">
+        <fieldset className="@md:col-span-2">
           <legend className="text-[11.5px] text-ink-muted">Independent verifiers</legend>
           <div className="mt-1 flex flex-wrap gap-2">
             {verifiers.length === 0 ? (
@@ -531,7 +617,7 @@ function FactoryVersionEditor({
             ))}
           </div>
         </fieldset>
-        <fieldset className="md:col-span-2">
+        <fieldset className="@md:col-span-2">
           <legend className="text-[11.5px] text-ink-muted">Approved repository code scopes</legend>
           <div className="mt-1 flex flex-wrap gap-2">
             {versionOptions.codeScopes.length === 0 ? <span className="text-[12px] text-warning">No active code scopes available.</span> : versionOptions.codeScopes.map((scope) => (
@@ -542,7 +628,7 @@ function FactoryVersionEditor({
           </div>
         </fieldset>
         {selectedWorkflow?.agents.length ? (
-          <fieldset className="md:col-span-2">
+          <fieldset className="@md:col-span-2">
             <legend className="text-[11.5px] text-ink-muted">Frozen workflow agent versions</legend>
             <div className="mt-1 flex flex-wrap items-center gap-2">
               {versionOptions.agentVersions.length === 0 ? <span className="text-[12px] text-warning">No approved workspace agent versions available.</span> : null}
@@ -550,7 +636,7 @@ function FactoryVersionEditor({
                 {pending === "agent" ? "Creating agent version…" : "Create approved agent version"}
               </Button>
             </div>
-            <div className="mt-1 grid gap-2 md:grid-cols-2">
+            <div className="mt-1 grid gap-2 @md:grid-cols-2">
               {selectedWorkflow.agents.map((agent) => (
                 <label key={agent.id} className="text-[11.5px] text-ink-muted">{agent.persona} · {agent.id}
                   <select className="mt-1 w-full rounded-md border border-line bg-surface-1 px-2 py-2 text-[12px] text-ink" value={agentBindings[agent.id] ?? ""} onChange={(event) => setAgentBindings((current) => ({ ...current, [agent.id]: event.target.value }))}>
@@ -562,11 +648,23 @@ function FactoryVersionEditor({
             </div>
           </fieldset>
         ) : null}
-        <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
+        <div className="@md:col-span-2 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
           <span className="text-[11.5px] text-ink-muted">Executor: codex/v1 · cancel and bounded retry enabled · pause/resume unsupported</span>
-          <Button size="sm" disabled={Boolean(pending)} onClick={save}>{pending === "save" ? "Saving…" : "Create configuration version"}</Button>
+          {saveButton}
         </div>
       </div>
+      ) : null}
+
+      {experienceLevel === "advanced" ? (
+        <SandboxProfileCreator
+          projectId={projectId}
+          pending={pending}
+          setPending={setPending}
+          setError={setError}
+          setMessage={setMessage}
+          createSandboxProfile={createSandboxProfile}
+        />
+      ) : null}
 
       {latestVersion ? (
         <div className="rounded-lg border border-line bg-surface-2 p-3">
@@ -578,7 +676,7 @@ function FactoryVersionEditor({
             </div>
           </div>
           {latestAssessment ? (
-            <div className="mt-3 grid gap-2 md:grid-cols-3">
+            <div className="mt-3 grid gap-2 @md:grid-cols-3">
               {latestAssessment.checks.map((check) => (
                 <div key={check.id} className="rounded border border-line bg-surface-1 px-2.5 py-2">
                   <div className="flex items-center gap-1.5 text-[11.5px] font-medium text-ink">{check.status === "VERIFIED" ? <CheckCircle2 size={12} className="text-success" /> : <ShieldAlert size={12} className="text-warning" />}{check.label}</div>
@@ -593,4 +691,175 @@ function FactoryVersionEditor({
       {error ? <div role="alert" className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-[12px] text-danger">{error}</div> : null}
     </div>
   );
+}
+
+function ExecutionBackendSelector({
+  backend,
+  onBackendChange,
+  profiles,
+  profileId,
+  onProfileChange,
+  showProfileDetails,
+}: {
+  backend: "persistent-worker" | "remote-sandbox";
+  onBackendChange: (backend: "persistent-worker" | "remote-sandbox") => void;
+  profiles: any[];
+  profileId: string;
+  onProfileChange: (profileId: string) => void;
+  showProfileDetails: boolean;
+}) {
+  const selected = profiles.find((profile) => profile._id === profileId);
+  return (
+    <fieldset>
+      <legend className="sr-only">Execution boundary</legend>
+      <div className="mt-3 grid gap-2 @md:grid-cols-2">
+        <label className={`flex min-h-16 cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors ${backend === "persistent-worker" ? "border-[var(--focus-ring)] bg-surface-1" : "border-line bg-surface-1/50"}`}>
+          <input aria-label="Local" className="mt-1" type="radio" name="factory-execution-backend" checked={backend === "persistent-worker"} onChange={() => onBackendChange("persistent-worker")} />
+          <span><span className="block text-[12.5px] font-medium text-ink">Local</span><span className="mt-0.5 block text-[11.5px] text-ink-muted">Execute in the canonical worker's owned host worktree. No provider spend.</span></span>
+        </label>
+        <label className={`flex min-h-16 cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors ${backend === "remote-sandbox" ? "border-[var(--focus-ring)] bg-surface-1" : "border-line bg-surface-1/50"}`}>
+          <input aria-label="Isolated Sandbox" className="mt-1" type="radio" name="factory-execution-backend" checked={backend === "remote-sandbox"} onChange={() => onBackendChange("remote-sandbox")} />
+          <span><span className="block text-[12.5px] font-medium text-ink">Isolated Sandbox</span><span className="mt-0.5 block text-[11.5px] text-ink-muted">Execute on an attempt-scoped disposable machine beneath the same worker lease.</span></span>
+        </label>
+      </div>
+      {backend === "remote-sandbox" ? (
+        <div className="mt-3 rounded-md border border-line bg-surface-1 p-3">
+          {showProfileDetails ? <label className="text-[11.5px] text-ink-muted">Sandbox Profile
+            <select className="mt-1 w-full rounded-md border border-line bg-surface-1 px-2 py-2 text-[12px] text-ink" value={profileId} onChange={(event) => onProfileChange(event.target.value)}>
+              <option value="">Select immutable profile</option>
+              {profiles.map((profile) => <option key={profile._id} value={profile._id} disabled={profile.readinessState === "BLOCKED"}>{profile.profileKey} · v{profile.version} · {profile.readinessState.toLowerCase()}</option>)}
+            </select>
+          </label> : <div className="text-[11.5px] text-ink-muted">One sandbox · frozen profile and source · independent host verification · automatic credential revocation and teardown.</div>}
+          {profiles.length === 0 ? <div role="status" className="mt-2 text-[11.5px] text-warning">No Sandbox Profile exists. Advanced can record an evidence-backed exe.dev profile.</div> : null}
+          {selected?.readinessState === "DEGRADED" ? <div className="mt-2 text-[11.5px] text-warning">Degraded: provider egress is unrestricted. This limitation remains visible on the immutable Factory version.</div> : null}
+        </div>
+      ) : null}
+    </fieldset>
+  );
+}
+
+function SandboxProfileCreator({
+  projectId,
+  pending,
+  setPending,
+  setError,
+  setMessage,
+  createSandboxProfile,
+}: {
+  projectId: Id<"projects">;
+  pending: string;
+  setPending: (value: string) => void;
+  setError: (value: string) => void;
+  setMessage: (value: string) => void;
+  createSandboxProfile: (input: any) => Promise<any>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [profileKey, setProfileKey] = useState("exe-standard");
+  const [providerProfileVersion, setProviderProfileVersion] = useState("2026-08-15");
+  const [machineImage, setMachineImage] = useState("debian:bookworm");
+  const [cpu, setCpu] = useState("2");
+  const [memoryMb, setMemoryMb] = useState("4096");
+  const [diskGb, setDiskGb] = useState("20");
+  const [runtimeMinutes, setRuntimeMinutes] = useState("120");
+  const [resultRetentionHours, setResultRetentionHours] = useState("24");
+  const [spendLimitUsd, setSpendLimitUsd] = useState("5");
+  const [networkEgress, setNetworkEgress] = useState<"UNRESTRICTED" | "RESTRICTED_ALLOWLIST">("UNRESTRICTED");
+  const [previewMode, setPreviewMode] = useState<"DISABLED" | "PRIVATE_PROXY">("DISABLED");
+  const [previewPort, setPreviewPort] = useState("3000");
+  const [providerReachable, setProviderReachable] = useState(false);
+  const [capacityAvailable, setCapacityAvailable] = useState(false);
+  const [automaticCredentialCount, setAutomaticCredentialCount] = useState("0");
+  const [egressEnforcementProven, setEgressEnforcementProven] = useState(false);
+  const [evidenceReference, setEvidenceReference] = useState("");
+
+  const create = async () => {
+    setPending("sandbox-profile");
+    setError("");
+    setMessage("");
+    try {
+      await createSandboxProfile({
+        projectId,
+        profileKey,
+        providerProfile: "exe.dev",
+        providerProfileVersion,
+        machineImage,
+        cpu: Number(cpu),
+        memoryMb: Number(memoryMb),
+        diskGb: Number(diskGb),
+        maxRuntimeMs: Number(runtimeMinutes) * 60_000,
+        resultPollIntervalMs: 2_000,
+        resultRetentionMs: Number(resultRetentionHours) * 60 * 60 * 1_000,
+        networkEgress,
+        egressAllowlist: [],
+        spendLimitUsd: Number(spendLimitUsd),
+        spendEnforcement: "PROVIDER_KEY_LIMIT",
+        previewMode,
+        previewPort: previewMode === "PRIVATE_PROXY" ? Number(previewPort) : undefined,
+        readinessEvidence: {
+          providerReachable,
+          capacityAvailable,
+          automaticCredentialCount: Number(automaticCredentialCount),
+          egressEnforcementProven,
+          evidenceReference,
+        },
+      });
+      setMessage("Immutable exe.dev Sandbox Profile created. Blocked or degraded evidence remains visible and cannot be overridden by dispatch.");
+      setOpen(false);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The Sandbox Profile could not be created. Review provider evidence and bounded resource values.");
+    } finally {
+      setPending("");
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-line bg-surface-2 p-3">
+      <button type="button" className="flex min-h-9 w-full items-center justify-between gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+        <span className="flex items-center gap-2"><SlidersHorizontal size={14} aria-hidden /><span className="text-[12.5px] font-medium text-ink">Create immutable exe.dev Sandbox Profile</span></span>
+        <span className="text-[11.5px] text-ink-muted">{open ? "Hide settings" : "Provider, image, resources, network, credentials, teardown, and evidence"}</span>
+      </button>
+      {open ? (
+        <div className="mt-3 border-t border-line pt-3">
+          <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 p-3 text-[11.5px] leading-relaxed text-warning">
+            <ShieldAlert size={14} className="mt-0.5 shrink-0" aria-hidden />
+            Readiness is recorded evidence. Missing live lifecycle certification, unavailable capacity, or automatic provider credentials creates a blocked profile; unrestricted egress creates degraded status.
+          </div>
+          <div className="mt-3 grid gap-3 @md:grid-cols-2 @xl:grid-cols-4">
+            <label className="text-[11.5px] text-ink-muted">Profile key<Input className="mt-1" value={profileKey} onChange={(event) => setProfileKey(event.target.value)} /></label>
+            <label className="text-[11.5px] text-ink-muted">Provider profile version<Input className="mt-1" value={providerProfileVersion} onChange={(event) => setProviderProfileVersion(event.target.value)} /></label>
+            <label className="text-[11.5px] text-ink-muted">Machine image<Input className="mt-1" value={machineImage} onChange={(event) => setMachineImage(event.target.value)} /></label>
+            <label className="text-[11.5px] text-ink-muted">Network egress<select className="mt-1 w-full rounded-md border border-line bg-surface-1 px-2 py-2 text-[12px] text-ink" value={networkEgress} onChange={(event) => setNetworkEgress(event.target.value as typeof networkEgress)}><option value="UNRESTRICTED">Unrestricted (degraded)</option><option value="RESTRICTED_ALLOWLIST">Restricted allowlist</option></select></label>
+            <label className="text-[11.5px] text-ink-muted">CPU<Input className="mt-1" type="number" value={cpu} onChange={(event) => setCpu(event.target.value)} /></label>
+            <label className="text-[11.5px] text-ink-muted">Memory (MB)<Input className="mt-1" type="number" value={memoryMb} onChange={(event) => setMemoryMb(event.target.value)} /></label>
+            <label className="text-[11.5px] text-ink-muted">Disk (GB)<Input className="mt-1" type="number" value={diskGb} onChange={(event) => setDiskGb(event.target.value)} /></label>
+            <label className="text-[11.5px] text-ink-muted">Maximum runtime (minutes)<Input className="mt-1" type="number" value={runtimeMinutes} onChange={(event) => setRuntimeMinutes(event.target.value)} /></label>
+            <label className="text-[11.5px] text-ink-muted">Result retention (hours)<Input className="mt-1" type="number" value={resultRetentionHours} onChange={(event) => setResultRetentionHours(event.target.value)} /></label>
+            <label className="text-[11.5px] text-ink-muted">Per-sandbox spend cap (USD)<Input className="mt-1" type="number" value={spendLimitUsd} onChange={(event) => setSpendLimitUsd(event.target.value)} /></label>
+            <label className="text-[11.5px] text-ink-muted">Preview<select className="mt-1 w-full rounded-md border border-line bg-surface-1 px-2 py-2 text-[12px] text-ink" value={previewMode} onChange={(event) => setPreviewMode(event.target.value as typeof previewMode)}><option value="DISABLED">Disabled</option><option value="PRIVATE_PROXY">Private proxy</option></select></label>
+            {previewMode === "PRIVATE_PROXY" ? <label className="text-[11.5px] text-ink-muted">Private preview port<Input className="mt-1" type="number" value={previewPort} onChange={(event) => setPreviewPort(event.target.value)} /></label> : null}
+            <label className="text-[11.5px] text-ink-muted">Automatic provider credentials<Input className="mt-1" type="number" min="0" value={automaticCredentialCount} onChange={(event) => setAutomaticCredentialCount(event.target.value)} /></label>
+            <label className="text-[11.5px] text-ink-muted @md:col-span-2">Readiness evidence reference<Input className="mt-1" placeholder="Doctor receipt, incident record, or dated operator evidence" value={evidenceReference} onChange={(event) => setEvidenceReference(event.target.value)} /></label>
+          </div>
+          <div className="mt-3 grid gap-2 @md:grid-cols-2 @xl:grid-cols-4">
+            <EvidenceCheckbox label="Provider reachable" checked={providerReachable} onChange={setProviderReachable} />
+            <EvidenceCheckbox label="Allocation capacity available" checked={capacityAvailable} onChange={setCapacityAvailable} />
+            <EvidenceCheckbox label="Restricted egress enforcement proven" checked={egressEnforcementProven} onChange={setEgressEnforcementProven} />
+          </div>
+          <div className="mt-2 text-[11.5px] text-warning">Profiles created here remain blocked and Not Live Certified. Certification is a separate, explicitly authorized control-plane workflow after the exe.dev canary and GREEN-risk Attempt prove credential revocation and exact resource absence.</div>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-3">
+            <div className="flex items-center gap-2 text-[11.5px] text-ink-muted"><Cpu size={13} aria-hidden /> mission-control-supervisor/v1 · SSH · current-state diagnostics · no public ports · no resume · mandatory credential revocation, teardown, and reconciliation</div>
+            <Button size="sm" disabled={Boolean(pending) || evidenceReference.trim().length < 3} onClick={create}>{pending === "sandbox-profile" ? "Creating profile…" : "Create Sandbox Profile"}</Button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function EvidenceCheckbox({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
+  return <label className="flex min-h-9 items-center gap-2 rounded-md border border-line bg-surface-1 px-3 text-[11.5px] text-ink-secondary"><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />{label}</label>;
+}
+
+function ProfileMeta({ label, value }: { label: string; value: string }) {
+  return <div><div className="uppercase tracking-[0.12em] text-ink-muted">{label}</div><div className="mt-1 text-ink-secondary">{value}</div></div>;
 }

@@ -22,6 +22,7 @@ import {
   pushFactoryBranch,
 } from "../factoryGitRuntime.js";
 import { executeIndependentVerification } from "../factoryVerification.js";
+import { canonicalHash } from "@mission-control/shared";
 
 const execFileAsync = promisify(execFile);
 const cleanup: string[] = [];
@@ -238,6 +239,9 @@ describe("FactoryAttemptWorker verification-first lifecycle", () => {
         },
       },
     };
+    const executionManifestDigest = `sha256:${canonicalHash(claim.executionManifest)}`;
+    run.executionManifestDigest = executionManifestDigest;
+    claim.executionManifestDigest = executionManifestDigest;
     const reports: any[] = [];
     let pending = true;
     const client = {
@@ -314,13 +318,14 @@ async function runFixture(
 
   const worktree = path.join(checkoutRoot, ".mission-control", "worktrees", `attempt-${attempt}`);
   const reports: any[] = [];
+  const manifest = executionManifest({ attempt, dirtyVerification: options.dirtyVerification, baseSha });
   const run = {
     _id: `workflow-run-${attempt}`,
     runId: `factory-run-${attempt}`,
     projectId: "project-1",
     repositoryId: "repository-1",
     factoryDefinitionVersionId: "factory-version-1",
-    executionManifestDigest: "sha256:manifest",
+    executionManifestDigest: `sha256:${canonicalHash(manifest)}`,
     executorAdapter: "codex",
     executorVersion: "v1",
     status: "PENDING",
@@ -337,7 +342,7 @@ async function runFixture(
     repository: "sellerfi/mission-control-fixture",
     providerRepositoryId: "101",
     installation: { appId: "202", installationId: "303" },
-    executionManifest: executionManifest({ attempt, dirtyVerification: options.dirtyVerification, baseSha }),
+    executionManifest: manifest,
   };
   let lifecycle: "INITIAL" | "PAUSED" | "RESUME" | "COMPLETED" = "INITIAL";
   let verifiedCandidate: { sourceRevision: string; candidateRevision: string } | null = null;

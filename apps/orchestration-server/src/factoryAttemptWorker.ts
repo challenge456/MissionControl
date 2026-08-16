@@ -2,10 +2,11 @@ import { createHash, randomUUID } from "node:crypto";
 import type { ConvexHttpClient } from "convex/browser";
 import type { ExecutorEvent } from "@mission-control/workflow-engine";
 import { verificationIsolationBindingDigest } from "@mission-control/workflow-engine";
+import { canonicalHash } from "@mission-control/shared";
 import { CodexV1ExecutorAdapter } from "./codexExecutorAdapter.js";
 import { ConvexActions, ConvexQueries } from "./convexCalls.js";
 import { createSignedServiceCommand } from "./serviceCommandClient.js";
-import { assertFactoryCandidateUnchanged, commitFactoryChanges, ensureFactoryWorktree, ensureVerificationWorktree, inspectCandidateChange, listChangedFiles, pushFactoryBranch } from "./factoryGitRuntime.js";
+import { assertFactoryCandidateUnchanged, commitFactoryChanges, createFactorySourceBundle, ensureFactoryWorktree, ensureVerificationWorktree, inspectCandidateChange, listChangedFiles, materializeRemoteCandidate, pushFactoryBranch } from "./factoryGitRuntime.js";
 import { validateChangedFileScope } from "./factoryPathScope.js";
 import { createOrReusePullRequest, loadGithubAppPrivateKey, mintInstallationToken } from "./githubAppRuntime.js";
 import { executeIndependentVerification } from "./factoryVerification.js";
@@ -14,9 +15,19 @@ import {
   recordFactoryExecutorStarted,
   recordFactoryExecutorTerminated,
   recordFactoryPublication,
+  recordFactorySandboxStarted,
+  recordFactorySandboxTerminated,
   transferFactoryPublicationWorkspace,
   type FactoryWorkspaceOwner,
 } from "./factoryWorkspaceOwnership.js";
+import { ConvexRemoteSandboxJournal } from "./convexRemoteSandboxJournal.js";
+import { ExeDevSandboxProvider } from "./exeDevSandboxProvider.js";
+import { RemoteSandboxRuntime, type RemoteSandboxCandidateSession } from "./remoteSandboxRuntime.js";
+import { OpenRouterSandboxCredentialBroker, type SandboxCredentialBroker } from "./sandboxCredentials.js";
+import { sandboxProfileDigest, stableSandboxResourceName, type SandboxProvider, type SandboxProfileSnapshot } from "./sandboxProvider.js";
+import type { SandboxResultBundle } from "./sandboxResultBundle.js";
+import { standaloneSandboxSupervisorSource } from "./sandboxSupervisor.js";
+import { reconcileSandboxOrphans, type SandboxCleanupHealth } from "./sandboxReconciler.js";
 
 export const FACTORY_ATTEMPT_LEASE_DURATION_MS = 120_000;
 const HEARTBEAT_INTERVAL_MS = 20_000;
@@ -30,6 +41,8 @@ export interface FactoryAttemptWorkerStatus {
   lastPollAt: number | null;
   lastError: string | null;
   credentialsConfigured: boolean;
+  reconciliationEnabled: boolean;
+  cleanupHealth: SandboxCleanupHealth | null;
 }
 
 export interface FactoryAttemptWorkerDependencies {
@@ -50,6 +63,12 @@ export interface FactoryAttemptWorkerDependencies {
   recordFactoryPublication?: typeof recordFactoryPublication;
   cleanupOwnedFactoryWorkspace?: typeof cleanupOwnedFactoryWorkspace;
   transferFactoryPublicationWorkspace?: typeof transferFactoryPublicationWorkspace;
+  createFactorySourceBundle?: typeof createFactorySourceBundle;
+  materializeRemoteCandidate?: typeof materializeRemoteCandidate;
+  recordFactorySandboxStarted?: typeof recordFactorySandboxStarted;
+  recordFactorySandboxTerminated?: typeof recordFactorySandboxTerminated;
+  createSandboxProvider?: (profile: SandboxProfileSnapshot) => SandboxProvider;
+  createSandboxCredentialBroker?: () => SandboxCredentialBroker;
 }
 
 export interface FactoryAttemptWorkerScope {
@@ -81,6 +100,15 @@ const DEFAULT_DEPENDENCIES: FactoryAttemptWorkerDependencies = {
   recordFactoryPublication,
   cleanupOwnedFactoryWorkspace,
   transferFactoryPublicationWorkspace,
+  createFactorySourceBundle,
+  materializeRemoteCandidate,
+  recordFactorySandboxStarted,
+  recordFactorySandboxTerminated,
+  createSandboxProvider: (profile) => {
+    if (profile.provider !== "EXE_DEV") throw new Error(`Production Factory worker does not provide ${profile.provider} sandboxes.`);
+    return new ExeDevSandboxProvider();
+  },
+  createSandboxCredentialBroker: () => new OpenRouterSandboxCredentialBroker(),
 };
 
 export class FactoryAttemptWorker {
@@ -93,6 +121,8 @@ export class FactoryAttemptWorker {
   private failedCount = 0;
   private lastPollAt: number | null = null;
   private lastError: string | null = null;
+  private lastReconcileAt = 0;
+  private cleanupHealth: SandboxCleanupHealth | null = null;
 
   constructor(
     private readonly client: ConvexHttpClient,
@@ -133,6 +163,8 @@ export class FactoryAttemptWorker {
       lastPollAt: this.lastPollAt,
       lastError: this.lastError,
       credentialsConfigured: Boolean(this.dependencies.getGithubAppId() && privateKeyConfigured),
+      reconciliationEnabled: Boolean(this.scope),
+      cleanupHealth: this.cleanupHealth,
     };
   }
 
@@ -141,6 +173,7 @@ export class FactoryAttemptWorker {
     this.polling = true;
     this.lastPollAt = Date.now();
     try {
+      await this.reconcileOrphans();
       const [pending, running] = await Promise.all([
         this.client.query(ConvexQueries.workflowRuns.list as any, factoryRunQueryArgs("PENDING", this.scope)),
         this.client.query(ConvexQueries.workflowRuns.list as any, factoryRunQueryArgs("RUNNING", this.scope)),
@@ -148,6 +181,13 @@ export class FactoryAttemptWorker {
       for (const run of [...pending, ...running]) {
         if (this.stopped || this.active.size >= (this.identity?.maxConcurrentRuns ?? 1)) break;
         if (!isBoundFactoryAttempt(run) || !matchesWorkerScope(run, this.scope) || this.active.has(String(run._id))) continue;
+        if (run.executionManifest?.harness?.executionBackend === "remote-sandbox"
+          && (!this.scope || (this.cleanupHealth?.failed ?? 0) > 0)) {
+          this.lastError = !this.scope
+            ? "Remote sandbox dispatch requires a repository-scoped canonical worker."
+            : "Remote sandbox dispatch is blocked while orphan cleanup is unhealthy.";
+          continue;
+        }
         const controller = new AbortController();
         this.active.set(String(run._id), controller);
         const task = this.execute(run, controller)
@@ -165,6 +205,53 @@ export class FactoryAttemptWorker {
       console.error(`[factory-worker] Poll failed: ${this.lastError}`);
     } finally {
       this.polling = false;
+    }
+  }
+
+  private async reconcileOrphans() {
+    if (!this.scope || Date.now() - this.lastReconcileAt < 60_000) return;
+    this.lastReconcileAt = Date.now();
+    const listCommand = createSignedServiceCommand({
+      capability: "sandboxes.list-reconcile",
+      projectId: this.scope.projectId,
+      repositoryId: this.scope.repositoryId,
+      payload: { projectId: this.scope.projectId, repositoryId: this.scope.repositoryId },
+    });
+    const candidates = await this.client.action(
+      ConvexActions.serviceCommands.listFactorySandboxReconcileCandidates as any,
+      listCommand,
+    ) as any[];
+    const providers = new Map<string, SandboxProvider>();
+    for (const candidate of candidates) {
+      const profile = candidate?.allocation?.profileSnapshot as SandboxProfileSnapshot | undefined;
+      if (!profile || providers.has(candidate.allocation.provider)) continue;
+      const factory = this.dependencies.createSandboxProvider ?? DEFAULT_DEPENDENCIES.createSandboxProvider!;
+      providers.set(candidate.allocation.provider, factory(profile));
+    }
+    const brokerFactory = this.dependencies.createSandboxCredentialBroker ?? DEFAULT_DEPENDENCIES.createSandboxCredentialBroker!;
+    this.cleanupHealth = await reconcileSandboxOrphans({
+      candidates,
+      providers,
+      credentialBroker: brokerFactory(),
+      onReceipt: async (receipt) => {
+        const candidate = candidates.find((item) => item.allocation.resourceName === receipt.resourceName);
+        if (!candidate) throw new Error("Reconciled sandbox is outside the scoped candidate set.");
+        const reportCommand = createSignedServiceCommand({
+          capability: "sandboxes.report-reconcile",
+          projectId: this.scope!.projectId,
+          repositoryId: this.scope!.repositoryId,
+          payload: {
+            workflowRunId: candidate.allocation.workflowRunId,
+            resourceName: receipt.resourceName,
+            termination: receipt.termination,
+            credentialRevocation: receipt.credentialRevocation,
+          },
+        });
+        await this.client.action(ConvexActions.serviceCommands.reportFactorySandboxReconcile as any, reportCommand);
+      },
+    });
+    if (this.cleanupHealth.failed > 0) {
+      this.lastError = `Sandbox reconciliation failed for ${this.cleanupHealth.failed} resource(s).`;
     }
   }
 
@@ -233,6 +320,13 @@ export class FactoryAttemptWorker {
         ...workerLeaseIdentity,
       });
     };
+    let remoteSession: RemoteSandboxCandidateSession | undefined;
+    let remoteCleanupComplete = false;
+    const cleanupRemote = async () => {
+      if (!remoteSession || remoteCleanupComplete) return;
+      await remoteSession.cleanup();
+      remoteCleanupComplete = true;
+    };
 
     try {
       const manifest = validateClaimManifest(claim);
@@ -293,63 +387,134 @@ export class FactoryAttemptWorker {
         return;
       }
 
-      const executorEvents: ExecutorEvent[] = [];
-      const runtimeEvents: any[] = [];
-      const result = await this.adapter.execute({
-        executionId: `${claim.runId}:${claim.executionManifestDigest}`,
-        repositoryRoot: claim.worktree,
-        workingDirectory: claim.worktree,
-        prompt: manifest.compiledPrompt,
-        model: claim.model ?? manifest.workflow.steps[0]?.modelRoute,
-        allowedPaths: manifest.repository.allowedPaths,
-        timeoutMs: manifest.harness.timeoutMs,
-        isolation: "WORKSPACE_WRITE",
-      }, (event) => {
-        executorEvents.push(event);
-      }, controller.signal, workspaceOwner ? {
-        started: async (process) => {
-          await (this.dependencies.recordFactoryExecutorStarted ?? recordFactoryExecutorStarted)(workspaceOwner, process.pid);
-        },
-        terminated: async (process) => {
-          await (this.dependencies.recordFactoryExecutorTerminated ?? recordFactoryExecutorTerminated)(workspaceOwner, process);
-          runtimeEvents.push({
-            idempotencyKey: `factory:${claim.runId}:process:${process.pid}:terminated`,
-            eventType: "CHECKPOINT_CREATED",
-            workflowStep: "factory-execution",
-            status: "COMPLETED",
-            startedAt: process.terminatedAt,
-            commandSummary: "Owned executor process terminated",
-            metadata: { lifecycleType: "PROCESS_TERMINATED", pid: process.pid, exitCode: process.exitCode },
+      let mappedEvents: any[] = [];
+      let traceObservations: any[] = [];
+      let structuredResult: ReturnType<typeof validateFactoryResult>;
+      const executionArtifacts: any[] = [];
+      if (manifest.harness.executionBackend === "remote-sandbox") {
+        if (!workspaceOwner) throw new Error("Remote sandbox execution requires canonical worker ownership.");
+        const profile = manifest.sandbox.profileSnapshot as SandboxProfileSnapshot;
+        const providerFactory = this.dependencies.createSandboxProvider ?? DEFAULT_DEPENDENCIES.createSandboxProvider!;
+        const brokerFactory = this.dependencies.createSandboxCredentialBroker ?? DEFAULT_DEPENDENCIES.createSandboxCredentialBroker!;
+        const sourceBundle = await (this.dependencies.createFactorySourceBundle ?? createFactorySourceBundle)(claim.worktree, manifest.repository.baseSha);
+        const journal = new ConvexRemoteSandboxJournal(report, claim.runId);
+        const runtime = new RemoteSandboxRuntime(
+          providerFactory(profile),
+          brokerFactory(),
+          journal,
+          Date.now,
+          undefined,
+          {
+            started: async ({ allocation, processId }) => {
+              await (this.dependencies.recordFactorySandboxStarted ?? recordFactorySandboxStarted)(workspaceOwner, {
+                providerResourceId: allocation.providerResourceId,
+                externalProcessId: processId,
+              });
+            },
+            terminated: async (receipt) => {
+              await (this.dependencies.recordFactorySandboxTerminated ?? recordFactorySandboxTerminated)(workspaceOwner, receipt);
+            },
+          },
+        );
+        remoteSession = await runtime.execute({
+          projectId: String(claim.projectId),
+          workOrderId: String(claim.workOrderId),
+          workOrderRevisionNumber: manifest.causation.workOrderRevisionNumber,
+          workflowRunId: String(claim.workflowRunId),
+          attemptId: claim.runId,
+          attemptLeaseId: leaseId,
+          executionManifest: manifest,
+          manifestDigest: claim.executionManifestDigest,
+          sourceSha: manifest.repository.baseSha,
+          profile,
+          repositoryBundle: sourceBundle,
+          supervisorSource: standaloneSandboxSupervisorSource(),
+          executor: remoteCodexExecutorContract({
+            prompt: manifest.compiledPrompt,
+            model: claim.model ?? manifest.workflow.steps[0]?.modelRoute,
+            allowedPaths: manifest.repository.allowedPaths,
+            timeoutMs: Math.min(manifest.harness.timeoutMs, profile.runtime.maxRuntimeMs),
+          }),
+          signal: controller.signal,
+        }, { deferCleanup: true });
+        structuredResult = validateFactoryResult(remoteSession.bundle.structuredResult);
+        executionArtifacts.push(sandboxResultArtifact(claim, remoteSession.bundle));
+        if (remoteSession.bundle.status !== "COMPLETED") {
+          await cleanupRemote();
+          await report({
+            artifacts: [structuredResultArtifact(claim, structuredResult), ...executionArtifacts],
+            terminal: { status: remoteSession.bundle.status === "CANCELED" ? "CANCELED" : "FAILED", failureReason: `Remote sandbox supervisor reported ${remoteSession.bundle.status}.` },
           });
-        },
-      } : undefined);
-
-      const mappedEvents = [...executorEvents.map((event) => mapExecutorEvent(claim.runId, event)), ...runtimeEvents];
-      const traceObservations = mapExecutorObservations({
-        runId: claim.runId,
-        events: executorEvents,
-        model: claim.model ?? manifest.workflow.steps[0]?.modelRoute,
-        promptDigest: `sha256:${createHash("sha256").update(manifest.compiledPrompt).digest("hex")}`,
-        promptVersion: manifest.causation?.factoryDefinitionVersionId
-          ? String(manifest.causation.factoryDefinitionVersionId)
-          : undefined,
-      });
-      if (result.status !== "COMPLETED") {
-        await report({
-          events: mappedEvents,
-          observations: traceObservations,
-          terminal: { status: result.status === "CANCELED" ? "CANCELED" : "FAILED", failureReason: result.error ?? "Codex execution failed." },
+          this.failedCount += 1;
+          return;
+        }
+        await (this.dependencies.materializeRemoteCandidate ?? materializeRemoteCandidate)({
+          worktree: claim.worktree,
+          sourceSha: manifest.repository.baseSha,
+          patch: Buffer.from(remoteSession.bundle.patch.content, "base64"),
         });
-        this.failedCount += 1;
-        return;
+        const materializedFiles = await this.dependencies.listChangedFiles(claim.worktree, manifest.repository.baseSha);
+        if (!sameStringSet(materializedFiles, remoteSession.bundle.changedFiles)) {
+          throw new Error("Materialized candidate changed-file set does not match the content-addressed sandbox result bundle.");
+        }
+      } else {
+        const executorEvents: ExecutorEvent[] = [];
+        const runtimeEvents: any[] = [];
+        const result = await this.adapter.execute({
+          executionId: `${claim.runId}:${claim.executionManifestDigest}`,
+          repositoryRoot: claim.worktree,
+          workingDirectory: claim.worktree,
+          prompt: manifest.compiledPrompt,
+          model: claim.model ?? manifest.workflow.steps[0]?.modelRoute,
+          allowedPaths: manifest.repository.allowedPaths,
+          timeoutMs: manifest.harness.timeoutMs,
+          isolation: "WORKSPACE_WRITE",
+        }, (event) => {
+          executorEvents.push(event);
+        }, controller.signal, workspaceOwner ? {
+          started: async (process) => {
+            await (this.dependencies.recordFactoryExecutorStarted ?? recordFactoryExecutorStarted)(workspaceOwner, process.pid);
+          },
+          terminated: async (process) => {
+            await (this.dependencies.recordFactoryExecutorTerminated ?? recordFactoryExecutorTerminated)(workspaceOwner, process);
+            runtimeEvents.push({
+              idempotencyKey: `factory:${claim.runId}:process:${process.pid}:terminated`,
+              eventType: "CHECKPOINT_CREATED",
+              workflowStep: "factory-execution",
+              status: "COMPLETED",
+              startedAt: process.terminatedAt,
+              commandSummary: "Owned executor process terminated",
+              metadata: { lifecycleType: "PROCESS_TERMINATED", pid: process.pid, exitCode: process.exitCode },
+            });
+          },
+        } : undefined);
+        mappedEvents = [...executorEvents.map((event) => mapExecutorEvent(claim.runId, event)), ...runtimeEvents];
+        traceObservations = mapExecutorObservations({
+          runId: claim.runId,
+          events: executorEvents,
+          model: claim.model ?? manifest.workflow.steps[0]?.modelRoute,
+          promptDigest: `sha256:${createHash("sha256").update(manifest.compiledPrompt).digest("hex")}`,
+          promptVersion: manifest.causation?.factoryDefinitionVersionId
+            ? String(manifest.causation.factoryDefinitionVersionId)
+            : undefined,
+        });
+        if (result.status !== "COMPLETED") {
+          await report({
+            events: mappedEvents,
+            observations: traceObservations,
+            terminal: { status: result.status === "CANCELED" ? "CANCELED" : "FAILED", failureReason: result.error ?? "Codex execution failed." },
+          });
+          this.failedCount += 1;
+          return;
+        }
+        structuredResult = parseFactoryResult(result.output ?? "");
       }
-
-      const structuredResult = parseFactoryResult(result.output ?? "");
       if (structuredResult.status !== "COMPLETED") {
+        await cleanupRemote();
         await report({
           events: mappedEvents,
           observations: traceObservations,
-          artifacts: [structuredResultArtifact(claim, structuredResult)],
+          artifacts: [structuredResultArtifact(claim, structuredResult), ...executionArtifacts],
           terminal: { status: "FAILED", failureReason: `Codex reported ${structuredResult.status}: ${structuredResult.nextAction}` },
         });
         this.failedCount += 1;
@@ -361,11 +526,13 @@ export class FactoryAttemptWorker {
         { allowedPaths: manifest.repository.allowedPaths, excludedPaths: manifest.repository.excludedPaths }
       );
       if (!scopeResult.ok) {
+        await cleanupRemote();
         await report({
           events: mappedEvents,
           observations: traceObservations,
           artifacts: [
             structuredResultArtifact(claim, structuredResult),
+            ...executionArtifacts,
             {
               idempotencyKey: `factory:${claim.runId}:path-scope-deviation`,
               artifactType: "OTHER",
@@ -380,10 +547,11 @@ export class FactoryAttemptWorker {
         return;
       }
       if (scopeResult.changedFiles.length === 0) {
+        await cleanupRemote();
         await report({
           events: mappedEvents,
           observations: traceObservations,
-          artifacts: [structuredResultArtifact(claim, structuredResult)],
+          artifacts: [structuredResultArtifact(claim, structuredResult), ...executionArtifacts],
           terminal: { status: "FAILED", failureReason: "Codex completed without producing a reviewable code change." },
         });
         this.failedCount += 1;
@@ -399,6 +567,7 @@ export class FactoryAttemptWorker {
       if (candidate.candidateRevision !== headSha) throw new Error("Committed candidate revision changed before verification.");
       const baseArtifacts = [
         structuredResultArtifact(claim, structuredResult),
+        ...executionArtifacts,
         {
           idempotencyKey: `factory:${claim.runId}:code-diff:${headSha}`,
           artifactType: "CODE_DIFF",
@@ -455,15 +624,18 @@ export class FactoryAttemptWorker {
         if (manifest.workOrderSpecification.verificationContract.enforcementMode === "ENFORCED"
           && verificationRecord?.verdict !== "VERIFIED") {
           if (verificationRecord?.verdict === "REQUIRES_HUMAN_REVIEW" && verificationRecord?.paused) {
+            await cleanupRemote();
             this.lastError = null;
             return;
           }
           const reason = `Independent verification did not pass: ${verificationRecord?.verdict ?? "NOT_VERIFIED"} — ${(verificationRecord?.verdictReasons ?? ["No verified receipt was returned."]).join(" ")}`;
+          await cleanupRemote();
           await report({ terminal: { status: "FAILED", failureReason: reason } });
           this.failedCount += 1;
           return;
         }
       }
+      await cleanupRemote();
       await this.publishCandidate({
         claim,
         manifest,
@@ -484,7 +656,12 @@ export class FactoryAttemptWorker {
       this.completedCount += 1;
       this.lastError = null;
     } catch (error) {
-      const reason = safeError(error);
+      let reason = safeError(error);
+      try {
+        await cleanupRemote();
+      } catch (cleanupError) {
+        reason = `${reason}; remote cleanup failed (${safeError(cleanupError)})`;
+      }
       if (leaseHealthy) {
         await report({ terminal: { status: controller.signal.aborted ? "CANCELED" : "FAILED", failureReason: reason } })
           .catch((reportError) => {
@@ -760,7 +937,7 @@ function workspaceOwnerFromLease(claim: any, manifest: any, lease: any): Factory
     checkoutRoot: claim.checkoutRoot,
     executionManifestDigest: claim.executionManifestDigest,
     baseSha: manifest.repository.baseSha,
-    sandboxId: manifest.harness?.sandboxId,
+    sandboxId: manifest.sandbox?.resourceName,
   };
 }
 
@@ -807,7 +984,29 @@ function validateClaimManifest(claim: any) {
     || !Array.isArray(manifest?.workflow?.steps)
     || typeof manifest?.compiledPrompt !== "string"
     || !manifest.compiledPrompt.trim()
+    || claim.executionManifestDigest !== `sha256:${canonicalHash(manifest)}`
   ) throw new Error("Claimed Factory execution manifest is invalid.");
+  if (manifest.harness.executionBackend === "remote-sandbox") {
+    const profile = manifest?.sandbox?.profileSnapshot;
+    const expectedResourceName = stableSandboxResourceName({
+      projectId: String(claim.projectId),
+      workflowRunId: String(claim.workflowRunId),
+      attemptId: String(claim.runId),
+    });
+    if (manifest?.sandbox?.resourceName !== expectedResourceName
+      || manifest?.sandbox?.profileDigest !== sandboxProfileDigest(profile)
+      || manifest?.sandbox?.resultContract?.schema !== "factory-sandbox-result/v1"
+      || manifest?.sandbox?.resultContract?.independentHostValidationRequired !== true
+      || manifest?.sandbox?.teardown?.credentialsRevokedBeforePublication !== true
+      || manifest?.sandbox?.teardown?.resourceAbsenceRequiredBeforePublication !== true
+      || !Array.isArray(manifest?.sandbox?.credentialGrants)
+      || manifest.sandbox.credentialGrants.some((grant: any) => grant?.secretValueIncluded !== false
+        || grant?.githubAuthority !== "NONE" || grant?.providerAuthority !== "NONE")) {
+      throw new Error("Claimed remote Factory manifest exceeds sandbox authority or has an invalid frozen profile.");
+    }
+  } else if (manifest.sandbox) {
+    throw new Error("Claimed persistent-worker manifest contains a remote sandbox binding.");
+  }
   return manifest;
 }
 
@@ -1013,6 +1212,77 @@ function verificationMismatchArtifact(claim: any, candidate: any, verification: 
       checkSummary,
       reason,
     },
+  };
+}
+
+function sandboxResultArtifact(claim: any, bundle: SandboxResultBundle) {
+  return {
+    idempotencyKey: `factory:${claim.runId}:sandbox-result:${bundle.digest}`,
+    artifactType: "STRUCTURED_OUTPUT",
+    name: "Remote sandbox result bundle",
+    description: bundle.structuredResult.summary,
+    contentHash: bundle.digest,
+    retentionPolicy: "ATTEMPT_EVIDENCE",
+    sensitivity: "INTERNAL",
+    metadata: {
+      schema: bundle.schema,
+      sourceSha: bundle.sourceSha,
+      profileDigest: bundle.profileDigest,
+      manifestDigest: bundle.manifestDigest,
+      status: bundle.status,
+      workOrderRevisionNumber: bundle.workOrderRevisionNumber,
+      changedFiles: bundle.changedFiles,
+      diff: bundle.diff,
+      commandResults: bundle.commandResults,
+      verificationInputs: bundle.verificationInputs,
+      environment: bundle.environment,
+      patchDigest: bundle.patch.digest,
+      patchByteLength: bundle.patch.byteLength,
+      executor: {
+        exitCode: bundle.executor.exitCode,
+        stdoutDigest: bundle.executor.stdoutDigest,
+        stderrDigest: bundle.executor.stderrDigest,
+      },
+      usage: bundle.usage,
+      secretValuesIncluded: false,
+      acceptanceAuthority: "NONE",
+      verificationAuthority: "NONE",
+      publicationAuthority: "NONE",
+    },
+  };
+}
+
+function remoteCodexExecutorContract(input: {
+  prompt: string;
+  model?: string;
+  allowedPaths: string[];
+  timeoutMs: number;
+}) {
+  const repositoryRoot = "/var/lib/mission-control/attempt/repository";
+  const resultPath = "/var/lib/mission-control/attempt/executor-result.json";
+  return {
+    command: process.env.CODEX_EXECUTABLE?.trim() || "codex",
+    args: [
+      "exec",
+      "--ephemeral",
+      "--sandbox", "workspace-write",
+      "--color", "never",
+      "-C", repositoryRoot,
+      "-o", resultPath,
+      ...(input.model ? ["-m", input.model] : []),
+      [
+        input.prompt,
+        "",
+        "Repository mutation is limited to these approved repository-relative boundaries:",
+        ...input.allowedPaths.map((candidate) => `- ${candidate}`),
+        "Do not expose credentials in output, artifacts, or logs.",
+      ].join("\n"),
+    ],
+    resultPath,
+    model: input.model,
+    prompt: input.prompt,
+    allowedPaths: input.allowedPaths,
+    timeoutMs: input.timeoutMs,
   };
 }
 

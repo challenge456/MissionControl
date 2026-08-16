@@ -49,6 +49,7 @@ import {
   appendCurrentVerificationQualityGateDecision,
   getCurrentVerificationResult,
 } from "../lib/currentVerification";
+import { computeCanonicalHash } from "../lib/genomeHash";
 
 const EVENT_TYPES = new Set([
   "RUN_STARTED", "STEP_STARTED", "STEP_COMPLETED", "TOOL_CALLED",
@@ -62,6 +63,9 @@ const EVENT_TYPES = new Set([
   "VERIFICATION_COMPLETED", "VERIFICATION_EXECUTION_FAILED", "VERIFICATION_BLOCKED",
   "VERIFICATION_REQUIRES_HUMAN_REVIEW", "EVIDENCE_CREATED", "INDEPENDENT_REVIEW_STARTED",
   "VERIFICATION_RECEIPT_CREATED", "CANDIDATE_READY", "PULL_REQUEST_CREATED",
+  "SANDBOX_REQUESTED", "SANDBOX_ALLOCATED", "SANDBOX_STARTED", "SANDBOX_RESULT_RECEIVED",
+  "SANDBOX_CANCELLATION_REQUESTED", "SANDBOX_CREDENTIAL_REVOKED", "SANDBOX_TERMINATION_REQUESTED",
+  "SANDBOX_TERMINATED", "SANDBOX_ORPHANED", "ORPHAN_RECONCILED", "SANDBOX_FAILED",
   "RUN_PAUSED", "RUN_RESUMED", "RUN_FAILED", "RUN_COMPLETED",
 ]);
 
@@ -83,6 +87,165 @@ export const resolveScope = internalQuery({
       workOrderId: run.workOrderId,
       factoryDefinitionVersionId: run.factoryDefinitionVersionId,
     };
+  },
+});
+
+export const listSandboxReconcileCandidatesInternal = internalQuery({
+  args: {
+    projectId: v.id("projects"),
+    repositoryId: v.id("workspaceRepositories"),
+  },
+  handler: async (ctx, args) => {
+    const liveStates = [
+      "REQUESTED", "ALLOCATING", "READY", "RUNNING", "RESULT_READY", "CANCELING",
+      "TERMINATING", "FAILED", "ORPHANED",
+    ] as const;
+    const scoped = (await Promise.all(liveStates.map((state) => ctx.db.query("sandboxAllocations")
+      .withIndex("by_project_state", (q) => q.eq("projectId", args.projectId).eq("state", state))
+      .collect()))).flat();
+    const now = Date.now();
+    const candidates = [];
+    for (const allocation of scoped) {
+      const run = await ctx.db.get(allocation.workflowRunId);
+      if (!run || run.repositoryId !== args.repositoryId) continue;
+      const host = run.hostBindingId ? await ctx.db.get(run.hostBindingId) : null;
+      const attemptLeaseCurrent = run.status === "RUNNING"
+        && Boolean(run.lease && run.lease.expiresAt > now)
+        && factoryLeaseMatchesCurrentRegistration(run.lease, host ?? undefined);
+      if (attemptLeaseCurrent) continue;
+      const credential = await ctx.db.query("sandboxCredentialGrants")
+        .withIndex("by_allocation", (q) => q.eq("sandboxAllocationId", allocation._id))
+        .filter((q) => q.neq(q.field("state"), "REVOKED"))
+        .first();
+      candidates.push({
+        allocation,
+        attemptLeaseCurrent,
+        credential: credential ? {
+          grantKey: credential.grantKey,
+          provider: credential.provider,
+          externalCredentialId: credential.externalCredentialId,
+          environmentVariable: credential.environmentVariable,
+          issuedAt: credential.issuedAt,
+          expiresAt: credential.expiresAt,
+          maxCostUsd: credential.maxCostUsd,
+          secretFingerprint: credential.secretFingerprint,
+        } : undefined,
+      });
+    }
+    return candidates.slice(0, 100);
+  },
+});
+
+export const markSandboxOrphansInternal = internalMutation({
+  args: {
+    projectId: v.id("projects"),
+    repositoryId: v.id("workspaceRepositories"),
+    allocationIds: v.array(v.id("sandboxAllocations")),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    let marked = 0;
+    for (const allocationId of args.allocationIds.slice(0, 100)) {
+      const allocation = await ctx.db.get(allocationId);
+      if (!allocation || allocation.projectId !== args.projectId || allocation.state === "TERMINATED") continue;
+      const run = await ctx.db.get(allocation.workflowRunId);
+      if (!run || run.repositoryId !== args.repositoryId) continue;
+      const host = run.hostBindingId ? await ctx.db.get(run.hostBindingId) : null;
+      const attemptLeaseCurrent = run.status === "RUNNING"
+        && Boolean(run.lease && run.lease.expiresAt > now)
+        && factoryLeaseMatchesCurrentRegistration(run.lease, host ?? undefined);
+      if (attemptLeaseCurrent) continue;
+      if (allocation.state !== "ORPHANED") {
+        await ctx.db.patch(allocation._id, {
+          state: "ORPHANED",
+          failureReason: "The canonical Attempt lease or worker registration no longer owns this live sandbox.",
+          updatedAt: now,
+        });
+        await insertEvent(ctx, run, {
+          idempotencyKey: `factory:${run.runId}:sandbox:orphaned:${allocation.resourceName}`,
+          eventType: "SANDBOX_ORPHANED",
+          workflowStep: "remote-sandbox-execution",
+          actor: "service:factory-control-plane",
+          status: "FAILED",
+          startedAt: now,
+          endedAt: now,
+          commandSummary: "Live sandbox marked orphaned after canonical ownership loss",
+          metadata: { resourceName: allocation.resourceName, providerResourceId: allocation.providerResourceId, secretValuesIncluded: false },
+        });
+      }
+      marked += 1;
+    }
+    return { marked };
+  },
+});
+
+export const reportSandboxReconcileInternal = internalMutation({
+  args: {
+    workflowRunId: v.id("workflowRuns"),
+    resourceName: v.string(),
+    ownerId: v.string(),
+    termination: v.any(),
+    credentialRevocation: v.optional(v.any()),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.workflowRunId);
+    if (!run || (run.executionManifest as any)?.harness?.executionBackend !== "remote-sandbox") {
+      throw new Error("Remote Factory Attempt is unavailable for reconciliation.");
+    }
+    const host = run.hostBindingId ? await ctx.db.get(run.hostBindingId) : null;
+    const attemptLeaseCurrent = run.status === "RUNNING"
+      && Boolean(run.lease && run.lease.expiresAt > Date.now())
+      && factoryLeaseMatchesCurrentRegistration(run.lease, host ?? undefined);
+    if (attemptLeaseCurrent) throw new Error("A current canonical Attempt lease cannot be reconciled as an orphan.");
+    const allocation = await ctx.db.query("sandboxAllocations")
+      .withIndex("by_run", (q) => q.eq("workflowRunId", run._id))
+      .filter((q) => q.eq(q.field("resourceName"), args.resourceName))
+      .first();
+    if (!allocation || allocation.state === "TERMINATED") return { reconciled: false as const, reason: "already-absent" };
+    if (args.termination?.resourceName !== allocation.resourceName
+      || args.termination?.providerResourceId !== allocation.providerResourceId
+      || args.termination?.resourceAbsent !== true
+      || !Number.isFinite(args.termination?.confirmedAbsentAt)) throw new Error("Orphan reconciliation lacks exact provider resource-absence evidence.");
+    if (args.credentialRevocation) {
+      const credential = await ctx.db.query("sandboxCredentialGrants")
+        .withIndex("by_grant_key", (q) => q.eq("grantKey", args.credentialRevocation.grantKey))
+        .first();
+      if (!credential || credential.workflowRunId !== run._id
+        || credential.externalCredentialId !== args.credentialRevocation.externalCredentialId
+        || args.credentialRevocation.revoked !== true) throw new Error("Orphan credential revocation receipt is invalid.");
+      await ctx.db.patch(credential._id, {
+        state: "REVOKED",
+        revocationRequestedAt: finiteNumber(args.credentialRevocation.requestedAt),
+        revokedAt: finiteNumber(args.credentialRevocation.revokedAt) ?? Date.now(),
+        updatedAt: Date.now(),
+      });
+    }
+    const activeCredentials = await ctx.db.query("sandboxCredentialGrants")
+      .withIndex("by_allocation", (q) => q.eq("sandboxAllocationId", allocation._id))
+      .filter((q) => q.neq(q.field("state"), "REVOKED"))
+      .collect();
+    if (activeCredentials.length > 0) throw new Error("Orphan sandbox cannot close while a credential remains active.");
+    await ctx.db.patch(allocation._id, {
+      state: "TERMINATED",
+      terminationRequestedAt: finiteNumber(args.termination.requestedAt),
+      terminatedAt: args.termination.confirmedAbsentAt,
+      resourceAbsentAt: args.termination.confirmedAbsentAt,
+      teardownReceipt: args.termination,
+      updatedAt: Date.now(),
+    });
+    await ctx.db.patch(run._id, { sandboxTeardownVerifiedAt: args.termination.confirmedAbsentAt });
+    await insertEvent(ctx, run, {
+      idempotencyKey: `factory:${run.runId}:sandbox:orphan-reconciled:${allocation.resourceName}`,
+      eventType: "ORPHAN_RECONCILED",
+      workflowStep: "remote-sandbox-execution",
+      actor: `service:${args.ownerId}`,
+      status: "COMPLETED",
+      startedAt: Date.now(),
+      endedAt: Date.now(),
+      commandSummary: "Orphaned sandbox credentials and resource reconciled",
+      metadata: { resourceName: allocation.resourceName, providerResourceId: allocation.providerResourceId, secretValuesIncluded: false },
+    });
+    return { reconciled: true as const, allocationId: allocation._id };
   },
 });
 
@@ -125,6 +288,31 @@ export const claimInternal = internalMutation({
     ]);
     if (!version || version.configurationDigest !== run.factoryConfigurationDigest) {
       throw new Error("Factory attempt configuration digest no longer matches its version.");
+    }
+    const frozenManifest = run.executionManifest as any;
+    const executionBackend = version.executionBackend ?? "persistent-worker";
+    if (frozenManifest?.version !== "factory-execution-manifest/v1"
+      || frozenManifest?.harness?.executionBackend !== executionBackend
+      || frozenManifest?.repository?.baseSha !== host?.baseCommit) {
+      throw new Error("Factory Attempt does not match its frozen backend and source binding.");
+    }
+    if (executionBackend === "remote-sandbox") {
+      if (!version.sandboxProfileId
+        || !version.sandboxProfileDigest
+        || frozenManifest.sandbox?.profileId !== String(version.sandboxProfileId)
+        || frozenManifest.sandbox?.profileDigest !== version.sandboxProfileDigest
+        || frozenManifest.sandbox?.supervisorVersion !== "mission-control-supervisor/v1"
+        || !/^mc-attempt-[a-f0-9]{16}$/.test(frozenManifest.sandbox?.resourceName ?? "")
+        || frozenManifest.sandbox?.resultContract?.schema !== "factory-sandbox-result/v1"
+        || frozenManifest.sandbox?.resultContract?.independentHostValidationRequired !== true
+        || frozenManifest.sandbox?.teardown?.credentialsRevokedBeforePublication !== true
+        || frozenManifest.sandbox?.teardown?.resourceAbsenceRequiredBeforePublication !== true
+        || frozenManifest.sandbox?.credentialGrants?.some((grant: any) => grant?.secretValueIncluded !== false
+          || grant?.githubAuthority !== "NONE" || grant?.providerAuthority !== "NONE")) {
+        throw new Error("Remote Factory Attempt exceeds sandbox authority or lacks its exact frozen Sandbox Profile.");
+      }
+    } else if (frozenManifest.sandbox) {
+      throw new Error("Persistent-worker Attempt cannot contain a remote Sandbox Profile binding.");
     }
     const definition = await ctx.db.get(version.factoryDefinitionId);
     if (!definition || definition.status !== "ACTIVE" || definition.activeVersionId !== version._id) {
@@ -655,6 +843,10 @@ export const reportInternal = internalMutation({
     if (events.length > 100 || artifacts.length > 20 || observations.length > 200) {
       throw new Error("Factory attempt report exceeds packet limits.");
     }
+    if (containsCredentialSecret(packet.sandbox) || containsCredentialSecret(packet.credential)) {
+      throw new Error("Factory attempt reports must never contain plaintext sandbox credentials.");
+    }
+    const sandboxPersistence = await persistSandboxPacket(ctx, run, packet, args.leaseId);
     if (artifacts.filter((artifact: any) => artifact?.artifactType === "PULL_REQUEST").length > 1) {
       throw new Error("Factory attempt report may contain only one pull-request artifact.");
     }
@@ -760,6 +952,25 @@ export const reportInternal = internalMutation({
     if (terminal) {
       if (!["COMPLETED", "FAILED", "CANCELED"].includes(terminal.status)) {
         throw new Error("Factory attempt terminal status is invalid.");
+      }
+      if ((run.executionManifest as any)?.harness?.executionBackend === "remote-sandbox") {
+        const allocation = await ctx.db.query("sandboxAllocations")
+          .withIndex("by_run", (q) => q.eq("workflowRunId", run._id))
+          .order("desc")
+          .first();
+        const credentials = await ctx.db.query("sandboxCredentialGrants")
+          .withIndex("by_run", (q) => q.eq("workflowRunId", run._id))
+          .collect();
+        const currentRun = await ctx.db.get(run._id);
+        if (credentials.some((credential) => credential.state !== "REVOKED")) {
+          throw new Error("Remote Factory Attempt cannot become terminal while an Attempt credential remains active.");
+        }
+        if (!allocation || allocation.state !== "TERMINATED" || !allocation.resourceAbsentAt || !currentRun?.sandboxTeardownVerifiedAt) {
+          throw new Error("Remote Factory Attempt cannot become terminal without exact sandbox resource-absence proof.");
+        }
+        if (terminal.status === "COMPLETED" && (!allocation.resultDigest || !currentRun.sandboxResultDigest)) {
+          throw new Error("Remote Factory Attempt cannot complete without a validated sandbox result digest.");
+        }
       }
       const reportedArtifacts = artifactResults.map((result: any) => result.artifact);
       const pullRequestArtifact = reportedArtifacts.find((artifact: any) => artifact?.artifactType === "PULL_REQUEST")
@@ -954,6 +1165,7 @@ export const reportInternal = internalMutation({
       verification,
       candidateReady,
       terminalStatus: terminal?.status,
+      sandbox: sandboxPersistence,
     };
   },
 });
@@ -1769,6 +1981,202 @@ async function schedulePolicyV2VerificationAttempt(ctx: any, workOrder: any, sou
     updatedAt: now,
   });
   return { workflowRun: await ctx.db.get(workflowRunId), verificationRunId, created: true };
+}
+
+async function persistSandboxPacket(ctx: any, run: any, packet: any, leaseId: string) {
+  const sandbox = packet.sandbox;
+  const credential = packet.credential;
+  if (!sandbox && !credential) return undefined;
+  const manifest = run.executionManifest as any;
+  if (manifest?.harness?.executionBackend !== "remote-sandbox"
+    || !manifest.sandbox?.profileId
+    || !manifest.sandbox?.profileDigest) {
+    throw new Error("Sandbox lifecycle reports require a remote Factory Attempt binding.");
+  }
+  let allocation = await ctx.db.query("sandboxAllocations")
+    .withIndex("by_run", (q: any) => q.eq("workflowRunId", run._id))
+    .order("desc")
+    .first();
+  if (sandbox?.operation === "REQUESTED") {
+    const request = sandbox.request;
+    if (!request || request.workflowRunId !== String(run._id) || request.attemptId !== run.runId
+      || request.attemptLeaseId !== leaseId || request.manifestDigest !== run.executionManifestDigest
+      || request.sourceSha !== manifest.repository?.baseSha
+      || request.profile?.schema !== "factory-sandbox-profile/v1"
+      || request.resourceName !== manifest.sandbox.resourceName
+      || `sha256:${computeCanonicalHash({ namespace: "factory-sandbox-profile/v1", value: request.profile })}` !== manifest.sandbox.profileDigest
+      || request.profile?.profileKey !== manifest.sandbox.profileSnapshot?.profileKey) {
+      throw new Error("Sandbox allocation request does not match the active Attempt lease and frozen manifest.");
+    }
+    if (!allocation) {
+      const allocationId = await ctx.db.insert("sandboxAllocations", {
+        tenantId: run.tenantId,
+        projectId: run.projectId,
+        workOrderId: run.workOrderId,
+        workflowRunId: run._id,
+        factoryDefinitionVersionId: run.factoryDefinitionVersionId,
+        attemptId: run.runId,
+        attemptLeaseId: leaseId,
+        manifestDigest: run.executionManifestDigest,
+        profileId: manifest.sandbox.profileId,
+        profileDigest: manifest.sandbox.profileDigest,
+        profileSnapshot: request.profile,
+        sourceSha: request.sourceSha,
+        provider: request.profile.provider,
+        resourceName: request.resourceName,
+        state: "REQUESTED",
+        requestedAt: request.requestedAt,
+        updatedAt: Date.now(),
+      });
+      await ctx.db.patch(run._id, { sandboxAllocationId: allocationId });
+      allocation = await ctx.db.get(allocationId);
+    } else if (allocation.resourceName !== request.resourceName || allocation.attemptLeaseId !== leaseId) {
+      throw new Error("Attempt already has a different sandbox allocation journal.");
+    }
+  } else if (sandbox) {
+    if (!allocation) throw new Error("Sandbox provider mutation cannot be recorded before the allocation request journal.");
+    if (sandbox.resourceName && sandbox.resourceName !== allocation.resourceName) throw new Error("Sandbox lifecycle resource name does not match the Attempt journal.");
+    if (sandbox.operation === "UPDATED") {
+      const update = sandbox.allocation ?? {};
+      const states = ["ALLOCATING", "READY", "RUNNING", "RESULT_READY", "CANCELING", "TERMINATING", "TERMINATED", "FAILED", "ORPHANED"];
+      if (!states.includes(update.state) || update.provider !== allocation.provider || update.resourceName !== allocation.resourceName) throw new Error("Sandbox allocation update is invalid.");
+      await ctx.db.patch(allocation._id, definedPatch({
+        providerResourceId: optionalText(update.providerResourceId, 500),
+        state: update.state,
+        createdAt: finiteNumber(update.createdAt),
+        readyAt: finiteNumber(update.readyAt),
+        startedAt: finiteNumber(update.startedAt),
+        lastHeartbeatAt: finiteNumber(update.lastHeartbeatAt),
+        resultDigest: optionalText(update.resultDigest, 200),
+        privatePreviewUrl: safePrivatePreview(update.privatePreviewUrl),
+        providerMetadata: update.providerMetadata,
+        updatedAt: Date.now(),
+      }));
+      if (update.resultDigest) await ctx.db.patch(run._id, { sandboxResultDigest: update.resultDigest });
+    } else if (sandbox.operation === "RESULT") {
+      const result = sandbox.result ?? {};
+      if (!String(result.digest ?? "").startsWith("sha256:") || !["COMPLETED", "FAILED", "CANCELED", "TIMED_OUT"].includes(result.status)) throw new Error("Sandbox result journal is invalid.");
+      await ctx.db.patch(allocation._id, {
+        state: "RESULT_READY",
+        resultDigest: result.digest,
+        resultStatus: result.status,
+        providerCostUsd: finiteNumber(result.providerCostUsd),
+        inferenceCostUsd: finiteNumber(result.inferenceCostUsd),
+        updatedAt: Date.now(),
+      });
+      await ctx.db.patch(run._id, { sandboxResultDigest: result.digest });
+    } else if (sandbox.operation === "TERMINATED" || sandbox.operation === "ORPHAN_RECONCILED") {
+      const receipt = sandbox.receipt ?? {};
+      if (receipt.resourceName !== allocation.resourceName
+        || receipt.providerResourceId !== allocation.providerResourceId
+        || receipt.resourceAbsent !== true
+        || !Number.isFinite(receipt.confirmedAbsentAt)) throw new Error("Sandbox teardown receipt does not prove exact resource absence.");
+      await ctx.db.patch(allocation._id, {
+        state: "TERMINATED",
+        terminationRequestedAt: finiteNumber(receipt.requestedAt),
+        terminatedAt: receipt.confirmedAbsentAt,
+        resourceAbsentAt: receipt.confirmedAbsentAt,
+        teardownReceipt: receipt,
+        updatedAt: Date.now(),
+      });
+      await ctx.db.patch(run._id, { sandboxTeardownVerifiedAt: receipt.confirmedAbsentAt });
+    } else if (sandbox.operation === "FAILED") {
+      await ctx.db.patch(allocation._id, { state: "FAILED", failureReason: optionalText(sandbox.reason, 2_000), updatedAt: Date.now() });
+    } else {
+      throw new Error("Sandbox lifecycle operation is unsupported.");
+    }
+    allocation = await ctx.db.get(allocation._id);
+  }
+
+  if (credential) {
+    if (!allocation) throw new Error("Attempt credential cannot be recorded without a sandbox allocation journal.");
+    if (credential.operation === "ISSUED") {
+      const grant = credential.grant ?? {};
+      const profile = manifest.sandbox.profileSnapshot;
+      if (!/^mc-attempt-[a-f0-9]{20}$/.test(grant.grantKey ?? "")
+        || !grant.externalCredentialId
+        || !/^sha256:[a-f0-9]{64}$/i.test(grant.secretFingerprint ?? "")
+        || grant.environmentVariable !== "OPENAI_API_KEY"
+        || grant.provider !== "OPENROUTER"
+        || !Number.isFinite(grant.maxCostUsd)
+        || grant.maxCostUsd !== profile?.spend?.maxUsd
+        || !Number.isFinite(grant.issuedAt)
+        || grant.issuedAt > Date.now() + 60_000
+        || !Number.isFinite(grant.expiresAt)
+        || grant.expiresAt <= Date.now()
+        || grant.expiresAt > grant.issuedAt + profile.runtime.maxRuntimeMs + 30_000) {
+        throw new Error("Attempt credential grant is invalid.");
+      }
+      const existing = await ctx.db.query("sandboxCredentialGrants")
+        .withIndex("by_grant_key", (q: any) => q.eq("grantKey", grant.grantKey))
+        .first();
+      if (!existing) {
+        await ctx.db.insert("sandboxCredentialGrants", {
+          tenantId: run.tenantId,
+          projectId: run.projectId,
+          workflowRunId: run._id,
+          sandboxAllocationId: allocation._id,
+          attemptId: run.runId,
+          attemptLeaseId: leaseId,
+          grantKey: grant.grantKey,
+          provider: grant.provider,
+          externalCredentialId: grant.externalCredentialId,
+          environmentVariable: "OPENAI_API_KEY",
+          secretFingerprint: grant.secretFingerprint,
+          maxCostUsd: grant.maxCostUsd,
+          issuedAt: grant.issuedAt,
+          expiresAt: grant.expiresAt,
+          state: "ISSUED",
+          updatedAt: Date.now(),
+        });
+      }
+    } else if (credential.operation === "REVOKED") {
+      const receipt = credential.receipt ?? {};
+      const existing = await ctx.db.query("sandboxCredentialGrants")
+        .withIndex("by_grant_key", (q: any) => q.eq("grantKey", receipt.grantKey))
+        .first();
+      if (!existing || existing.workflowRunId !== run._id
+        || receipt.externalCredentialId !== existing.externalCredentialId
+        || receipt.revoked !== true
+        || !Number.isFinite(receipt.requestedAt)
+        || !Number.isFinite(receipt.revokedAt)
+        || receipt.revokedAt < receipt.requestedAt) throw new Error("Attempt credential revocation receipt is invalid.");
+      await ctx.db.patch(existing._id, {
+        state: "REVOKED",
+        revocationRequestedAt: finiteNumber(receipt.requestedAt),
+        revokedAt: finiteNumber(receipt.revokedAt) ?? Date.now(),
+        updatedAt: Date.now(),
+      });
+    } else {
+      throw new Error("Attempt credential lifecycle operation is unsupported.");
+    }
+  }
+  return { allocationId: allocation?._id };
+}
+
+function containsCredentialSecret(value: unknown): boolean {
+  if (typeof value === "string") return /\bsk-or-v1-[A-Za-z0-9_-]+|\bgh[pousr]_[A-Za-z0-9_]+/.test(value);
+  if (Array.isArray(value)) return value.some(containsCredentialSecret);
+  if (!value || typeof value !== "object") return false;
+  return Object.entries(value as Record<string, unknown>).some(([key, item]) =>
+    ["secret", "token", "privatekey", "managementkey", "apikey"].includes(key.toLowerCase())
+    || containsCredentialSecret(item)
+  );
+}
+
+function definedPatch(input: Record<string, unknown>) {
+  return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
+}
+
+function safePrivatePreview(value: unknown) {
+  if (typeof value !== "string" || !value) return undefined;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || !url.hostname.endsWith(".exe.xyz")) throw new Error();
+    return url.toString();
+  } catch {
+    throw new Error("Sandbox preview URL is not an authenticated private exe.dev endpoint.");
+  }
 }
 
 async function factoryLeaseRegistrationIsCurrent(ctx: any, run: any) {

@@ -110,4 +110,32 @@ describe("Factory execution manifest", () => {
   it("fails closed when a mutable branch is supplied instead of an exact base SHA", () => {
     expect(() => buildFactoryExecutionManifest({ ...input, baseSha: "origin/main" })).toThrow(/immutable full base SHA/);
   });
+
+  it("freezes remote sandbox execution into the existing v1 manifest", () => {
+    const sandbox = {
+      resourceName: "mc-attempt-0123456789abcdef",
+      profileId: "profile-1",
+      profileDigest: "sha256:profile",
+      profileSnapshot: { schema: "factory-sandbox-profile/v1", provider: "EXE_DEV" },
+      supervisorVersion: "mission-control-supervisor/v1" as const,
+      resultContract: { schema: "factory-sandbox-result/v1" as const, independentHostValidationRequired: true as const },
+      credentialGrants: [{ kind: "INFERENCE" as const, secretValueIncluded: false as const, githubAuthority: "NONE" as const, providerAuthority: "NONE" as const }],
+      teardown: { credentialsRevokedBeforePublication: true as const, resourceAbsenceRequiredBeforePublication: true as const },
+    };
+    const result = buildFactoryExecutionManifest({
+      ...input,
+      executionBackend: "remote-sandbox",
+      sandboxProfile: { isolation: "WORKSPACE_WRITE", requiredCapabilities: ["remote-sandbox", "git-worktree"] },
+      sandbox,
+    });
+
+    expect(result.manifest.version).toBe("factory-execution-manifest/v1");
+    expect(result.manifest.harness.executionBackend).toBe("remote-sandbox");
+    expect(result.manifest.sandbox).toEqual(sandbox);
+    expect(result.digest).toMatch(/^sha256:[a-f0-9]{64}$/);
+  });
+
+  it("rejects a remote backend without a frozen Sandbox Profile contract", () => {
+    expect(() => buildFactoryExecutionManifest({ ...input, executionBackend: "remote-sandbox" })).toThrow(/frozen Sandbox Profile/);
+  });
 });

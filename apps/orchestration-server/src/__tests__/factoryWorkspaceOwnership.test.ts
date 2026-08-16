@@ -11,6 +11,8 @@ import {
   recordFactoryExecutorStarted,
   recordFactoryExecutorTerminated,
   recordFactoryPublication,
+  recordFactorySandboxStarted,
+  recordFactorySandboxTerminated,
   transferFactoryPublicationWorkspace,
   type FactoryWorkspaceOwner,
 } from "../factoryWorkspaceOwnership.js";
@@ -69,6 +71,37 @@ describe("Factory workspace ownership", () => {
       .rejects.toThrow(/does not match/);
     expect(await loadFactoryWorkspaceOwnership(fixture.owner)).toMatchObject({
       process: { state: "RUNNING", pid: 12345 },
+    });
+  });
+
+  it("uses the canonical process and workspace owner for an exact remote sandbox lifecycle", async () => {
+    const fixture = await createFixture();
+    const owner = { ...fixture.owner, sandboxId: "mc-attempt-0123456789abcdef" };
+    await ensureFactoryWorkspaceOwnership({ owner, allowCreate: true });
+    await recordFactorySandboxStarted(owner, {
+      providerResourceId: "provider-resource-1",
+      externalProcessId: "sandbox-process-1",
+    });
+    await expect(recordFactorySandboxTerminated(owner, {
+      providerResourceId: "provider-resource-other",
+      resourceName: owner.sandboxId,
+      confirmedAbsentAt: Date.now(),
+      resourceAbsent: true,
+    })).rejects.toThrow(/provider identity does not match/);
+    await recordFactorySandboxTerminated(owner, {
+      providerResourceId: "provider-resource-1",
+      resourceName: owner.sandboxId,
+      confirmedAbsentAt: Date.now(),
+      resourceAbsent: true,
+    });
+    expect(await loadFactoryWorkspaceOwnership(owner)).toMatchObject({
+      sandboxId: owner.sandboxId,
+      process: {
+        kind: "REMOTE_SANDBOX",
+        state: "TERMINATED",
+        providerResourceId: "provider-resource-1",
+        externalProcessId: "sandbox-process-1",
+      },
     });
   });
 

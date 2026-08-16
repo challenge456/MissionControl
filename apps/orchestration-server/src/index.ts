@@ -79,6 +79,9 @@ const FACTORY_WORKER_SCOPE = CODEX_FACTORY_WORKER_ENABLED
 const FACTORY_WORKER_SESSION_ID = randomUUID();
 const FACTORY_WORKER_ID = process.env.CODEX_WORKER_HOST_ID?.trim() || `orchestration:${os.hostname()}`;
 const FACTORY_WORKER_MAX_CONCURRENT_RUNS = boundedPositiveInteger(process.env.CODEX_WORKER_MAX_CONCURRENT_RUNS, 1);
+const REMOTE_SANDBOX_BACKEND_READY = process.env.CODEX_WORKER_REMOTE_SANDBOX_ENABLED === "1"
+  && Boolean(process.env.EXEDEV_IDENTITY_FILE?.trim())
+  && Boolean(process.env.OPENROUTER_MANAGEMENT_API_KEY?.trim());
 
 if (!CONVEX_URL) {
   console.error("[orchestration] CONVEX_URL is required. Set it in .env or environment.");
@@ -121,9 +124,14 @@ const factoryHostReporter = FACTORY_WORKER_SCOPE
       networkPolicyStatus: attestationStatus(process.env.CODEX_WORKER_NETWORK_POLICY_STATUS),
       secretPolicyStatus: attestationStatus(process.env.CODEX_WORKER_SECRET_POLICY_STATUS),
       hostRuntimeType: "persistent-worker",
-      executionBackends: ["persistent-worker"],
+      executionBackends: REMOTE_SANDBOX_BACKEND_READY
+        ? ["persistent-worker", "remote-sandbox"]
+        : ["persistent-worker"],
       supportedExecutors: [factoryExecutorAdapter.capabilities()],
-      sandboxCapabilities: ["git-worktree", "workspace-write", "read-only", "github-app-publication"],
+      sandboxCapabilities: [
+        "git-worktree", "workspace-write", "read-only", "github-app-publication",
+        ...(REMOTE_SANDBOX_BACKEND_READY ? ["remote-sandbox", "sandbox-provider:exe-dev"] : []),
+      ],
       onError: (error) => console.error("[orchestration] Factory host report failed:", error),
     })
   : null;

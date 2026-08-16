@@ -11,9 +11,11 @@ const mocks = vi.hoisted(() => ({
   versionOptions: {
     codeScopes: [{ _id: "scope-1", name: "Application", includePaths: ["apps/example/**"] }],
     agentVersions: [{ _id: "agent-version-1", version: 2, template: { name: "Implementer" }, modelConfig: { modelId: "gpt-5" } }],
+    sandboxProfiles: [] as any[],
   },
   createFactory: vi.fn(),
   createVersion: vi.fn(),
+  createSandboxProfile: vi.fn(),
   assess: vi.fn(),
   activate: vi.fn(),
   createPolicy: vi.fn(),
@@ -32,6 +34,7 @@ vi.mock("../../../../convex/_generated/api", () => ({
       getVersionOptions: "factory.getVersionOptions",
       create: "factory.create",
       createVersion: "factory.createVersion",
+      createSandboxProfile: "factory.createSandboxProfile",
       assessReadiness: "factory.assessReadiness",
       activate: "factory.activate",
     },
@@ -57,6 +60,7 @@ vi.mock("convex/react", () => ({
   useMutation: (mutation: string) => {
     if (mutation === "factory.create") return mocks.createFactory;
     if (mutation === "factory.createVersion") return mocks.createVersion;
+    if (mutation === "factory.createSandboxProfile") return mocks.createSandboxProfile;
     if (mutation === "factory.assessReadiness") return mocks.assess;
     if (mutation === "factory.activate") return mocks.activate;
     if (mutation === "policies.create") return mocks.createPolicy;
@@ -101,9 +105,12 @@ describe("FactoryConfigurationPanel", () => {
     mocks.versionOptions = {
       codeScopes: [{ _id: "scope-1", name: "Application", includePaths: ["apps/example/**"] }],
       agentVersions: [{ _id: "agent-version-1", version: 2, template: { name: "Implementer" }, modelConfig: { modelId: "gpt-5" } }],
+      sandboxProfiles: [],
     };
+    window.localStorage.setItem("mc.factory.experience-level", "advanced");
     mocks.createFactory.mockReset().mockResolvedValue("factory-1");
     mocks.createVersion.mockReset().mockResolvedValue("version-1");
+    mocks.createSandboxProfile.mockReset().mockResolvedValue("sandbox-profile-1");
     mocks.assess.mockReset().mockResolvedValue("assessment-1");
     mocks.activate.mockReset().mockResolvedValue({ activeVersionId: "version-1" });
     mocks.createPolicy.mockReset().mockResolvedValue({ _id: "policy-created" });
@@ -162,10 +169,59 @@ describe("FactoryConfigurationPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create configuration version" }));
 
     await waitFor(() => expect(mocks.createVersion).toHaveBeenCalledWith(expect.objectContaining({
+      executionBackend: "persistent-worker",
       codeScopeIds: ["scope-1"],
       agentBindings: [{ workflowAgentId: "implementer", agentVersionId: "agent-version-1" }],
       recovery: { pause: false, cancel: true, retry: true, resume: false },
     })));
+  });
+
+  it("uses the shared progressive Factory level instead of rendering a competing mode selector", () => {
+    window.localStorage.setItem("mc.factory.experience-level", "basic");
+    mocks.definitions = [{ _id: "factory-1", repositoryId: "repository-1", status: "DRAFT" }];
+    mocks.detail = { definition: { _id: "factory-1", status: "DRAFT" }, versions: [], assessments: [] };
+    renderPanel();
+
+    expect(screen.getByText("basic")).toBeInTheDocument();
+    expect(screen.getByLabelText("Local")).toBeInTheDocument();
+    expect(screen.getByLabelText("Isolated Sandbox")).toBeInTheDocument();
+    expect(screen.queryByRole("tablist", { name: /Factory configuration detail/i })).not.toBeInTheDocument();
+  });
+
+  it("keeps live certification outside routine Factory configuration", () => {
+    mocks.definitions = [{ _id: "factory-1", repositoryId: "repository-1", status: "DRAFT" }];
+    mocks.detail = { definition: { _id: "factory-1", status: "DRAFT" }, versions: [], assessments: [] };
+    renderPanel();
+
+    fireEvent.click(screen.getByRole("button", { name: /Create immutable exe.dev Sandbox Profile/i }));
+
+    expect(screen.queryByLabelText(/Live lifecycle explicitly certified/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Profiles created here remain blocked and Not Live Certified/i)).toBeInTheDocument();
+  });
+
+  it("freezes a dispatchable Sandbox Profile into the remote execution backend", async () => {
+    window.localStorage.setItem("mc.factory.experience-level", "intermediate");
+    mocks.definitions = [{ _id: "factory-1", repositoryId: "repository-1", status: "DRAFT" }];
+    mocks.detail = { definition: { _id: "factory-1", status: "DRAFT" }, versions: [], assessments: [] };
+    mocks.versionOptions = {
+      ...mocks.versionOptions,
+      sandboxProfiles: [{
+        _id: "sandbox-profile-1", profileKey: "exe-standard", version: 1, provider: "EXE_DEV",
+        readinessState: "DEGRADED", previewMode: "DISABLED",
+      }],
+    };
+    renderPanel();
+
+    fireEvent.click(screen.getByLabelText("Isolated Sandbox"));
+    await waitFor(() => expect(screen.getByLabelText("Sandbox Profile")).toHaveValue("sandbox-profile-1"));
+    fireEvent.click(screen.getByRole("button", { name: "Create configuration version" }));
+
+    await waitFor(() => expect(mocks.createVersion).toHaveBeenCalledWith(expect.objectContaining({
+      executionBackend: "remote-sandbox",
+      sandboxProfileId: "sandbox-profile-1",
+      riskBoundary: "YELLOW",
+    })));
+    expect(screen.getByText(/Preview · Not Live Certified/i)).toBeInTheDocument();
   });
 
   it("creates a browser-governed local baseline when policy and verifier records are missing", async () => {
