@@ -1,8 +1,12 @@
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { CodexV1ExecutorAdapter } from "../codexExecutorAdapter.js";
+import {
+  CodexV1ExecutorAdapter,
+  codexChildEnvironment,
+  codexOwnedProcessGroupExists,
+} from "../codexExecutorAdapter.js";
 
 const request = {
   executionId: "execution-1",
@@ -13,6 +17,21 @@ const request = {
   timeoutMs: 60_000,
   isolation: "WORKSPACE_WRITE" as const,
 };
+
+async function processCanExecute(pid: number): Promise<boolean> {
+  try {
+    if (process.platform === "linux") {
+      const stat = await readFile(`/proc/${pid}/stat`, "utf8");
+      const stateOffset = stat.lastIndexOf(")") + 2;
+      const state = stat[stateOffset];
+      return state !== "Z" && state !== "X";
+    }
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 describe("CodexV1ExecutorAdapter", () => {
   it("declares the frozen codex/v1 lifecycle and repository mutation capability", () => {
@@ -66,6 +85,61 @@ describe("CodexV1ExecutorAdapter", () => {
     await expect(execution).resolves.toMatchObject({ status: "CANCELED" });
   });
 
+  it("passes only an explicit non-control-plane environment to Codex", () => {
+    const child = codexChildEnvironment({
+      PATH: "/usr/bin",
+      HOME: "/tmp/home",
+      CODEX_HOME: "/tmp/codex-home",
+      MISSION_CONTROL_SERVICE_COMMAND_SECRET: "service-secret",
+      GITHUB_APP_PRIVATE_KEY: "github-secret",
+      CONVEX_SERVICE_AUTH_TOKEN: "convex-secret",
+      OPENAI_API_KEY: "provider-secret",
+    });
+    expect(child).toMatchObject({ PATH: "/usr/bin", HOME: "/tmp/home", CODEX_HOME: "/tmp/codex-home", CI: "true" });
+    expect(child).not.toHaveProperty("MISSION_CONTROL_SERVICE_COMMAND_SECRET");
+    expect(child).not.toHaveProperty("GITHUB_APP_PRIVATE_KEY");
+    expect(child).not.toHaveProperty("CONVEX_SERVICE_AUTH_TOKEN");
+    expect(child).not.toHaveProperty("OPENAI_API_KEY");
+  });
+
+  it.skipIf(process.platform === "win32")("cancels the dedicated owned executor process group", async () => {
+    const repositoryRoot = await mkdtemp(path.join(tmpdir(), "mc-codex-process-group-"));
+    const executable = path.join(repositoryRoot, "codex-tree-stub.sh");
+    const childPidPath = path.join(repositoryRoot, "child.pid");
+    await writeFile(executable, `#!/bin/sh
+sleep 60 &
+printf '%s' "$!" > "${childPidPath}"
+wait
+`);
+    await chmod(executable, 0o700);
+
+    try {
+      const adapter = new CodexV1ExecutorAdapter(executable);
+      const started = vi.fn();
+      const terminated = vi.fn();
+      const execution = adapter.execute({
+        ...request,
+        repositoryRoot,
+        workingDirectory: repositoryRoot,
+      }, () => undefined, undefined, { started, terminated });
+      await vi.waitFor(() => expect(access(childPidPath)).resolves.toBeUndefined());
+      const childPid = Number(await readFile(childPidPath, "utf8"));
+      expect(Number.isSafeInteger(childPid)).toBe(true);
+      const processGroupId = started.mock.calls[0][0].pid;
+      expect(codexOwnedProcessGroupExists(processGroupId)).toBe(true);
+      expect(await processCanExecute(childPid)).toBe(true);
+      expect(await adapter.cancel(request.executionId)).toBe(true);
+      await expect(execution).resolves.toMatchObject({ status: "CANCELED" });
+      expect(terminated).toHaveBeenCalledWith(expect.objectContaining({ pid: processGroupId }));
+      await vi.waitFor(async () => {
+        expect(await processCanExecute(processGroupId)).toBe(false);
+        expect(await processCanExecute(childPid)).toBe(false);
+      }, { timeout: 7_000 });
+    } finally {
+      await rm(repositoryRoot, { recursive: true, force: true });
+    }
+  }, 15_000);
+
   it("closes the Codex CLI stdin pipe so an explicit prompt can start", async () => {
     const repositoryRoot = await mkdtemp(path.join(tmpdir(), "mc-codex-stdin-"));
     const executable = path.join(repositoryRoot, "codex-stub.sh");
@@ -87,17 +161,23 @@ printf '%s' 'Codex started after EOF.' > "$output"
 
     try {
       const adapter = new CodexV1ExecutorAdapter(executable);
+      const started = vi.fn();
+      const terminated = vi.fn();
       const result = await adapter.execute({
         ...request,
         repositoryRoot,
         workingDirectory: repositoryRoot,
         timeoutMs: 2_000,
-      }, () => undefined);
+      }, () => undefined, undefined, { started, terminated });
 
       expect(result).toMatchObject({
         status: "COMPLETED",
         output: "Codex started after EOF.",
       });
+      expect(started).toHaveBeenCalledOnce();
+      expect(terminated).toHaveBeenCalledOnce();
+      expect(terminated.mock.calls[0][0].pid).toBe(started.mock.calls[0][0].pid);
+      expect(terminated.mock.calls[0][0].exitCode).toBe(0);
     } finally {
       await rm(repositoryRoot, { recursive: true, force: true });
     }

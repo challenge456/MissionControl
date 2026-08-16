@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -60,7 +60,7 @@ describe("FactoryAttemptWorker verification-first lifecycle", () => {
   it("turns governed issue intent into a verified, evidence-linked pull request", async () => {
     const fixture = await runFixture("VERIFIED");
 
-    await vi.waitFor(() => expect(fixture.worker.status().completedCount).toBe(1));
+    await vi.waitFor(() => expect(fixture.worker.status()).toEqual(expect.objectContaining({ completedCount: 1, lastError: null })));
 
     expect(fixture.createPullRequest).toHaveBeenCalledOnce();
     const pullRequestInput = fixture.createPullRequest.mock.calls[0][0];
@@ -83,6 +83,22 @@ describe("FactoryAttemptWorker verification-first lifecycle", () => {
       changedFiles: ["src/feature.ts"],
     });
     expect(fixture.reports.at(-1)?.terminal).toEqual({ status: "COMPLETED" });
+    await fixture.worker.stop();
+  });
+
+  it("completes the durable worker golden path and cleans only its proven worktree", async () => {
+    const fixture = await runFixture("VERIFIED", { durable: true });
+
+    await vi.waitFor(() => expect(fixture.worker.status()).toMatchObject({ completedCount: 1, failedCount: 0 }));
+    expect(fixture.reports.find((packet) => packet.artifacts?.some((artifact: any) => artifact.artifactType === "PULL_REQUEST")))
+      .toBeTruthy();
+    expect(fixture.reports.at(-1)?.events).toEqual([
+      expect.objectContaining({
+        metadata: expect.objectContaining({ lifecycleType: "WORKSPACE_CLEANUP_COMPLETED" }),
+      }),
+    ]);
+    expect(fixture.reports.at(-1)?.terminal).toEqual({ status: "COMPLETED" });
+    await expect(access(fixture.worktree)).rejects.toThrow();
     await fixture.worker.stop();
   });
 
@@ -206,7 +222,11 @@ describe("FactoryAttemptWorker verification-first lifecycle", () => {
       executionManifest: {
         ...executionManifest(),
         causation: { workflowRunId: run._id, workOrderRevisionNumber: 1 },
-        harness: { ...executionManifest().harness, isolation: "DETACHED_READ_ONLY" },
+        harness: {
+          ...executionManifest().harness,
+          isolation: "READ_ONLY",
+          requiredCapabilities: ["git-worktree", "read-only"],
+        },
         workOrderSpecification: {
           ...executionManifest().workOrderSpecification,
           verificationContract: {
@@ -277,7 +297,7 @@ function verifiedSha() {
 
 async function runFixture(
   serverVerdict: "VERIFIED" | "NOT_VERIFIED" | "REQUIRES_HUMAN_REVIEW",
-  options: { attempt?: number; dirtyVerification?: boolean } = {},
+  options: { attempt?: number; dirtyVerification?: boolean; durable?: boolean } = {},
 ) {
   const attempt = options.attempt ?? 1;
   const checkoutRoot = await mkdtemp(path.join(tmpdir(), "mc-verification-first-worker-"));
@@ -285,10 +305,12 @@ async function runFixture(
   await git(checkoutRoot, ["init", "-b", "main"]);
   await git(checkoutRoot, ["config", "user.name", "Mission Control Test"]);
   await git(checkoutRoot, ["config", "user.email", "factory@example.test"]);
+  await git(checkoutRoot, ["remote", "add", "origin", "https://github.com/sellerfi/mission-control-fixture.git"]);
   await mkdir(path.join(checkoutRoot, "src"), { recursive: true });
   await writeFile(path.join(checkoutRoot, "src", "feature.ts"), "export const verified = false;\n");
   await git(checkoutRoot, ["add", "."]);
   await git(checkoutRoot, ["commit", "-m", "Initial fixture"]);
+  const baseSha = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: checkoutRoot })).stdout.trim();
 
   const worktree = path.join(checkoutRoot, ".mission-control", "worktrees", `attempt-${attempt}`);
   const reports: any[] = [];
@@ -315,7 +337,7 @@ async function runFixture(
     repository: "sellerfi/mission-control-fixture",
     providerRepositoryId: "101",
     installation: { appId: "202", installationId: "303" },
-    executionManifest: executionManifest({ attempt, dirtyVerification: options.dirtyVerification }),
+    executionManifest: executionManifest({ attempt, dirtyVerification: options.dirtyVerification, baseSha }),
   };
   let lifecycle: "INITIAL" | "PAUSED" | "RESUME" | "COMPLETED" = "INITIAL";
   let verifiedCandidate: { sourceRevision: string; candidateRevision: string } | null = null;
@@ -335,6 +357,7 @@ async function runFixture(
         return await authorizePublication(payload);
       }
       if (!payload.packet) {
+        if (payload.workerGeneration) return { renewed: true };
         if (lifecycle === "RESUME") {
           if (!verifiedCandidate) throw new Error("Missing verified candidate fixture state");
           return {
@@ -352,7 +375,19 @@ async function runFixture(
             },
           };
         }
-        return claim;
+        return options.durable ? {
+          ...claim,
+          lease: {
+            leaseId: payload.leaseId,
+            ownerId: "factory-service",
+            workerId: "worker-1",
+            workerSessionId: "session-1",
+            workerGeneration: 1,
+            claimedAt: Date.now(),
+            heartbeatAt: Date.now(),
+            expiresAt: Date.now() + 60_000,
+          },
+        } : claim;
       }
       reports.push(payload.packet);
       if (payload.packet.verification) {
@@ -378,11 +413,17 @@ async function runFixture(
       return { reported: true };
     }),
   } as any;
-  const executeCodex = vi.fn(async ({ cwd }: { cwd: string }) => {
+  const executeCodex = vi.fn(async ({ cwd, onSpawn, onExit }: {
+    cwd: string;
+    onSpawn?: (pid: number) => Promise<void> | void;
+    onExit?: (pid: number, exitCode?: number) => Promise<void> | void;
+  }) => {
+    await onSpawn?.(4242);
     await writeFile(
       path.join(cwd, "src", "feature.ts"),
       `export const verified = true; // corrected Attempt ${attempt}\n`,
     );
+    await onExit?.(4242, 0);
     return {
       exitCode: 0,
       output: JSON.stringify(completedFactoryResult()),
@@ -391,7 +432,7 @@ async function runFixture(
   const adapter = new CodexV1ExecutorAdapter("codex-fixture", executeCodex);
   const createPullRequest = vi.fn(async (input: Parameters<FactoryAttemptWorkerDependencies["createOrReusePullRequest"]>[0]) => ({
     number: 42,
-    url: "https://example.test/sellerfi/mission-control-fixture/pull/42",
+    url: "https://github.com/sellerfi/mission-control-fixture/pull/42",
     nodeId: "PR_fixture",
     headSha: input.headSha,
     draft: input.draft === true,
@@ -415,7 +456,15 @@ async function runFixture(
     pushFactoryBranch: pushFactoryBranchMock as typeof pushFactoryBranch,
     createOrReusePullRequest: createPullRequest,
   };
-  const createRestartedWorker = () => new FactoryAttemptWorker(client, adapter, true, 60_000, dependencies);
+  const createRestartedWorker = () => new FactoryAttemptWorker(
+    client,
+    adapter,
+    true,
+    60_000,
+    dependencies,
+    undefined,
+    options.durable ? { workerId: "worker-1", sessionId: "session-1", maxConcurrentRuns: 1 } : undefined,
+  );
   const worker = createRestartedWorker();
 
   await worker.tick();
@@ -428,6 +477,7 @@ async function runFixture(
     authorizePublication,
     pushFactoryBranch: pushFactoryBranchMock,
     createRestartedWorker,
+    worktree,
     resumeAfterApproval: () => { lifecycle = "RESUME"; },
   };
 }
@@ -445,7 +495,7 @@ function completedFactoryResult() {
   };
 }
 
-function executionManifest(options: { attempt?: number; dirtyVerification?: boolean } = {}) {
+function executionManifest(options: { attempt?: number; dirtyVerification?: boolean; baseSha?: string } = {}) {
   return {
     version: "factory-execution-manifest/v1",
     causation: { workflowRunId: `workflow-run-${options.attempt ?? 1}`, workOrderRevisionNumber: 1, sourceIssue: "sellerfi/mission-control-fixture#17" },
@@ -453,10 +503,12 @@ function executionManifest(options: { attempt?: number; dirtyVerification?: bool
       adapter: "codex",
       version: "v1",
       isolation: "WORKSPACE_WRITE",
+      executionBackend: "persistent-worker",
+      requiredCapabilities: ["git-worktree", "workspace-write"],
       pullRequestAuthority: "CONTROL_PLANE_ONLY",
       timeoutMs: 60_000,
     },
-    repository: { allowedPaths: ["src/**"], excludedPaths: [] },
+    repository: { baseSha: options.baseSha ?? "a".repeat(40), allowedPaths: ["src/**"], excludedPaths: [] },
     workflow: { steps: [] },
     compiledPrompt: "Implement the approved issue intent within the frozen Work Order contract.",
     intent: { title: "Governed issue intent becomes a verified pull request" },

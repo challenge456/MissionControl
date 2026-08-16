@@ -1112,10 +1112,13 @@ export default defineSchema({
   workspaceHostBindings: defineTable({
     projectId: v.id("projects"),
     hostId: v.string(),
+    repositoryId: v.optional(v.id("workspaceRepositories")),
     repository: v.string(),
     checkoutRoot: v.string(),
     observedBranch: v.optional(v.string()),
     observedCommit: v.optional(v.string()),
+    baseBranch: v.optional(v.string()),
+    baseCommit: v.optional(v.string()),
     dirty: v.boolean(),
     runtime: v.optional(v.string()),
     approvedModelIds: v.optional(v.array(v.string())),
@@ -1124,6 +1127,32 @@ export default defineSchema({
     capacity: v.optional(v.object({
       maxConcurrentRuns: v.number(),
       currentRuns: v.number(),
+    })),
+    workerRuntime: v.optional(v.object({
+      sessionId: v.string(),
+      generation: v.number(),
+      hostRuntimeType: v.string(),
+      executionBackends: v.array(v.string()),
+      supportedExecutors: v.array(v.object({
+        adapter: v.string(),
+        version: v.string(),
+        supportsCancel: v.boolean(),
+        supportsResume: v.boolean(),
+        isolationModes: v.array(v.union(v.literal("READ_ONLY"), v.literal("WORKSPACE_WRITE"))),
+      })),
+      sandboxCapabilities: v.array(v.string()),
+      repositoryAccess: v.array(v.object({
+        repositoryId: v.id("workspaceRepositories"),
+        access: v.union(v.literal("READ"), v.literal("READ_WRITE")),
+      })),
+      readiness: v.union(
+        v.literal("STARTING"),
+        v.literal("READY"),
+        v.literal("DRAINING"),
+        v.literal("BLOCKED")
+      ),
+      draining: v.boolean(),
+      lastHeartbeatAt: v.number(),
     })),
     attestedAt: v.optional(v.number()),
     status: v.union(
@@ -3957,10 +3986,22 @@ export default defineSchema({
     lease: v.optional(v.object({
       leaseId: v.string(),
       ownerId: v.string(),
+      workerId: v.optional(v.string()),
+      workerSessionId: v.optional(v.string()),
+      workerGeneration: v.optional(v.number()),
       claimedAt: v.number(),
       heartbeatAt: v.number(),
       expiresAt: v.number(),
     })),
+    runtimeDisposition: v.optional(v.union(
+      v.literal("RETRYABLE"),
+      v.literal("LOST"),
+      v.literal("CANCELLED"),
+      v.literal("FAILED"),
+      v.literal("RECOVERABLE")
+    )),
+    runtimeDispositionReason: v.optional(v.string()),
+    runtimeReconciledAt: v.optional(v.number()),
     
     // Parent task
     parentTaskId: v.optional(v.id("tasks")),
