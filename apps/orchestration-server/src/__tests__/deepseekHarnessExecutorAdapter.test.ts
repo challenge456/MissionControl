@@ -65,7 +65,7 @@ describe("DeepSeekHarnessExecutorAdapter", () => {
     try {
       const adapter = new DeepSeekHarnessExecutorAdapter({ upstreamRoot: root });
       expect(adapter.validateConfiguration(request(root))).toContainEqual(expect.objectContaining({ field: "adapter" }));
-      expect(adapter.capabilityManifest().identity).toMatchObject({
+      expect(adapter.capabilities().capabilityManifest?.identity).toMatchObject({
         harnessVersion: "0.1.0-rc.5",
         harnessCommit: "47f943859bef60e4160492346772ded9b24f765a",
       });

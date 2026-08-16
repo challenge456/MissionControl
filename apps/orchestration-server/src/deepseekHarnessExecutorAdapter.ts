@@ -12,7 +12,6 @@ import type {
   ExecutorHealth,
   ExecutorRequest,
   ExecutorResult,
-  HarnessCapabilityManifest,
   HarnessExecutionContext,
   HarnessExecutorAdapter,
   HarnessNormalizedResult,
@@ -113,6 +112,7 @@ export class DeepSeekHarnessExecutorAdapter implements HarnessExecutorAdapter<De
       version: ADAPTER_VERSION,
       displayName: "DeepSeek Harness",
       provider: EXPECTED_PROVIDER,
+      capabilityManifest: DEEPSEEK_V1_HARNESS_MANIFEST,
       executionBackends: ["persistent-worker"],
       authority: NO_HARNESS_AUTHORITY,
       supportsCancel: true,
@@ -130,10 +130,6 @@ export class DeepSeekHarnessExecutorAdapter implements HarnessExecutorAdapter<De
         "EXECUTION_CANCELED",
       ],
     };
-  }
-
-  capabilityManifest(): HarnessCapabilityManifest {
-    return DEEPSEEK_V1_HARNESS_MANIFEST;
   }
 
   validateConfiguration(request: ExecutorRequest): ExecutorConfigurationIssue[] {
@@ -304,12 +300,12 @@ export class DeepSeekHarnessExecutorAdapter implements HarnessExecutorAdapter<De
       schemaVersion: "harness-result/v1",
       executionId: handle.prepared.request.executionId,
       status,
-      harness: this.capabilityManifest().identity,
+      harness: DEEPSEEK_V1_HARNESS_MANIFEST.identity,
       provenance: {
         provider: handle.prepared.request.provider ?? null,
         model: handle.prepared.request.model ?? null,
-        capabilityManifestSha256: harnessCapabilityManifestDigest(this.capabilityManifest()),
-        effectiveConfigSha256: this.capabilityManifest().effectiveConfigSha256,
+        capabilityManifestSha256: harnessCapabilityManifestDigest(DEEPSEEK_V1_HARNESS_MANIFEST),
+        effectiveConfigSha256: DEEPSEEK_V1_HARNESS_MANIFEST.effectiveConfigSha256,
         executableSha256: handle.prepared.installation.executableSha256,
         requestSha256: handle.prepared.requestSha256,
         providerMetadata: boundedProviderMetadata({

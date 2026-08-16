@@ -38,6 +38,22 @@ The older durable Codex worker remains compatible and calls the same lifecycle
 runner, but new governed Factory dispatch uses the exact registry and frozen
 manifest admission path.
 
+## Reconciliation with merged PR #112
+
+PR #112 remains the lifecycle authority. Phase 2 keeps its one
+`HarnessExecutorAdapter`, one `runHarnessExecution` runner, and one
+`HarnessAdapterRegistry`. The existing `capabilities()` return is extended with
+the optional adapter-effective manifest; Phase 2 does not add a second
+capability-discovery method or adapter framework. Real governed adapters require
+that manifest, while the optional field keeps deterministic and external test
+adapters compatible with the merged contract.
+
+The reconciliation removed unused parallel request, event, estimate, health,
+process-observer, and configuration-issue types carried from the earlier branch;
+removed duplicate registry `get`/`has` aliases and the unused Codex recovery
+alias; and made DeepSeek-only worker enablement start the canonical worker loop.
+No duplicate or unrelated file remains in the Phase 2 delta.
+
 ## Generic contract
 
 `HarnessExecutorAdapter<TPrepared, THandle>` retains the already-merged methods:

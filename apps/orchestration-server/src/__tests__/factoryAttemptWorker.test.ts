@@ -570,8 +570,7 @@ function withHarnessIdentity(
 ) {
   const manifest = fixtureHarnessManifest(identity);
   return {
-    capabilities: () => ({ ...adapter.capabilities(), ...identity }),
-    capabilityManifest: () => manifest,
+    capabilities: () => ({ ...adapter.capabilities(), ...identity, capabilityManifest: manifest }),
     validateConfiguration: () => [],
     estimate: adapter.estimate.bind(adapter),
     prepare: (request: any, context: any) => adapter.prepare({ ...request, provider: "openai" }, context),

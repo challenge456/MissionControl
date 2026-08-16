@@ -55,7 +55,7 @@ export class HarnessAdapterRegistry {
     for (const adapter of adapters) {
       const capabilities = snapshotCapabilities(adapter.capabilities());
       validateCapabilities(capabilities);
-      const manifest = adapter.capabilityManifest?.();
+      const manifest = capabilities.capabilityManifest;
       if (manifest) validateManifest(capabilities, manifest);
       const key = bindingKey(capabilities);
       if (this.adapters.has(key)) throw new Error(`Duplicate harness adapter registration: ${key}.`);
@@ -85,14 +85,6 @@ export class HarnessAdapterRegistry {
     const adapter = this.resolve(binding);
     if (!adapter) throw new Error(`Worker does not provide harness adapter ${bindingKey(binding)}.`);
     return adapter;
-  }
-
-  get(adapter: string, version: string): HarnessRuntimeAdapter {
-    return this.require({ adapter, version });
-  }
-
-  has(adapter: string, version: string): boolean {
-    return this.supports({ adapter, version });
   }
 
   supports(binding: HarnessAdapterBinding, backend?: HarnessExecutionBackend): boolean {
@@ -192,6 +184,9 @@ function validateManifest(capabilities: HarnessExecutorCapabilities, manifest: H
 function snapshotCapabilities(capabilities: HarnessExecutorCapabilities): HarnessExecutorCapabilities {
   return {
     ...capabilities,
+    capabilityManifest: capabilities.capabilityManifest
+      ? snapshotManifest(capabilities.capabilityManifest)
+      : undefined,
     executionBackends: [...capabilities.executionBackends],
     authority: { ...capabilities.authority },
     isolationModes: [...capabilities.isolationModes],

@@ -114,7 +114,7 @@ const factoryHarnessRegistry = new HarnessAdapterRegistry(
 const factoryAttemptWorker = new FactoryAttemptWorker(
   client,
   factoryHarnessRegistry,
-  CODEX_FACTORY_WORKER_ENABLED || LEGACY_FACTORY_WORKER_ENABLED,
+  DURABLE_FACTORY_WORKER_ENABLED || LEGACY_FACTORY_WORKER_ENABLED,
   undefined,
   undefined,
   FACTORY_WORKER_SCOPE,

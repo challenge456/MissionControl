@@ -11,7 +11,6 @@ import type {
   ExecutorHealth,
   ExecutorRequest,
   ExecutorResult,
-  HarnessCapabilityManifest,
   HarnessExecutionContext,
   HarnessExecutorAdapter,
   HarnessNormalizedResult,
@@ -119,6 +118,7 @@ export class CodexV1ExecutorAdapter implements HarnessExecutorAdapter<CodexPrepa
       version: "v1",
       displayName: "Codex CLI",
       provider: "openai",
+      capabilityManifest: CODEX_V1_HARNESS_MANIFEST,
       executionBackends: ["persistent-worker", "remote-sandbox"],
       authority: NO_HARNESS_AUTHORITY,
       supportsCancel: true,
@@ -135,10 +135,6 @@ export class CodexV1ExecutorAdapter implements HarnessExecutorAdapter<CodexPrepa
         "EXECUTION_CANCELED",
       ],
     };
-  }
-
-  capabilityManifest(): HarnessCapabilityManifest {
-    return CODEX_V1_HARNESS_MANIFEST;
   }
 
   validateConfiguration(request: ExecutorRequest): ExecutorConfigurationIssue[] {
@@ -328,12 +324,12 @@ export class CodexV1ExecutorAdapter implements HarnessExecutorAdapter<CodexPrepa
       schemaVersion: "harness-result/v1",
       executionId: handle.prepared.request.executionId,
       status: normalizedStatus,
-      harness: this.capabilityManifest().identity,
+      harness: CODEX_V1_HARNESS_MANIFEST.identity,
       provenance: {
         provider: handle.prepared.request.provider ?? null,
         model: handle.prepared.request.model ?? null,
-        capabilityManifestSha256: harnessCapabilityManifestDigest(this.capabilityManifest()),
-        effectiveConfigSha256: this.capabilityManifest().effectiveConfigSha256,
+        capabilityManifestSha256: harnessCapabilityManifestDigest(CODEX_V1_HARNESS_MANIFEST),
+        effectiveConfigSha256: CODEX_V1_HARNESS_MANIFEST.effectiveConfigSha256,
         executableSha256: handle.prepared.executableSha256,
         requestSha256: handle.prepared.requestSha256,
         providerMetadata: boundedProviderMetadata({

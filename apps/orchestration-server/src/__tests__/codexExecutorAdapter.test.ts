@@ -70,7 +70,7 @@ async function processCanExecute(pid: number): Promise<boolean> {
 describe("CodexV1ExecutorAdapter", () => {
   it("declares the frozen codex/v1 lifecycle and repository mutation capability", () => {
     const adapter = new CodexV1ExecutorAdapter("/tmp/codex", vi.fn() as any);
-    expect(adapter.capabilityManifest()).toMatchObject({
+    expect(adapter.capabilities().capabilityManifest).toMatchObject({
       identity: { adapterId: "codex", adapterVersion: "v1", harnessVersion: "0.146.0" },
       cancellation: { support: "PARTIAL", idempotentCleanup: true },
       filesystem: { write: "SUPPORTED" },

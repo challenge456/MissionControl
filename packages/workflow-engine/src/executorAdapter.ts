@@ -45,12 +45,13 @@ export interface HarnessExecutorCapabilities {
   version: string;
   displayName: string;
   provider?: string;
+  capabilityManifest?: HarnessCapabilityManifest;
   executionBackends: HarnessExecutionBackend[];
   authority: HarnessAuthorityProfile;
   supportsCancel: boolean;
   supportsResume: boolean;
   supportsRepositoryMutation: boolean;
-  isolationModes: Array<"READ_ONLY" | "WORKSPACE_WRITE">;
+  isolationModes: IsolationMode[];
   emittedEvents: ExecutorEventType[];
 }
 
@@ -75,7 +76,7 @@ export interface ExecutorRequest {
   allowedPaths: string[];
   deniedPaths?: string[];
   timeoutMs: number;
-  isolation: "READ_ONLY" | "WORKSPACE_WRITE";
+  isolation: IsolationMode;
   outputDirectory?: string;
 }
 
@@ -229,40 +230,6 @@ export interface HarnessCapabilityRequirement {
   minimumSupport: "PARTIAL" | "SUPPORTED";
 }
 
-export interface HarnessConfigurationIssue {
-  field: string;
-  message: string;
-}
-
-export interface HarnessEstimate {
-  estimatedCostUsd: number | null;
-  estimatedRuntimeMinutes: number | null;
-  confidence: "LOW" | "MEDIUM" | "HIGH";
-}
-
-export interface HarnessExecutionRequest {
-  executionId: string;
-  repositoryRoot: string;
-  workingDirectory: string;
-  task: string;
-  allowedPaths: string[];
-  deniedPaths: string[];
-  timeoutMs: number;
-  isolation: IsolationMode;
-  provider: string | null;
-  model: string | null;
-  outputDirectory?: string;
-}
-
-export interface HarnessEvent {
-  executionId: string;
-  sequence: number;
-  type: ExecutorEventType;
-  occurredAt: number;
-  summary: string;
-  metadata?: Record<string, unknown>;
-}
-
 export interface HarnessChangedFile {
   path: string;
   status: string;
@@ -299,7 +266,7 @@ export interface HarnessNormalizedResult {
     scopeViolations: string[];
   };
   events: {
-    items: HarnessEvent[];
+    items: ExecutorEvent[];
     toolCalls: number | null;
     modelRequests: number | null;
     retries: number | null;
@@ -331,19 +298,6 @@ export interface HarnessNormalizedResult {
   };
 }
 
-export interface HarnessHealth {
-  status: "READY" | "DEGRADED" | "UNAVAILABLE";
-  checkedAt: number;
-  adapter: string;
-  version: string;
-  details?: string;
-}
-
-export interface HarnessProcessObserver {
-  started(process: { pid: number; startedAt: number }): Promise<void> | void;
-  terminated(process: { pid: number; terminatedAt: number; exitCode?: number }): Promise<void> | void;
-}
-
 export interface HarnessExecutionContext {
   emit: (event: ExecutorEvent) => Promise<void> | void;
   signal?: AbortSignal;
@@ -352,7 +306,6 @@ export interface HarnessExecutionContext {
 
 export interface HarnessExecutorAdapter<TPrepared = unknown, THandle = unknown> {
   capabilities(): HarnessExecutorCapabilities;
-  capabilityManifest?(): HarnessCapabilityManifest;
   validateConfiguration(request: ExecutorRequest): ExecutorConfigurationIssue[];
   estimate(request: ExecutorRequest): Promise<ExecutorEstimate>;
   prepare(
@@ -406,7 +359,7 @@ export function harnessCapabilityManifestDigest(manifest: HarnessCapabilityManif
   return `sha256:${canonicalHash(manifest)}`;
 }
 
-export function harnessExecutionRequestDigest(request: HarnessExecutionRequest | ExecutorRequest): string {
+export function harnessExecutionRequestDigest(request: ExecutorRequest): string {
   return `sha256:${canonicalHash(request)}`;
 }
 
