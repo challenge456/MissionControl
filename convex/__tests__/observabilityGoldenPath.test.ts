@@ -14,6 +14,7 @@ import {
   createExperiment,
   getWorkspaceDashboard,
   promoteTraceToDataset,
+  recordExperimentOutcome,
   runDurationEvaluator,
 } from "../observability";
 
@@ -288,5 +289,47 @@ describe("observability golden path", () => {
       values: ["safe"],
       nested: { token: "[REDACTED]", message: "authorization=[REDACTED]", log: "provider returned [REDACTED]" },
     });
+  });
+
+  it("records bounded human experiment outcomes without a significance claim", async () => {
+    const previousDemoFlag = process.env.MC_ALLOW_ANONYMOUS_COMPANY_CONTEXT;
+    process.env.MC_ALLOW_ANONYMOUS_COMPANY_CONTEXT = "1";
+    try {
+      const tenant = { _id: "tenant-1", active: true };
+      const project = { _id: "project-1", tenantId: tenant._id, name: "Factory", slug: "factory" };
+      const experiment = {
+        _id: "experiment-1", tenantId: tenant._id, projectId: project._id,
+        datasetId: "dataset-1", datasetVersion: 2, name: "Learning comparison",
+        status: "DRAFT", evalDefinitionIds: ["eval-1"], createdBy: "operator", createdAt: 1,
+      };
+      const variants = [
+        { _id: "variant-1", projectId: project._id, experimentId: experiment._id, name: "Current baseline", sampleSize: 0, createdAt: 1 },
+        { _id: "variant-2", projectId: project._id, experimentId: experiment._id, name: "Proposed candidate", sampleSize: 0, createdAt: 1 },
+      ];
+      const { db, tables } = createDb({ tenants: [tenant], projects: [project], experiments: [experiment], experimentVariants: variants, activities: [] });
+      const ctx = { db, auth: { getUserIdentity: async () => null } } as any;
+
+      await functionHandler(recordExperimentOutcome)(ctx, {
+        experimentId: experiment._id,
+        variants: [
+          { variantId: variants[0]._id, sampleSize: 8, successCount: 5, averageDurationMs: 12_000, averageCostUsd: 3 },
+          { variantId: variants[1]._id, sampleSize: 8, successCount: 7, averageDurationMs: 9_000, averageCostUsd: 2 },
+        ],
+      });
+
+      expect(experiment).toMatchObject({ status: "COMPLETED", metadata: { statisticalSignificanceClaimed: false } });
+      expect(variants[1]).toMatchObject({ sampleSize: 8, metrics: { successRate: 0.875, averageCostUsd: 2 } });
+      expect(tables.activities[0]).toMatchObject({ action: "EVAL_EXPERIMENT_OUTCOME_RECORDED", actorType: "HUMAN" });
+      await expect(functionHandler(recordExperimentOutcome)(ctx, {
+        experimentId: experiment._id,
+        variants: [
+          { variantId: variants[0]._id, sampleSize: 1, successCount: 1 },
+          { variantId: variants[1]._id, sampleSize: 1, successCount: 1 },
+        ],
+      })).rejects.toThrow(/cannot be overwritten/);
+    } finally {
+      if (previousDemoFlag === undefined) delete process.env.MC_ALLOW_ANONYMOUS_COMPANY_CONTEXT;
+      else process.env.MC_ALLOW_ANONYMOUS_COMPANY_CONTEXT = previousDemoFlag;
+    }
   });
 });

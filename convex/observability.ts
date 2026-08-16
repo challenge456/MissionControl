@@ -624,6 +624,89 @@ export const createExperiment = mutation({
   },
 });
 
+export const recordExperimentOutcome = mutation({
+  args: {
+    experimentId: v.id("experiments"),
+    variants: v.array(v.object({
+      variantId: v.id("experimentVariants"),
+      sampleSize: v.number(),
+      successCount: v.number(),
+      averageDurationMs: v.optional(v.number()),
+      averageCostUsd: v.optional(v.number()),
+      averageScore: v.optional(v.number()),
+    })),
+  },
+  handler: async (ctx, args) => {
+    const experiment = await ctx.db.get(args.experimentId);
+    if (!experiment) throw new Error("Experiment not found.");
+    const access = await requireWorkspacePermission(ctx, experiment.projectId, FACTORY_PERMISSIONS.IMPROVE);
+    if (experiment.status === "COMPLETED" || experiment.status === "CANCELED") {
+      throw new Error("Completed or canceled experiments cannot be overwritten.");
+    }
+    const variants = await ctx.db.query("experimentVariants")
+      .withIndex("by_experiment", (q) => q.eq("experimentId", experiment._id))
+      .collect();
+    const resultsById = new Map(args.variants.map((result) => [String(result.variantId), result]));
+    if (variants.length !== 2 || args.variants.length !== 2 || new Set(args.variants.map((item) => String(item.variantId))).size !== 2) {
+      throw new Error("V1 experiment outcomes require exactly the two attributed variants.");
+    }
+    const finiteMetric = (value: number | undefined, label: string, maximum?: number) => {
+      if (value === undefined) return;
+      if (!Number.isFinite(value) || value < 0 || (maximum !== undefined && value > maximum)) {
+        throw new Error(`${label} is outside the supported range.`);
+      }
+    };
+    for (const variant of variants) {
+      const result = resultsById.get(String(variant._id));
+      if (!result) throw new Error("Experiment outcomes must match the attributed variants.");
+      if (!Number.isInteger(result.sampleSize) || result.sampleSize < 1 || result.sampleSize > 10_000) {
+        throw new Error("Experiment sample size must be an integer between 1 and 10,000.");
+      }
+      if (!Number.isInteger(result.successCount) || result.successCount < 0 || result.successCount > result.sampleSize) {
+        throw new Error("Experiment success count must be an integer within the sample size.");
+      }
+      finiteMetric(result.averageDurationMs, "Average duration");
+      finiteMetric(result.averageCostUsd, "Average cost");
+      finiteMetric(result.averageScore, "Average score", 1);
+    }
+    const now = Date.now();
+    for (const variant of variants) {
+      const result = resultsById.get(String(variant._id))!;
+      await ctx.db.patch(variant._id, {
+        sampleSize: result.sampleSize,
+        metrics: {
+          successRate: result.successCount / result.sampleSize,
+          averageDurationMs: result.averageDurationMs,
+          averageCostUsd: result.averageCostUsd,
+          averageScore: result.averageScore,
+        },
+        completedAt: now,
+      });
+    }
+    await ctx.db.patch(experiment._id, {
+      status: "COMPLETED",
+      completedAt: now,
+      metadata: {
+        ...objectRecord(experiment.metadata),
+        outcomeSource: "HUMAN_RECORDED_AGGREGATE",
+        statisticalSignificanceClaimed: false,
+      },
+    });
+    await recordActivity(ctx, {
+      tenantId: experiment.tenantId,
+      projectId: experiment.projectId,
+      actorType: "HUMAN",
+      actorId: access.actorId,
+      action: "EVAL_EXPERIMENT_OUTCOME_RECORDED",
+      description: `Recorded bounded aggregate outcomes for ${experiment.name}`,
+      targetType: "EVAL_EXPERIMENT",
+      targetId: String(experiment._id),
+      metadata: { variants: args.variants, statisticalSignificanceClaimed: false },
+    });
+    return { experimentId: experiment._id, status: "COMPLETED" as const };
+  },
+});
+
 export const ensureAttemptTraceInternal = internalMutation({
   args: { workflowRunId: v.id("workflowRuns") },
   handler: async (ctx, args) => {

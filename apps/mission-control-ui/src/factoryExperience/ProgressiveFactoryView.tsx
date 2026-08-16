@@ -46,6 +46,12 @@ import {
   type FactoryPhaseProjection,
 } from "./phaseProjection";
 import { useFactoryExperienceLevel } from "./useFactoryExperienceLevel";
+import { FactoryLearningView } from "./FactoryLearningView";
+import {
+  parseFactorySurface,
+  visibleFactorySurfaces,
+  type FactorySurface,
+} from "./factoryLearningModel";
 
 type Dashboard = FunctionReturnType<
   typeof api.observability.getWorkspaceDashboard
@@ -71,6 +77,11 @@ export function ProgressiveFactoryView({
   const navigate = useNavigate();
   const location = useLocation();
   const [level, setLevel] = useFactoryExperienceLevel();
+  const activeSurface = useMemo(
+    () => parseFactorySurface(new URLSearchParams(location.search).get("factoryView"), level),
+    [location.search, level],
+  );
+  const overviewActive = activeSurface === "overview";
   const [request, setRequest] = useState("");
   const recommendation = useMemo(
     () => recommendFactoryRecipe(request),
@@ -85,7 +96,7 @@ export function ProgressiveFactoryView({
   const [costRecordedOnly, setCostRecordedOnly] = useState(false);
   const dashboard = useQuery(
     api.observability.getWorkspaceDashboard,
-    projectId
+    projectId && overviewActive
       ? {
           projectId,
           status: status === "ALL" ? undefined : status,
@@ -101,7 +112,7 @@ export function ProgressiveFactoryView({
   );
   const factoryDefinitions = useQuery(
     api["factory/configuration"].list,
-    projectId && level === "advanced" ? { projectId } : "skip",
+    projectId && overviewActive && level === "advanced" ? { projectId } : "skip",
   );
   const [selectedTraceId, setSelectedTraceId] = useState<Id<"traces"> | null>(
     null,
@@ -180,26 +191,26 @@ export function ProgressiveFactoryView({
     onNavigate?.(view);
     navigate({ pathname: `/v2/${view}`, search: location.search });
   };
+  const selectSurface = (surface: FactorySurface) => {
+    const search = new URLSearchParams(location.search);
+    if (surface === "overview") search.delete("factoryView");
+    else search.set("factoryView", surface);
+    navigate({ pathname: location.pathname, search: search.toString() });
+  };
+
+  if (activeSurface !== "overview") {
+    return (
+      <div className="min-h-0 bg-app pb-10">
+        <FactoryPageHeader level={level} onLevelChange={setLevel} />
+        <FactorySurfaceTabs level={level} active={activeSurface} onSelect={selectSurface} />
+        <FactoryLearningView projectId={projectId} surface={activeSurface} />
+      </div>
+    );
+  }
   return (
     <div className="min-h-0 bg-app pb-10">
-      <header className="border-b border-line bg-surface-1 px-4 py-4 sm:px-6">
-        <div className="mx-auto flex max-w-[1600px] flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 text-[10.5px] font-semibold uppercase tracking-[0.09em] text-info-accent">
-              <Factory size={13} />
-              Software Factory
-            </div>
-            <h1 className="mt-1 text-[24px] font-semibold tracking-tight text-ink">
-              From intent to verified change
-            </h1>
-            <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-ink-secondary">
-              Choose how much machinery to see. Governance, authorization, and
-              acceptance stay constant at every level.
-            </p>
-          </div>
-          <ExperienceLevelSelector value={level} onChange={setLevel} />
-        </div>
-      </header>
+      <FactoryPageHeader level={level} onLevelChange={setLevel} />
+      <FactorySurfaceTabs level={level} active={activeSurface} onSelect={selectSurface} />
 
       <div className="mx-auto flex max-w-[1600px] flex-col gap-5 px-4 py-5 sm:px-6">
         <section
@@ -424,6 +435,63 @@ export function ProgressiveFactoryView({
         onCreated={(mission) => openMission(String(mission._id))}
       />
     </div>
+  );
+}
+
+function FactoryPageHeader({
+  level,
+  onLevelChange,
+}: {
+  level: "basic" | "intermediate" | "advanced";
+  onLevelChange: (level: "basic" | "intermediate" | "advanced") => void;
+}) {
+  return (
+    <header className="border-b border-line bg-surface-1 px-4 py-4 sm:px-6">
+      <div className="mx-auto flex max-w-[1600px] flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 text-[10.5px] font-semibold uppercase tracking-[0.09em] text-info-accent">
+            <Factory size={13} /> Software Factory
+          </div>
+          <h1 className="mt-1 text-[24px] font-semibold tracking-tight text-ink">From intent to verified change</h1>
+          <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-ink-secondary">
+            Governed execution, evidence-backed improvement, and human-owned acceptance in one operating surface.
+          </p>
+        </div>
+        <ExperienceLevelSelector value={level} onChange={onLevelChange} />
+      </div>
+    </header>
+  );
+}
+
+function FactorySurfaceTabs({
+  level,
+  active,
+  onSelect,
+}: {
+  level: "basic" | "intermediate" | "advanced";
+  active: FactorySurface;
+  onSelect: (surface: FactorySurface) => void;
+}) {
+  return (
+    <nav className="border-b border-line bg-surface-1 px-4 sm:px-6" aria-label="Factory views">
+      <div className="mx-auto flex max-w-[1600px] flex-wrap gap-1 sm:flex-nowrap sm:overflow-x-auto">
+        {visibleFactorySurfaces(level).map((surface) => (
+          <button
+            key={surface.id}
+            type="button"
+            onClick={() => onSelect(surface.id)}
+            aria-current={active === surface.id ? "page" : undefined}
+            className={cn(
+              "relative shrink-0 px-3 py-2.5 text-[11.5px] font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-info-accent/30",
+              active === surface.id ? "text-ink" : "text-ink-muted hover:text-ink-secondary",
+            )}
+          >
+            {surface.label}
+            {active === surface.id ? <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-info-accent" /> : null}
+          </button>
+        ))}
+      </div>
+    </nav>
   );
 }
 

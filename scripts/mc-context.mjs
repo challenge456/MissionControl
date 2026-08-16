@@ -16,6 +16,7 @@
  *   diff                 Show what a fresh resolution would change vs the lock
  *   outdated             List locked packages with newer registry versions
  *   scan                 Discover local SKILL.md files and sync installations to Convex
+ *   agent-config         Inventory tracked agent configuration and report drift
  *
  * Files are read/written in CWD unless --dir <path> is given. Registry
  * commands (add's default range, lock, verify, diff, outdated) call the
@@ -31,6 +32,7 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { execFileSync, spawnSync } from "node:child_process";
+import { scanAgentConfiguration } from "./lib/agent-config-registry.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -46,6 +48,9 @@ const LOCK_FILE = "mc-context.lock";
 const argv = process.argv.slice(2);
 let workDir = process.cwd();
 let jsonOutput = false;
+let projectId;
+let repositoryId;
+let syncAgentConfiguration = false;
 const positional = [];
 
 for (let i = 0; i < argv.length; i++) {
@@ -56,6 +61,16 @@ for (let i = 0; i < argv.length; i++) {
     workDir = resolve(value);
   } else if (arg === "--json") {
     jsonOutput = true;
+  } else if (arg === "--project-id") {
+    const value = argv[++i];
+    if (value === undefined) fail("--project-id requires a Convex project ID");
+    projectId = value;
+  } else if (arg === "--repository-id") {
+    const value = argv[++i];
+    if (value === undefined) fail("--repository-id requires a Convex repository ID");
+    repositoryId = value;
+  } else if (arg === "--sync") {
+    syncAgentConfiguration = true;
   } else if (arg.startsWith("--")) {
     fail(`unknown flag: ${arg}`);
   } else {
@@ -580,6 +595,43 @@ function cmdScan() {
   console.log("Synced installations to Convex.");
 }
 
+function cmdAgentConfig() {
+  const result = scanAgentConfiguration(workDir);
+  let synced = null;
+  if (syncAgentConfiguration) {
+    if (!projectId) fail("agent-config --sync requires --project-id");
+    synced = convexRun("factory/learning:syncAgentConfiguration", {
+      projectId,
+      ...(repositoryId ? { repositoryId } : {}),
+      commitSha: result.commitSha,
+      scanDigest: result.scanDigest,
+      limits: result.limits,
+      entries: result.entries,
+      findings: result.findings,
+    });
+  }
+  if (jsonOutput) {
+    emit({ ...result, synced }, "");
+    return;
+  }
+  console.log(`Agent configuration at ${result.commitSha.slice(0, 12)}:`);
+  console.log(`  ${result.entries.length} tracked source(s), ${result.findings.length} deterministic finding(s)`);
+  for (const entry of result.entries) {
+    console.log(`  ${entry.harness.padEnd(13)} ${entry.kind.padEnd(12)} ${entry.sourcePath}`);
+  }
+  if (result.findings.length) {
+    console.log("Findings:");
+    for (const finding of result.findings) {
+      console.log(`  ${finding.severity.padEnd(7)} ${finding.findingType.padEnd(18)} ${finding.normalizedKey}`);
+    }
+  } else {
+    console.log("No deterministic contradictions or duplicate directives found.");
+  }
+  console.log(syncAgentConfiguration
+    ? `Synced read-only projection to Factory Learning (${synced?.created ? "new scan" : "already current"}).`
+    : "Read-only local scan. Add --sync --project-id <id> to publish the projection.");
+}
+
 // ---------------------------------------------------------------------------
 // Dispatch
 // ---------------------------------------------------------------------------
@@ -612,12 +664,15 @@ switch (command) {
   case "scan":
     cmdScan();
     break;
+  case "agent-config":
+    cmdAgentConfig();
+    break;
   case undefined:
   case "help":
   case "--help":
     console.log(
       [
-        "usage: mc context [--dir <path>] [--json] <command>",
+        "usage: mc context [--dir <path>] [--json] [--project-id <id>] [--repository-id <id>] [--sync] <command>",
         "",
         "commands:",
         "  init                 write a starter mc-context.json",
@@ -629,6 +684,7 @@ switch (command) {
         "  diff                 show fresh resolution vs the lock",
         "  outdated             list locked packages with newer versions",
         "  scan                 discover local skills and sync installations to Convex",
+        "  agent-config         read-only tracked config inventory and deterministic drift scan",
       ].join("\n")
     );
     break;

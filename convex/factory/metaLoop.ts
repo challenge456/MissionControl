@@ -31,6 +31,8 @@ const statusArg = v.union(
   v.literal("VERIFIED"),
   v.literal("EFFECTIVE"),
   v.literal("DISMISSED"),
+  v.literal("SNOOZED"),
+  v.literal("REJECTED"),
   v.literal("ROLLED_BACK"),
   v.literal("RETIRED")
 );
@@ -144,6 +146,8 @@ export const applyResolution = internalMutation({
     actorId: v.string(),
     workOrderId: v.optional(v.id("workOrders")),
     taskId: v.optional(v.id("tasks")),
+    missionId: v.optional(v.id("missions")),
+    missionPlanId: v.optional(v.id("missionPlans")),
     reason: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -156,8 +160,12 @@ export const applyResolution = internalMutation({
       status: args.status,
       workOrderId: args.workOrderId,
       taskId: args.taskId,
+      missionId: args.missionId,
+      missionPlanId: args.missionPlanId,
       dismissalReason: args.reason,
-      resolvedAt: Date.now(),
+      resolvedAt: args.status === "ACCEPTED" && args.missionPlanId
+        ? undefined
+        : Date.now(),
     });
     await ctx.db.insert("activities", {
       projectId: row.projectId,
@@ -166,10 +174,18 @@ export const applyResolution = internalMutation({
       action: `META_LOOP_${args.status}`,
       description: args.status === "DISMISSED"
         ? `Dismissed improvement proposal: ${args.reason}`
-        : `Created governed work for improvement proposal: ${row.title}`,
+        : args.missionPlanId
+          ? `Submitted governed Mission plan for improvement proposal: ${row.title}`
+          : `Created governed work for improvement proposal: ${row.title}`,
       targetType: "META_LOOP_SUGGESTION",
       targetId: row._id,
-      metadata: { workOrderId: args.workOrderId, taskId: args.taskId, reason: args.reason },
+      metadata: {
+        missionId: args.missionId,
+        missionPlanId: args.missionPlanId,
+        workOrderId: args.workOrderId,
+        taskId: args.taskId,
+        reason: args.reason,
+      },
     });
     return args.suggestionId;
   },
@@ -183,11 +199,26 @@ export const resolve = action({
     actorId: v.optional(v.string()),
     reason: v.optional(v.string()),
   },
-  handler: async (ctx, args): Promise<{ suggestionId: string; workOrderId?: string; taskId?: string }> => {
+  handler: async (ctx, args): Promise<{
+    suggestionId: string;
+    missionId?: string;
+    missionPlanId?: string;
+    workOrderId?: string;
+    taskId?: string;
+  }> => {
     const suggestion = await ctx.runQuery(api.factory.metaLoop.get, { suggestionId: args.suggestionId });
     if (!suggestion) throw new Error("Suggestion not found");
-    if (suggestion.status !== "OPEN") throw new Error("Only open suggestions can be resolved");
     if (!suggestion.projectId) throw new Error("A workspace-scoped suggestion is required");
+    const learningCandidate = suggestion.acceptanceAuthority === false && Boolean(suggestion.learningClusterId);
+    if (args.action === "DISMISS" && !["OPEN", "SNOOZED"].includes(suggestion.status)) {
+      throw new Error("Only open or snoozed suggestions can be dismissed");
+    }
+    if (args.action === "ACCEPT" && !learningCandidate && suggestion.status !== "OPEN") {
+      throw new Error("Only open suggestions can be accepted");
+    }
+    if (args.action === "ACCEPT" && learningCandidate && suggestion.status !== "ACCEPTED") {
+      throw new Error("Factory Learning candidates require a human-approved experiment before governed work can be created");
+    }
     const authorization = await requireFactoryActionWithAudit(ctx, {
       projectId: suggestion.projectId,
       permission: FACTORY_PERMISSIONS.APPROVE,
@@ -205,28 +236,168 @@ export const resolve = action({
       });
       return { suggestionId: String(args.suggestionId) };
     }
+    const experimentReview = learningCandidate
+      ? await ctx.runQuery(api.factory.learning.getExperimentReview, { candidateId: args.suggestionId })
+      : null;
+    if (learningCandidate && (!experimentReview || experimentReview.experiment.status !== "COMPLETED")) {
+      throw new Error("Complete the linked canonical experiment before creating governed implementation work");
+    }
     const project = await ctx.runQuery(api.projects.get, { projectId: suggestion.projectId });
     if (!project) throw new Error("Suggestion workspace not found");
     if (!project.githubRepo) throw new Error("Connect an approved repository before accepting repository-changing improvement work");
-    const evidenceLinks = suggestion.sourceLinks
-      ?? (suggestion.sourceRef ? [suggestion.sourceRef] : []);
+    const evidenceLinks = [
+      ...(suggestion.sourceLinks ?? (suggestion.sourceRef ? [suggestion.sourceRef] : [])),
+      ...(experimentReview ? [`experiment:${experimentReview.experiment._id}`] : []),
+    ];
+    if (learningCandidate) {
+      if (suggestion.missionId && suggestion.missionPlanId) {
+        return {
+          suggestionId: String(args.suggestionId),
+          missionId: String(suggestion.missionId),
+          missionPlanId: String(suggestion.missionPlanId),
+        };
+      }
+      const planReleaseEnabled = await ctx.runQuery(api.featureFlags.isEnabled, {
+        key: "missions.plan-release-v1",
+        projectId: suggestion.projectId,
+      });
+      if (!planReleaseEnabled) {
+        throw new Error("Enable missions.plan-release-v1 before promoting an improvement into governed Mission work");
+      }
+      const workflow = await ctx.runQuery(api.workflows.get, { workflowId: "feature-dev" });
+      if (!workflow?.active) {
+        throw new Error("The active feature-dev workflow is required before promoting an improvement");
+      }
+      const missionResult = await ctx.runMutation(api.missions.createDraft, {
+        projectId: suggestion.projectId,
+        idempotencyKey: `factory-learning:${args.suggestionId}:mission`,
+        title: `Improve: ${suggestion.title}`,
+        objective: suggestion.proposedChange ?? suggestion.summary,
+        context: `${suggestion.problemStatement ?? suggestion.summary}\n\nExpected benefit: ${suggestion.expectedBenefit ?? "Measure against the approved baseline."}\nEvidence count: ${suggestion.evidenceCount ?? 1}. Confidence: ${suggestion.confidence ?? 0.5}.`,
+        constraints: [
+          "Implement only the human-promoted Factory improvement.",
+          "Preserve failed evidence and the approved experiment lineage.",
+          "Do not bypass approval, verification, publication, or acceptance authority.",
+        ],
+        sourceOfTruthRefs: evidenceLinks.map((location, index) => ({
+          kind: location.startsWith("http") ? "URL" as const : "DOC" as const,
+          label: `Factory Learning evidence ${index + 1}`,
+          location,
+        })),
+        stopCondition: "Stop when the approved improvement is implemented, independently verified, and ready for ordinary human review, or when operator intervention is required.",
+        repositoryId: suggestion.repositoryId,
+        maxCorrectiveIterations: 2,
+        metadata: {
+          source: "FACTORY_LEARNING_V1",
+          factoryLearningCandidateId: args.suggestionId,
+          experimentId: suggestion.experimentId,
+          acceptanceAuthority: false,
+        },
+      });
+      const planResult = await ctx.runMutation(api.missions.savePlanDraft, {
+        projectId: suggestion.projectId,
+        missionId: missionResult.mission._id,
+        idempotencyKey: `factory-learning:${args.suggestionId}:plan`,
+        summary: `Implement the approved ${suggestion.candidateType?.toLowerCase().replace(/_/g, " ") ?? "Factory improvement"} and measure it against experiment ${experimentReview!.experiment._id}.`,
+        rollbackApproach: "Keep the current Factory behavior as the baseline and revert the candidate change if the approved verification or measured outcome regresses.",
+        workOrderBlueprints: [{
+          id: "factory-learning-implementation",
+          title: `Implement: ${suggestion.title}`,
+          desiredOutcome: suggestion.proposedChange ?? suggestion.summary,
+          workflowId: workflow.workflowId,
+          workflowVersion: workflow.version,
+          sequence: 1,
+          role: "WORKER",
+          isMutating: true,
+          priority: suggestion.impact === "CRITICAL" ? 1 : 2,
+          riskLevel: suggestion.risk ?? "MEDIUM",
+          modelComplexity: "STANDARD",
+          branchStrategy: "isolated-worktree",
+          constraints: [
+            "Implement only the approved candidate scope.",
+            "Do not alter acceptance or verification authority from learning output.",
+          ],
+          requiredApprovals: ["IMPLEMENTATION"],
+          implementationPolicy: {
+            allowedCommands: ["pnpm test", "pnpm run typecheck"],
+            independentVerification: {
+              executable: "pnpm",
+              args: ["test"],
+              category: "UNIT_TEST",
+              commandClass: "TEST",
+              evidenceCategory: "TEST_RESULT",
+              timeoutMs: 30 * 60_000,
+            },
+            maxFilesChanged: 40,
+            maxLinesChanged: 3_000,
+            maxAttempts: 2,
+            timeoutMinutes: 60,
+            stopCondition: "Stop after the approved scope and verification commands pass and the review-ready pull request identity is persisted.",
+          },
+          dependsOnBlueprintIds: [],
+          assertionIds: ["factory-learning-result"],
+        }],
+        assertions: [{
+          assertionId: "factory-learning-result",
+          title: "Approved Factory improvement is implemented and verified",
+          outcome: suggestion.proposedChange ?? suggestion.summary,
+          verificationMethod: "TEST",
+          passCondition: "The approved verification commands pass against the exact candidate revision without weakening governance authority.",
+          requiredEvidence: "Persist exact command output, candidate revision identity, experiment lineage, and independent verification evidence.",
+          requiresIndependentValidation: true,
+          waiverAllowed: false,
+        }],
+        metadata: {
+          source: "FACTORY_LEARNING_V1",
+          factoryLearningCandidateId: args.suggestionId,
+          experimentId: suggestion.experimentId,
+          acceptanceAuthority: false,
+        },
+      });
+      if (!planResult.plan) throw new Error("Governed Mission plan could not be created");
+      const submitted = await ctx.runMutation(api.missions.submitPlan, {
+        projectId: suggestion.projectId,
+        missionId: missionResult.mission._id,
+        planId: planResult.plan._id,
+        idempotencyKey: `factory-learning:${args.suggestionId}:submit-plan`,
+      });
+      if (!submitted.plan) throw new Error("Governed Mission plan could not be submitted");
+      await ctx.runMutation(internal.factory.metaLoop.applyResolution, {
+        suggestionId: args.suggestionId,
+        status: "ACCEPTED",
+        actorId,
+        missionId: missionResult.mission._id,
+        missionPlanId: planResult.plan._id,
+      });
+      return {
+        suggestionId: String(args.suggestionId),
+        missionId: String(missionResult.mission._id),
+        missionPlanId: String(planResult.plan._id),
+      };
+    }
     const workOrderResult = await ctx.runMutation(api.workOrders.create, {
       projectId: suggestion.projectId,
       idempotencyKey: `meta-loop:${args.suggestionId}:work-order`,
       title: `Improve: ${suggestion.title}`,
-      desiredOutcome: suggestion.summary,
-      context: `Evidence count: ${suggestion.evidenceCount ?? 1}. Confidence: ${suggestion.confidence ?? 0.5}. Sources: ${evidenceLinks.join(", ")}.`,
+      desiredOutcome: suggestion.proposedChange ?? suggestion.summary,
+      context: `${suggestion.problemStatement ?? suggestion.summary}\n\nExpected benefit: ${suggestion.expectedBenefit ?? "Validate the proposed improvement."}\nEvidence count: ${suggestion.evidenceCount ?? 1}. Confidence: ${suggestion.confidence ?? 0.5}. Sources: ${evidenceLinks.join(", ")}.`,
       workflowId: "feature-dev",
       repository: project.githubRepo,
       branchStrategy: "isolated-worktree",
       priority: suggestion.impact === "CRITICAL" ? 1 : 2,
-      riskLevel: suggestion.kind === "RULE_RETIRE" ? "HIGH" : "MEDIUM",
+      riskLevel: suggestion.risk ?? (suggestion.kind === "RULE_RETIRE" ? "HIGH" : "MEDIUM"),
       requestedBy: actorId,
       isMutating: true,
       requiredApprovals: ["IMPLEMENTATION"],
       acceptanceCriteria: [
         { id: "implemented", title: "Improvement implemented", verificationMethod: "TEST", status: "PENDING" },
         { id: "measured", title: "Outcome measured against baseline", verificationMethod: "CHECKLIST", status: "PENDING" },
+        ...(learningCandidate ? [{
+          id: "experiment-lineage",
+          title: "Implementation preserves the approved experiment lineage",
+          verificationMethod: "CHECKLIST" as const,
+          status: "PENDING" as const,
+        }] : []),
       ],
       constraints: ["Use an isolated worktree", "Preserve failed evidence", "Do not bypass approval or verification"],
       sourceOfTruthRefs: evidenceLinks.map((location, index) => ({
@@ -236,7 +407,14 @@ export const resolve = action({
       })),
       state: "AWAITING_APPROVAL",
       approvalStatus: "PENDING",
-      metadata: { metaLoopSuggestionId: args.suggestionId, dedupeKey: suggestion.dedupeKey },
+      metadata: {
+        metaLoopSuggestionId: args.suggestionId,
+        dedupeKey: suggestion.dedupeKey,
+        learningClusterId: suggestion.learningClusterId,
+        experimentId: suggestion.experimentId,
+        experimentRecommendation: experimentReview?.recommendation,
+        factoryLearningAcceptanceAuthority: false,
+      },
     });
     const workOrderId = workOrderResult.workOrder._id;
     const taskResult = await ctx.runMutation(api.tasks.create, {

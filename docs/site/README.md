@@ -24,6 +24,10 @@ Open **Knowledge → Docs → Documentation** in the EOS sidebar (`pnpm dev:demo
 - [Automation backend reference](./skill-automations/automation-backend.md)
 - [Completed implementation record](./skill-automations/completed-implementation.md)
 
+### Software Factory enhancement
+- [Factory Learning and continuous improvement](./software-factory-enhancement/factory-learning.md)
+- [Progressive Factory experience](./software-factory-enhancement/progressive-factory-experience.md)
+
 ### Overview
 - [What is Mission Control?](./overview/readme.md)
 - [Platform components](./overview/platform-components.md)
