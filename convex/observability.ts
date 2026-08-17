@@ -18,6 +18,7 @@ import {
   recordRunEventObservation,
   recordTraceObservation,
 } from "./lib/observabilityPersistence";
+import { validateExecutionRoutingExperimentVariants } from "./lib/executionRouting";
 
 const traceStatus = v.union(
   v.literal("RUNNING"),
@@ -583,6 +584,16 @@ export const createExperiment = mutation({
       throw new Error("Experiment Factory variants must belong to the workspace.");
     }
     const now = Date.now();
+    const executionRoutingComparison = args.variants.some((variant) => Boolean(variant.factoryDefinitionVersionId));
+    const routingTupleSnapshots = executionRoutingComparison
+      ? await validateExecutionRoutingExperimentVariants(ctx, {
+          projectId: args.projectId,
+          factoryDefinitionVersionIds: args.variants
+            .map((variant) => variant.factoryDefinitionVersionId)
+            .filter((id): id is Id<"factoryDefinitionVersions"> => Boolean(id)),
+          now,
+        })
+      : undefined;
     const experimentId = await ctx.db.insert("experiments", {
       tenantId: access.project.tenantId,
       projectId: args.projectId,
@@ -593,9 +604,14 @@ export const createExperiment = mutation({
       evalDefinitionIds: args.evalDefinitionIds,
       createdBy: access.actorId,
       createdAt: now,
+      metadata: executionRoutingComparison ? {
+        kind: "EXECUTION_ROUTING_TUPLE_COMPARISON",
+        verificationRequired: true,
+        acceptanceAuthority: false,
+      } : undefined,
     });
     const variantIds = [];
-    for (const variant of args.variants) {
+    for (const [index, variant] of args.variants.entries()) {
       variantIds.push(await ctx.db.insert("experimentVariants", {
         tenantId: access.project.tenantId,
         projectId: args.projectId,
@@ -604,7 +620,13 @@ export const createExperiment = mutation({
         factoryDefinitionVersionId: variant.factoryDefinitionVersionId,
         executor: optionalString(variant.executor, 100),
         model: optionalString(variant.model, 200),
-        configuration: sanitizeTraceValue(variant.configuration),
+        configuration: sanitizeTraceValue(routingTupleSnapshots ? {
+          kind: "EXECUTION_ROUTING_TUPLE",
+          tuple: routingTupleSnapshots[index],
+          experimentConfiguration: variant.configuration,
+          verificationRequired: true,
+          acceptanceAuthority: false,
+        } : variant.configuration),
         sampleSize: 0,
         createdAt: now,
       }));

@@ -6,6 +6,8 @@ import {
   type CatalogModel,
   type RoutingPolicyInput,
 } from "./lib/modelRouting";
+import { FACTORY_PERMISSIONS, requireWorkspacePermission } from "./lib/companyAccess";
+import { findModelCatalogEntry, loadModelCatalogForProject } from "./lib/modelCatalogScope";
 
 const tier = v.union(
   v.literal("FAST"),
@@ -49,6 +51,14 @@ const rule = v.object({
   requiredCapabilities: v.optional(v.array(v.string())),
   modelId: v.string(),
 });
+const executionRouting = v.object({
+  mode: v.union(v.literal("ADVISORY"), v.literal("GUARDED_AUTO")),
+  evidenceWindowDays: v.number(),
+  minimumVerifiedAttempts: v.number(),
+  minimumEvidenceCoverage: v.number(),
+  minimumScoreMargin: v.number(),
+  minimumContextWindow: v.optional(v.number()),
+});
 
 async function loadActive(ctx: { db: any }, projectId: any) {
   return await ctx.db
@@ -62,7 +72,10 @@ async function loadActive(ctx: { db: any }, projectId: any) {
 
 export const getActive = query({
   args: { projectId: v.id("projects") },
-  handler: async (ctx, args) => loadActive(ctx, args.projectId),
+  handler: async (ctx, args) => {
+    await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.VIEW);
+    return loadActive(ctx, args.projectId);
+  },
 });
 
 export const getAgentOverride = query({
@@ -71,6 +84,11 @@ export const getAgentOverride = query({
     agentId: v.id("agents"),
   },
   handler: async (ctx, args) => {
+    await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.VIEW);
+    const agent = await ctx.db.get(args.agentId);
+    if (!agent || agent.projectId !== args.projectId) {
+      throw new Error("Agent is unavailable or unauthorized.");
+    }
     const override = await ctx.db
       .query("agentModelOverrides")
       .withIndex("by_project_agent", (q) =>
@@ -89,23 +107,22 @@ export const setAgentOverride = mutation({
     modelId: v.string(),
     reason: v.string(),
     expiresAt: v.optional(v.number()),
-    actorId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const access = await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.IMPROVE);
     const [agent, model] = await Promise.all([
       ctx.db.get(args.agentId),
-      ctx.db
-        .query("modelCatalog")
-        .withIndex("by_model_id", (q) => q.eq("modelId", args.modelId))
-        .first(),
+      findModelCatalogEntry(ctx, args.projectId, args.modelId),
     ]);
     if (!agent || agent.projectId !== args.projectId) {
-      throw new Error("Agent does not belong to the selected workspace");
+      throw new Error("Agent is unavailable or unauthorized.");
     }
-    if (!model || model.deprecated || model.availability === "UNAVAILABLE") {
+    if (!model || model.deprecated || ["UNAVAILABLE", "RATE_LIMITED"].includes(model.availability)) {
       throw new Error("Override model route is unavailable");
     }
-    if (!args.reason.trim()) throw new Error("Override reason is required");
+    if (!args.reason.trim() || args.reason.trim().length > 1_000) {
+      throw new Error("Override reason must be between 1 and 1,000 characters.");
+    }
     const existing = await ctx.db
       .query("agentModelOverrides")
       .withIndex("by_project_agent", (q) =>
@@ -121,7 +138,7 @@ export const setAgentOverride = mutation({
           modelId: args.modelId,
           reason: args.reason.trim(),
           expiresAt: args.expiresAt,
-          createdBy: args.actorId ?? "operator",
+          createdBy: access.actorId,
           createdAt: now,
           updatedAt: now,
         });
@@ -134,9 +151,10 @@ export const setAgentOverride = mutation({
       });
     }
     await ctx.db.insert("activities", {
+      tenantId: access.project.tenantId,
       projectId: args.projectId,
       actorType: "HUMAN",
-      actorId: args.actorId ?? "operator",
+      actorId: access.actorId,
       action: "AGENT_MODEL_OVERRIDE_SET",
       description: `Agent "${agent.name}" model override set to ${args.modelId}`,
       targetType: "AGENT",
@@ -152,12 +170,12 @@ export const clearAgentOverride = mutation({
   args: {
     projectId: v.id("projects"),
     agentId: v.id("agents"),
-    actorId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const access = await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.IMPROVE);
     const agent = await ctx.db.get(args.agentId);
     if (!agent || agent.projectId !== args.projectId) {
-      throw new Error("Agent does not belong to the selected workspace");
+      throw new Error("Agent is unavailable or unauthorized.");
     }
     const existing = await ctx.db
       .query("agentModelOverrides")
@@ -168,9 +186,10 @@ export const clearAgentOverride = mutation({
     if (!existing) return { removed: false };
     await ctx.db.delete(existing._id);
     await ctx.db.insert("activities", {
+      tenantId: access.project.tenantId,
       projectId: args.projectId,
       actorType: "HUMAN",
-      actorId: args.actorId ?? "operator",
+      actorId: access.actorId,
       action: "AGENT_MODEL_OVERRIDE_CLEARED",
       description: `Agent "${agent.name}" returned to workspace model routing`,
       targetType: "AGENT",
@@ -193,19 +212,49 @@ export const save = mutation({
     fallbackChain: v.array(v.string()),
     budgetLimitUsd: v.optional(v.number()),
     latencyTargetMs: v.optional(v.number()),
+    executionRouting: v.optional(executionRouting),
     canaryPercent: v.number(),
     killSwitch: v.boolean(),
-    actorId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const project = await ctx.db.get(args.projectId);
-    if (!project) throw new Error("Workspace not found");
-    if (!args.name.trim()) throw new Error("Policy name is required");
+    const access = await requireWorkspacePermission(
+      ctx,
+      args.projectId,
+      FACTORY_PERMISSIONS.MANAGE_AUTOMATION,
+    );
+    if (!args.name.trim() || args.name.trim().length > 200) {
+      throw new Error("Policy name must be between 1 and 200 characters.");
+    }
+    if (args.rules.length > 100 || (args.lanePools?.length ?? 0) > 5 || args.fallbackChain.length > 20) {
+      throw new Error("Routing policy exceeds the supported rule, lane, or fallback bounds.");
+    }
     if (args.canaryPercent < 0 || args.canaryPercent > 100) {
       throw new Error("Canary percentage must be between 0 and 100");
     }
-    if (args.budgetLimitUsd !== undefined && args.budgetLimitUsd < 0) {
-      throw new Error("Budget limit cannot be negative");
+    if (args.budgetLimitUsd !== undefined
+      && (!Number.isFinite(args.budgetLimitUsd) || args.budgetLimitUsd < 0 || args.budgetLimitUsd > 1_000_000)) {
+      throw new Error("Budget limit must be between 0 and 1,000,000 USD.");
+    }
+    if (args.executionRouting) {
+      const routing = args.executionRouting;
+      if (!Number.isInteger(routing.evidenceWindowDays) || routing.evidenceWindowDays < 1 || routing.evidenceWindowDays > 90) {
+        throw new Error("Execution routing evidence window must be between 1 and 90 days.");
+      }
+      if (!Number.isInteger(routing.minimumVerifiedAttempts) || routing.minimumVerifiedAttempts < 1 || routing.minimumVerifiedAttempts > 100) {
+        throw new Error("Minimum verified Attempts must be between 1 and 100.");
+      }
+      if (routing.minimumEvidenceCoverage < 0 || routing.minimumEvidenceCoverage > 1) {
+        throw new Error("Minimum evidence coverage must be between 0 and 1.");
+      }
+      if (routing.minimumScoreMargin < 0 || routing.minimumScoreMargin > 100) {
+        throw new Error("Minimum score margin must be between 0 and 100.");
+      }
+      if (routing.minimumContextWindow !== undefined
+        && (!Number.isSafeInteger(routing.minimumContextWindow)
+          || routing.minimumContextWindow < 1
+          || routing.minimumContextWindow > 10_000_000)) {
+        throw new Error("Minimum context window must be an integer between 1 and 10,000,000.");
+      }
     }
     for (const pool of args.lanePools ?? []) {
       if ((pool.dailyBudgetUsd ?? 0) < 0 || (pool.monthlyBudgetUsd ?? 0) < 0) {
@@ -231,11 +280,8 @@ export const save = mutation({
     ].filter((value): value is string => Boolean(value));
     const uniqueIds = [...new Set(ids)];
     for (const modelId of uniqueIds) {
-      const model = await ctx.db
-        .query("modelCatalog")
-        .withIndex("by_model_id", (q) => q.eq("modelId", modelId))
-        .first();
-      if (!model || model.deprecated) {
+      const model = await findModelCatalogEntry(ctx, args.projectId, modelId);
+      if (!model || model.deprecated || model.availability === "UNAVAILABLE") {
         throw new Error(`Model route "${modelId}" is unavailable`);
       }
     }
@@ -255,18 +301,20 @@ export const save = mutation({
       fallbackChain: [...new Set(args.fallbackChain)],
       budgetLimitUsd: args.budgetLimitUsd,
       latencyTargetMs: args.latencyTargetMs,
+      executionRouting: args.executionRouting,
       canaryPercent: args.canaryPercent,
       killSwitch: args.killSwitch,
       version: (current?.version ?? 0) + 1,
-      createdBy: args.actorId ?? "operator",
-      updatedBy: args.actorId ?? "operator",
+      createdBy: access.actorId,
+      updatedBy: access.actorId,
       createdAt: now,
       updatedAt: now,
     });
     await ctx.db.insert("activities", {
+      tenantId: access.project.tenantId,
       projectId: args.projectId,
       actorType: "HUMAN",
-      actorId: args.actorId ?? "operator",
+      actorId: access.actorId,
       action: "MODEL_ROUTING_POLICY_ACTIVATED",
       description: `Activated model routing policy v${(current?.version ?? 0) + 1}`,
       targetType: "MODEL_ROUTING_POLICY",
@@ -293,10 +341,16 @@ export const simulate = query({
     allowCanary: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const project = await ctx.db.get(args.projectId);
-    if (!project) throw new Error("Workspace not found");
+    const access = await requireWorkspacePermission(ctx, args.projectId, FACTORY_PERMISSIONS.VIEW);
+    const project = access.project;
+    if (args.agentId) {
+      const agent = await ctx.db.get(args.agentId);
+      if (!agent || agent.projectId !== args.projectId) {
+        throw new Error("Agent is unavailable or unauthorized.");
+      }
+    }
     const active = await loadActive(ctx, args.projectId);
-    const catalog = (await ctx.db.query("modelCatalog").collect()) as CatalogModel[];
+    const catalog = (await loadModelCatalogForProject(ctx, args.projectId)) as CatalogModel[];
     const override = args.agentId
       ? await ctx.db
           .query("agentModelOverrides")

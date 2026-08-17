@@ -21,6 +21,7 @@ type Tier = "FAST" | "BALANCED" | "POWERFUL";
 type Risk = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 type Complexity = "SMALL" | "STANDARD" | "LARGE";
 type OperatingLane = "PLAN" | "EXECUTE" | "REVIEW" | "LOCAL" | "LONG_RUNNING";
+type RoutingDetailLevel = "BASIC" | "INTERMEDIATE" | "ADVANCED";
 type LanePool = {
   lane: OperatingLane;
   modelIds: string[];
@@ -48,6 +49,38 @@ type Rule = {
   complexity?: Complexity;
   requiredCapabilities?: string[];
   modelId: string;
+};
+type ExecutionCandidateSnapshot = {
+  tuple: {
+    tupleKey: string;
+    harness: { adapter: string; version: string };
+    model: { provider: string; modelId: string };
+    backend: string;
+  };
+  eligible: boolean;
+  rejectionCodes: string[];
+  rejectionReasons: string[];
+  score?: number;
+  evidenceCoverage: number;
+  evidence: { attemptCount: number; verifiedAttemptCount: number; totalCostPerVerifiedSuccessUsd?: number; timeToVerifiedCandidateMs?: number };
+  metrics: Array<{ metric: string; weight: number; observed: boolean; rawValue?: number; normalizedScore?: number }>;
+};
+type ExecutionRoutingSnapshot = {
+  schemaVersion: string;
+  algorithmVersion: string;
+  policyVersion: number;
+  evidenceCutoffAt: number;
+  result: {
+    status: "SELECTED" | "EXHAUSTED";
+    mode: "ADVISORY" | "GUARDED_AUTO" | "PINNED";
+    candidates: ExecutionCandidateSnapshot[];
+    recommendedTupleKey?: string;
+    appliedTupleKey?: string;
+    fallbackTupleKey?: string;
+    explanation: string;
+    fallbackReason?: string;
+    guardedAutoApplied: boolean;
+  };
 };
 
 const TASK_TYPES = [
@@ -213,16 +246,16 @@ function OperatingLanes({
           {onUpdatePool && (
             <div className="mt-3 grid gap-2 sm:grid-cols-4">
               <Field label="Daily spend limit">
-                <Input type="number" min="0" step="0.01" placeholder="No limit" value={selectedPool?.dailyBudgetUsd ?? ""} onChange={(event) => onUpdatePool(selectedLane, { dailyBudgetUsd: event.target.value ? Number(event.target.value) : undefined })} />
+                <Input aria-label="Daily spend limit" type="number" min="0" step="0.01" placeholder="No limit" value={selectedPool?.dailyBudgetUsd ?? ""} onChange={(event) => onUpdatePool(selectedLane, { dailyBudgetUsd: event.target.value ? Number(event.target.value) : undefined })} />
               </Field>
               <Field label="Monthly spend limit">
-                <Input type="number" min="0" step="0.01" placeholder="No limit" value={selectedPool?.monthlyBudgetUsd ?? ""} onChange={(event) => onUpdatePool(selectedLane, { monthlyBudgetUsd: event.target.value ? Number(event.target.value) : undefined })} />
+                <Input aria-label="Monthly spend limit" type="number" min="0" step="0.01" placeholder="No limit" value={selectedPool?.monthlyBudgetUsd ?? ""} onChange={(event) => onUpdatePool(selectedLane, { monthlyBudgetUsd: event.target.value ? Number(event.target.value) : undefined })} />
               </Field>
               <Field label="Minimum providers">
-                <Input type="number" min="1" step="1" value={selectedPool?.minProviderCount ?? (selectedLane === "LONG_RUNNING" ? 2 : 1)} onChange={(event) => onUpdatePool(selectedLane, { minProviderCount: Math.max(1, Number(event.target.value) || 1) })} />
+                <Input aria-label="Minimum providers" type="number" min="1" step="1" value={selectedPool?.minProviderCount ?? (selectedLane === "LONG_RUNNING" ? 2 : 1)} onChange={(event) => onUpdatePool(selectedLane, { minProviderCount: Math.max(1, Number(event.target.value) || 1) })} />
               </Field>
               <Field label="New-model canary">
-                <Input type="number" min="0" max="100" step="1" value={selectedPool?.canaryPercent ?? 10} onChange={(event) => onUpdatePool(selectedLane, { canaryPercent: Math.min(100, Math.max(0, Number(event.target.value) || 0)) })} />
+                <Input aria-label="New-model canary percentage" type="number" min="0" max="100" step="1" value={selectedPool?.canaryPercent ?? 10} onChange={(event) => onUpdatePool(selectedLane, { canaryPercent: Math.min(100, Math.max(0, Number(event.target.value) || 0)) })} />
               </Field>
             </div>
           )}
@@ -293,15 +326,21 @@ function formatTime(timestamp: number) {
 }
 
 export function ModelRoutingView({ projectId }: { projectId: Id<"projects"> }) {
-  const catalog = useQuery(api.modelCatalog.list);
+  const catalog = useQuery(api.modelCatalog.list, { projectId });
   const policy = useQuery(api.modelRoutingPolicies.getActive, { projectId });
   const decisions = useQuery(api.modelRoutingDecisions.listRecent, { projectId, limit: 30 });
   const enforcementEnabled = useQuery(api.featureFlags.isEnabled, {
     key: "model-routing.enabled",
     projectId,
   });
+  const guardedAutoEnabled = useQuery(api.featureFlags.isEnabled, {
+    key: "execution-routing.guarded-auto",
+    projectId,
+  });
   const initializeCatalog = useMutation(api.modelCatalog.initializeDefaults);
+  const syncLocalModels = useMutation(api.modelCatalog.syncLocalModels);
   const savePolicy = useMutation(api.modelRoutingPolicies.save);
+  const promoteGuardedAuto = useMutation(api.executionRouting.promoteGuardedAuto);
   const setFlag = useMutation(api.featureFlags.setFlag);
   const { toast } = useToast();
 
@@ -312,6 +351,14 @@ export function ModelRoutingView({ projectId }: { projectId: Id<"projects"> }) {
   const [budgetLimit, setBudgetLimit] = useState("");
   const [canaryPercent, setCanaryPercent] = useState("0");
   const [killSwitch, setKillSwitch] = useState(false);
+  const [executionMode, setExecutionMode] = useState<"ADVISORY" | "GUARDED_AUTO">("ADVISORY");
+  const [evidenceWindowDays, setEvidenceWindowDays] = useState("30");
+  const [minimumVerifiedAttempts, setMinimumVerifiedAttempts] = useState("5");
+  const [minimumEvidenceCoverage, setMinimumEvidenceCoverage] = useState("60");
+  const [minimumScoreMargin, setMinimumScoreMargin] = useState("5");
+  const [minimumContextWindow, setMinimumContextWindow] = useState("");
+  const [promotionReason, setPromotionReason] = useState("");
+  const [routingDetailLevel, setRoutingDetailLevel] = useState<RoutingDetailLevel>("BASIC");
   const [rules, setRules] = useState<Rule[]>([]);
   const [lanePools, setLanePools] = useState<LanePool[]>([]);
   const [selectedLane, setSelectedLane] = useState<OperatingLane>("REVIEW");
@@ -334,6 +381,12 @@ export function ModelRoutingView({ projectId }: { projectId: Id<"projects"> }) {
     setBudgetLimit(policy.budgetLimitUsd == null ? "" : String(policy.budgetLimitUsd));
     setCanaryPercent(String(policy.canaryPercent));
     setKillSwitch(policy.killSwitch);
+    setExecutionMode(policy.executionRouting?.mode ?? "ADVISORY");
+    setEvidenceWindowDays(String(policy.executionRouting?.evidenceWindowDays ?? 30));
+    setMinimumVerifiedAttempts(String(policy.executionRouting?.minimumVerifiedAttempts ?? 5));
+    setMinimumEvidenceCoverage(String(Math.round((policy.executionRouting?.minimumEvidenceCoverage ?? 0.6) * 100)));
+    setMinimumScoreMargin(String(policy.executionRouting?.minimumScoreMargin ?? 5));
+    setMinimumContextWindow(policy.executionRouting?.minimumContextWindow == null ? "" : String(policy.executionRouting.minimumContextWindow));
     setRules((policy.rules as Rule[]).map((rule) =>
       !rule.operatingLane && rule.modelId.startsWith("local:")
         ? { ...rule, operatingLane: "LOCAL" }
@@ -398,9 +451,16 @@ export function ModelRoutingView({ projectId }: { projectId: Id<"projects"> }) {
         rules: rules.map((rule, index) => ({ ...rule, order: index })),
         lanePools,
         budgetLimitUsd: budgetLimit ? Number(budgetLimit) : undefined,
+        executionRouting: {
+          mode: executionMode,
+          evidenceWindowDays: Number(evidenceWindowDays),
+          minimumVerifiedAttempts: Number(minimumVerifiedAttempts),
+          minimumEvidenceCoverage: Number(minimumEvidenceCoverage) / 100,
+          minimumScoreMargin: Number(minimumScoreMargin),
+          minimumContextWindow: minimumContextWindow ? Number(minimumContextWindow) : undefined,
+        },
         canaryPercent: Number(canaryPercent),
         killSwitch,
-        actorId: "operator",
       });
       toast("Routing policy activated");
     } catch (cause) {
@@ -414,10 +474,21 @@ export function ModelRoutingView({ projectId }: { projectId: Id<"projects"> }) {
     setDiscoveringLocal(true);
     try {
       const baseUrl = import.meta.env.VITE_ORCHESTRATION_URL ?? "http://localhost:4100";
-      const response = await fetch(`${baseUrl}/local-inference/sync`, { method: "POST" });
+      const response = await fetch(`${baseUrl}/local-inference/discover`);
       const result = await response.json() as { providers?: Array<{ provider: string; status: string; models: unknown[] }>; error?: string };
       if (!response.ok) throw new Error(result.error ?? "Local model discovery failed");
       const healthy = result.providers?.filter((provider) => provider.status === "HEALTHY") ?? [];
+      await Promise.all(healthy.map((provider) => syncLocalModels({
+        projectId,
+        provider: provider.provider as "OLLAMA" | "LM_STUDIO" | "MLX" | "VLLM",
+        models: provider.models as Array<{
+          modelId: string;
+          displayName: string;
+          capabilities: string[];
+          supportsTools: boolean;
+          contextWindow: number;
+        }>,
+      })));
       toast(healthy.length ? `Synced ${healthy.reduce((count, provider) => count + provider.models.length, 0)} local model route(s)` : "No local model servers are available");
     } catch (cause) {
       toast(cause instanceof Error ? cause.message : "Local model discovery failed", true);
@@ -446,13 +517,13 @@ export function ModelRoutingView({ projectId }: { projectId: Id<"projects"> }) {
     toast(`${preset === "COST" ? "Cost-conscious" : preset === "QUALITY" ? "Quality-first" : "Balanced"} preset applied. Review and activate to save.`);
   }
 
-  if (!catalog || policy === undefined || decisions === undefined || enforcementEnabled === undefined) {
+  if (!catalog || policy === undefined || decisions === undefined || enforcementEnabled === undefined || guardedAutoEnabled === undefined) {
     return (
       <section className="flex min-h-0 flex-1 flex-col overflow-hidden bg-app">
         <PageHeader
           eyebrow="Settings"
-          title="Model Routing"
-          description="Choose models centrally, test decisions safely, and audit every dispatch route."
+          title="Execution Routing"
+          description="Recommend a production-qualified harness, model, and backend from frozen Factory evidence."
           status={<StatusBadge tone="neutral">Loading policy</StatusBadge>}
         />
         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -476,20 +547,29 @@ export function ModelRoutingView({ projectId }: { projectId: Id<"projects"> }) {
     if (["PLAN", "REVIEW", "LONG_RUNNING"].includes(lane) && !healthy.some((model) => model?.tier === "POWERFUL")) return [`${title} has no powerful fallback`];
     return [];
   });
+  const latestExecutionDecision = decisions.find((decision) => Boolean(decision.algorithmVersion));
+  const latestExecutionSnapshot = latestExecutionDecision?.executionRoutingSnapshot as ExecutionRoutingSnapshot | undefined;
+  const latestRecommendedCandidate = latestExecutionSnapshot?.result.candidates.find(
+    (candidate) => candidate.tuple.tupleKey === latestExecutionSnapshot.result.recommendedTupleKey,
+  );
+  const eligibleCandidateCount = latestExecutionSnapshot?.result.candidates.filter((candidate) => candidate.eligible).length ?? 0;
+  const rejectedCandidateCount = latestExecutionSnapshot?.result.candidates.length
+    ? latestExecutionSnapshot.result.candidates.length - eligibleCandidateCount
+    : 0;
 
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-hidden bg-app">
       <PageHeader
         eyebrow="Settings"
-        title="Model Routing"
-        description="Choose models centrally, test decisions safely, and audit every dispatch route."
+        title="Execution Routing"
+        description="Recommend a production-qualified harness, model, and backend from frozen Factory evidence."
         status={
           enforcementEnabled ? (
             <StatusBadge tone={killSwitch ? "warning" : "success"}>
-              {killSwitch ? "Kill switch active" : "Enforced"}
+              {killSwitch ? "Kill switch active" : "Model policy enforced"}
             </StatusBadge>
           ) : (
-            <StatusBadge tone="neutral">Shadow mode</StatusBadge>
+            <StatusBadge tone="neutral">Model policy shadow</StatusBadge>
           )
         }
         actions={
@@ -502,18 +582,133 @@ export function ModelRoutingView({ projectId }: { projectId: Id<"projects"> }) {
                 key: "model-routing.enabled",
                 enabled: !enforcementEnabled,
                 projectId,
-                actorId: "operator",
               });
-              toast(enforcementEnabled ? "Routing returned to shadow mode" : "Routing enforcement enabled");
+              toast(enforcementEnabled ? "Model policy returned to shadow mode" : "Model policy enforcement enabled");
             }}
           >
-            {enforcementEnabled ? "Use shadow mode" : "Enable enforcement"}
+            {enforcementEnabled ? "Use model shadow" : "Enforce model policy"}
           </Button>
         }
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto grid w-full max-w-[1400px] gap-4 px-6 py-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(360px,0.8fr)]">
+          <section className="overflow-hidden rounded-lg border border-line bg-surface-1 xl:col-span-2">
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-4 py-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Route className="h-4 w-4 text-accent" />
+                  <h2 className="text-sm font-semibold text-ink">Execution strategy</h2>
+                </div>
+                <p className="mt-1 text-[11.5px] text-ink-muted">Exact Factory Version tuples only. Eligibility is decided before verified evidence is scored.</p>
+              </div>
+              <div className="flex items-center gap-1 rounded-md border border-line bg-surface-2 p-1" aria-label="Execution routing detail level">
+                {(["BASIC", "INTERMEDIATE", "ADVANCED"] as const).map((level) => (
+                  <button
+                    key={level}
+                    type="button"
+                    aria-pressed={routingDetailLevel === level}
+                    onClick={() => setRoutingDetailLevel(level)}
+                    className={`rounded px-2.5 py-1.5 text-[10.5px] font-medium ${routingDetailLevel === level ? "bg-surface-1 text-ink shadow-sm" : "text-ink-muted hover:text-ink"}`}
+                  >
+                    {level === "BASIC" ? "Basic" : level === "INTERMEDIATE" ? "Intermediate" : "Advanced"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid divide-y divide-line sm:grid-cols-2 sm:divide-x sm:divide-y-0 xl:grid-cols-4">
+              <div className="px-4 py-3">
+                <p className="text-[10px] uppercase tracking-[0.06em] text-ink-muted">Operating mode</p>
+                <p className="mt-1 text-sm font-semibold text-ink">{latestExecutionSnapshot?.result.mode.replace("_", " ") ?? executionMode.replace("_", " ")}</p>
+                <p className="mt-1 text-[10.5px] text-ink-muted">Guarded flag {guardedAutoEnabled ? "enabled" : "off"}</p>
+              </div>
+              <div className="px-4 py-3">
+                <p className="text-[10px] uppercase tracking-[0.06em] text-ink-muted">Recommended strategy</p>
+                <p className="mt-1 truncate font-mono text-[12px] font-semibold text-ink" title={latestRecommendedCandidate?.tuple.tupleKey}>
+                  {latestRecommendedCandidate ? `${latestRecommendedCandidate.tuple.harness.adapter} · ${latestRecommendedCandidate.tuple.model.modelId}` : "Awaiting first decision"}
+                </p>
+                <p className="mt-1 text-[10.5px] text-ink-muted">{latestRecommendedCandidate?.tuple.backend ?? "No frozen evidence yet"}</p>
+              </div>
+              <div className="px-4 py-3">
+                <p className="text-[10px] uppercase tracking-[0.06em] text-ink-muted">Evidence confidence</p>
+                <p className="mt-1 text-sm font-semibold text-ink">{latestRecommendedCandidate ? `${Math.round(latestRecommendedCandidate.evidenceCoverage * 100)}%` : "Unknown"}</p>
+                <p className="mt-1 text-[10.5px] text-ink-muted">{latestRecommendedCandidate ? `${latestRecommendedCandidate.evidence.verifiedAttemptCount} verified / ${latestRecommendedCandidate.evidence.attemptCount} Attempts` : "Unknown stays unknown"}</p>
+              </div>
+              <div className="px-4 py-3">
+                <p className="text-[10px] uppercase tracking-[0.06em] text-ink-muted">Dispatch gate</p>
+                <div className="mt-1 flex items-center gap-2">
+                  <span className={`h-2 w-2 rounded-full ${latestExecutionSnapshot?.result.status === "EXHAUSTED" ? "bg-danger" : latestExecutionSnapshot ? "bg-success" : "bg-ink-muted"}`} />
+                  <p className="text-sm font-semibold text-ink">{latestExecutionSnapshot?.result.status ?? "No decision"}</p>
+                </div>
+                <p className="mt-1 text-[10.5px] text-ink-muted">{eligibleCandidateCount} eligible · {rejectedCandidateCount} rejected</p>
+              </div>
+            </div>
+
+            <div className={`border-t px-4 py-3 ${latestExecutionSnapshot?.result.status === "EXHAUSTED" ? "border-danger/30 bg-danger/5" : "border-line bg-surface-2/40"}`}>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="max-w-4xl">
+                  <p className="text-[10px] font-medium uppercase tracking-[0.06em] text-ink-muted">Why this route</p>
+                  <p className="mt-1 text-[12px] leading-5 text-ink-secondary">{latestExecutionSnapshot?.result.explanation ?? "Dispatch will preserve the current production-certified Factory Version until a WorkOrder records its first evidence-backed decision."}</p>
+                </div>
+                {latestExecutionSnapshot && (
+                  <StatusBadge tone={latestExecutionSnapshot.result.guardedAutoApplied ? "success" : latestExecutionSnapshot.result.status === "EXHAUSTED" ? "error" : "neutral"}>
+                    {latestExecutionSnapshot.result.guardedAutoApplied ? "Auto-applied" : latestExecutionSnapshot.result.fallbackReason ? "Fallback retained" : "Advisory"}
+                  </StatusBadge>
+                )}
+              </div>
+            </div>
+
+            {routingDetailLevel !== "BASIC" && latestExecutionSnapshot && (
+              <div className="border-t border-line">
+                <div className="overflow-x-auto" tabIndex={0} aria-label="Execution routing candidate comparison">
+                  <table className="w-full min-w-[860px] text-left">
+                    <thead className="bg-surface-2 text-[10px] uppercase tracking-[0.06em] text-ink-muted">
+                      <tr>
+                        <th className="px-4 py-2.5">Candidate tuple</th>
+                        <th className="px-3 py-2.5">Eligibility</th>
+                        <th className="px-3 py-2.5">Score</th>
+                        <th className="px-3 py-2.5">Evidence</th>
+                        <th className="px-4 py-2.5">Decision reason</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {latestExecutionSnapshot.result.candidates.map((candidate) => (
+                        <tr key={candidate.tuple.tupleKey} className="border-t border-line align-top text-[11.5px]">
+                          <td className="px-4 py-3">
+                            <p className="font-mono font-medium text-ink">{candidate.tuple.harness.adapter}/{candidate.tuple.harness.version}</p>
+                            <p className="mt-0.5 text-ink-muted">{candidate.tuple.model.provider}/{candidate.tuple.model.modelId} · {candidate.tuple.backend}</p>
+                          </td>
+                          <td className="px-3 py-3"><StatusBadge tone={candidate.eligible ? "success" : "error"}>{candidate.eligible ? "Eligible" : "Rejected"}</StatusBadge></td>
+                          <td className="px-3 py-3 font-mono text-ink">{candidate.score == null ? "Unknown" : candidate.score.toFixed(2)}</td>
+                          <td className="px-3 py-3 text-ink-secondary">{Math.round(candidate.evidenceCoverage * 100)}% · {candidate.evidence.verifiedAttemptCount} verified</td>
+                          <td className="max-w-[360px] px-4 py-3 leading-5 text-ink-secondary">{candidate.eligible ? "Cleared every hard constraint; scored only on observed metrics." : candidate.rejectionReasons.join(" ")}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {routingDetailLevel === "ADVANCED" && latestExecutionSnapshot && (
+              <div className="grid gap-3 border-t border-line bg-surface-2/30 px-4 py-3 md:grid-cols-3">
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.06em] text-ink-muted">Frozen identity</p>
+                  <p className="mt-1 break-all font-mono text-[10.5px] leading-5 text-ink-secondary">{latestExecutionDecision?.decisionDigest ?? "Digest unavailable"}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.06em] text-ink-muted">Algorithm and cutoff</p>
+                  <p className="mt-1 font-mono text-[10.5px] leading-5 text-ink-secondary">{latestExecutionSnapshot.algorithmVersion}<br />{formatTime(latestExecutionSnapshot.evidenceCutoffAt)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.06em] text-ink-muted">Policy gates</p>
+                  <p className="mt-1 text-[10.5px] leading-5 text-ink-secondary">{minimumVerifiedAttempts} verified Attempts · {minimumEvidenceCoverage}% coverage · {minimumScoreMargin}-point margin · {evidenceWindowDays} days</p>
+                </div>
+              </div>
+            )}
+          </section>
+
           <OperatingLanes
             catalog={catalog}
             lanePools={lanePools}
@@ -548,7 +743,7 @@ export function ModelRoutingView({ projectId }: { projectId: Id<"projects"> }) {
                   <Button
                     size="sm"
                     onClick={async () => {
-                      const result = await initializeCatalog({ actorId: "operator" });
+                      const result = await initializeCatalog({ projectId });
                       toast(`Initialized ${result.created} model routes`);
                     }}
                   >
@@ -560,7 +755,7 @@ export function ModelRoutingView({ projectId }: { projectId: Id<"projects"> }) {
                 </Button>
               </div>
               {catalog.length ? (
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto" tabIndex={0} aria-label="Provider health routes">
                   <table className="w-full min-w-[680px] text-left">
                     <thead className="bg-surface-2 text-[10.5px] uppercase tracking-[0.06em] text-ink-muted">
                       <tr>
@@ -619,14 +814,14 @@ export function ModelRoutingView({ projectId }: { projectId: Id<"projects"> }) {
               )}
               <div className="grid gap-4 md:grid-cols-2">
                 <Field label="Policy name">
-                  <Input value={name} onChange={(event) => setName(event.target.value)} />
+                  <Input aria-label="Policy name" value={name} onChange={(event) => setName(event.target.value)} />
                 </Field>
                 <Field label="Canary enforcement" hint="0% stays in shadow; increase after decision review.">
-                  <Input type="number" min="0" max="100" value={canaryPercent} onChange={(event) => setCanaryPercent(event.target.value)} />
+                  <Input aria-label="Canary enforcement percentage" type="number" min="0" max="100" value={canaryPercent} onChange={(event) => setCanaryPercent(event.target.value)} />
                 </Field>
                 <Field label="Workspace default">
                   <Select value={defaultModelId} onValueChange={setDefaultModelId}>
-                    <SelectTrigger><SelectValue placeholder="Select model route" /></SelectTrigger>
+                    <SelectTrigger aria-label="Workspace default"><SelectValue placeholder="Select model route" /></SelectTrigger>
                     <SelectContent>
                       {catalog.map((model) => <SelectItem key={model._id} value={model.modelId}>{model.displayName}</SelectItem>)}
                     </SelectContent>
@@ -634,7 +829,7 @@ export function ModelRoutingView({ projectId }: { projectId: Id<"projects"> }) {
                 </Field>
                 <Field label="Safe fallback">
                   <Select value={safeFallbackModelId} onValueChange={setSafeFallbackModelId}>
-                    <SelectTrigger><SelectValue placeholder="Select safe fallback" /></SelectTrigger>
+                    <SelectTrigger aria-label="Safe fallback"><SelectValue placeholder="Select safe fallback" /></SelectTrigger>
                     <SelectContent>
                       {catalog.filter((model) => model.riskApproved).map((model) => (
                         <SelectItem key={model._id} value={model.modelId}>{model.displayName}</SelectItem>
@@ -643,15 +838,93 @@ export function ModelRoutingView({ projectId }: { projectId: Id<"projects"> }) {
                   </Select>
                 </Field>
                 <Field label="Per-run budget cap" hint="Optional routing estimate cap in USD.">
-                  <Input type="number" min="0" step="0.01" value={budgetLimit} onChange={(event) => setBudgetLimit(event.target.value)} placeholder="No cap" />
+                  <Input aria-label="Per-run budget cap" type="number" min="0" step="0.01" value={budgetLimit} onChange={(event) => setBudgetLimit(event.target.value)} placeholder="No cap" />
                 </Field>
                 <Field label="Fallback chain" hint="Comma-separated ordered model route IDs.">
-                  <Input value={fallbackChain.join(", ")} onChange={(event) => setFallbackChain(event.target.value.split(",").map((value) => value.trim()).filter(Boolean))} />
+                  <Input aria-label="Fallback chain" value={fallbackChain.join(", ")} onChange={(event) => setFallbackChain(event.target.value.split(",").map((value) => value.trim()).filter(Boolean))} />
+                </Field>
+                <Field label="Execution routing mode" hint="Guarded Auto remains inert until separately promoted and enabled.">
+                  <Select value={executionMode} onValueChange={(value) => setExecutionMode(value as "ADVISORY" | "GUARDED_AUTO")}>
+                    <SelectTrigger aria-label="Execution routing mode"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ADVISORY">Advisory</SelectItem>
+                      <SelectItem value="GUARDED_AUTO">Guarded Auto (staged)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field label="Evidence window" hint="Bounded verified history in days.">
+                  <Input aria-label="Evidence window in days" type="number" min="1" max="90" step="1" value={evidenceWindowDays} onChange={(event) => setEvidenceWindowDays(event.target.value)} />
+                </Field>
+                <Field label="Minimum verified Attempts">
+                  <Input aria-label="Minimum verified Attempts" type="number" min="1" max="100" step="1" value={minimumVerifiedAttempts} onChange={(event) => setMinimumVerifiedAttempts(event.target.value)} />
+                </Field>
+                <Field label="Minimum evidence coverage" hint="Observed scoring weight required, as a percentage.">
+                  <Input aria-label="Minimum evidence coverage percentage" type="number" min="0" max="100" step="1" value={minimumEvidenceCoverage} onChange={(event) => setMinimumEvidenceCoverage(event.target.value)} />
+                </Field>
+                <Field label="Minimum score margin" hint="Required lead over the runner-up on a 100-point scale.">
+                  <Input aria-label="Minimum score margin" type="number" min="0" max="100" step="1" value={minimumScoreMargin} onChange={(event) => setMinimumScoreMargin(event.target.value)} />
+                </Field>
+                <Field label="Minimum context window" hint="Optional hard token constraint; unknown fails closed.">
+                  <Input aria-label="Minimum context window" type="number" min="1" step="1000" value={minimumContextWindow} onChange={(event) => setMinimumContextWindow(event.target.value)} placeholder="No hard minimum" />
                 </Field>
                 <label className="flex items-center gap-2 rounded-lg border border-warn/30 bg-warn/5 px-3 py-2.5 text-[12.5px] text-ink md:col-span-2">
                   <input type="checkbox" checked={killSwitch} onChange={(event) => setKillSwitch(event.target.checked)} />
                   Kill switch: keep existing runtime model selection and record the policy as bypassed
                 </label>
+              </div>
+
+              <div className="mt-4 rounded-lg border border-line bg-surface-2/50 p-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold text-ink">Guarded Auto promotion gate</p>
+                    <p className="mt-1 text-[11px] leading-5 text-ink-muted">Promotion creates a new policy version bound to a reviewed, reproducible routing decision. The runtime flag is independent and default-off.</p>
+                  </div>
+                  <StatusBadge tone={policy?.executionRouting?.guardedAutoPromotedAt ? "success" : "neutral"}>
+                    {policy?.executionRouting?.guardedAutoPromotedAt ? "Promoted" : "Not promoted"}
+                  </StatusBadge>
+                </div>
+                <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_auto_auto]">
+                  <Input aria-label="Guarded Auto promotion evidence" value={promotionReason} onChange={(event) => setPromotionReason(event.target.value)} placeholder="Why is this evidence sufficient for guarded selection?" />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!latestExecutionDecision?.decisionDigest || !promotionReason.trim() || Boolean(policy?.executionRouting?.guardedAutoPromotedAt)}
+                    onClick={async () => {
+                      try {
+                        await promoteGuardedAuto({
+                          projectId,
+                          reason: promotionReason.trim(),
+                          evidenceDecisionIds: [latestExecutionDecision!._id],
+                        });
+                        setPromotionReason("");
+                        toast("Guarded Auto policy promoted; runtime flag remains unchanged");
+                      } catch (cause) {
+                        toast(cause instanceof Error ? cause.message : "Guarded Auto promotion failed", true);
+                      }
+                    }}
+                  >
+                    Promote with evidence
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={guardedAutoEnabled ? "outline" : "default"}
+                    disabled={!policy?.executionRouting?.guardedAutoPromotedAt}
+                    onClick={async () => {
+                      try {
+                        await setFlag({
+                          key: "execution-routing.guarded-auto",
+                          enabled: !guardedAutoEnabled,
+                          projectId,
+                        });
+                        toast(guardedAutoEnabled ? "Guarded Auto runtime disabled" : "Guarded Auto runtime enabled");
+                      } catch (cause) {
+                        toast(cause instanceof Error ? cause.message : "Guarded Auto flag update failed", true);
+                      }
+                    }}
+                  >
+                    {guardedAutoEnabled ? "Disable runtime" : "Enable runtime"}
+                  </Button>
+                </div>
               </div>
             </section>
 
@@ -687,35 +960,35 @@ export function ModelRoutingView({ projectId }: { projectId: Id<"projects"> }) {
                     <div key={rule.id} className="grid items-center gap-2 rounded-lg border border-line bg-surface-2 p-3 md:grid-cols-[40px_1fr_1fr_1fr_1fr_1.2fr_36px]">
                       <span className="text-center font-mono text-xs text-ink-muted">{index + 1}</span>
                       <Select value={rule.operatingLane ?? "ANY"} onValueChange={(value) => setRules((current) => current.map((item) => item.id === rule.id ? { ...item, operatingLane: value === "ANY" ? undefined : value as OperatingLane } : item))}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectTrigger aria-label={`Rule ${index + 1} operating lane`}><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="ANY">Any lane</SelectItem>
                           {OPERATING_LANES.map(({ lane, title }) => <SelectItem key={lane} value={lane}>{title}</SelectItem>)}
                         </SelectContent>
                       </Select>
                       <Select value={rule.taskType ?? "ANY"} onValueChange={(value) => setRules((current) => current.map((item) => item.id === rule.id ? { ...item, taskType: value === "ANY" ? undefined : value } : item))}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectTrigger aria-label={`Rule ${index + 1} task type`}><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="ANY">Any task</SelectItem>
                           {TASK_TYPES.map((taskType) => <SelectItem key={taskType} value={taskType}>{taskType}</SelectItem>)}
                         </SelectContent>
                       </Select>
                       <Select value={rule.riskLevel ?? "ANY"} onValueChange={(value) => setRules((current) => current.map((item) => item.id === rule.id ? { ...item, riskLevel: value === "ANY" ? undefined : value as Risk } : item))}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectTrigger aria-label={`Rule ${index + 1} risk`}><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="ANY">Any risk</SelectItem>
                           {(["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const).map((riskLevel) => <SelectItem key={riskLevel} value={riskLevel}>{riskLevel}</SelectItem>)}
                         </SelectContent>
                       </Select>
                       <Select value={rule.complexity ?? "ANY"} onValueChange={(value) => setRules((current) => current.map((item) => item.id === rule.id ? { ...item, complexity: value === "ANY" ? undefined : value as Complexity } : item))}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectTrigger aria-label={`Rule ${index + 1} complexity`}><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="ANY">Any size</SelectItem>
                           {(["SMALL", "STANDARD", "LARGE"] as const).map((complexity) => <SelectItem key={complexity} value={complexity}>{complexity}</SelectItem>)}
                         </SelectContent>
                       </Select>
                       <Select value={rule.modelId} onValueChange={(modelId) => setRules((current) => current.map((item) => item.id === rule.id ? { ...item, modelId } : item))}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectTrigger aria-label={`Rule ${index + 1} model route`}><SelectValue /></SelectTrigger>
                         <SelectContent>
                           {catalog.map((model) => <SelectItem key={model._id} value={model.modelId}>{model.displayName}</SelectItem>)}
                         </SelectContent>
@@ -744,39 +1017,39 @@ export function ModelRoutingView({ projectId }: { projectId: Id<"projects"> }) {
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
                 <Field label="Operating lane" hint="The approved pool is evaluated before generic workflow defaults.">
                   <Select value={simLane} onValueChange={(value) => setSimLane(value as OperatingLane)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger aria-label="Simulator operating lane"><SelectValue /></SelectTrigger>
                     <SelectContent>{OPERATING_LANES.map(({ lane, title }) => <SelectItem key={lane} value={lane}>{title}</SelectItem>)}</SelectContent>
                   </Select>
                 </Field>
                 <Field label="Task type">
                   <Select value={simTaskType} onValueChange={setSimTaskType}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger aria-label="Simulator task type"><SelectValue /></SelectTrigger>
                     <SelectContent>{TASK_TYPES.map((taskType) => <SelectItem key={taskType} value={taskType}>{taskType}</SelectItem>)}</SelectContent>
                   </Select>
                 </Field>
                 <Field label="Risk">
                   <Select value={simRisk} onValueChange={(value) => setSimRisk(value as Risk)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger aria-label="Simulator risk"><SelectValue /></SelectTrigger>
                     <SelectContent>{(["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const).map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
                   </Select>
                 </Field>
                 <Field label="Complexity">
                   <Select value={simComplexity} onValueChange={(value) => setSimComplexity(value as Complexity)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger aria-label="Simulator complexity"><SelectValue /></SelectTrigger>
                     <SelectContent>{(["SMALL", "STANDARD", "LARGE"] as const).map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
                   </Select>
                 </Field>
                 <Field label="Workflow tier">
                   <Select value={simTier} onValueChange={(value) => setSimTier(value as Tier)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger aria-label="Simulator workflow tier"><SelectValue /></SelectTrigger>
                     <SelectContent>{(["FAST", "BALANCED", "POWERFUL"] as const).map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
                   </Select>
                 </Field>
                 <Field label="Required capabilities">
-                  <Input value={simCapabilities} onChange={(event) => setSimCapabilities(event.target.value)} />
+                  <Input aria-label="Simulator required capabilities" value={simCapabilities} onChange={(event) => setSimCapabilities(event.target.value)} />
                 </Field>
                 <Field label="Budget remaining">
-                  <Input type="number" min="0" step="0.01" value={simBudget} onChange={(event) => setSimBudget(event.target.value)} placeholder="No request cap" />
+                  <Input aria-label="Simulator budget remaining" type="number" min="0" step="0.01" value={simBudget} onChange={(event) => setSimBudget(event.target.value)} placeholder="No request cap" />
                 </Field>
               </div>
               <div className="mt-4 rounded-lg border border-line bg-surface-2 p-4">
@@ -808,7 +1081,7 @@ export function ModelRoutingView({ projectId }: { projectId: Id<"projects"> }) {
                 <p className="text-[11.5px] text-ink-muted">Immutable evidence from Work Order dispatch.</p>
               </div>
               {decisions.length ? (
-                <div className="max-h-[520px] divide-y divide-line overflow-y-auto">
+                <div className="max-h-[520px] divide-y divide-line overflow-y-auto" tabIndex={0} aria-label="Recent immutable routing decisions">
                   {decisions.map((decision) => (
                     <div key={decision._id} className="p-4">
                       <div className="flex items-start justify-between gap-3">

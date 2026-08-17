@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { appendChangeRecord } from "./lib/armAudit";
 import { logTaskEvent } from "./lib/taskEvents";
 import { deriveVerificationStatus, currentWorkflowStepLabel, totalWorkflowRetries } from "./lib/workOrders";
@@ -81,7 +81,7 @@ import {
   validateTaskAttemptSelection,
   validateTaskAttemptStart,
 } from "./lib/taskAttemptScheduler";
-import { COMPANY_PERMISSIONS, requireWorkspaceAccess } from "./lib/companyAccess";
+import { COMPANY_PERMISSIONS, FACTORY_PERMISSIONS, requireWorkspaceAccess, requireWorkspacePermission } from "./lib/companyAccess";
 import { assertAuthorizedDeliveryRecord, canAccessDeliveryRecord, requireAuthorizedDeliveryScope } from "./lib/deliveryAuthorization";
 import { combineCodeScopePolicies, validateDispatchScope } from "./lib/softwareFactoryControlPlane";
 import {
@@ -100,6 +100,8 @@ import {
   continuousResearchDesiredOutcome,
   continuousResearchWorkOrderDispatchIssues,
 } from "./lib/continuousResearchEvidence";
+import { buildExecutionRoutingPreview, executionRoutingRequested } from "./lib/executionRouting";
+import { findModelCatalogEntry, loadModelCatalogForProject } from "./lib/modelCatalogScope";
 
 function generateRunId(): string {
   return Math.random().toString(36).substring(2, 10);
@@ -157,7 +159,7 @@ async function resolveDispatchRouting(
   if (!workOrder.projectId) return null;
   const [project, catalog, activePolicy, flagRows, task] = await Promise.all([
     ctx.db.get(workOrder.projectId),
-    ctx.db.query("modelCatalog").collect(),
+    loadModelCatalogForProject(ctx, workOrder.projectId),
     ctx.db
       .query("modelRoutingPolicies")
       .withIndex("by_project_status", (q: any) =>
@@ -286,7 +288,104 @@ async function resolveDispatchRouting(
     mode,
     createdAt: Date.now(),
   });
-  return { decisionId, result, mode, enabled, policyVersion: policy.version };
+  return {
+    decisionId,
+    decisionDigest: undefined,
+    executionRoutingSnapshot: undefined,
+    result,
+    mode,
+    enabled,
+    policyVersion: policy.version,
+  };
+}
+
+async function persistExecutionRoutingDecision(
+  ctx: MutationCtx,
+  input: {
+    preview: NonNullable<Awaited<ReturnType<typeof buildExecutionRoutingPreview>>>;
+    workOrder: Doc<"workOrders">;
+    task?: Doc<"tasks"> | null;
+  },
+) {
+  const { preview, workOrder, task } = input;
+  if (!workOrder.projectId) throw new Error("Execution routing decisions require a workspace-scoped WorkOrder.");
+  const selected = preview.result.appliedTupleKey
+    ? preview.result.candidates.find((candidate) => candidate.tuple.tupleKey === preview.result.appliedTupleKey)
+    : undefined;
+  const snapshot = {
+    schemaVersion: "execution-routing-decision/v1",
+    algorithmVersion: preview.result.algorithmVersion,
+    policyId: preview.activePolicy?._id ? String(preview.activePolicy._id) : undefined,
+    policyVersion: preview.policy.policyVersion,
+    workOrderId: String(workOrder._id),
+    taskId: task?._id ? String(task._id) : undefined,
+    riskLevel: workOrder.riskLevel,
+    evidenceCutoffAt: preview.cutoffAt,
+    result: preview.result,
+  };
+  const decisionDigest = `sha256:${computeCanonicalHash(snapshot)}`;
+  const decisionId = await ctx.db.insert("modelRoutingDecisions", {
+    projectId: workOrder.projectId,
+    policyId: preview.activePolicy?._id,
+    policyVersion: preview.policy.policyVersion,
+    workOrderId: workOrder._id,
+    taskId: task?._id,
+    taskType: task?.type,
+    riskLevel: workOrder.riskLevel,
+    requiredCapabilities: [],
+    selectedProvider: selected?.tuple.model.provider,
+    selectedModelId: selected?.tuple.model.modelId,
+    source: preview.result.mode === "PINNED"
+      ? "RUN_OVERRIDE"
+      : preview.result.guardedAutoApplied
+        ? "POLICY_RULE"
+        : "SYSTEM_DEFAULT",
+    explanation: preview.result.explanation,
+    alternativesConsidered: preview.result.candidates.map((candidate) => ({
+      modelId: `${candidate.tuple.harness.adapter}/${candidate.tuple.model.modelId}/${candidate.tuple.backend}`,
+      eligible: candidate.eligible,
+      reason: candidate.eligible
+        ? `Score ${candidate.score ?? "unknown"}; evidence coverage ${Math.round(candidate.evidenceCoverage * 100)}%.`
+        : candidate.rejectionReasons.join(" "),
+    })),
+    mode: preview.result.status === "EXHAUSTED"
+      ? "EXHAUSTED"
+      : preview.result.mode === "PINNED" || preview.result.guardedAutoApplied
+        ? "ENFORCED"
+        : "SHADOW",
+    algorithmVersion: preview.result.algorithmVersion,
+    decisionDigest,
+    executionRoutingSnapshot: snapshot,
+    createdAt: preview.cutoffAt,
+  });
+  return {
+    decisionId,
+    decisionDigest,
+    executionRoutingSnapshot: snapshot,
+    result: {
+      status: preview.result.status,
+      selectedModelId: selected?.tuple.model.modelId,
+      selectedProvider: selected?.tuple.model.provider,
+      source: preview.result.mode === "PINNED"
+        ? "RUN_OVERRIDE" as const
+        : preview.result.guardedAutoApplied
+          ? "POLICY_RULE" as const
+          : "SYSTEM_DEFAULT" as const,
+      explanation: preview.result.explanation,
+      alternativesConsidered: preview.result.candidates.map((candidate) => ({
+        modelId: candidate.tuple.model.modelId,
+        eligible: candidate.eligible,
+        reason: candidate.rejectionReasons.join(" ") || "Eligible",
+      })),
+    },
+    mode: preview.result.status === "EXHAUSTED"
+      ? "EXHAUSTED" as const
+      : preview.result.mode === "PINNED" || preview.result.guardedAutoApplied
+        ? "ENFORCED" as const
+        : "SHADOW" as const,
+    enabled: true,
+    policyVersion: preview.policy.policyVersion,
+  };
 }
 
 async function logWorkOrderEvent(
@@ -2180,11 +2279,32 @@ async function dispatchWorkOrder(
       priorRun: retryOfRun,
       lineage: existingRuns,
     });
-    const factoryBinding = await resolveFactoryDispatchBinding(ctx, {
-      args: { ...args, ...retryExecutionBinding },
-      workOrder: refreshedWorkOrder,
-      workflow,
-    });
+    // Execution routing is additive for V1. Legacy dispatches do not enter the
+    // Factory tuple control plane unless an exact baseline (or explicit pin)
+    // already exists, preserving the default-off rollout contract.
+    const executionRoutingPreview = executionRoutingRequested({
+      factoryDefinitionVersionId: args.factoryDefinitionVersionId,
+      executionRoutingPin: refreshedWorkOrder.executionRoutingPin,
+    })
+      ? await buildExecutionRoutingPreview(ctx, {
+          workOrder: refreshedWorkOrder,
+          workflow,
+          fallbackFactoryDefinitionVersionId: args.factoryDefinitionVersionId,
+        })
+      : null;
+    const routedFactoryDefinitionVersionId = executionRoutingPreview?.selectedFactoryDefinitionVersionId
+      ?? args.factoryDefinitionVersionId;
+    const factoryBinding = executionRoutingPreview?.result.status === "EXHAUSTED"
+      ? null
+      : await resolveFactoryDispatchBinding(ctx, {
+          args: {
+            ...args,
+            ...retryExecutionBinding,
+            factoryDefinitionVersionId: routedFactoryDefinitionVersionId,
+          },
+          workOrder: refreshedWorkOrder,
+          workflow,
+        });
     const taskAttempts = selectedTask
       ? existingRuns.filter((run) => run.parentTaskId === selectedTask._id)
       : [];
@@ -2265,12 +2385,18 @@ async function dispatchWorkOrder(
       throw new Error(`WorkOrder is not dispatchable (${("reason" in dispatchable ? dispatchable.reason : "unknown")})`);
     }
 
-    const routing = await resolveDispatchRouting(ctx, {
-      workOrder: refreshedWorkOrder,
-      workflow,
-      selectedTask,
-      authorizedRunOverride: args.authorizedModelOverride,
-    });
+    const routing = executionRoutingPreview
+      ? await persistExecutionRoutingDecision(ctx, {
+          preview: executionRoutingPreview,
+          workOrder: refreshedWorkOrder,
+          task: selectedTask,
+        })
+      : await resolveDispatchRouting(ctx, {
+          workOrder: refreshedWorkOrder,
+          workflow,
+          selectedTask,
+          authorizedRunOverride: args.authorizedModelOverride,
+        });
     if (routing?.enabled && routing.mode === "EXHAUSTED") {
       await ctx.db.insert("alerts", {
         tenantId: refreshedWorkOrder.tenantId,
@@ -2293,8 +2419,8 @@ async function dispatchWorkOrder(
         routingDecisionId: routing.decisionId,
       };
     }
-    const routedModel =
-      routing?.mode === "ENFORCED" ? routing.result.selectedModelId : args.model;
+    const routedModel = factoryBinding?.primaryModel?.modelId
+      ?? (routing?.mode === "ENFORCED" ? routing.result.selectedModelId : args.model);
 
     const topology = workflow.topology ?? "LINEAR";
     const steps = workflow.steps.map((step, index) => ({
@@ -2511,6 +2637,8 @@ async function dispatchWorkOrder(
       runtime: args.runtime,
       model: routedModel,
       routingDecisionId: routing?.decisionId,
+      routingDecisionDigest: routing?.decisionDigest,
+      executionRoutingSnapshot: routing?.executionRoutingSnapshot,
       executionEnvironment: effectiveScope.executionEnvironment,
       executorHostId: args.executorHostId,
       checkpointSummary: "Dispatch accepted; awaiting executor binding.",
@@ -2531,6 +2659,7 @@ async function dispatchWorkOrder(
         routingMode: routing?.mode,
         routingSource: routing?.result.source,
         routingPolicyVersion: routing?.policyVersion,
+        routingDecisionDigest: routing?.decisionDigest,
         codeScopeIds: effectiveScope.codeScopeIds,
         owningTeamId: effectiveScope.owningTeamId,
         ownerMemberId: effectiveScope.ownerMemberId,
@@ -3111,6 +3240,7 @@ async function resolveFactoryDispatchBinding(
       workflowAgentId: binding.workflowAgentId,
       agentVersion: agentVersions[index],
     })),
+    primaryModel,
   };
 }
 
@@ -3129,11 +3259,16 @@ export const setAuthorizedModelOverride = mutation({
     workOrderId: v.id("workOrders"),
     modelId: v.optional(v.string()),
     reason: v.optional(v.string()),
-    actorId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const workOrder = await ctx.db.get(args.workOrderId);
     if (!workOrder) throw new Error("Work Order not found");
+    if (!workOrder.projectId) throw new Error("Work Order is unavailable or unauthorized.");
+    const factoryAccess = await requireWorkspacePermission(
+      ctx,
+      workOrder.projectId,
+      FACTORY_PERMISSIONS.APPROVE,
+    );
     const deliveryAccess = await requireAuthorizedDeliveryScope(ctx, workOrder.projectId, COMPANY_PERMISSIONS.APPROVE_DELIVERY);
     assertAuthorizedDeliveryRecord(deliveryAccess, workOrder);
     const runs = await ctx.db
@@ -3153,12 +3288,11 @@ export const setAuthorizedModelOverride = mutation({
       });
       return { cleared: true };
     }
-    if (!args.reason?.trim()) throw new Error("A reason is required for a model override");
+    if (!args.reason?.trim() || args.reason.trim().length > 1_000) {
+      throw new Error("A model override reason between 1 and 1,000 characters is required.");
+    }
 
-    const model = await ctx.db
-      .query("modelCatalog")
-      .withIndex("by_model_id", (q) => q.eq("modelId", args.modelId!))
-      .first();
+    const model = await findModelCatalogEntry(ctx, workOrder.projectId, args.modelId);
     if (!model || model.deprecated || model.availability === "UNAVAILABLE" || model.availability === "RATE_LIMITED") {
       throw new Error("Selected model route is unavailable");
     }
@@ -3183,7 +3317,7 @@ export const setAuthorizedModelOverride = mutation({
       tenantId: workOrder.tenantId,
       projectId: workOrder.projectId,
       actorType: "HUMAN",
-      actorId: args.actorId ?? "operator",
+      actorId: factoryAccess.actorId,
       action: "WORK_ORDER_MODEL_OVERRIDE_SET",
       description: `Set the next dispatch model for ${workOrder.title} to ${model.displayName}`,
       targetType: "WORK_ORDER",

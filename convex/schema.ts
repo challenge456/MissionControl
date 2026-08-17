@@ -1320,6 +1320,8 @@ export default defineSchema({
   // MODEL ROUTING CONTROL PLANE
   // -------------------------------------------------------------------------
   modelCatalog: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.optional(v.id("projects")),
     provider: v.string(),
     modelId: v.string(),
     displayName: v.string(),
@@ -1343,6 +1345,8 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_model_id", ["modelId"])
+    .index("by_project", ["projectId"])
+    .index("by_project_model", ["projectId", "modelId"])
     .index("by_provider", ["provider"])
     .index("by_availability", ["availability"]),
 
@@ -1394,6 +1398,18 @@ export default defineSchema({
     fallbackChain: v.array(v.string()),
     budgetLimitUsd: v.optional(v.number()),
     latencyTargetMs: v.optional(v.number()),
+    executionRouting: v.optional(v.object({
+      mode: v.union(v.literal("ADVISORY"), v.literal("GUARDED_AUTO")),
+      evidenceWindowDays: v.number(),
+      minimumVerifiedAttempts: v.number(),
+      minimumEvidenceCoverage: v.number(),
+      minimumScoreMargin: v.number(),
+      minimumContextWindow: v.optional(v.number()),
+      guardedAutoPromotedAt: v.optional(v.number()),
+      guardedAutoPromotedBy: v.optional(v.string()),
+      guardedAutoPromotionReason: v.optional(v.string()),
+      guardedAutoEvidenceDecisionIds: v.optional(v.array(v.id("modelRoutingDecisions"))),
+    })),
     canaryPercent: v.number(),
     killSwitch: v.boolean(),
     version: v.number(),
@@ -1471,6 +1487,9 @@ export default defineSchema({
       v.literal("KILLED"),
       v.literal("EXHAUSTED")
     ),
+    algorithmVersion: v.optional(v.string()),
+    decisionDigest: v.optional(v.string()),
+    executionRoutingSnapshot: v.optional(v.any()),
     createdAt: v.number(),
   })
     .index("by_project", ["projectId"])
@@ -1841,6 +1860,13 @@ export default defineSchema({
     authorizedModelOverride: v.optional(v.string()),
     authorizedModelOverrideReason: v.optional(v.string()),
     authorizedModelOverrideUpdatedAt: v.optional(v.number()),
+    executionRoutingPin: v.optional(v.object({
+      factoryDefinitionVersionId: v.id("factoryDefinitionVersions"),
+      factoryConfigurationDigest: v.string(),
+      reason: v.string(),
+      pinnedBy: v.string(),
+      pinnedAt: v.number(),
+    })),
     modelRoutingDecisionId: v.optional(v.id("modelRoutingDecisions")),
     requestedBy: v.optional(v.string()),
     assignedAgent: v.optional(v.string()),
@@ -4421,6 +4447,8 @@ export default defineSchema({
     publishedAt: v.optional(v.number()),
     escalationOwner: v.optional(v.string()),
     routingDecisionId: v.optional(v.id("modelRoutingDecisions")),
+    routingDecisionDigest: v.optional(v.string()),
+    executionRoutingSnapshot: v.optional(v.any()),
     returnHandoff: v.optional(v.object({
       summary: v.string(),
       changedArtifacts: v.array(v.string()),

@@ -1090,7 +1090,10 @@ function OverviewTab({
 
 function TaskModelRoutingSection({ taskId }: { taskId: Id<"tasks"> }) {
   const routing = useQuery(api.modelRoutingDecisions.getForTask, { taskId });
-  const catalog = useQuery(api.modelCatalog.list);
+  const catalog = useQuery(
+    api.modelCatalog.list,
+    routing?.projectId ? { projectId: routing.projectId } : "skip",
+  );
   const setOverride = useMutation(api.workOrders.setAuthorizedModelOverride);
   const { toast } = useToast();
   const [modelId, setModelId] = useState("");
@@ -1122,7 +1125,6 @@ function TaskModelRoutingSection({ taskId }: { taskId: Id<"tasks"> }) {
         workOrderId: routing.workOrderId!,
         modelId,
         reason: reason.trim(),
-        actorId: "operator",
       });
       toast("Model override saved for the next dispatch");
     } catch (error) {
@@ -1175,7 +1177,7 @@ function TaskModelRoutingSection({ taskId }: { taskId: Id<"tasks"> }) {
                 <Button size="sm" variant="outline" onClick={async () => {
                   setSaving(true);
                   try {
-                    await setOverride({ workOrderId: routing.workOrderId!, actorId: "operator" });
+                    await setOverride({ workOrderId: routing.workOrderId! });
                     toast("Model override cleared; workspace policy will apply");
                   } catch (error) {
                     toast(error instanceof Error ? error.message : "Unable to clear model override", true);
