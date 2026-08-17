@@ -5,6 +5,18 @@
   "installCommand": "corepack enable pnpm && pnpm install --frozen-lockfile",
   "framework": null,
   "devCommand": "pnpm dev",
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Content-Security-Policy", "value": "frame-ancestors 'none'; base-uri 'self'; object-src 'none'" },
+        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" }
+      ]
+    }
+  ],
   "rewrites": [
     { "source": "/v2", "destination": "/index.html" },
     { "source": "/v2/:path*", "destination": "/index.html" }

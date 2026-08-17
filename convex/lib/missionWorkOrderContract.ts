@@ -76,7 +76,6 @@ export function compileMissionWorkOrderContract(input: {
       id: specVerificationCheckId(expectation.id),
       name: expectation.title,
       category: expectation.category,
-      verifierId: "mission-spec-expectation/v1",
       mandatory: expectation.mandatory,
       acceptanceCriterionIds: linkedAssertions
         .filter((assertion) => assertion.sourceVerificationExpectationIds?.includes(expectation.id))
@@ -203,7 +202,16 @@ export function compileMissionWorkOrderContract(input: {
           commandClass: verification.commandClass,
           timeoutMs: verification.timeoutMs,
         },
-      }, ...specVerificationChecks],
+      }, ...specVerificationChecks.map((check) => ({
+        ...check,
+        verifierId: "factory-command/v1",
+        command: {
+          executable: verification.executable,
+          args: verification.args,
+          commandClass: verification.commandClass,
+          timeoutMs: verification.timeoutMs,
+        },
+      }))],
       requiredRisks: [{
         id: candidateRiskId,
         description: "The published candidate may differ from the exact immutable subject independently verified for acceptance.",

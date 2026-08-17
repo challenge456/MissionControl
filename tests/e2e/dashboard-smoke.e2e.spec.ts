@@ -7,15 +7,15 @@ async function expectShellLoaded(page: Page) {
 }
 
 /**
- * Smoke E2E: Dashboard and home load with Convex (dev or deployed).
- * webServer in playwright.config.ts runs UI with VITE_CONVEX_URL so Convex dev can back the test.
+ * Deterministic shell smoke. The full qualification suite separately exercises
+ * live Convex-backed records and governed detail navigation.
  */
 test("home dashboard loads and shows main sections", async ({ page }) => {
   await expectShellLoaded(page);
 
   // Home section: quick navigation or status
-  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible({ timeout: 10000 });
-  await expect(page.getByRole("heading", { name: "Needs attention", exact: true }).first()).toBeVisible({ timeout: 10000 });
+  await expect(page.getByRole("heading", { name: "Command Center" })).toBeVisible({ timeout: 10000 });
+  await expect(page.getByRole("heading", { name: "Factory overview", exact: true })).toBeVisible({ timeout: 10000 });
 });
 
 test("navigate to Tasks and back to Home", async ({ page }) => {
@@ -25,7 +25,7 @@ test("navigate to Tasks and back to Home", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Tasks" })).toBeVisible({ timeout: 8000 });
 
   await page.goto("/v2/home");
-  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible({ timeout: 8000 });
+  await expect(page.getByRole("heading", { name: "Command Center" })).toBeVisible({ timeout: 8000 });
 });
 
 test("mobile shell keeps navigation and chat off canvas", async ({ page }) => {
@@ -37,12 +37,7 @@ test("mobile shell keeps navigation and chat off canvas", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Open navigation" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open chat" })).toBeVisible();
 
-  const firstWorkOrder = page.locator('button[aria-label*="next action"]').first();
-  await expect(firstWorkOrder).toBeVisible();
-  await firstWorkOrder.click();
-  await expect(page.getByRole("button", { name: "Back to work orders" })).toBeVisible();
-  await page.getByRole("button", { name: "Back to work orders" }).click();
-  await expect(firstWorkOrder).toBeVisible();
+  await expect(page.getByText("No work orders match the current filters.", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Open navigation" }).click();
   await expect(page.getByRole("navigation", { name: "Primary" })).toBeVisible();

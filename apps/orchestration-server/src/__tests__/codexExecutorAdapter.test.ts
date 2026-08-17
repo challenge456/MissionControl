@@ -136,7 +136,7 @@ describe("CodexV1ExecutorAdapter", () => {
       HOME: "/tmp/home",
       CODEX_HOME: "/tmp/codex-home",
       MISSION_CONTROL_SERVICE_COMMAND_SECRET: "service-secret",
-      GITHUB_APP_PRIVATE_KEY: "github-secret",
+      GITHUB_APP_PRIVATE_KEY: "github-secret", // secret-scan: allow-fixture
       CONVEX_SERVICE_AUTH_TOKEN: "convex-secret",
       OPENAI_API_KEY: "provider-secret",
     });

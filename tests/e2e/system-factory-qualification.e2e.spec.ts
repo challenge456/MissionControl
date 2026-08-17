@@ -8,8 +8,9 @@ const WORKSPACE_ID = process.env.SYSTEM_FACTORY_WORKSPACE_ID ?? "";
 const PR_WORKSPACE_ID = process.env.SYSTEM_FACTORY_PR_WORKSPACE_ID ?? "";
 const PR_WORK_ORDER_ID = process.env.SYSTEM_FACTORY_PR_WORK_ORDER_ID ?? "";
 const SEEDED_MISSION_TITLE = "Mission UI verification";
-const QUALIFICATION_MISSION_TITLE = "System Factory Qualification V1 Browser Mission";
-const EVIDENCE_DIR = path.resolve("docs/testing/evidence/system-factory-e2e-v1");
+const SPEC_MISSION_TITLE = "Spec Intake Golden Path — immutable revision proof";
+const QUALIFICATION_MISSION_TITLE = "System Factory Qualification V2 Browser Mission";
+const EVIDENCE_DIR = path.resolve("docs/testing/evidence/system-factory-e2e-v2");
 const SCREENSHOT_DIR = path.join(EVIDENCE_DIR, "screenshots");
 const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 
@@ -30,6 +31,12 @@ type BrowserEvidence = {
   consoleErrors: string[];
   pageErrors: string[];
   failedRequests: string[];
+  matrix: {
+    viewports: string[];
+    themes: string[];
+    experienceLevels: string[];
+    navigation: string[];
+  };
 };
 
 function watchPage(page: Page) {
@@ -133,6 +140,12 @@ test("Mission Control qualifies as one progressive governed factory in the real 
     consoleErrors: capture.consoleErrors,
     pageErrors: capture.pageErrors,
     failedRequests: capture.failedRequests,
+    matrix: {
+      viewports: ["1440x900", "1024x768", "390x844"],
+      themes: ["light", "dark"],
+      experienceLevels: ["Basic", "Intermediate", "Advanced"],
+      navigation: ["direct URL", "refresh", "back", "forward", "keyboard focus"],
+    },
   };
 
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -147,7 +160,7 @@ test("Mission Control qualifies as one progressive governed factory in the real 
     const dialog = page.getByRole("dialog", { name: "Start governed work" });
     await expect(dialog).toBeVisible();
     await dialog.getByLabel("Mission title").fill(QUALIFICATION_MISSION_TITLE);
-    await dialog.getByLabel("What should Mission Control build?").fill("Prove direct routing, responsive presentation, and trustworthy operator state for the V1 factory qualification.");
+    await dialog.getByLabel("What should Mission Control build?").fill("Prove direct routing, responsive presentation, exact Spec lineage, and trustworthy operator state for the V2 factory qualification.");
     await dialog.getByRole("button", { name: "Create Mission draft", exact: true }).click();
   } else {
     await qualificationMission.click();
@@ -180,6 +193,44 @@ test("Mission Control qualifies as one progressive governed factory in the real 
   await expectNoHorizontalOverflow(page);
   await captureScreenshot(page, evidence, "02-approved-plan-1440-light");
 
+  await page.goto(`${APP_URL}/v2/missions?workspace=${WORKSPACE_ID}`);
+  const specMission = page.getByRole("button", { name: new RegExp(SPEC_MISSION_TITLE) });
+  await expect(specMission).toBeVisible();
+  await specMission.click();
+  await expect(page.getByRole("heading", { name: SPEC_MISSION_TITLE, exact: true })).toBeVisible();
+  await setTheme(page, "dark");
+  await page.getByRole("tab", { name: "Specification", exact: true }).click();
+  await expect(page.getByText("Specification contract", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Advanced", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Immutable revision history", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Requirements coverage matrix", exact: true })).toBeVisible();
+  const specHistory = page.locator('[aria-label="Immutable Mission Spec revision history"]');
+  const coverageMatrix = page.locator('[aria-label="Mission Spec requirements coverage matrix"]');
+  await expect(specHistory).toContainText("r1");
+  await expect(specHistory).toContainText("r2");
+  await expect(specHistory).toContainText("r3");
+  await expect(specHistory).toContainText("FINALIZED");
+  await expect(coverageMatrix).toContainText("REQ-001");
+  await expect(coverageMatrix).toContainText("NFR-001");
+  evidence.surfaces.push("spec-r1-r2-r3-lineage-dark-1440");
+  await expectNoHorizontalOverflow(page);
+  await captureScreenshot(page, evidence, "03-spec-lineage-1440-dark");
+  await auditMain(page, testInfo, evidence, "spec-lineage");
+
+  await setTheme(page, "light");
+  await page.getByRole("tab", { name: "Plan", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Frozen planning lineage", exact: true })).toBeVisible();
+  await expect(page.getByText("Coverage complete", { exact: true })).toBeVisible();
+  await expect(page.getByText("r2", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Revision 1 approved and released", exact: true })).toBeVisible();
+  evidence.surfaces.push("frozen-plan-spec-r2-light-1440");
+  await captureScreenshot(page, evidence, "04-frozen-plan-spec-r2-1440-light");
+
+  await page.getByRole("tab", { name: "Work Orders", exact: true }).click();
+  await expect(page.getByRole("link", { name: /Implement Spec-driven Mission intake.*AWAITING_APPROVAL/ })).toBeVisible();
+
+  await page.goto(`${APP_URL}/v2/missions?workspace=${WORKSPACE_ID}`);
+  await seededMission.click();
   await page.getByRole("tab", { name: "Work Orders", exact: true }).click();
   const workOrderLink = page.getByRole("link", { name: /Implement the mission outcome.*AWAITING_VERIFICATION/ }).first();
   await expect(workOrderLink).toBeVisible();
@@ -198,7 +249,7 @@ test("Mission Control qualifies as one progressive governed factory in the real 
   evidence.surfaces.push("workorder-verification-dark-1024");
   await expectNoHorizontalOverflow(page);
   await acceptanceBlocker.scrollIntoViewIfNeeded();
-  await captureScreenshot(page, evidence, "03-workorder-verification-1024-dark");
+  await captureScreenshot(page, evidence, "05-workorder-verification-1024-dark");
 
   await page.getByRole("button", { name: "Inspect run", exact: true }).first().click();
   await expect(page.getByRole("dialog", { name: "Execution Run Inspector" })).toBeVisible();
@@ -221,7 +272,7 @@ test("Mission Control qualifies as one progressive governed factory in the real 
   await expectNoElementHorizontalOverflow(reviewPackage, "PR review package");
   expect((await reviewPackage.boundingBox())?.width ?? 0, "PR review package readable width").toBeGreaterThanOrEqual(600);
   await prCurrentness.scrollIntoViewIfNeeded();
-  await captureScreenshot(page, evidence, "04-pr-currentness-1440-light");
+  await captureScreenshot(page, evidence, "06-pr-currentness-1440-light");
   await auditMain(page, testInfo, evidence, "workorder-pr-currentness");
 
   await page.setViewportSize({ width: 1024, height: 768 });
@@ -233,7 +284,7 @@ test("Mission Control qualifies as one progressive governed factory in the real 
   await expect(page.getByRole("heading", { name: "Selected context and provenance" })).toBeVisible();
   evidence.surfaces.push("factory-memory-context-light-1024");
   await expectNoHorizontalOverflow(page);
-  await captureScreenshot(page, evidence, "05-factory-memory-context-1024-light");
+  await captureScreenshot(page, evidence, "07-factory-memory-context-1024-light");
   await auditMain(page, testInfo, evidence, "factory-memory");
 
   await page.goto(`${APP_URL}/v2/trace-inspector?workspace=${WORKSPACE_ID}`);
@@ -243,7 +294,7 @@ test("Mission Control qualifies as one progressive governed factory in the real 
   await expect(page.getByRole("tab", { name: /^Datasets & experiments/ })).toBeVisible();
   evidence.surfaces.push("observability-evals-dark-1024");
   await expectNoHorizontalOverflow(page);
-  await captureScreenshot(page, evidence, "06-observability-evals-1024-dark");
+  await captureScreenshot(page, evidence, "08-observability-evals-1024-dark");
   await auditMain(page, testInfo, evidence, "observability-evals");
 
   await page.setViewportSize({ width: 390, height: 844 });
@@ -265,7 +316,7 @@ test("Mission Control qualifies as one progressive governed factory in the real 
   await expect(page.locator(":focus")).toBeVisible();
   evidence.surfaces.push("factory-learning-dark-390");
   await expectNoHorizontalOverflow(page);
-  await captureScreenshot(page, evidence, "07-factory-learning-390-dark");
+  await captureScreenshot(page, evidence, "09-factory-learning-390-dark");
   await auditMain(page, testInfo, evidence, "factory-learning");
 
   await page.goto(evidence.missionUrl!);
@@ -273,7 +324,7 @@ test("Mission Control qualifies as one progressive governed factory in the real 
   await expect(page.getByRole("heading", { name: QUALIFICATION_MISSION_TITLE, exact: true })).toBeVisible();
   evidence.surfaces.push("mission-direct-light-390");
   await expectNoHorizontalOverflow(page);
-  await captureScreenshot(page, evidence, "08-mission-direct-390-light");
+  await captureScreenshot(page, evidence, "10-mission-direct-390-light");
 
   expect(capture.consoleErrors).toEqual([]);
   expect(capture.pageErrors).toEqual([]);

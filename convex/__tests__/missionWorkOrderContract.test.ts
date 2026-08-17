@@ -156,7 +156,11 @@ describe("Mission WorkOrder contract compiler", () => {
 
     expect(contract.requirements).toEqual([expect.objectContaining({ id: "REQ-001" })]);
     expect(contract.verificationContract?.checks).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: "spec:VERIFY-001", verifierId: "mission-spec-expectation/v1" }),
+      expect.objectContaining({
+        id: "spec:VERIFY-001",
+        verifierId: "factory-command/v1",
+        command: expect.objectContaining({ executable: "pnpm", args: ["test"] }),
+      }),
     ]));
     expect(contract.acceptanceCriteria[0].requiredEvidence).toEqual([
       { category: "TEST_RESULT", minimumCount: 1, independent: true },

@@ -20,4 +20,11 @@ describe("renderDocsMarkdown", () => {
     expect(html).not.toContain("<script>");
     expect(html).toContain("&lt;script&gt;");
   });
+
+  it("rejects executable link protocols", () => {
+    const html = renderDocsMarkdown("[unsafe](javascript:alert(1)) [safe](https://example.com/docs)");
+    expect(html).not.toContain("javascript:");
+    expect(html).toContain('href="#"');
+    expect(html).toContain('href="https://example.com/docs"');
+  });
 });

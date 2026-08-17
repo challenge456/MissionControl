@@ -1,9 +1,15 @@
-function escapeHtml(text: string): string {
+export function escapeHtml(text: string): string {
   return text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function safeExternalHref(href: string): string {
+  const trimmed = href.trim();
+  if (/^https?:\/\//i.test(trimmed) || /^mailto:/i.test(trimmed)) return trimmed;
+  return "#";
 }
 
 function inlineMarkdown(
@@ -21,7 +27,7 @@ function inlineMarkdown(
       if (pageId) {
         return `<a href="#" data-docs-page="${escapeHtml(pageId)}" class="text-act underline underline-offset-2 hover:opacity-90">${label}</a>`;
       }
-      return `<a href="${escapeHtml(href)}" class="text-act underline underline-offset-2 hover:opacity-90" target="_blank" rel="noopener noreferrer">${label}</a>`;
+      return `<a href="${escapeHtml(safeExternalHref(href))}" class="text-act underline underline-offset-2 hover:opacity-90" target="_blank" rel="noopener noreferrer">${label}</a>`;
     }
   );
   return out;

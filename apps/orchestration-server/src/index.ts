@@ -45,6 +45,7 @@ import {
 import { CodexV1ExecutorAdapter } from "./codexExecutorAdapter.js";
 import { DeepSeekHarnessExecutorAdapter } from "./deepseekHarnessExecutorAdapter.js";
 import { HarnessAdapterRegistry } from "./harnessAdapterRegistry.js";
+import { resolvePersonaPath, safeClientError } from "./orchestrationSecurity.js";
 import os from "node:os";
 
 const envSearchPaths = [
@@ -327,10 +328,10 @@ async function runTick(): Promise<any> {
 // ============================================================================
 
 async function spawnAgent(personaName: string): Promise<string> {
-  const personaPath = path.join(AGENTS_DIR, `${personaName}.yaml`);
+  const personaPath = resolvePersonaPath(AGENTS_DIR, personaName);
 
   if (!fs.existsSync(personaPath)) {
-    throw new Error(`Persona file not found: ${personaPath}`);
+    throw new Error(`Persona file not found for ${personaName}`);
   }
 
   if (activeAgents.has(personaName)) {
@@ -441,7 +442,7 @@ app.post("/agents/spawn", async (c) => {
     const name = await spawnAgent(personaName);
     return c.json({ success: true, agent: name });
   } catch (err: any) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: safeClientError(err) }, 400);
   }
 });
 
@@ -456,7 +457,7 @@ app.post("/agents/stop", async (c) => {
     await stopAgent(personaName);
     return c.json({ success: true });
   } catch (err: any) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: safeClientError(err) }, 400);
   }
 });
 
@@ -542,7 +543,7 @@ app.post("/workorders/:workOrderId/dispatch", async (c) => {
     }
     return c.json({ success: true, result, executorBinding });
   } catch (err: any) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: safeClientError(err) }, 400);
   }
 });
 
@@ -792,7 +793,7 @@ app.post("/workorders/:workOrderId/automation-execution", async (c) => {
         artifacts: [],
         evidence: [],
         redactedLogs: [],
-        error: err instanceof Error ? err.message : "Read-only Automation execution failed",
+        error: safeClientError(err, "Read-only Automation execution failed"),
       };
       const recovery = await client.mutation(ConvexMutations.automationExecutions.finish as any, {
         workOrderId,
@@ -819,7 +820,7 @@ app.post("/workorders/:workOrderId/automation-execution", async (c) => {
         }, 202);
       }
     }
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: safeClientError(err) }, 400);
   } finally {
     if (heartbeat) clearInterval(heartbeat);
     await (heartbeatTask as Promise<void> | null)?.catch(() => undefined);
@@ -854,7 +855,7 @@ app.post("/workorders/:workOrderId/automation-cancel", async (c) => {
       workflowRunId: result.workflowRunId,
     });
   } catch (err: any) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: safeClientError(err) }, 400);
   }
 });
 
@@ -920,7 +921,7 @@ app.post("/workorders/:workOrderId/automation-verification", async (c) => {
     });
     return c.json({ success: receiptStatus === "PASSED", receipts: receiptResults, finalDecision });
   } catch (err: any) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: safeClientError(err) }, 400);
   }
 });
 
@@ -941,7 +942,7 @@ app.post("/workorders/:workOrderId/approvals", async (c) => {
     });
     return c.json({ success: true, result });
   } catch (err: any) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: safeClientError(err) }, 400);
   }
 });
 
@@ -965,7 +966,7 @@ app.get("/approval-decisions", async (c) => {
     ));
     return c.json({ success: true, checkpoints });
   } catch (err: any) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: safeClientError(err) }, 400);
   }
 });
 
@@ -982,7 +983,7 @@ app.post("/approval-decisions/:approvalDecisionId/decide", async (c) => {
     });
     return c.json({ success: true, result });
   } catch (err: any) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: safeClientError(err) }, 400);
   }
 });
 
@@ -1014,7 +1015,7 @@ app.post("/workorders/:workOrderId/receipt-packets", async (c) => {
     const result = await client.action(ConvexActions.serviceCommands.ingestReceiptPacket as any, command);
     return c.json({ success: true, result });
   } catch (err: any) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: safeClientError(err) }, 400);
   }
 });
 
@@ -1043,7 +1044,7 @@ app.post("/missions/:missionId/handoffs", async (c) => {
     });
     return c.json({ success: true, result });
   } catch (err: any) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: safeClientError(err) }, 400);
   }
 });
 
@@ -1063,7 +1064,7 @@ app.post("/missions/:missionId/validation-results", async (c) => {
     });
     return c.json({ success: true, result });
   } catch (err: any) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: safeClientError(err) }, 400);
   }
 });
 
@@ -1078,7 +1079,7 @@ app.post("/missions/:missionId/accept", async (c) => {
     });
     return c.json({ success: true, result });
   } catch (err: any) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: safeClientError(err) }, 400);
   }
 });
 
@@ -1105,7 +1106,7 @@ app.post("/workorders/:workOrderId/verification-receipts", async (c) => {
     });
     return c.json({ success: true, result });
   } catch (err: any) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: safeClientError(err) }, 400);
   }
 });
 
@@ -1121,7 +1122,7 @@ app.post("/workorders/:workOrderId/accept", async (c) => {
     });
     return c.json({ success: true, result });
   } catch (err: any) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: safeClientError(err) }, 400);
   }
 });
 
@@ -1131,7 +1132,7 @@ app.get("/workorders/:workOrderId/revisions", async (c) => {
     const result = await client.query(ConvexQueries.workOrders.revisionHistory as any, { workOrderId });
     return c.json({ success: true, result });
   } catch (err: any) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: safeClientError(err) }, 400);
   }
 });
 
@@ -1158,7 +1159,7 @@ app.get("/workorders/:workOrderId/verification", async (c) => {
       },
     });
   } catch (err: any) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: safeClientError(err) }, 400);
   }
 });
 
@@ -1168,7 +1169,7 @@ app.get("/workorders/:workOrderId/governance", async (c) => {
     const result = await client.query(ConvexQueries.workOrders.governanceValidity as any, { workOrderId });
     return c.json({ success: true, result });
   } catch (err: any) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: safeClientError(err) }, 400);
   }
 });
 
@@ -1178,7 +1179,7 @@ app.get("/workorders/:workOrderId/expired-approvals", async (c) => {
     const result = await client.query(ConvexQueries.workOrders.listExpiredApprovals as any, { workOrderId });
     return c.json({ success: true, result });
   } catch (err: any) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: safeClientError(err) }, 400);
   }
 });
 
@@ -1188,7 +1189,7 @@ app.get("/workorders/:workOrderId/stale-evidence", async (c) => {
     const result = await client.query(ConvexQueries.workOrders.listStaleEvidence as any, { workOrderId });
     return c.json({ success: true, result });
   } catch (err: any) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: safeClientError(err) }, 400);
   }
 });
 
@@ -1209,7 +1210,7 @@ app.post("/workorders/:workOrderId/revisions", async (c) => {
     });
     return c.json({ success: true, result });
   } catch (err: any) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: safeClientError(err) }, 400);
   }
 });
 
@@ -1223,7 +1224,7 @@ app.post("/workorder-revisions/:workOrderRevisionId/approve", async (c) => {
     });
     return c.json({ success: true, result });
   } catch (err: any) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: safeClientError(err) }, 400);
   }
 });
 
@@ -1247,7 +1248,7 @@ app.post("/workorders/:workOrderId/reopen", async (c) => {
     });
     return c.json({ success: true, result });
   } catch (err: any) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: safeClientError(err) }, 400);
   }
 });
 
@@ -1266,7 +1267,7 @@ app.post("/workorders/:workOrderId/supersede", async (c) => {
     });
     return c.json({ success: true, result });
   } catch (err: any) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: safeClientError(err) }, 400);
   }
 });
 
@@ -1276,7 +1277,7 @@ app.post("/workorders/:workOrderId/governance/expire", async (c) => {
     const result = await client.mutation(ConvexMutations.workOrders.expireGovernanceRecords as any, { workOrderId });
     return c.json({ success: true, result });
   } catch (err: any) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: safeClientError(err) }, 400);
   }
 });
 
@@ -1288,7 +1289,7 @@ app.get("/runs/:runId/summary", async (c) => {
     const result = await client.query(ConvexQueries.workflowRuns.getInspector as any, { workflowRunId: run._id });
     return c.json({ success: true, result });
   } catch (err: any) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: safeClientError(err) }, 400);
   }
 });
 
@@ -1298,7 +1299,7 @@ app.get("/runs/:workflowRunId/events", async (c) => {
     const result = await client.query(ConvexQueries.workflowRuns.listEvents as any, { workflowRunId });
     return c.json({ success: true, result });
   } catch (err: any) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: safeClientError(err) }, 400);
   }
 });
 
@@ -1308,7 +1309,7 @@ app.get("/runs/:workflowRunId/artifacts", async (c) => {
     const result = await client.query(ConvexQueries.workflowRuns.listArtifacts as any, { workflowRunId });
     return c.json({ success: true, result });
   } catch (err: any) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: safeClientError(err) }, 400);
   }
 });
 
@@ -1334,7 +1335,7 @@ app.post("/run-artifacts/:runArtifactId/link-receipt", async (c) => {
     });
     return c.json({ success: true, result });
   } catch (err: any) {
-    return c.json({ error: err.message }, 400);
+    return c.json({ error: safeClientError(err) }, 400);
   }
 });
 
@@ -1344,10 +1345,10 @@ app.get("/agents/personas", (c) => {
     const files = fs.readdirSync(AGENTS_DIR).filter((f) => f.endsWith(".yaml"));
     return c.json({
       personas: files.map((f) => f.replace(".yaml", "")),
-      directory: AGENTS_DIR,
+      directory: "[REDACTED]",
     });
   } catch {
-    return c.json({ personas: [], directory: AGENTS_DIR });
+    return c.json({ personas: [], directory: "[REDACTED]" });
   }
 });
 

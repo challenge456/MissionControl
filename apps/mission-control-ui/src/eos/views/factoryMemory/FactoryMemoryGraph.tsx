@@ -221,7 +221,7 @@ export function FactoryMemoryGraph({
           </div>
         </aside>
 
-        <main className="min-w-0">
+        <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface-1 p-3">
             <GitBranch className="h-4 w-4 text-schematic-accent" aria-hidden />
             <select
@@ -392,7 +392,7 @@ export function FactoryMemoryGraph({
               The selected entity is no longer available in this workspace.
             </div>
           )}
-        </main>
+        </div>
       </div>
     </div>
   );

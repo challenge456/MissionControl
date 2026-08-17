@@ -209,8 +209,8 @@ setInterval(() => undefined, 1000);
       PATH: "/usr/bin",
       MISSION_CONTROL_SERVICE_COMMAND_SECRET: "control-plane-secret",
       CONVEX_SERVICE_AUTH_TOKEN: "convex-secret",
-      GITHUB_APP_PRIVATE_KEY: "github-secret",
-      OPENROUTER_MANAGEMENT_API_KEY: "provider-admin-secret",
+      GITHUB_APP_PRIVATE_KEY: "github-secret", // secret-scan: allow-fixture
+      OPENROUTER_MANAGEMENT_API_KEY: "provider-admin-secret", // secret-scan: allow-fixture
     });
     expect(env).toMatchObject({ PATH: "/usr/bin", HOME: "/tmp/deepseek-runtime", OLLAMA_API_KEY: "ollama-local-no-secret" });
     expect(env).not.toHaveProperty("MISSION_CONTROL_SERVICE_COMMAND_SECRET");
