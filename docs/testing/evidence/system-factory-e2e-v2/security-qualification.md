@@ -114,8 +114,8 @@ The findings below use the repository security-review format: rule, severity, lo
 
 ## Credential and authority proof
 
-- Repository scan: 2,285 tracked files, no credential material; only `.env.example` files are tracked.
-- Built UI: 49 emitted files, no secret-shaped value and no source maps.
+- Repository scan: 2,313 tracked files, no credential material; only `.env.example` files are tracked.
+- Built UI: 51 emitted files, no secret-shaped value and no source maps.
 - GitHub App private key/installation token remained host-only and absent from Convex records, evidence, Context Packages, Memory, Learning, harness results, screenshots, and manifests.
 - Harnesses received no GitHub App/service/provider-admin credential and retained authority `NONE`.
 - Sandbox credentials remained Attempt-scoped, ephemeral, revoked, and execution-only; provider administration remained host-only.

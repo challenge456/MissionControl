@@ -12,12 +12,12 @@ This packet qualifies one coherent governed Software Factory after Release & Dep
 | --- | --- |
 | Starting `origin/main` | `ed2a8a9d686a7c1109aab381efa7eba369f8e996` |
 | Starting runtime | Convex runtime contract v28; local Node 24.18.1; pnpm 9.0.0 |
-| Qualified source SHA | `QUALIFIED_SOURCE_SHA_PENDING` |
+| Qualified source SHA | `fda98924eb0ad4ab3b95cab16c8049e9df804d29` |
 | Final branch | `codex/release-dependency-hardening-v1` |
-| Final head | `FINAL_HEAD_PENDING` |
-| Draft PR | `DRAFT_PR_PENDING` |
-| GitHub CI | `GITHUB_CI_PENDING` |
-| Vercel preview | `VERCEL_PENDING` |
+| Final head | Current head of draft PR #116; exact delivery head is recorded in the final operator report to avoid a self-referential commit |
+| Draft PR | [#116](https://github.com/jaydubya818/MissionControl/pull/116) |
+| GitHub CI | Fresh required checks on draft PR #116; terminal status is recorded in the final operator report |
+| Vercel preview | Draft PR #116 deployment check; terminal URL/status is recorded in the final operator report |
 
 The baseline contains merge commits for PRs #111, #112, #113, and #114. `origin/main` advanced to `b7b1ee6983dca500d0828af240907033b9d91fc2` during qualification through PR #115 (README capability refresh); the qualification base remains the exact fork point above and the PR reports the later main delta.
 
@@ -89,12 +89,12 @@ Targeted axe WCAG A/AA scans found zero serious or critical violations on all si
 
 ## Performance and cost
 
-The composed scenario ran in 8.857 seconds: source gates 3.425 seconds, independent verification 4.971 seconds, Fake Sandbox provider 1 ms. It performed seven deterministic gate runs, five source Attempts/four retries, three verification Attempts, one agent step, zero model calls, no token count, and $0 cost. The complete automated qualification ran from `2026-08-17T17:17:06.647Z` to `2026-08-17T17:19:06.183Z` before the delivery-identity rerun.
+The composed scenario ran in 8.562 seconds: source gates 3.380 seconds, independent verification 4.738 seconds, Fake Sandbox provider 1 ms. It performed seven deterministic gate runs, five source Attempts/four retries, three verification Attempts, one agent step, zero model calls, no token count, and $0 cost. The complete automated qualification ran from `2026-08-17T17:28:11.566Z` to `2026-08-17T17:30:05.764Z` on exact source SHA `fda98924eb0ad4ab3b95cab16c8049e9df804d29`.
 
 ## Full validation
 
-- Release security: production 0 critical / 0 high / 3 accepted moderate; full graph 0 critical / 0 high / 4 accepted moderate / 2 low; repository secret scan 2,285 tracked files clean; built asset scan 49 files clean.
-- Focused composed/authority suites: 12 files / 55 tests; Mission/WorkOrder/security contracts 22 / 144; generic harness 2 / 8; Verification Factory 6 / 44; Memory 4 / 27; Progressive/Learning UI 7 / 25.
+- Release security: production 0 critical / 0 high / 3 accepted moderate; full graph 0 critical / 0 high / 4 accepted moderate / 2 low; repository secret scan 2,313 tracked files clean; built asset scan 51 files clean.
+- Focused composed/authority suites: 12 files / 56 tests; Mission/WorkOrder/security contracts 22 / 144; generic harness 2 / 8; Verification Factory 6 / 44; Memory 4 / 27; Progressive/Learning UI 7 / 25.
 - Full repository: 1,727 passed, one explicitly skipped live integration (1,084 workspace tests plus 643 Convex tests).
 - TypeScript passed in every workspace; ten skills linted at 100/100; runtime guard passed with no public validator delta across 906 functions.
 - Production build passed with no source maps; orchestration Node ESM startup smoke passed; `git diff --check` passed.
