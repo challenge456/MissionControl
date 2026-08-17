@@ -20,8 +20,6 @@ jobs:
       
       - name: Setup pnpm
         uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
-        with:
-          version: 9
       
       - name: Install Python dependencies
         run: |
@@ -46,8 +44,6 @@ jobs:
       
       - name: Setup pnpm
         uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
-        with:
-          version: 9
       
       - name: Install dependencies
         run: |
@@ -81,8 +77,6 @@ jobs:
       
       - name: Setup pnpm
         uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
-        with:
-          version: 9
       
       - name: Install dependencies
         run: |
@@ -110,8 +104,6 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
-        with:
-          version: 9
 
       - name: Install dependencies
         run: |
@@ -142,8 +134,6 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
-        with:
-          version: 9
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -169,8 +159,6 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
-        with:
-          version: 9
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -199,8 +187,6 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
-        with:
-          version: 9
 
       - name: Install frozen dependency graph
         run: pnpm install --frozen-lockfile
@@ -221,8 +207,6 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
-        with:
-          version: 9
 
       - name: Install frozen dependency graph
         run: pnpm install --frozen-lockfile
@@ -250,8 +234,6 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
-        with:
-          version: 9
 
       - name: Install frozen dependency graph
         run: pnpm install --frozen-lockfile

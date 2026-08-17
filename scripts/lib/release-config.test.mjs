@@ -3,6 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const repositoryRoot = path.resolve(import.meta.dirname, "../..");
+const packageJson = JSON.parse(readFileSync(path.join(repositoryRoot, "package.json"), "utf8"));
 const vercel = JSON.parse(readFileSync(path.join(repositoryRoot, "vercel.json"), "utf8"));
 const workflow = readFileSync(path.join(repositoryRoot, ".github/workflows/ci.yml"), "utf8");
 
@@ -18,6 +19,11 @@ describe("release configuration", () => {
     const actionRefs = [...workflow.matchAll(/uses:\s+[^@\s]+@([^\s]+)/g)].map((match) => match[1]);
     expect(actionRefs.length).toBeGreaterThan(0);
     expect(actionRefs.every((ref) => /^[0-9a-f]{40}$/.test(ref))).toBe(true);
+  });
+
+  it("uses packageManager as the sole pnpm version authority", () => {
+    expect(packageJson.packageManager).toBe("pnpm@9.0.0");
+    expect(workflow).not.toMatch(/uses:\s+pnpm\/action-setup@[^\n]+\n\s+with:/);
   });
 
   it("keeps the SPA rewrite scoped to v2 routes", () => {
