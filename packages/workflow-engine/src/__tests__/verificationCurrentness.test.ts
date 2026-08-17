@@ -139,7 +139,47 @@ function fixture(subject: VerificationSubject = gitSubject(), sourceReadyAt = 10
 describe("exact-current verification acceptance eligibility", () => {
   it("allows only the exact current software tuple with GitHub PR lineage", () => {
     const result = evaluateCurrentVerificationEligibility(fixture());
-    expect(result, result.reasons.join(" ")).toMatchObject({ eligible: true, current: true, sourceAttemptId: "source-a", verificationAttemptId: "verify-a" });
+    expect(result, result.reasons.join(" ")).toMatchObject({
+      eligible: true,
+      current: true,
+      verifiedOutcome: "SUCCESS",
+      verificationRecordedAt: 400,
+      sourceAttemptId: "source-a",
+      verificationAttemptId: "verify-a",
+    });
+  });
+
+  it("classifies an exact independent Policy V2 failure without making it acceptance-eligible", () => {
+    const data = fixture();
+    const result = evaluateCurrentVerificationEligibility({
+      ...data,
+      verificationResults: data.verificationResults.map((item) => ({
+        ...item,
+        verdict: "NOT_VERIFIED" as const,
+      })),
+      verificationReceipts: data.verificationReceipts.map((item) => ({
+        ...item,
+        status: "FAILED" as const,
+        verdict: "NOT_VERIFIED" as const,
+      })),
+    });
+    expect(result, result.reasons.join(" ")).toMatchObject({
+      eligible: false,
+      current: false,
+      verifiedOutcome: "FAILURE",
+      verificationRecordedAt: 400,
+      sourceAttemptId: "source-a",
+      verificationAttemptId: "verify-a",
+    });
+  });
+
+  it("does not classify an unverified or stale candidate as a canonical outcome", () => {
+    const unverified = fixture();
+    unverified.verificationResults = [];
+    const stale = fixture();
+    stale.verificationReceipts[0].validUntil = now;
+    expect(evaluateCurrentVerificationEligibility(unverified).verifiedOutcome).toBeUndefined();
+    expect(evaluateCurrentVerificationEligibility(stale).verifiedOutcome).toBeUndefined();
   });
 
   it("requires an exact source repository and an expiring trusted GitHub projection", () => {
@@ -225,6 +265,7 @@ describe("exact-current verification acceptance eligibility", () => {
     });
     expect(result.eligible).toBe(false);
     expect(result.sourceAttemptId).toBe("source-b");
+    expect(result.verifiedOutcome).toBeUndefined();
     expect(data.verificationResults[0].verdict).toBe("VERIFIED");
   });
 

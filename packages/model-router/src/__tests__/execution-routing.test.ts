@@ -178,6 +178,116 @@ describe("execution routing V1", () => {
     expect(result.appliedTupleKey).toBe("baseline");
   });
 
+  it("does not let 60% coverage produce a 95-point ranking by dropping unknown weights", () => {
+    const partial = candidate("partial", {
+      evidence: {
+        windowStartedAt: cutoffAt - 30 * 86_400_000,
+        cutoffAt,
+        attemptCount: 10,
+        verifiedAttemptCount: 8,
+        repositoryAttemptCount: 10,
+        verifiedSuccessRate: 0.95,
+        firstPassSuccessRate: 0.95,
+        retryAvoidanceRate: 0.95,
+      },
+    });
+    const supported = candidate("supported", {
+      evidence: {
+        ...candidate("supported").evidence,
+        verifiedSuccessRate: 0.625,
+        firstPassSuccessRate: 0.625,
+        retryAvoidanceRate: 0.625,
+        contextMissAvoidanceRate: 0.625,
+        qualityGateAvoidanceRate: 0.625,
+        cancellationFailureAvoidanceRate: 0.625,
+      },
+    });
+    const result = resolveExecutionRoute(input([partial, supported]));
+    const partialResult = result.candidates.find((item) => item.tuple.tupleKey === "partial")!;
+    const supportedResult = result.candidates.find((item) => item.tuple.tupleKey === "supported")!;
+    expect(partialResult).toMatchObject({ score: 57, evidenceCoverage: 0.6 });
+    expect(supportedResult).toMatchObject({ score: 70, evidenceCoverage: 1 });
+    expect(result.recommendedTupleKey).toBe("supported");
+  });
+
+  it("never rewards missing cost, latency, reliability, or diagnostic telemetry", () => {
+    const missingCases: Array<keyof ExecutionRoutingCandidate["evidence"]> = [
+      "totalCostPerVerifiedSuccessUsd",
+      "timeToVerifiedCandidateMs",
+      "verifiedSuccessRate",
+      "qualityGateAvoidanceRate",
+    ];
+    for (const metric of missingCases) {
+      const complete = candidate(`complete-${metric}`);
+      const partialEvidence = { ...candidate(`partial-${metric}`).evidence, [metric]: undefined };
+      const partial = candidate(`partial-${metric}`, { evidence: partialEvidence });
+      const result = resolveExecutionRoute(input([partial, complete]));
+      const completeResult = result.candidates.find((item) => item.tuple.tupleKey === complete.tuple.tupleKey)!;
+      const partialResult = result.candidates.find((item) => item.tuple.tupleKey === partial.tuple.tupleKey)!;
+      expect(partialResult.metrics.find((item) => item.metric === metric)).toMatchObject({ observed: false });
+      expect(partialResult.score).toBeLessThan(completeResult.score!);
+      expect(result.recommendedTupleKey).toBe(complete.tuple.tupleKey);
+    }
+  });
+
+  it("keeps incomplete evidence inspectable in Advisory mode", () => {
+    const partial = candidate("partial", {
+      evidence: {
+        ...candidate("partial").evidence,
+        totalCostPerVerifiedSuccessUsd: undefined,
+        timeToVerifiedCandidateMs: undefined,
+      },
+    });
+    const routing = input([candidate("baseline"), partial]);
+    routing.policy.mode = "ADVISORY";
+    routing.fallbackTupleKey = "baseline";
+    const result = resolveExecutionRoute(routing);
+    const partialResult = result.candidates.find((item) => item.tuple.tupleKey === "partial")!;
+    expect(partialResult.evidenceCoverage).toBe(0.8);
+    expect(partialResult.metrics.filter((metric) => !metric.observed).map((metric) => metric.metric)).toEqual([
+      "timeToVerifiedCandidateMs",
+      "totalCostPerVerifiedSuccessUsd",
+    ]);
+    expect(result.candidates).toHaveLength(2);
+    expect(result.appliedTupleKey).toBe("baseline");
+    expect(result.guardedAutoApplied).toBe(false);
+  });
+
+  it("withholds Guarded Auto when the governed minimum coverage is unmet", () => {
+    const partial = candidate("partial", {
+      evidence: {
+        ...candidate("partial").evidence,
+        verifiedSuccessRate: 1,
+        firstPassSuccessRate: 1,
+        retryAvoidanceRate: 1,
+        timeToVerifiedCandidateMs: undefined,
+        totalCostPerVerifiedSuccessUsd: undefined,
+        contextMissAvoidanceRate: 1,
+        qualityGateAvoidanceRate: 1,
+        cancellationFailureAvoidanceRate: 1,
+      },
+    });
+    const baseline = candidate("baseline", {
+      evidence: {
+        ...candidate("baseline").evidence,
+        verifiedSuccessRate: 0.5,
+        firstPassSuccessRate: 0.5,
+        retryAvoidanceRate: 0.5,
+        contextMissAvoidanceRate: 0.5,
+        qualityGateAvoidanceRate: 0.5,
+        cancellationFailureAvoidanceRate: 0.5,
+      },
+    });
+    const routing = input([baseline, partial]);
+    routing.fallbackTupleKey = "baseline";
+    routing.policy.minimumEvidenceCoverage = 0.9;
+    const result = resolveExecutionRoute(routing);
+    expect(result.recommendedTupleKey).toBe("partial");
+    expect(result.appliedTupleKey).toBe("baseline");
+    expect(result.guardedAutoApplied).toBe(false);
+    expect(result.fallbackReason).toContain("INSUFFICIENT_EVIDENCE_COVERAGE");
+  });
+
   it("uses the certified fallback when evidence is insufficient", () => {
     const sparseWinner = candidate("sparse", {
       evidence: {

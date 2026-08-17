@@ -83,6 +83,8 @@ export type GitProviderHeadProjection = {
 export type CurrentVerificationEligibility = {
   eligible: boolean;
   current: boolean;
+  verifiedOutcome?: "SUCCESS" | "FAILURE";
+  verificationRecordedAt?: number;
   exactIdentity?: VerificationIdentityTuple;
   sourceAttemptId?: string;
   candidateRevision?: string;
@@ -209,10 +211,17 @@ export function evaluateCurrentVerificationEligibility(input: {
   };
   if (result.invalidatedAt) return denied("Exact Verification Result was invalidated.", context);
   if (result.status !== "COMPLETED") return denied(`Exact Verification Result lifecycle is ${result.status}.`, context);
-  if (result.verdict !== "VERIFIED") return denied(`Exact Verification Result is ${result.verdict ?? "missing a verdict"}.`, context);
   if (result.independenceValid !== true) return denied("Exact Verification Result lacks server-derived independence.", context);
   if (!result.verificationPlanId || !result.verificationPlanDigest) return denied("Exact Verification Result lacks frozen Verification Plan identity.", context);
   if (!result.decisionInputDigest) return denied("Exact Verification Result lacks a canonical decision-input digest.", context);
+  const verifiedOutcome = result.verdict === "VERIFIED"
+    ? "SUCCESS" as const
+    : result.verdict === "NOT_VERIFIED" || result.verdict === "BLOCKED"
+      ? "FAILURE" as const
+      : undefined;
+  if (!verifiedOutcome) {
+    return denied(`Exact Verification Result is ${result.verdict ?? "missing a verdict"}.`, context);
+  }
 
   const receipt = [...input.verificationReceipts]
     .filter((candidate) => candidate.verificationRunId === result.id
@@ -224,8 +233,11 @@ export function evaluateCurrentVerificationEligibility(input: {
     .sort((left, right) => right.recordedAt - left.recordedAt)[0];
   if (!receipt) return denied("Exact Verification Result has no matching WorkOrder verification receipt.", context);
   const receiptContext = { ...context, verificationReceiptId: receipt.id };
-  if (receipt.status !== "PASSED" || receipt.verdict !== "VERIFIED" || receipt.independenceValid !== true) {
-    return denied("Exact WorkOrder verification receipt is not a passing independent receipt.", receiptContext);
+  const receiptMatchesOutcome = verifiedOutcome === "SUCCESS"
+    ? receipt.status === "PASSED" && receipt.verdict === "VERIFIED"
+    : receipt.status === "FAILED" && receipt.verdict === result.verdict;
+  if (!receiptMatchesOutcome || receipt.independenceValid !== true) {
+    return denied("Exact WorkOrder verification receipt does not match the independent verification outcome.", receiptContext);
   }
   if (receipt.invalidatedAt || (receipt.validUntil && receipt.validUntil <= input.now)) {
     return denied("Exact WorkOrder verification receipt is stale or expired.", receiptContext);
@@ -278,9 +290,19 @@ export function evaluateCurrentVerificationEligibility(input: {
     }
   }
 
+  if (verifiedOutcome === "FAILURE") {
+    return denied(`Exact current Verification Result is ${result.verdict}.`, {
+      ...evidenceContext,
+      verifiedOutcome,
+      verificationRecordedAt: receipt.recordedAt,
+    });
+  }
+
   return {
     eligible: true,
     current: true,
+    verifiedOutcome,
+    verificationRecordedAt: receipt.recordedAt,
     ...evidenceContext,
     reasons: ["Exact current Verification Result is completed, verified, independent, Quality-Contract-bound, evidence-bound, plan-bound, and provider-current."],
   };

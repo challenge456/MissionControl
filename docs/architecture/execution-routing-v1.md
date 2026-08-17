@@ -66,10 +66,22 @@ The V1 evidence window defaults to 30 days. The scorer uses:
 - current quality-gate avoidance; and
 - cancellation/failure avoidance.
 
-Metrics without observations remain absent. The scorer normalizes over observed
-components and records evidence coverage. It does not insert neutral priors or
-treat missing telemetry as zero. A hard budget with unknown estimated cost
-fails closed.
+Verified outcomes come from the canonical Policy V2 currentness evaluation:
+the exact source Attempt is joined to its separate Verification Attempt,
+immutable subject, frozen plan, result, evidence set, receipt, and trusted
+provider projection. A current exact `VERIFIED` result is a success; a current
+exact `NOT_VERIFIED` or `BLOCKED` result with a matching failed receipt is a
+verified failure. Unverified, stale, invalidated, superseded, or cross-bound
+records do not count. Legacy `factoryContinuation` receipts remain a bounded
+read-only fallback only for source Attempts that do not carry a Policy V2
+Verification Subject.
+
+Metrics without observations remain absent and are inspectable as
+`observed: false`. Each observed component contributes its weighted score to
+the fixed 100-point denominator; an unknown component contributes no favorable
+score and cannot improve rank merely by disappearing from the denominator.
+Evidence coverage remains the observed weight divided by 100 and is a governed
+Guarded Auto gate. A hard budget with unknown estimated cost fails closed.
 
 Prompts, credentials, and raw secret values are excluded from routing evidence.
 Trace naming follows the existing OpenTelemetry-oriented Attempt/trace model;

@@ -12,6 +12,7 @@ import { resolveFlag, type FlagRow } from "./flags";
 import { countActiveFactoryWorkerLeases, factoryWorkerEligibility } from "./factoryWorkerRuntime";
 import { factoryHarnessCapabilityRequirements, resolveFrozenHarnessBinding } from "./harnessCapabilities";
 import { loadModelCatalogForProject } from "./modelCatalogScope";
+import { getCurrentVerificationRoutingOutcome } from "./currentVerification";
 import {
   harnessCapabilityRequirementsSatisfied,
   harnessSupportsModel,
@@ -34,6 +35,13 @@ export const DEFAULT_EXECUTION_ROUTING_POLICY = {
 const MAX_CANDIDATES = 25;
 const MAX_EVIDENCE_ATTEMPTS = 250;
 const MAX_OBSERVABILITY_RECORDS = 500;
+
+type RoutingVerifiedOutcome = {
+  sourceAttemptId: string;
+  outcome: "SUCCESS" | "FAILURE";
+  recordedAt: number;
+  lineage: "POLICY_V2" | "LEGACY";
+};
 
 export function executionRoutingRequested(input: {
   factoryDefinitionVersionId?: Id<"factoryDefinitionVersions">;
@@ -65,7 +73,7 @@ function primaryAgentVersion(
   return agentVersions[primaryIndex >= 0 ? primaryIndex : 0] ?? null;
 }
 
-async function loadEvidenceBundle(
+export async function loadExecutionRoutingEvidenceBundle(
   ctx: RoutingCtx,
   projectId: Id<"projects">,
   cutoffAt: number,
@@ -92,33 +100,82 @@ async function loadEvidenceBundle(
     && Boolean(attempt.factoryDefinitionVersionId)
     && (attempt.attemptPurpose ?? "IMPLEMENTATION") === "IMPLEMENTATION"
   );
-  const receiptIds = [...new Set(boundedAttempts
+  const attemptById = new Map(boundedAttempts.map((attempt) => [String(attempt._id), attempt]));
+  const workOrderIds = [...new Set(boundedAttempts.map((attempt) => String(attempt.workOrderId)))];
+  const workOrders = (await Promise.all(workOrderIds.map((id) => ctx.db.get(id as Id<"workOrders">))))
+    .filter((workOrder): workOrder is Doc<"workOrders"> => Boolean(
+      workOrder && String(workOrder.projectId) === String(projectId)
+    ));
+  const canonicalOutcomes = (await Promise.all(workOrders.map(async (workOrder) => {
+    const current = await getCurrentVerificationRoutingOutcome(ctx, workOrder, cutoffAt);
+    if (!current.sourceAttemptId || !current.verifiedOutcome || current.verificationRecordedAt === undefined) {
+      return null;
+    }
+    const sourceAttempt = attemptById.get(current.sourceAttemptId);
+    if (!sourceAttempt
+      || String(sourceAttempt.workOrderId) !== String(workOrder._id)
+      || !sourceAttempt.verificationSubject) {
+      return null;
+    }
+    return {
+      sourceAttemptId: current.sourceAttemptId,
+      outcome: current.verifiedOutcome,
+      recordedAt: current.verificationRecordedAt,
+      lineage: "POLICY_V2" as const,
+    };
+  }))).filter((outcome) => outcome !== null);
+  const canonicalAttemptIds = new Set(canonicalOutcomes.map((outcome) => outcome.sourceAttemptId));
+  const legacyAttempts = boundedAttempts.filter((attempt) =>
+    !attempt.verificationSubject && !canonicalAttemptIds.has(String(attempt._id))
+  );
+  const receiptIds = [...new Set(legacyAttempts
     .map((attempt) => attempt.factoryContinuation?.verificationReceiptId)
     .filter((id): id is Id<"verificationReceipts"> => Boolean(id)))];
-  const receipts = (await Promise.all(receiptIds.map((id) => ctx.db.get(id))))
+  const legacyReceipts = (await Promise.all(receiptIds.map((id) => ctx.db.get(id))))
     .filter((receipt): receipt is Doc<"verificationReceipts"> => Boolean(receipt));
-  return { windowStartedAt, cutoffAt, attempts: boundedAttempts, traces, gates, receipts };
+  const legacyOutcomes = legacyReceipts.flatMap((receipt): RoutingVerifiedOutcome[] => {
+    const sourceAttemptId = String(receipt.sourceAttemptId ?? receipt.workflowRunId);
+    const sourceAttempt = attemptById.get(sourceAttemptId);
+    if (!sourceAttempt
+      || sourceAttempt.verificationSubject
+      || String(receipt.workOrderId) !== String(sourceAttempt.workOrderId)
+      || (receipt.projectId && String(receipt.projectId) !== String(projectId))
+      || receipt.invalidatedAt
+      || (receipt.validUntil && receipt.validUntil <= cutoffAt)
+      || receipt.independenceValid !== true) {
+      return [];
+    }
+    const outcome = receipt.status === "PASSED" && receipt.verdict === "VERIFIED"
+      ? "SUCCESS" as const
+      : receipt.status === "FAILED" && (receipt.verdict === "NOT_VERIFIED" || receipt.verdict === "BLOCKED")
+        ? "FAILURE" as const
+        : undefined;
+    return outcome ? [{ sourceAttemptId, outcome, recordedAt: receipt.recordedAt, lineage: "LEGACY" }] : [];
+  });
+  return {
+    windowStartedAt,
+    cutoffAt,
+    attempts: boundedAttempts,
+    traces,
+    gates,
+    verifiedOutcomes: [...canonicalOutcomes, ...legacyOutcomes],
+  };
 }
 
-function aggregateEvidence(
+export function aggregateExecutionRoutingEvidence(
   versionId: Id<"factoryDefinitionVersions">,
   repositoryId: Id<"workspaceRepositories">,
-  bundle: Awaited<ReturnType<typeof loadEvidenceBundle>>,
+  bundle: Awaited<ReturnType<typeof loadExecutionRoutingEvidenceBundle>>,
 ): ExecutionEvidence {
   const attempts = bundle.attempts.filter((attempt) =>
     attempt.factoryDefinitionVersionId === versionId && attempt.repositoryId === repositoryId
   );
   const attemptIds = new Set(attempts.map((attempt) => String(attempt._id)));
-  const receipts = bundle.receipts.filter((receipt) =>
-    attemptIds.has(String(receipt.sourceAttemptId ?? receipt.workflowRunId))
-    && !receipt.invalidatedAt
-    && (!receipt.validUntil || receipt.validUntil > bundle.cutoffAt)
-    && receipt.independenceValid === true
-  );
-  const passedReceiptAttemptIds = new Set(receipts
-    .filter((receipt) => receipt.status === "PASSED" && receipt.verdict === "VERIFIED")
-    .map((receipt) => String(receipt.sourceAttemptId ?? receipt.workflowRunId)));
-  const verifiedAttemptIds = new Set(receipts.map((receipt) => String(receipt.sourceAttemptId ?? receipt.workflowRunId)));
+  const verifiedOutcomes = bundle.verifiedOutcomes.filter((outcome) => attemptIds.has(outcome.sourceAttemptId));
+  const passedReceiptAttemptIds = new Set(verifiedOutcomes
+    .filter((outcome) => outcome.outcome === "SUCCESS")
+    .map((outcome) => outcome.sourceAttemptId));
+  const verifiedAttemptIds = new Set(verifiedOutcomes.map((outcome) => outcome.sourceAttemptId));
   const verifiedAttempts = attempts.filter((attempt) => verifiedAttemptIds.has(String(attempt._id)));
   const successfulVerifiedAttempts = attempts.filter((attempt) => passedReceiptAttemptIds.has(String(attempt._id)));
   const firstPassSuccesses = successfulVerifiedAttempts.filter((attempt) =>
@@ -131,12 +188,10 @@ function aggregateEvidence(
     && attempt.steps.every((step) => step.retryCount === 0)
   ).length;
   const verificationLatency = successfulVerifiedAttempts.flatMap((attempt) => {
-    const receipt = receipts.find((item) =>
-      String(item.sourceAttemptId ?? item.workflowRunId) === String(attempt._id)
-      && item.status === "PASSED"
-      && item.verdict === "VERIFIED"
+    const outcome = verifiedOutcomes.find((item) =>
+      item.sourceAttemptId === String(attempt._id) && item.outcome === "SUCCESS"
     );
-    return receipt ? [Math.max(0, receipt.recordedAt - attempt.startedAt)] : [];
+    return outcome ? [Math.max(0, outcome.recordedAt - attempt.startedAt)] : [];
   });
   const attemptTraces = bundle.traces.filter((trace) => trace.workflowRunId && attemptIds.has(String(trace.workflowRunId)));
   const tracesByAttempt = new Map<string, typeof attemptTraces>();
@@ -241,7 +296,12 @@ export async function buildExecutionRoutingPreview(
     "execution-routing.guarded-auto",
     workOrder.projectId,
   ).enabled;
-  const evidenceBundle = await loadEvidenceBundle(ctx, workOrder.projectId, cutoffAt, config.evidenceWindowDays);
+  const evidenceBundle = await loadExecutionRoutingEvidenceBundle(
+    ctx,
+    workOrder.projectId,
+    cutoffAt,
+    config.evidenceWindowDays,
+  );
   const versions = (await Promise.all(definitions
     .filter((definition) => definition.activeVersionId)
     .slice(0, MAX_CANDIDATES)
@@ -408,7 +468,7 @@ export async function buildExecutionRoutingPreview(
         modelAvailable: Boolean(catalogModel && ["HEALTHY", "DEGRADED"].includes(catalogModel.availability)),
         productionCertified: assessment?.status === "PASS" && manifest?.admission.maturity === "PRODUCTION",
       },
-      evidence: aggregateEvidence(version._id, workOrder.repositoryId, evidenceBundle),
+      evidence: aggregateExecutionRoutingEvidence(version._id, workOrder.repositoryId, evidenceBundle),
     });
   }
 

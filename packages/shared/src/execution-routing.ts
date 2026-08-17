@@ -178,6 +178,7 @@ const METRIC_WEIGHTS: Array<{ metric: ExecutionRoutingMetricScore["metric"]; wei
   { metric: "qualityGateAvoidanceRate", weight: 10 },
   { metric: "cancellationFailureAvoidanceRate", weight: 5 },
 ];
+const TOTAL_METRIC_WEIGHT = METRIC_WEIGHTS.reduce((sum, metric) => sum + metric.weight, 0);
 
 const REASONS: Record<ExecutionEligibilityReasonCode, string> = {
   FACTORY_NOT_ACTIVE: "Factory definition is not active.",
@@ -301,9 +302,9 @@ export function resolveExecutionRoute(input: ExecutionRoutingInput): ExecutionRo
       rejectionCodes: codes,
       rejectionReasons: codes.map((code) => REASONS[code]),
       score: codes.length === 0 && observedWeight > 0
-        ? Math.round((weightedScore / observedWeight) * 10_000) / 100
+        ? Math.round((weightedScore / TOTAL_METRIC_WEIGHT) * 10_000) / 100
         : undefined,
-      evidenceCoverage: observedWeight / 100,
+      evidenceCoverage: observedWeight / TOTAL_METRIC_WEIGHT,
       metrics,
       evidence: candidate.evidence,
     };
