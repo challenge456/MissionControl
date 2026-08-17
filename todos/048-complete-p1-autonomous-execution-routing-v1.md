@@ -1,5 +1,5 @@
 ---
-status: in_progress
+status: complete
 priority: p1
 issue_id: "048"
 tags: [factory, routing, harness, models, evidence, security]
@@ -91,7 +91,7 @@ Primary areas:
 - [x] Learning and experiments remain proposal/evaluation-only.
 - [x] Authorization, project isolation, browser/a11y, Factory qualification, and
       full repository validation pass.
-- [ ] Draft PR includes evidence and MERGE / PARTIALLY MERGE / HOLD recommendation.
+- [x] Draft PR includes evidence and MERGE / PARTIALLY MERGE / HOLD recommendation.
 
 ## Work Log
 
@@ -139,6 +139,26 @@ Primary areas:
 - axe WCAG 2.0/2.1 A/AA: zero violations.
 - Dependency audit: zero high/critical; existing baseline has nine moderate and
   four low advisories.
+
+### 2026-08-17 - Draft PR and remote qualification
+
+**Actions:**
+
+- Opened draft PR #117 with architecture, rollout, validation, and MERGE/HOLD
+  criteria.
+- Preserved immutable historical V1 qualification artifacts after CI correctly
+  rejected locally regenerated copies.
+- Updated retained Playwright route contracts from Model Routing to the shipped
+  Execution Routing accessible name.
+
+**Validation:**
+
+- All nine GitHub CI jobs PASS on commit `bcc6006`, including System
+  Qualification V2, E2E, browser security/accessibility, release security,
+  unit tests, typecheck, lint, build, and smoke.
+- Vercel Preview Comments and both Vercel preview deployments PASS.
+- Draft PR is mergeable; recommendation: MERGE after human review while keeping
+  Guarded Auto disabled for the initial Advisory/pin rollout.
 
 ## Notes
 

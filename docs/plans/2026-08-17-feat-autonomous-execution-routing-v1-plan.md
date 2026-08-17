@@ -1,7 +1,7 @@
 ---
 title: "feat: Autonomous Harness and Model Routing V1"
 type: feat
-status: in_progress
+status: complete
 date: 2026-08-17
 ---
 
@@ -182,7 +182,7 @@ to a verified candidate. Unknown values remain null with a reason.
       progressive disclosure, including loading, empty, error, unknown, rejected,
       success, and recovery states.
 - [x] Update architecture, security, operations, and qualification docs.
-- [ ] Run focused unit/contract tests, Generic Harness and worker admission,
+- [x] Run focused unit/contract tests, Generic Harness and worker admission,
       Remote Sandbox, authorization, Factory Learning, Observability/Evals,
       Verification Factory, `pnpm run qualify:factory`, full repository checks,
       browser/a11y checks, and CI/Vercel evidence review.
@@ -318,4 +318,11 @@ activate, promote, publish, merge, verify, or accept their own routing changes.
 - Review passes: no feature-level critical/high security finding, no unresolved
   TypeScript correctness finding, no agent-governance parity gap, and no
   simplification required before V1 review.
-- Remote GitHub/Vercel checks: pending draft PR creation.
+- Draft PR #117: all nine GitHub CI jobs, Vercel Preview Comments, and both
+  Vercel preview deployments PASS on commit `bcc6006`.
+
+## Review recommendation
+
+**MERGE** after human review. Keep Guarded Auto disabled during the initial
+Advisory/pin rollout, then use the separate promotion gate only after verified
+production evidence satisfies the documented thresholds.
