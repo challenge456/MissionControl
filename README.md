@@ -1,46 +1,49 @@
 # Mission Control
 
-## AI Software Factory for governed autonomous delivery
+## Governed control plane for AI software factories
 
-Mission Control turns AI coding agents into a governed, measurable software
-delivery system. It coordinates human intent, repository access, plans,
-WorkOrders, execution agents, policy, evidence, pull requests, and release
-decisions without surrendering human authority.
+Mission Control is the operating system and control plane for human-directed,
+agent-executed software delivery. Humans define intent, approve consequential
+decisions, and retain authority. Agents and coding harnesses perform bounded
+engineering work. Deterministic code enforces admission, scope, lineage,
+verification, currentness, publication, and acceptance gates.
 
-> Mission Control is not another coding assistant. It is the control plane that
-> makes autonomous software delivery bounded, inspectable, recoverable, and
-> reviewable.
+It coordinates the complete governed lifecycle from Project Constitution and
+Mission Spec through Plan approval, WorkOrders, Attempts, independent
+verification, evidence, pull-request publication, human acceptance, and
+proposal-only learning.
+
+> Mission Control is not an AI coding agent, multi-agent chat application,
+> workflow UI, or test runner. It is the durable authority layer that composes
+> those capabilities into a bounded, inspectable, recoverable delivery system.
 
 ## Software Factory: governed recursive self-improvement
 
-The Mission Control Software Factory is designed as a **governed Recursive
-Self-Improvement (RSI) and continuous-learning system**. Its target operating
-model continuously researches operator-approved sources, learns from delivery
-evidence, recommends improvements, implements approved changes, verifies the
-result, measures the outcome, and uses that evidence to propose the next
-bounded iteration.
+The Mission Control Software Factory supports **governed recursive improvement
+and continuous learning**. It can turn attributable delivery evidence into
+signals, recurring clusters, reviewable Improvement Candidates, controlled
+experiments, and a submitted Mission Plan. A separate human Plan approval is
+still required before a WorkOrder is released, and execution remains a later
+governed decision.
 
 The operating loop is:
 
 `research -> verify -> recommend -> approve -> implement -> validate -> measure -> iterate`
 
-This allows the factory to evaluate new engineering practices and technology
-and apply useful advances to Mission Control without becoming an uncontrolled
-self-modifying agent. External content is treated as untrusted evidence, not
-authority. Recommendations cannot approve themselves, and every repository,
-workflow, skill, verifier, model-route, or policy change must follow the normal
-Mission Control hierarchy:
+This allows the factory to evaluate new engineering practices without becoming
+an uncontrolled self-modifying agent. External content is untrusted evidence,
+not authority. Recommendations cannot approve or apply themselves, and every
+repository, workflow, skill, verifier, model route, or policy change follows the
+normal Mission Control hierarchy:
 
 `Mission -> WorkOrder -> Task -> Attempt -> evidence -> pull request -> release`
 
-The current safe boundary is operator-triggered Web/RSS research with atomic
-artifact, observation, cursor, and verification-receipt lineage. A verified run
-can seed one frozen Research Brief and an operator can explicitly dispatch a
-read-only claim extractor followed by a distinct evidence verifier over only
-those frozen observation IDs. Broad discovery, automatic scheduling,
-recommendation generation, and repository changes remain disabled. Material
-changes still require governed scope, measurable acceptance criteria, rollback
-controls, and the appropriate human decision.
+The separate continuous-research path remains intentionally narrower:
+operator-triggered Web/RSS research with atomic artifact, observation, cursor,
+and verification-receipt lineage. A verified run can seed a frozen Research
+Brief, followed by an explicitly dispatched read-only claim extractor and a
+distinct evidence verifier over only those frozen observations. Broad discovery
+and repository mutation remain outside that research path.
 
 The manual research executor now uses an atomic workspace lease, lease-fenced
 state writes, owner heartbeats, durable cursor checkpoints, reasoned retries,
@@ -58,23 +61,27 @@ still fail closed while `continuousSchedulingEnabled` is `false`.
 
 ![Mission Control Command Center showing portfolio metrics and ranked exceptions](docs/software-factory/screenshots/readme/mission-control-command-center.png)
 
-*The Command Center turns a large delivery portfolio into a ranked queue of
-decisions, blockers, and evidence—not a wall of agent activity.*
+_The Command Center turns a large delivery portfolio into a ranked queue of
+decisions, blockers, and evidence—not a wall of agent activity._
 
 ## Contents
 
 - [Why software factories and Mission Control matter](#why-software-factories-and-mission-control-matter)
 - [Project status](#project-status)
+- [Humans, agents, and deterministic code](#humans-agents-and-deterministic-code)
 - [The delivery contract](#the-delivery-contract)
-- [How the factory works](#how-the-factory-works)
+- [End-to-end Factory lifecycle](#end-to-end-factory-lifecycle)
 - [What is implemented](#what-is-implemented)
+- [Governance and authority](#governance-and-authority)
 - [Live golden-path proof](#live-golden-path-proof)
 - [Operator surfaces](#operator-surfaces)
 - [System architecture](#system-architecture)
 - [Local development](#local-development)
+- [System qualification](#system-qualification)
 - [Verification](#verification)
 - [Security model](#security-model)
-- [Product and architecture documents](#product-and-architecture-documents)
+- [For contributors](#for-contributors)
+- [Architecture and deep dives](#architecture-and-deep-dives)
 
 ## Why software factories and Mission Control matter
 
@@ -96,11 +103,11 @@ A chat interface scales conversations. A software factory scales governed work.
 
 These are three different layers:
 
-| Layer | Primary responsibility | What it must not decide alone |
-|---|---|---|
-| **Coding agent** | Execute a bounded task, use approved tools, report events, and produce artifacts | Product intent, its own authority, acceptance, merge, or release |
-| **Software Factory** | Freeze the repository, workflow, executor, policy, budget, verifier, and recovery contract used to produce changes repeatedly | Whether a business outcome is worth pursuing or whether its own output is acceptable |
-| **Mission Control** | Coordinate Missions and Factories across projects; route attention, enforce governance, retain lineage, and present evidence to human operators | Product judgment, risk acceptance, or irreversible decisions reserved for people |
+| Layer                | Primary responsibility                                                                                                                          | What it must not decide alone                                                        |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| **Coding agent**     | Execute a bounded task, use approved tools, report events, and produce artifacts                                                                | Product intent, its own authority, acceptance, merge, or release                     |
+| **Software Factory** | Freeze the repository, workflow, executor, policy, budget, verifier, and recovery contract used to produce changes repeatedly                   | Whether a business outcome is worth pursuing or whether its own output is acceptable |
+| **Mission Control**  | Coordinate Missions and Factories across projects; route attention, enforce governance, retain lineage, and present evidence to human operators | Product judgment, risk acceptance, or irreversible decisions reserved for people     |
 
 The Factory is the production system for a repository. Mission Control is the
 portfolio-level operating system that lets a human direct many Factories without
@@ -108,17 +115,17 @@ managing every agent interaction manually.
 
 ### What breaks when agent fleets grow
 
-| Control problem | Without a control plane | Mission Control response |
-|---|---|---|
-| **Intent** | Prompts drift away from the approved outcome | Versioned Missions, plans, WorkOrders, and acceptance criteria |
-| **Concurrency** | Agents collide on branches, files, migrations, and shared dependencies | Repository and code-scope bindings, dependency-aware dispatch, and one active mutating Attempt per repository |
-| **Authority** | Broad credentials and ambient permissions make every worker overpowered | Server-side authorization, named capabilities, short-lived provider credentials, and risk-tiered approvals |
-| **Context** | Each agent receives a different or stale picture of the system | Frozen execution envelopes, versioned workflows, exact revisions, and durable source references |
-| **Verification** | Workers mark themselves done and weak results move downstream | Independent receipts mapped to acceptance criteria, with pass, fail, stale, conflicting, and waived states |
-| **Human attention** | Developers poll chats and logs until supervision becomes the bottleneck | Exception-first queues that rank blockers, pending decisions, failed evidence, and remediation |
-| **Cost and capacity** | Retries and parallel work consume budgets invisibly | Attempt, runtime, and cost budgets plus provider-capacity and scheduler signals |
-| **Continuity** | A process restart or lost chat destroys operational state | Durable Tasks, Attempts, events, leases, receipts, and idempotent commands |
-| **Accountability** | It is difficult to explain who authorized a change or why it shipped | End-to-end lineage from intent through plan, execution, PR, approval, release, and production evidence |
+| Control problem       | Without a control plane                                                 | Mission Control response                                                                                      |
+| --------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| **Intent**            | Prompts drift away from the approved outcome                            | Versioned Missions, plans, WorkOrders, and acceptance criteria                                                |
+| **Concurrency**       | Agents collide on branches, files, migrations, and shared dependencies  | Repository and code-scope bindings, dependency-aware dispatch, and one active mutating Attempt per repository |
+| **Authority**         | Broad credentials and ambient permissions make every worker overpowered | Server-side authorization, named capabilities, short-lived provider credentials, and risk-tiered approvals    |
+| **Context**           | Each agent receives a different or stale picture of the system          | Frozen execution envelopes, versioned workflows, exact revisions, and durable source references               |
+| **Verification**      | Workers mark themselves done and weak results move downstream           | Independent receipts mapped to acceptance criteria, with pass, fail, stale, conflicting, and waived states    |
+| **Human attention**   | Developers poll chats and logs until supervision becomes the bottleneck | Exception-first queues that rank blockers, pending decisions, failed evidence, and remediation                |
+| **Cost and capacity** | Retries and parallel work consume budgets invisibly                     | Attempt, runtime, and cost budgets plus provider-capacity and scheduler signals                               |
+| **Continuity**        | A process restart or lost chat destroys operational state               | Durable Tasks, Attempts, events, leases, receipts, and idempotent commands                                    |
+| **Accountability**    | It is difficult to explain who authorized a change or why it shipped    | End-to-end lineage from intent through plan, execution, PR, approval, release, and production evidence        |
 
 ### The developer becomes an operator
 
@@ -148,122 +155,50 @@ control primitives come before fleet-size claims.
 
 Mission Control is in active V1 development.
 
-The governed factory foundation is implemented: repository identity, GitHub App
-readiness, immutable Factory versions, activation gates, signed service
-commands, the `codex/v1` executor contract, and exact execution bindings are in
-the codebase and covered by automated tests. WorkOrders can also freeze an
-executable verification contract with mandatory checks, negative constraints,
-change budgets, criterion-level evidence requirements, and an independently
-computed WorkOrder verdict.
+The repository has a deterministic full-system V1 qualification with known
+limitations. It composes governed intent, Factory configuration, worker
+admission, local and fake-remote execution, immutable candidates, independent
+verification, exact pull-request currentness, canonical WorkOrder acceptance,
+and the human-gated learning continuation. This is strong implementation proof;
+it is not a claim of fleet-scale production operation or live Remote Sandbox
+certification.
 
-The browser WorkOrder path now binds creation and dispatch to those same
-authorities. Operators select a ready repository, a code scope frozen into the
-active Factory version, its owning team and accountable member, and an exact
-JSON argv verification command. The dispatch gate displays and server-rechecks
-the immutable Factory version, workflow, repository, scope, local environment,
-and current clean executor host. It does not fall back to free-form repository
-labels, whitespace-split commands, or browser-owned authority. The
-orchestration worker reports its real Git checkout, branch, commit, dirty state,
-and capacity so a stale or dirty checkout remains visibly blocked.
+The current public client/backend runtime contract is **v28**.
 
-The real Codex-to-GitHub pull-request golden path is implemented and proven
-against this repository. A private, repository-scoped GitHub App created real
-pull requests through just-in-time installation tokens after the durable worker
-claimed a bound Attempt, ran `codex/v1`, enforced the approved changed-file
-scope, pushed the server-owned branch, and persisted the exact lineage. Browser
-proof covers cancellation, immutable retries, failure, success, refresh,
-process restart, and idempotent PR reconciliation.
+| Capability                                 | Current status                                   | Boundary                                                                                        |
+| ------------------------------------------ | ------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| Governed Missions and Plan approval        | **Live; system-qualified**                       | One-repository V1 golden path; consequential execution still requires separate gates            |
+| Spec-Driven Mission Intake                 | **Merged and qualified; default off**            | Project flag `missions.spec-intake-v1`; `FINALIZED` means planning-ready only                   |
+| Quality Contracts                          | **Implemented; accepted normative architecture** | Immutable projection of approved Plan intent, not a second planning system                      |
+| Verification Factory / policy-v2           | **Implemented; system-qualified**                | Exact-subject, independent, fail-closed verification before acceptance                          |
+| Factory Memory                             | **Implemented; default off by phase**            | Advisory retrieval and Attempt-bound Context Packages; no acceptance authority                  |
+| Observability / Evals                      | **Live diagnostic system**                       | Traces, scores, datasets, and experiments explain quality; they do not decide acceptance        |
+| Factory Learning V1                        | **Implemented; advisory**                        | Deterministic signals through human-reviewed experiments and submitted Plans; no auto-promotion |
+| Progressive Factory experience and recipes | **Live**                                         | Presentation and composition only; backend policy remains authoritative                         |
+| Generic Harness Contract                   | **Production architecture**                      | One execution-only lifecycle with exact capability admission                                    |
+| Codex adapter                              | **Production admission**                         | Canonical `codex/v1` path                                                                       |
+| DeepSeek Harness                           | **Experimental; disabled by default**            | Exact pinned local persistent-worker path only                                                  |
+| Remote Sandbox N=1                         | **Preview / Not Live Certified**                 | Deterministic Fake-provider proof only; no live exe.dev certification                           |
+| Loom admission                             | **Future**                                       | Configuration discovery and fixtures exist; no pinned runtime adapter                           |
+| System Qualification                       | **V1 merged; known limitations**                 | Deterministic command plus durable repository evidence; no live-provider claim                  |
 
-The Mission acceptance path now reconciles a current passing Worker receipt and
-complete structured handoff into a linked non-independent assertion. Assertions
-that require independent validation remain Validator-only. Mission drafts bind
-the accountable owner, team, repository, and approved code scopes, while
-mutating plan blueprints release explicit commands, attempt and time limits,
-budget, and stop conditions into their WorkOrders.
-
-GitHub follow-up reads no longer depend on a personal or global token. The
-Factory mints a short-lived installation token for the exact bound repository,
-normalizes pull-request and check-run webhook identities, validates the
-factory-authored WorkOrder/Attempt/Task lineage, and exposes signature-valid
-delivery outcomes in the operator UI. Browser proof showed PR evidence leaving
-quarantine and linking automatically without a control-plane repair command.
-
-An enforced `REQUIRES_HUMAN_REVIEW` verdict now creates a durable publication
-checkpoint instead of failing the Attempt. Unconditional approval appends an
-approval-linked `VERIFIED` receipt and reclaims the same Attempt at
-`PUBLISHING`; the worker rechecks the exact candidate SHA and does not rerun
-`codex/v1` or independent verification. Immediately before the first GitHub
-write, the worker consumes a short-lived publication permit bound to the exact
-Attempt lease and candidate. Conditional approval, rejection, expiry, or a
-revision request closes the Attempt fail-closed so changed conditions require a
-new governed retry. Authenticated operators and tools can enumerate pending
-Factory review checkpoints with `GET /approval-decisions?projectId=...`; the
-executor still has no self-approval authority.
-
-This implementation landed in [PR #72](https://github.com/jaydubya818/MissionControl/pull/72)
-with green smoke, typecheck, lint, unit, build, E2E, and preview checks.
-
-The same-Attempt continuation was also exercised live across a full
-orchestration-process restart. The persisted verified candidate resumed only
-after browser approval, consumed a candidate-bound publication permit, and was
-published by the repository-scoped GitHub App as [PR #73](https://github.com/jaydubya818/MissionControl/pull/73).
-The generated canary PR passed every check and was closed unmerged after the
-proof was captured. The audit IDs, event counts, and screenshots are recorded in
-[`docs/testing/evidence/pr-72-human-review-resume/`](docs/testing/evidence/pr-72-human-review-resume/README.md).
-
-Browser-governed creation is fail-closed until that repository has an active,
-passing Factory version. The isolated browser exercise for
-[PR #87](https://github.com/jaydubya818/MissionControl/pull/87) reconnected the
-repository-scoped GitHub App, created and approved the pre-dispatch checkpoint,
-dispatched an exact immutable Factory binding, and reached the expected
-post-verification pause. The candidate changed one approved file, passed the
-independent verifier, and produced no remote branch or pull request before the
-publication approval. Exact lineage and screenshots are recorded in
-[`docs/testing/evidence/browser-governed-factory-dispatch/`](docs/testing/evidence/browser-governed-factory-dispatch/README.md).
-
-This closes the single-repository delivery and review proof; it does not make a
-broad production-scale claim. Unified review evidence, governed staging, and
-human-approved production-release automation are implemented. The first
-production qualification remains in progress, while remote sandbox enforcement,
-learning-ledger CRUD, trust scoring, verified-throughput metrics, additional
-providers, and fleet-scale scheduling remain deferred.
-
-| Capability | Status |
-|---|---|
-| Mission planning and human plan approval | Implemented |
-| Governed WorkOrders, Tasks, Attempts, and evidence records | Implemented |
-| GitHub App identity, least-privilege readiness, signed webhooks, ephemeral CI reads, and replay ledger | Implemented and browser-proven |
-| Immutable Factory configuration, readiness assessment, and activation | Implemented |
-| Browser-governed scoped WorkOrder creation and exact Factory dispatch binding | Implemented and browser-proven through verified pause |
-| Signed service commands and durable command receipts | Implemented |
-| `codex/v1` executor adapter with sandbox, events, health, and cancellation | Implemented |
-| Dispatch preflight and immutable execution envelope | Implemented |
-| Durable Codex worker through exact GitHub pull request | Implemented and browser-proven |
-| Worker receipt and handoff reconciliation into Mission assertions | Implemented and browser-proven |
-| Independent verification before pull-request publication | Implemented |
-| Durable human-review pause and same-Attempt publication resume | Implemented |
-| Exact-Attempt unified review evidence package | Implemented and browser-proven |
-| Built Node ESM orchestration startup smoke | Implemented and enforced in CI |
-| Governed staging deployment and independent verification | Implemented |
-| Human-approved production deployment, verification, and promotion | Implemented; qualification in progress |
-| Remote sandbox enforcement | Deferred |
-| Learning ledger, trust scoring, and verified-throughput metrics | Deferred |
-| FDE engagement workspace and additional connectors | Post-V1 |
-
-This browser-dispatch change intentionally does not expand remote sandbox
-enforcement, provider CI ingestion, learning-ledger CRUD, trust scoring,
-verified-throughput metrics, deployment, or production verification. Those
-remain outside this slice even where earlier repository contracts already
-define or exercise adjacent release capabilities.
-
-The original repository baseline, approved implementation sequence, and live
-proof are recorded in the
+The original baseline and delivery history remain available in the
 [existing-system assessment](docs/mission-control-existing-system-assessment.md),
 [V1 program plan](docs/plans/2026-08-02-feat-ai-software-factory-v1-program-plan.md),
-[completed golden-path todo](todos/024-ready-p1-real-codex-github-pr-golden-path.md),
-[Mission evidence reconciliation](todos/029-complete-p1-reconcile-worker-evidence-into-mission-acceptance.md),
-[authenticated GitHub CI ingestion](todos/030-complete-p1-authenticate-github-webhook-ci-ingestion.md),
-and [browser evidence report](docs/testing/evidence/real-codex-github-pr-golden-path/README.md).
+and [real Codex-to-GitHub browser proof](docs/testing/evidence/real-codex-github-pr-golden-path/README.md).
+
+## Humans, agents, and deterministic code
+
+Mission Control deliberately separates judgment, execution, and enforcement.
+
+| Layer                    | Owns                                                                                                                                     | Does not own                                                                 |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| **Humans**               | Intent, planning-ready specifications, Plan approval, consequential recommendations, acceptance, merge, release, and risk decisions      | Routine bounded execution or reconstruction of raw agent logs                |
+| **Agents and harnesses** | Planning support, investigation, code changes, bounded engineering work, candidate production, and structured handoff                    | Their own authority, independent verification, acceptance, merge, or release |
+| **Deterministic code**   | Admission, scope, budgets, tests, verification checks, digests, immutable lineage, currentness, security boundaries, and authority gates | Product judgment or silent substitution for a required human decision        |
+
+Agents propose and execute. Deterministic systems validate and govern. Humans
+retain the decisions whose consequences require judgment or authority.
 
 ## The delivery contract
 
@@ -273,65 +208,111 @@ Mission Control uses one authoritative hierarchy:
 Company
 └── Workspace
     └── Repository
-        └── Active Factory version
-            └── Mission
-                └── Approved Plan
+        ├── Project Constitution revision
+        ├── Active Factory version
+        └── Mission
+            └── Mission Spec revision
+                └── Approved Plan + Quality Contract projection
                     └── WorkOrder
                         └── Task
                             └── Attempt / WorkflowRun
-                                ├── ordered events
-                                ├── artifacts and changed files
-                                └── verification receipts
+                                ├── frozen execution manifest + Context Package
+                                ├── immutable candidate
+                                └── ordered events and artifacts
+
+Candidate → Verification Subject → frozen Verification Plan
+          → independent verifier Attempt → evidence and receipt
+          → Quality Gate Decision → exact-current pull request
+          → workOrders.accept
 
 Pull Request → Merge → Deployment → Activation → Production Verification
 ```
 
 Each layer has a separate responsibility:
 
-- A **Mission** captures the intended outcome, constraints, sources, budget,
-  stop condition, and acceptance criteria.
-- A **Plan** is versioned, reviewable, and must be approved before material
-  implementation begins.
+- A **Project Constitution** and immutable **Mission Spec** capture attributable
+  planning principles, measurable outcomes, requirements, non-goals, and
+  acceptance expectations.
+- A **Plan** binds exact Spec and Constitution lineage, is versioned and
+  reviewable, and must be approved before it can release WorkOrders.
+- A **Quality Contract** is the machine-readable projection of that exact
+  approved Plan. It has no independent mutable lifecycle.
 - A **WorkOrder** is the governed delivery and acceptance contract released
   from that plan.
 - A **Task** is a bounded operational unit inside a WorkOrder.
 - An **Attempt** is one immutable execution try against an exact WorkOrder
-  revision and Factory version.
+  revision, Factory version, worker lease, execution manifest, and optional
+  frozen Context Package.
+- A **candidate** is an exact output of execution, not a success declaration.
 - **Evidence** proves or disproves acceptance criteria. A worker report does not
   prove completion.
 - Pull request, merge, deployment, activation, and production verification are
   distinct states. None silently implies the next.
 
-## How the factory works
+## End-to-end Factory lifecycle
 
 ```mermaid
-flowchart LR
-    H["Human intent"] --> M["Mission"]
-    M --> P["Versioned plan"]
-    P --> A{"Human approval"}
-    A -->|approved| W["Governed WorkOrders"]
+flowchart TB
+    C["Project Constitution"] --> M["Mission"]
+    M --> S["Immutable Mission Spec"]
+    S --> P["Versioned Plan"]
+    P --> A{"Human Plan approval"}
     A -->|revise| P
+    A -->|approved| Q["Quality Contract"]
+    Q --> W["Governed WorkOrder"]
+    FV["Active Factory Version"] --> X["Frozen execution manifest"]
+    W --> X
+    FM["Factory Memory"] -. advisory context .-> CP["Attempt-bound Context Package"]
+    X --> CP
+    CP --> L["Worker admission + lease"]
+    L --> H["Harness / execution backend"]
+    H --> CA["Immutable candidate"]
+    CA --> VS["Verification Subject + frozen Plan"]
+    VS --> VA["Independent verifier Attempt"]
+    VA --> E["Evidence + receipt + Quality Gate"]
+    OE["Observability / Evals"] -. diagnostic only .-> H
+    OE -. diagnostic only .-> VA
+    E --> PR["GitHub App PR + exact currentness"]
+    PR --> AC{"Authorized workOrders.accept"}
+    AC --> R["Merge / release remain separate"]
+    AC -. evidence .-> FL["Factory Learning"]
+    FL -. proposal only .-> HR["Human review + experiment"]
+    HR -. submitted Plan .-> M
 
-    F["Active Factory version"] --> G{"Dispatch preflight"}
-    GH["Verified GitHub App"] --> G
-    W --> G
-
-    G -->|blocked| X["Root blocker + remediation"]
-    G -->|ready| T["Tasks + bound Attempts"]
-    T --> C["codex/v1 executor"]
-    C --> E["Events + artifacts + receipts"]
-    E --> V{"Independent validation"}
-    V -->|failed| R["Bounded correction"]
-    R --> T
-    V -->|passed| PR["Review-ready PR package"]
-    PR --> D{"Human decision"}
+    classDef advisory fill:#f8fafc,stroke:#64748b,stroke-dasharray:5 5;
+    class FM,OE,FL advisory;
 ```
 
-Before a Mission-linked Attempt exists, dispatch revalidates the exact active
-Factory version, configuration digest, repository and GitHub access, workflow,
-executor, policy, verifiers, host, budget, recovery controls, branch/worktree,
-and allowed tools. A blocked check returns one actionable root cause without
-creating a run.
+1. **Intent.** A Project Constitution provides immutable planning principles;
+   the Mission captures the desired outcome and governed scope.
+2. **Specification.** Immutable Mission Spec revisions use stable requirement
+   identities, deterministic quality checks, structured clarification,
+   measurable outcomes, acceptance expectations, and explicit non-goals.
+3. **Planning.** A versioned Plan binds the exact Spec and Constitution
+   revisions and maps requirements into assertions and WorkOrder blueprints.
+4. **Human approval.** A separate human decision approves one exact Plan
+   revision and releases WorkOrders. It does not dispatch execution.
+5. **Context engineering.** Factory Memory retrieves attributable context and
+   freezes a minimal Context Package onto the exact Attempt. This context is
+   advisory and cannot change frozen intent.
+6. **Execution.** Server-authoritative worker admission checks identity,
+   session, generation, capabilities, capacity, Factory Version, and backend
+   before issuing a fenced lease. The selected harness executes the frozen
+   manifest.
+7. **Candidate production.** The Attempt returns an exact candidate and
+   normalized untrusted result. Harness completion is not verification.
+8. **Independent verification.** Mission Control creates an immutable
+   Verification Subject, freezes a Verification Plan, runs a separate verifier
+   Attempt, and records evidence and receipts against the exact candidate.
+9. **Publication and currentness.** A candidate-bound permit gates GitHub App
+   publication. Pull-request head, checks, candidate, subject, and evidence must
+   remain exact-current.
+10. **Human acceptance.** `workOrders.accept` is the canonical WorkOrder
+    acceptance boundary. Passing execution and verification only make work
+    eligible for acceptance; they do not write acceptance themselves.
+11. **Learning.** Evidence can become bounded signals, clusters, Improvement
+    Candidates, experiments, and recommendations. Promotion returns through a
+    new Mission and submitted Plan with a separate human approval.
 
 ## What is implemented
 
@@ -349,128 +330,324 @@ separate host binding.
 Authorization is resolved server-side. The browser does not decide which
 company, workspace, repository, team, or delivery record an operator may act on.
 
-### 2. Mission and plan governance
+### 2. Spec-driven Mission intake and Plan governance
 
 The Mission workspace supports draft, planning, proposal, rejection, revision,
 approval, WorkOrder release, execution, validation, acceptance, cancellation,
-and supersession states. Approved plans retain assertions, WorkOrder blueprints,
-dependencies, risk, cost, rollback, and independent-validation requirements.
+and supersession. The default-off Spec Intake V1 adds immutable, attributable
+Project Constitution and Mission Spec revisions before the Plan.
 
-Task completion does not accept a WorkOrder, and WorkOrder completion does not
-accept a Mission.
+The deterministic Spec Quality evaluator checks required sections, stable and
+unique identities, placeholders, measurable outcomes, testability, structured
+clarifications, contradictions, repository scope, and acceptance/evidence
+coverage. Answering a clarification or changing scope creates a new revision.
+`FINALIZED` means one exact revision is complete enough for planning; it does
+not approve a Plan, release a WorkOrder, or authorize execution.
 
-### 3. GitHub App trust boundary
+Plan submission and approval revalidate the exact Spec, evaluation, and
+Constitution IDs and digests. A newer Spec never silently rebinds an existing
+Plan. Historical Plans without Spec lineage remain readable and are labeled as
+legacy rather than receiving invented provenance.
 
-GitHub is the only V1 Git provider. Mission Control records the App installation
-identity and capability evidence for an exact workspace repository. It checks:
+The conceptual trace is explicit:
 
-- repository installation identity;
-- exact least-privilege permissions;
-- required webhook subscriptions;
-- verification freshness; and
-- connection degradation, suspension, removal, or revocation.
+```text
+Spec requirement
+  → Plan assertion
+  → WorkOrder blueprint
+  → acceptance criterion
+  → verification check and evidence expectation
+```
 
-Webhook HMAC is validated against the untouched request body before parsing.
-Every GitHub delivery GUID is recorded in a replay-aware ledger, and duplicates
-cannot repeat PR, CI, review, or improvement-loop effects. Installation tokens,
-OAuth tokens, App private keys, client secrets, and webhook secrets are never
-stored in product records.
+Approved Plans retain assertions, WorkOrder blueprints, dependencies, risk,
+cost, rollback, and independent-validation requirements. Task completion does
+not accept a WorkOrder, and WorkOrder completion does not accept a Mission.
 
-See [GitHub App Connection and Webhook Contract](docs/security/github-app-connection.md).
+### 3. Quality Contracts and verification-first delivery
 
-### 4. Versioned Factory configuration
+A Quality Contract is the canonical machine-readable projection of one exact
+approved Plan and its governed Mission intent. It carries the Plan's
+requirements, assertions, invariants, assurance expectations, and approval
+policy into scoped WorkOrder specifications. The execution manifest then binds
+that frozen quality definition to the active Factory Version, repository,
+policy, runtime, budget, and verifier configuration.
+
+It is not a second mutable planning system. Changing quality intent requires a
+new Plan revision and human approval, which produces a new digest.
+
+Mission Control treats these states as deliberately different:
+
+```text
+execution completed ≠ verification passed
+verification passed ≠ exact-current gate eligible
+gate eligible ≠ WorkOrder accepted
+WorkOrder accepted ≠ pull request merged
+pull request merged ≠ production verified
+```
+
+An execution Attempt produces an immutable candidate. The control plane binds
+that candidate into a Verification Subject, freezes a Verification Plan, and
+runs a logically independent verifier Attempt. Mandatory deterministic checks,
+change budgets, negative constraints, evidence envelopes, criterion receipts,
+and an append-only Quality Gate Decision remain bound to the exact WorkOrder
+revision, source, candidate, verifier, and policy.
+
+Missing, stale, skipped, unconfigured, errored, insufficiently independent, or
+conflicting proof cannot become verified success. A moved pull-request head
+invalidates current eligibility until a new exact subject and verification
+lineage pass. Verification only establishes eligibility; acceptance still
+occurs through `workOrders.accept`.
+
+See the [verification-first WorkOrder contract](docs/software-factory/verification-first-workorder-contract.md)
+and [Quality Contract domain contracts](docs/software-factory/verification-first-domain-contracts.md).
+
+### 4. Versioned Factory configuration and service authority
 
 A Software Factory is a thin, repository-bound configuration aggregate. It
 references existing platform records instead of creating a second execution
 system.
 
-Each immutable Factory version freezes:
+Each immutable Factory version freezes the repository, workflow, executor and
+harness, governance policy, environment and backend, budgets, independent
+verifiers, GREEN/YELLOW/RED risk boundary, and recovery posture. Readiness
+checks repository and GitHub access, exact harness capabilities, workflow,
+policy, budget, verifiers, worker/backend, and recovery controls. Activation
+requires a current passing assessment for the exact configuration digest.
+Material changes create a new version and leave the previous version auditable.
 
-- repository;
-- workflow version;
-- executor adapter and version;
-- governance policy;
-- environment;
-- cost, runtime, and attempt budgets;
-- independent verifiers;
-- GREEN, YELLOW, or RED risk boundary; and
-- pause, resume, cancel, and retry posture.
+Human actions, service commands, GitHub webhooks, and internal scheduler work
+use different trust boundaries. The orchestration service signs outbound
+commands with a replay-resistant HMAC envelope containing service identity,
+named capability, scope, command ID, issue/expiry time, and exact payload
+digest. Convex retains accepted, denied, failed, succeeded, and replayed command
+receipts without storing credentials or command bodies. Public clients cannot
+claim `SYSTEM` or `AGENT` authority to dispatch work.
 
-Readiness checks GitHub, repository access, workflow, `codex/v1`, policy,
-budget, verifiers, sandbox host, and recovery controls. Activation requires a
-current passing assessment for the exact configuration digest. Material changes
-create a new version and leave the previous version auditable.
+The UI lives under **Settings → Workspaces & Repositories**. See
+[Service Command Authentication](docs/security/service-command-authentication.md).
 
-The UI lives under **Settings → Workspaces & Repositories**.
+### 5. Generic Harness Contract and worker runtime
 
-### 5. Human and service authority separation
+Mission Control separates the governed execution lifecycle from any particular
+coding harness. Every admitted adapter implements one provider-neutral
+lifecycle:
 
-Human actions, service commands, GitHub webhooks, and internal scheduler work use
-different trust boundaries.
+```text
+prepare → execute → optional handle-scoped cancel → collectResult → cleanup
+```
 
-The orchestration service signs outbound commands with a replay-resistant HMAC
-envelope containing the service identity, named capability, workspace,
-repository, command ID, issue/expiry time, and exact payload digest. Convex
-retains accepted, denied, failed, succeeded, and replayed command receipts
-without storing credentials or command bodies.
+The adapter publishes an exact capability manifest: harness and source pin,
+adapter/version, effective configuration digest, model routes, filesystem and
+tool support, isolation/backend requirements, cancellation/cleanup behavior,
+telemetry availability, maturity, and prohibited authorities. A worker must
+advertise matching capabilities and digests before admission.
 
-Public clients cannot claim `SYSTEM` or `AGENT` authority to dispatch work.
+Normalized harness results are untrusted diagnostics. Missing token, cost,
+model-request, or retry telemetry remains `null`; Mission Control never invents
+zeroes. Repository state is recomputed outside the harness. `codex/v1` is the
+production-admitted path. DeepSeek Harness is experimental, local
+persistent-worker only, disabled by default, and admitted only when its exact
+checkout, build, runtime, model, and configuration digests match. Loom is
+future admission work: discovery and fixtures exist, but no pinned,
+authenticated runtime adapter has been qualified.
 
-See [Service Command Authentication](docs/security/service-command-authentication.md).
+The worker runtime adds stable worker identity, ephemeral process session,
+server-derived generation, exact capabilities, and slot capacity. Claiming an
+Attempt atomically enforces current registration, repository and backend
+access, capability/configuration match, readiness, heartbeat, and server-counted
+capacity before issuing a lease bound to worker, session, generation, and a
+random fence ID.
 
-### 6. Codex executor adapter
+Lease renewal and all hardened writes recheck that tuple. Stale sessions cannot
+report evidence or authorize publication. Protected ownership manifests record
+the exact worktree and process outside the agent-writable tree. Unknown or
+expired execution ownership becomes `LOST`, preserves the workspace, and
+requires a new Attempt. Automated cleanup is non-forced and occurs only after
+exact ownership, terminated-process, clean-tree, published-head, and repository
+proof; ambiguity fails closed to `PRESERVED`.
 
-V1 supports one production executor contract: `codex/v1`. Deterministic fake
-adapters are test fixtures only.
+See the [Generic Harness Contract](docs/architecture/generic-harness-contract-v1.md)
+and [worker runtime operations](docs/software-factory/worker-runtime-operations.md).
 
-The adapter provides:
+### 6. Remote Sandbox execution
 
-- capability discovery;
-- configuration validation;
-- low-confidence cost/runtime estimates;
-- ordered execution events;
-- read-only and workspace-write isolation;
-- repository-relative allowed paths;
-- bounded timeouts;
-- cancellation;
-- explicit no-resume semantics for the in-process `codex/v1` session;
-- health reporting; and
-- bounded, redacted diagnostics.
+Remote Sandbox is an optional execution backend beneath the same worker,
+Attempt, lease, verification, publication, and acceptance lifecycle. A
+provider-neutral `SandboxProvider` allocates one Attempt-scoped resource,
+starts the frozen workload, returns a bounded content-addressed result bundle,
+and proves exact teardown.
 
-Factory workflow checkpoints are a separate control-plane concern. A verified
-Attempt may resume at publication after human approval without pretending the
-underlying Codex session itself is resumable.
+The sandbox receives no GitHub App, Mission Control service,
+provider-management, or long-lived inference credentials. The host validates
+all identities and digests, materializes the patch into a clean owned worktree,
+independently verifies the candidate, revokes the Attempt credential, and
+requires provider resource-absence proof before publication can proceed.
 
-The adapter executes an already-approved Attempt. It cannot approve a plan,
-widen repository scope, activate a Factory, validate its own work, merge a PR,
-or release software.
+Current status is **Preview / Not Live Certified**. The deterministic
+`FakeSandboxProvider` proves lifecycle, failure, credential revocation,
+materialization, independent verification, publication handoff, and cleanup
+without provider spend. It does not certify live exe.dev capacity, isolation,
+credentials, teardown, or operational readiness.
 
-See [Executor Adapter Contract](docs/architecture/executor-adapter-contract.md).
+See [Remote Sandbox Runtime](docs/software-factory/remote-sandbox-runtime.md).
 
-### 7. Governed execution envelope
+### 7. Factory Memory and Context Packages
+
+Factory Memory is a provenance-backed advisory projection over repository and
+Mission Control sources. It supports redacted ingestion, bounded deterministic
+retrieval, typed entities and relationships, graph neighborhoods, retrieval
+planning, and minimal immutable Context Packages bound to one exact Attempt.
+
+Every selected item retains source, revision, scope, derivation, and digest.
+Retrieved content is untrusted data. Memory can recommend verification checks
+and record context-quality observations, but it cannot establish subject
+identity, independence, currentness, a verdict, or acceptance. Its five phases
+are workspace-scoped and default off.
+
+See [Factory Memory and Context Intelligence](docs/architecture/factory-memory-context-intelligence.md).
+
+### 8. Observability and Evals
+
+Canonical traces and nested observations let operators reconstruct execution
+across Attempts, human/agent/code phases, worker and harness identity,
+model/configuration, tool activity, verification, failures, retries, and later
+learning lineage. The Trace Inspector supports execution-tree and timeline
+views, filters, redacted input/output inspection, evidence links, usage when
+reported, and truthful unknowns.
+
+Versioned eval definitions, scores, datasets, and experiments measure and
+compare behavior. They are diagnostic and advisory: an eval score never becomes
+a verification receipt, exact-current Quality Gate Decision, or acceptance.
+
+### 9. Factory Learning and continuous improvement
+
+Factory Learning projects explicit evidence into a bounded governed loop:
+
+```text
+Evidence
+  → immutable Signals
+  → deterministic repository-scoped Clusters
+  → Improvement Candidates
+  → Human Review
+  → frozen Experiment
+  → Recommendation
+  → Mission + submitted Plan
+  → separate human Plan approval
+```
+
+Signals can describe repeated context misses, deterministic-gate opportunities,
+recurring verification failures, configuration drift, repeated human
+corrections, retry/recovery patterns, routing mismatches, or unnecessary agent
+usage. V1 uses deterministic extractors and exact-signature clustering with no
+model calls.
+
+Learning records are advisory and cannot rewrite a Factory Version, recipe,
+prompt, skill, route, policy, credential, lease, verification record, or
+acceptance result. Even a promoted recommendation returns to the ordinary
+Mission/Plan/WorkOrder path.
+
+See [Factory Learning architecture](docs/architecture/factory-learning-continuous-improvement.md)
+and [self-improvement governance](docs/decisions/factory-self-improvement-governance.md).
+
+### 10. Progressive Factory experience and recipes
+
+The same backend authority is presented at three levels:
+
+| Level            | Purpose                                                                                                                     |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| **Basic**        | Opinionated workflows, recommended defaults, outcome, progress, verification, approvals, and next action                    |
+| **Intermediate** | Workflow, context, verification, roles, routing intent, harness posture, gates, and retry bounds                            |
+| **Advanced**     | Exact IDs, digests, Factory Versions, Attempts, harnesses, workers, leases, evidence, lineage, memory, traces, and learning |
+
+The experience level is a browser-local presentation preference. It cannot
+change authorization, policy, persistence, verification, or backend behavior.
+
+The recipe catalog provides proven starting shapes—Scout, Plan, Build, Quality,
+Build + Test, Build + Review, Plan + Build + Test, and Full SDLC. Deterministic
+rules recommend a recipe and retain the recommendation/override as composition
+provenance. Recipes resolve to canonical versioned workflows and Factory
+configuration; they do not create a second workflow engine or lower policy.
+
+See [Progressive Factory Experience](docs/site/software-factory-enhancement/progressive-factory-experience.md).
+
+### 11. GitHub App publication and exact currentness
+
+GitHub is the V1 Git provider. Mission Control records the App installation and
+least-privilege capability evidence for an exact workspace repository, verifies
+freshness and degradation, validates webhook HMAC against the untouched body,
+and deduplicates every delivery GUID through a replay-aware ledger.
+
+Publication requires a short-lived permit bound to the exact candidate,
+Attempt, active lease, and approval checkpoint. The GitHub App publisher is the
+only component with controlled repository publication authority. It uses
+just-in-time installation tokens; installation tokens, OAuth tokens, private
+keys, client secrets, and webhook secrets are never stored in product records.
+
+Pull-request head, checks, Factory-authored branch/commit, candidate, subject,
+receipt, and WorkOrder/Attempt lineage are re-evaluated for exact currentness.
+A changed head preserves old evidence as history and blocks acceptance until a
+new exact lineage passes.
+
+See [GitHub App Connection and Webhook Contract](docs/security/github-app-connection.md).
+
+### 12. Governed execution envelope and evidence
 
 Every Mission-linked WorkflowRun can retain the exact Factory version and
-digest, repository, host, executor, policy, environment, branch, worktree,
-allowed tools, WorkOrder revision, and model-routing lineage used at dispatch.
+digest, repository, host, harness manifest, executor, policy, environment,
+branch, worktree, allowed tools, WorkOrder revision, Quality Contract,
+Context Package, model route, backend, and base SHA used at dispatch.
 
 Dispatch is idempotent and enforces one active mutating Attempt per repository
 across Missions. Read-only work may coexist when policy allows it. Historical
 runs without the new binding remain visibly marked as legacy rather than being
 presented as governed.
 
-### 8. Evidence and operator control
-
-Mission Control already retains WorkOrder events, Attempt events, run artifacts,
-approval decisions, verification receipts, PR/CI evidence, audit activity, and
-release records. Operator surfaces prioritize required decisions, failed or
-stale evidence, blockers, and remediation before routine agent activity.
+Mission Control retains WorkOrder and Attempt events, run artifacts, approval
+decisions, verification receipts, PR/CI evidence, audit activity, and release
+records. Operator surfaces prioritize required decisions, failed or stale
+evidence, blockers, and remediation before routine agent activity.
 
 The evidence model distinguishes pass, fail, stale, unknown, waived,
-conflicting, and not-applicable states. The run inspector derives one fail-closed
-review package from the exact Attempt, frozen WorkOrder revision, commit, open
-pull request, CI result, changed files, risks, and rollback guidance. Missing or
-mismatched lineage remains visibly blocked instead of borrowing WorkOrder-wide
-evidence. See the [review evidence browser proof](docs/testing/evidence/v1-review-browser-hardening/README.md).
+conflicting, and not-applicable states. The run inspector derives one
+fail-closed review package from the exact Attempt, frozen WorkOrder revision,
+commit, open pull request, CI result, changed files, risks, and rollback
+guidance. Missing or mismatched lineage remains visibly blocked instead of
+borrowing WorkOrder-wide evidence. See the
+[review evidence browser proof](docs/testing/evidence/v1-review-browser-hardening/README.md).
+
+## Governance and authority
+
+Execution, verification, publication, and acceptance are separate authorities.
+No subsystem gains a later authority merely because it completed an earlier
+step.
+
+| System                | Can execute                     | Can verify                             | Can publish                             | Can accept                          |
+| --------------------- | ------------------------------- | -------------------------------------- | --------------------------------------- | ----------------------------------- |
+| Harness               | Yes, within a frozen Attempt    | No                                     | No                                      | No                                  |
+| Worker runtime        | Orchestrates admitted execution | No independent authority               | Permit-gated handoff only               | No                                  |
+| Remote Sandbox        | Yes, within one Attempt         | No                                     | No                                      | No                                  |
+| Factory Memory        | No                              | Advisory guidance only                 | No                                      | No                                  |
+| Observability / Evals | No                              | Diagnostic scoring only                | No                                      | No                                  |
+| Factory Learning      | No                              | No                                     | No                                      | No                                  |
+| Independent verifier  | Verification checks only        | Yes, against a frozen subject and plan | No                                      | No independent acceptance authority |
+| GitHub App publisher  | No                              | No                                     | Controlled, exact-candidate publication | No                                  |
+| Human operator        | Governs intent and dispatch     | Reviews evidence and exceptions        | Governs approval, merge, and release    | Yes, on the primary V1 path         |
+
+`workOrders.accept` is the canonical WorkOrder acceptance boundary and the only
+implementation that writes the `WORK_ORDER_ACCEPTED` transition. It rejects
+active execution, requires a completed eligible run, checks required approvals,
+and, for enforced policy-v2 work, recomputes exact-current verification and its
+Quality Gate Decision before moving the WorkOrder to `DONE`.
+
+The primary governed V1 product path is explicit acceptance by an authorized
+human. Current `main` also retains limited orchestration and legacy automation
+callers that invoke this same server-side mutation, including one automation
+verification path after recording passing receipts. They are not a second
+acceptance store or lifecycle, but the
+[human/service authorization matrix](docs/security/human-service-authorization-matrix.md)
+correctly treats migration of remaining service callers as unfinished before
+production promotion. No harness, worker, sandbox, memory, observability, or
+learning record can independently manufacture acceptance.
 
 ## Live golden-path proof
 
@@ -480,9 +657,9 @@ The completed browser-operated path is:
 
 ![Validated Mission with complete assertion coverage](docs/testing/evidence/real-codex-github-pr-golden-path/mission-validated-pr-61.png)
 
-*The recovered Mission reached `Validated` with 1/1 assertion coverage after
+_The recovered Mission reached `Validated` with 1/1 assertion coverage after
 the worker receipt, structured handoff, WorkOrder acceptance, and final operator
-decision were recorded through the browser.*
+decision were recorded through the browser._
 
 Three App-authored pull requests prove complementary parts of the path:
 
@@ -523,12 +700,11 @@ and the [complete browser evidence report](docs/testing/evidence/real-codex-gith
 for persisted identifiers, screenshots, state coverage, and deterministic test
 results.
 
-Merge and production promotion remain human decisions. The first governed
-production qualification is tracked in
-[todo 040](todos/040-in-progress-p0-qualify-production-automation.md).
-Additional Git providers, remote sandbox enforcement, and hundred-agent scaling
-remain deferred until the single-repository release path is operationally
-qualified.
+Merge and production promotion remain human decisions. The deterministic
+full-system V1 qualification now composes this golden path with worker/runtime,
+memory, policy-v2 verification, exact currentness, Remote Sandbox abstraction,
+observability, and learning. Live Remote Sandbox certification, additional Git
+providers, and hundred-agent operation remain unqualified.
 
 ## Operator surfaces
 
@@ -556,17 +732,19 @@ The audit surface retains lifecycle changes, approvals, denials, deployment
 events, and policy decisions so a high-volume agent fleet remains explainable
 after the fact.
 
-| Route | Operator job | Maturity |
-|---|---|---|
-| `/v2/command-center` | Triage decisions, blockers, risk, and delivery attention | Live |
-| `/v2/missions` | Define outcomes and manage Mission planning | Live |
-| `/v2/mission-detail` | Inspect plan, WorkOrders, execution, and acceptance | Live |
-| `/v2/control-work-orders` | Govern, dispatch, verify, and accept WorkOrders | Live |
-| `/v2/tasks` | Inspect operational Tasks and Attempts | Live |
-| `/v2/projects` | Configure workspaces, repositories, GitHub App readiness, code scopes, and Factory versions | Live |
-| `/v2/audit` | Review approvals and audit history | Live |
-| `/v2/harness-loops` | Inspect governed improvement-loop evidence | Live |
-| `/v2/trace-inspector` | Inspect detailed execution lineage | Preview |
+| Route                     | Operator job                                                                                | Maturity |
+| ------------------------- | ------------------------------------------------------------------------------------------- | -------- |
+| `/v2/command-center`      | Triage decisions, blockers, risk, and delivery attention                                    | Live     |
+| `/v2/missions`            | Define outcomes and manage Mission planning                                                 | Live     |
+| `/v2/mission-detail`      | Inspect plan, WorkOrders, execution, and acceptance                                         | Live     |
+| `/v2/factory`             | Start from a governed recipe and inspect recent Factory execution                           | Live     |
+| `/v2/control-work-orders` | Govern, dispatch, verify, and accept WorkOrders                                             | Live     |
+| `/v2/tasks`               | Inspect operational Tasks and Attempts                                                      | Live     |
+| `/v2/memory`              | Inspect provenance-backed Memory, graph, and Context Packages                               | Live     |
+| `/v2/trace-inspector`     | Inspect execution trees, timelines, evals, and datasets                                     | Live     |
+| `/v2/projects`            | Configure workspaces, repositories, GitHub App readiness, code scopes, and Factory versions | Live     |
+| `/v2/audit`               | Review approvals and audit history                                                          | Live     |
+| `/v2/harness-loops`       | Inspect governed improvement-loop evidence                                                  | Live     |
 
 ## System architecture
 
@@ -575,30 +753,46 @@ flowchart TB
     UI["React operator UI"] -->|typed queries and mutations| CX["Convex control plane"]
     CLI["mc CLI"] --> CX
 
-    GH["GitHub App + webhooks"] -->|signed HTTP ingress| HTTP["Convex HTTP actions"]
+    GH["GitHub App + webhooks"] -->|signed ingress| HTTP["Convex HTTP actions"]
     HTTP --> CX
 
     ORCH["Hono orchestration service"] -->|signed service commands| SC["Convex service-command boundary"]
     SC --> CX
-    ORCH --> ADAPTER["codex/v1 adapter"]
-    ADAPTER --> CODEX["Codex CLI in attempt worktree"]
+    ORCH --> WORKER["Canonical worker runtime"]
+    WORKER --> REG["Generic Harness registry"]
+    REG --> CODEX["codex/v1"]
+    REG --> DEEP["DeepSeek experimental"]
+    WORKER --> SBX["Local or Remote Sandbox backend"]
+    WORKER --> VER["Independent verifier Attempt"]
+    WORKER --> PUB["Permit-gated GitHub App publisher"]
+    PUB --> GH
 
     CX --> DB[("Convex durable state")]
     DB --> UI
 
     subgraph "Authoritative records"
-      M["Missions + Plans"]
-      W["WorkOrders + Tasks"]
-      R["WorkflowRuns + Events"]
-      E["Artifacts + Receipts + Approvals"]
-      F["Factory Versions + Readiness"]
+      M["Constitutions + Specs + Missions + Plans"]
+      Q["Quality Contracts + WorkOrders + Tasks"]
+      R["Attempts + leases + candidates"]
+      V["Verification + evidence + Quality Gates"]
+      F["Factory Versions + readiness + publication"]
     end
 
     CX --- M
-    CX --- W
+    CX --- Q
     CX --- R
-    CX --- E
+    CX --- V
     CX --- F
+
+    subgraph "Advisory projections"
+      MEM["Factory Memory"]
+      OBS["Observability / Evals"]
+      LEARN["Factory Learning"]
+    end
+
+    CX --- MEM
+    CX --- OBS
+    CX --- LEARN
 ```
 
 Convex is the source of truth. The Hono service hosts orchestration and executor
@@ -608,19 +802,20 @@ HTTP actions—there is no separate Express REST backend.
 
 ## Repository map
 
-| Path | Responsibility |
-|---|---|
-| `apps/mission-control-ui/` | React operator application and EOS V2 shell |
-| `apps/orchestration-server/` | Hono ingress, service-command client, agent coordination, and `codex/v1` runtime |
-| `apps/workflow-executor/` | Standalone executor for versioned workflow graphs |
-| `convex/` | Authoritative schema, domain commands, policies, GitHub ingress, evidence, and projections |
-| `packages/workflow-engine/` | Workflow execution and executor-adapter contracts |
-| `packages/policy-engine/` | Policy evaluation primitives |
-| `packages/agent-runtime/` | Agent lifecycle and heartbeat behavior |
-| `packages/context-*` | Context routing, manifests, activation, and tooling |
-| `workflows/` | Versioned YAML workflow definitions |
-| `scripts/mc` | Mission Control CLI |
-| `docs/` | Product doctrine, architecture, security contracts, plans, and verification evidence |
+| Path                         | Responsibility                                                                                                                   |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/mission-control-ui/`   | React operator application and EOS V2 shell                                                                                      |
+| `apps/orchestration-server/` | Hono ingress, signed service-command client, canonical worker, harness adapters, sandbox runtime, verifier, and GitHub publisher |
+| `apps/workflow-executor/`    | Standalone executor for versioned workflow graphs                                                                                |
+| `convex/`                    | Authoritative schema, domain commands, policies, GitHub ingress, evidence, and projections                                       |
+| `packages/workflow-engine/`  | Workflow, Generic Harness, Verification Subject/Plan, independence, and currentness contracts                                    |
+| `packages/policy-engine/`    | Policy evaluation primitives                                                                                                     |
+| `packages/agent-runtime/`    | Agent lifecycle and heartbeat behavior                                                                                           |
+| `packages/memory/`           | Provider-neutral Factory Memory ingestion, retrieval, graph, Context Package, and eval algorithms                                |
+| `packages/context-*`         | Context routing, manifests, activation, and tooling                                                                              |
+| `workflows/`                 | Versioned YAML workflow definitions                                                                                              |
+| `scripts/mc`                 | Mission Control CLI                                                                                                              |
+| `docs/`                      | Product doctrine, architecture, security contracts, plans, and verification evidence                                             |
 
 ## Technology
 
@@ -631,29 +826,32 @@ HTTP actions—there is no separate Express REST backend.
 - pnpm workspaces and Turborepo
 - Vitest for unit and contract tests
 - Playwright and Axe for browser and accessibility checks
-- Codex CLI as the approved V1 execution runtime
+- Codex CLI as the production-admitted V1 harness; DeepSeek Harness remains experimental
 
 ## Local development
 
 ### Prerequisites
 
-- Node.js 18 or newer
-- pnpm 9 or newer
+- Node.js 18 or newer; Node 20 matches CI
+- pnpm 9 or newer; the repository pins `pnpm@9.0.0`
+- Git
 - A Convex development deployment
+- Codex CLI only when exercising the real `codex/v1` worker path
 
 ### First-time setup
 
 ```bash
 git clone https://github.com/jaydubya818/MissionControl.git
 cd MissionControl
+corepack enable
 pnpm install
 cp .env.example .env.local
-npx convex dev
+pnpm exec convex dev --once
 ```
 
-On first use, Convex creates or connects a development deployment. Copy the
-generated `CONVEX_URL` to `VITE_CONVEX_URL` in `.env.local`, then start the
-normal development stack:
+On first use, Convex creates or connects a development deployment and records
+its deployment settings locally. Ensure the generated `CONVEX_URL` is also set
+as `VITE_CONVEX_URL` in `.env.local`, then start the normal development stack:
 
 ```bash
 pnpm run dev
@@ -682,6 +880,16 @@ Open
 and select **Software Factory Demo** (`sf-demo`). This is a deterministic local
 operator demo; the separate live GitHub PR proof is documented above.
 
+To open the preserved Research Lab on port 5199 without seeding the Software
+Factory Demo or starting autonomous executors, use:
+
+```bash
+pnpm run dev:research-lab
+```
+
+Use either `dev:demo` or `dev:research-lab` for a given port 5199 session; they
+are distinct local profiles.
+
 Optional knowledge graph import:
 
 ```bash
@@ -693,20 +901,24 @@ See [Run the demo](docs/site/get-started/run-the-demo.md) and
 
 ## Production-bound configuration
 
-Local demo mode does not require live GitHub credentials. A real GitHub App
-connection requires the server-side variables documented in
-[GitHub App Connection and Webhook Contract](docs/security/github-app-connection.md),
-including the App identity, OAuth client, private key, webhook secret, and
-Mission Control callback URL.
+Start from [.env.example](.env.example). Local demo mode does not require live
+GitHub or remote-provider credentials.
 
-Authenticated orchestration additionally requires:
+| Area                    | Important configuration                                                                                                                                                           | Notes                                                                                                                  |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Convex client           | `VITE_CONVEX_URL`                                                                                                                                                                 | Public client URL; must match the active local deployment                                                              |
+| Human authentication    | `VITE_AUTH_MODE`, optional `VITE_CLERK_PUBLISHABLE_KEY`, `MC_BOOTSTRAP_OWNER_SUBJECT`, `MC_BOOTSTRAP_TENANT_SLUG`                                                                 | Bootstrap values belong on the Convex deployment and should be removed after use                                       |
+| Orchestration ingress   | `ORCHESTRATION_API_TOKEN`                                                                                                                                                         | Server-side bearer token for Hono endpoints                                                                            |
+| Signed service commands | `MISSION_CONTROL_SERVICE_COMMAND_SECRET`, optional matching `MISSION_CONTROL_SERVICE_ID`                                                                                          | Configure the same secret in orchestration and Convex                                                                  |
+| Canonical worker        | `CODEX_FACTORY_WORKER_ENABLED`, `CODEX_WORKER_PROJECT_ID`, `CODEX_WORKER_REPOSITORY_ID`, `CODEX_WORKER_CHECKOUT_ROOT`, `CODEX_WORKER_HOST_ID`, `CODEX_WORKER_MAX_CONCURRENT_RUNS` | Keep disabled until repository, Factory, GitHub App, and worker readiness are current                                  |
+| Harness runtime         | `CODEX_EXECUTABLE`; optional DeepSeek enablement and exact checkout root                                                                                                          | DeepSeek is experimental and disabled by default                                                                       |
+| GitHub App              | `GITHUB_APP_ID`, private key or key-file path, OAuth client values, and `GITHUB_WEBHOOK_SECRET`                                                                                   | Follow the [GitHub App contract](docs/security/github-app-connection.md); use repository-scoped installation authority |
+| Remote Sandbox          | `CODEX_WORKER_REMOTE_SANDBOX_ENABLED`, `EXEDEV_IDENTITY_FILE`, `OPENROUTER_MANAGEMENT_API_KEY`                                                                                    | Preview only; configuration does not establish live certification                                                      |
 
-- `ORCHESTRATION_API_TOKEN` for inbound Hono requests;
-- `MISSION_CONTROL_SERVICE_COMMAND_SECRET` in orchestration and Convex;
-- optional matching `MISSION_CONTROL_SERVICE_ID`; and
-- a valid `CODEX_EXECUTABLE` path when the bundled default is unavailable.
-
-Secrets must remain server-side and must never use a `VITE_` prefix.
+Project flags such as `missions.spec-intake-v1` and the five
+`factory-memory.*` phases are stored and authorized in the control plane, not
+enabled by client environment variables. All secrets must remain server-side
+and must never use a `VITE_` prefix.
 
 ### Built orchestration service
 
@@ -742,6 +954,39 @@ The repository includes six YAML workflow definitions:
 They are installed into the versioned workflow catalog and snapshotted onto
 Attempts so later catalog edits do not rewrite execution history.
 
+The operator-facing Factory recipes described above are composition presets
+over these canonical workflows and active Factory Versions. A recipe selection
+never becomes a parallel workflow authority.
+
+## System qualification
+
+Mission Control exposes one deterministic full-system qualification command:
+
+```bash
+pnpm run qualify:factory
+```
+
+The merged level is **System Qualification V1: qualified with known
+limitations**. The command composes the governed Mission/Plan/Quality Contract
+lineage with WorkOrders, Factory Versions, Context Packages, worker admission
+and leases, immutable candidates, separate verifier Attempts, policy-v2
+evidence/currentness, GitHub publication fixtures, canonical acceptance,
+observability, learning, deliberate failure/recovery cases, and the relevant
+repository validation gates. It also runs the full test suite, lint/typecheck,
+runtime-contract guard, production build, orchestration startup smoke, and
+whitespace check.
+
+Durable evidence, exact identities, failures, limitations, browser coverage,
+and reproduction details live under
+[System Factory E2E V1 evidence](docs/testing/evidence/system-factory-e2e-v1/README.md).
+The command covers deterministic non-browser qualification; the evidence record
+documents the separate browser journey.
+
+This qualification uses `FakeSandboxProvider` and deterministic GitHub lineage
+fixtures. It does **not** certify a live Remote Sandbox provider, mutate an
+external product repository, prove the deferred two-company live identity gate,
+or demonstrate fleet-scale production operation.
+
 ## Verification
 
 Run the same primary checks used by CI:
@@ -752,6 +997,7 @@ pnpm run test
 pnpm run lint
 pnpm run build
 pnpm run smoke:orchestration-start
+pnpm run ci:runtime-contract
 ```
 
 Critical browser checks:
@@ -771,8 +1017,9 @@ browser run.
 
 - Human, service, scheduler, webhook, and GitHub installation identities remain
   separate.
-- Sensitive actions enforce company, workspace, repository, delivery-record,
-  and named-permission scope server-side.
+- Implemented sensitive paths resolve company, workspace, repository,
+  delivery-record, and named-permission scope server-side; the authorization
+  matrix tracks remaining legacy service-caller migrations explicitly.
 - Factory activation and Mission dispatch fail closed on missing or stale
   evidence.
 - External webhook delivery is signed, deduplicated, and replay-aware.
@@ -782,6 +1029,10 @@ browser run.
 - Repository mutation is constrained to an attempt worktree and approved
   repository-relative paths.
 - The worker that creates a material change cannot be the only validator.
+- Sandbox results remain quarantined until host validation, independent
+  verification, credential revocation, and resource-absence proof succeed.
+- Memory, observability, evals, and learning remain advisory and cannot satisfy
+  acceptance.
 - Merge remains human-only in V1.
 
 Security and governance contracts:
@@ -791,18 +1042,57 @@ Security and governance contracts:
 - [Service Command Authentication](docs/security/service-command-authentication.md)
 - [Evidence Retention Policy](docs/security/evidence-retention-policy.md)
 
-## Product and architecture documents
+## For contributors
+
+Changes must preserve the existing control-plane boundaries:
+
+- **One acceptance authority.** `workOrders.accept` remains the canonical
+  WorkOrder acceptance transition. Do not add a competing status, writer, or
+  acceptance API.
+- **No duplicate control planes.** Extend Mission, Plan, WorkOrder, Task,
+  Attempt, evidence, pull-request, and release records rather than creating a
+  parallel lifecycle for a provider or feature.
+- **Harnesses and agents are execution infrastructure.** They may produce
+  candidates and diagnostics; they do not own policy, verification,
+  publication, acceptance, or merge.
+- **Deterministic before interpretive.** Prefer explicit checks, stable IDs,
+  digests, allowlists, exact comparisons, and bounded algorithms before model
+  interpretation when practical.
+- **Immutable lineage.** Revisions, candidates, subjects, plans, evidence,
+  decisions, and Attempts remain attributable. Newer data supersedes history;
+  it does not rewrite it.
+- **Server-authoritative admission.** Identity, permissions, repository scope,
+  capabilities, capacity, policy, budget, leases, and currentness are checked
+  at the control-plane boundary.
+- **Advisory stays advisory.** Memory, traces, evals, and learning cannot become
+  evidence or authority by implication.
+- **Exact evidence and currentness.** Never borrow proof from another Attempt,
+  candidate, pull-request head, WorkOrder revision, verifier, or policy.
+- **Fail closed on ambiguity.** Missing, stale, conflicting, unknown, malformed,
+  or unverifiable state blocks progression and preserves evidence for review.
+- **Qualify new capabilities.** Add focused deterministic proof, failure and
+  recovery coverage, authorization checks, browser evidence where applicable,
+  and compose the capability into System Qualification before promotion.
+
+Start with the [Mission Control North Star](docs/product/mission-control-north-star.md),
+[verification-first architecture decisions](docs/decisions/verification-first-architecture-decisions.md),
+[worker runtime decision](docs/decisions/worker-runtime-leases-recovery.md), and
+[self-improvement governance](docs/decisions/factory-self-improvement-governance.md).
+
+## Architecture and deep dives
 
 - [Mission Control North Star](docs/product/mission-control-north-star.md)
 - [V1 Product Strategy](docs/product/mission-control-v1-product-strategy.md)
-- [Existing-System Assessment](docs/mission-control-existing-system-assessment.md)
-- [AI Software Factory V1 Program Plan](docs/plans/2026-08-02-feat-ai-software-factory-v1-program-plan.md)
-- [ESM startup and human-review resume plan](docs/plans/2026-08-11-fix-esm-startup-human-review-resume-plan.md)
-- [V1 Product Decisions](docs/decisions/ai-software-factory-v1-decisions.md)
-- [Company, Workspace, and Repository Control Plane](docs/architecture/company-workspace-repository-control-plane.md)
-- [Executor Adapter Contract](docs/architecture/executor-adapter-contract.md)
-- [Graph Engineering](docs/software-factory/GRAPH_ENGINEERING.md)
-- [Loop Engineering](docs/software-factory/LOOP_ENGINEERING.md)
+- [Governed Missions Contract](docs/software-factory/governed-missions-contract.md)
+- [Spec-Driven Mission Intake V1 qualification](docs/validation/2026-08-16-spec-driven-mission-intake-v1.md)
+- [Quality Contract and Verification Domain Contracts](docs/software-factory/verification-first-domain-contracts.md)
+- [Verification-First Architecture Decisions](docs/decisions/verification-first-architecture-decisions.md)
+- [Generic Harness Contract](docs/architecture/generic-harness-contract-v1.md)
+- [Worker Runtime Operations and Recovery](docs/software-factory/worker-runtime-operations.md)
+- [Remote Sandbox Runtime](docs/software-factory/remote-sandbox-runtime.md)
+- [Factory Memory and Context Intelligence](docs/architecture/factory-memory-context-intelligence.md)
+- [Factory Learning and Continuous Improvement](docs/architecture/factory-learning-continuous-improvement.md)
+- [System Qualification V1 Evidence](docs/testing/evidence/system-factory-e2e-v1/README.md)
 
 ## Product doctrine
 
