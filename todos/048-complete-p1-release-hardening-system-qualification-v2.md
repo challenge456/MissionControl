@@ -1,5 +1,5 @@
 ---
-status: in_progress
+status: complete
 priority: p1
 issue_id: "048"
 tags: [release-hardening, dependency-security, system-qualification, e2e, accessibility]
@@ -72,9 +72,9 @@ Expected affected areas are dependency metadata, deterministic release/security 
 - [x] Security and canonical authority boundaries are machine/procedurally proved without credentials in outputs.
 - [x] Browser qualification passes at 1440/1024/390, light/dark, Basic/Intermediate/Advanced, deep links, refresh/history, keyboard/focus, overflow, errors/requests, and targeted axe WCAG A/AA.
 - [x] A new durable V2 evidence packet records exact lineage, security, failures, browser/accessibility, performance/cost, and full validation results without overwriting V1.
-- [ ] Full tests, typecheck/lint/skill lint, runtime guard, production build, orchestration smoke, Git diff integrity, GitHub CI, and Vercel preview pass.
-- [ ] A draft PR is created without auto-merge, production deployment, live exe.dev, PR #89, or other prohibited scope.
-- [ ] Final report returns the required System Qualification V2 decision and `MERGE`, `PARTIALLY MERGE`, or `HOLD` recommendation.
+- [x] Full tests, typecheck/lint/skill lint, runtime guard, production build, orchestration smoke, Git diff integrity, GitHub CI, and Vercel preview pass.
+- [x] A draft PR is created without auto-merge, production deployment, live exe.dev, PR #89, or other prohibited scope.
+- [x] Final report returns the required System Qualification V2 decision and `MERGE`, `PARTIALLY MERGE`, or `HOLD` recommendation.
 
 ## Work Log
 
@@ -111,6 +111,23 @@ Expected affected areas are dependency metadata, deterministic release/security 
 - React Router's remaining advisories require a separately qualified v7 migration; their current product preconditions are absent and the acceptance expires 2026-11-15.
 - Browser qualification exposed nested main landmarks and loading states without stable page identity; both were minimally corrected before the final local pass.
 - Live Remote Sandbox, PR #89 cross-company identity, Loom admission, and autonomous routing remain explicitly deferred boundaries.
+
+### 2026-08-17 - Publication qualification passed
+
+**By:** Repository operator via Codex execution
+
+**Actions:**
+
+- Created draft PR #116 and kept it draft without auto-merge or production deployment.
+- Corrected the duplicate pnpm version authority exposed by the first fresh CI run and added a release-config regression test.
+- Passed all nine jobs in GitHub Actions run `32050898675`, including the blocking release-security, browser/accessibility, and System Qualification V2 jobs.
+- Confirmed both Vercel previews reached `Ready`; authenticated checks returned 200 for `/v2` and its deep route, 404 for non-v2 protocol-sensitive routes, and all required security headers.
+
+**Learnings:**
+
+- `packageManager` must remain the sole pnpm version authority when `pnpm/action-setup` is used.
+- Vercel preview protection correctly redirects anonymous traffic to SSO; authenticated deployment checks are required to qualify the application response beneath that boundary.
+- GitHub currently warns that pinned actions target the deprecated Node 20 action runtime and transparently executes them on Node 24; updating those action majors remains maintenance work, not a failed qualification invariant.
 
 ## Notes
 
