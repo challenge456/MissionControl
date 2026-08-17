@@ -52,7 +52,11 @@
     "ci:test:e2e": "pnpm run test:e2e:arm",
     "ci:lint": "pnpm run lint",
     "ci:runtime-contract": "node scripts/check-runtime-contract.mjs",
+    "security:audit": "node scripts/check-dependency-audit.mjs",
+    "security:secrets": "node scripts/check-repository-secrets.mjs",
+    "release:security": "pnpm run security:audit && pnpm run security:secrets",
     "qualify:factory": "node scripts/system-factory-e2e-qualification.mjs",
+    "qualify:factory:v2": "node scripts/system-factory-e2e-qualification.mjs",
     "taskmaster:plan": "taskmaster plan docs/PRD_V2.md",
     "taskmaster": "taskmaster"
   },
@@ -80,9 +84,12 @@
   },
   "pnpm": {
     "overrides": {
+      "@babel/core": "7.29.6",
       "axios": "1.19.0",
+      "body-parser": "2.3.0",
       "express-rate-limit": "8.6.2",
       "fast-uri": "3.1.5",
+      "file-type": "21.3.2",
       "form-data": "4.0.6",
       "ip-address": "10.3.1",
       "koa": "3.2.1",
@@ -90,10 +97,13 @@
       "nanoid@3": "3.3.18",
       "path-to-regexp": "8.4.2",
       "postcss": "8.5.26",
+      "qs": "6.15.2",
       "rollup": "4.62.4",
       "shell-quote": "1.10.0",
       "undici": "7.29.0",
-      "ws@8": "8.21.3"
+      "uuid": "11.1.1",
+      "ws@8": "8.21.3",
+      "yaml": "2.8.3"
     }
   }
 }

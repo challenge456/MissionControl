@@ -91,7 +91,16 @@ export function ProjectsView({ projectId, onProjectSelect, tenantId, companyCont
   if (!projects || !totals) {
     return (
       <section className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
-        <div className="mx-auto flex max-w-[1200px] flex-col gap-6 px-6 py-6">
+        <PageHeader
+          title="Workspaces & Repositories"
+          description="Loading repository and execution boundaries."
+          icon={<FolderKanban size={16} strokeWidth={1.7} />}
+        />
+        <div
+          className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-6 py-6"
+          role="status"
+          aria-label="Loading workspaces and repositories"
+        >
           <div className="h-24 animate-pulse rounded-xl border border-line bg-surface-2" />
           <div className="grid gap-4 2xl:grid-cols-[400px_minmax(0,1fr)]">
             <div className="h-[520px] animate-pulse rounded-xl border border-line bg-surface-2" />

@@ -24,6 +24,7 @@ import { selectAccessibleWorkspace } from "./workspace/workspaceSelection";
 import { selectAccessibleCompany } from "./workspace/companySelection";
 import { useAuthRuntime } from "./auth/AuthRuntimeContext";
 import { BootstrapOwner } from "./auth/BootstrapOwner";
+import { shouldBypassRuntimeCompatibility } from "./lib/runtimeCompatibility";
 
 const DashboardOverview = lazy(() =>
   import("./DashboardOverview").then((module) => ({ default: module.DashboardOverview }))
@@ -635,7 +636,7 @@ function PageTransition({ children, viewKey }: { children: React.ReactNode; view
 
 function SectionLoadingState() {
   return (
-    <main className="flex flex-1 overflow-hidden">
+    <div className="flex flex-1 overflow-hidden" role="status" aria-label="Loading workspace">
       <div className="flex flex-1 flex-col gap-4 p-6">
         <div className="h-16 rounded-xl border border-line animate-pulse bg-surface-2" />
         <div className="grid flex-1 gap-4 lg:grid-cols-3">
@@ -643,7 +644,7 @@ function SectionLoadingState() {
           <div className="rounded-xl border border-line animate-pulse bg-surface-2 lg:col-span-2" />
         </div>
       </div>
-    </main>
+    </div>
   );
 }
 
@@ -1014,13 +1015,21 @@ export default function App() {
 
   // ── Section renderer ─────────────────────────────────────────────────────
   function renderSection() {
-    if (currentView !== "projects") {
+    const shellOnlyE2E = shouldBypassRuntimeCompatibility(
+      import.meta.env.DEV,
+      import.meta.env.VITE_RUNTIME_CONTRACT_E2E_BYPASS,
+    );
+    const sectionProjectId =
+      projectId ??
+      (shellOnlyE2E ? ("e2e-shell-project" as Id<"projects">) : null);
+
+    if (!shellOnlyE2E && currentView !== "projects") {
       if (!projects || (projectId && project === undefined)) {
         return <SectionLoadingState />;
       }
       if (availableProjects.length === 0) {
         return (
-          <main className="flex flex-1 items-center justify-center bg-app p-6">
+          <div className="flex flex-1 items-center justify-center bg-app p-6">
             <div className="max-w-md rounded-xl border border-line bg-surface-1 p-6 text-center">
               <h1 className="text-lg font-semibold text-ink">Create a workspace</h1>
               <p className="mt-2 text-sm text-ink-secondary">
@@ -1034,7 +1043,7 @@ export default function App() {
                 Open workspace settings
               </button>
             </div>
-          </main>
+          </div>
         );
       }
       if (!projectId || !project) {
@@ -1068,7 +1077,7 @@ export default function App() {
       return (
         <HarnessSection
           currentView={currentView}
-          projectId={projectId}
+          projectId={sectionProjectId}
           onNavigate={setCurrentView}
         />
       );
@@ -1078,7 +1087,7 @@ export default function App() {
       case "home":
         return (
           <DashboardOverview
-            projectId={projectId}
+            projectId={sectionProjectId}
             onClose={() => {}}
             onOpenMissionModal={() => open("missionModal")}
             onOpenSuggestionsDrawer={() => open("suggestionsDrawer")}
@@ -1102,7 +1111,7 @@ export default function App() {
         return (
           <ControlSection
             currentView={currentView}
-            projectId={projectId}
+            projectId={sectionProjectId}
             onNavigate={setCurrentView}
           />
         );
@@ -1110,7 +1119,7 @@ export default function App() {
         return (
           <OpsSection
             currentView={currentView}
-            projectId={projectId}
+            projectId={sectionProjectId}
             taskCount={taskCount}
             onTaskSelect={setSelectedTaskId}
             liveFeedExpanded={liveFeedExpanded}
@@ -1136,7 +1145,7 @@ export default function App() {
         return (
           <AgentsSection
             currentView={currentView}
-            projectId={projectId}
+            projectId={sectionProjectId}
             onNavigateToIdentity={() => setCurrentView("identity")}
             onNavigateToTask={(taskId) => {
               setSelectedTaskId(taskId);
@@ -1154,7 +1163,7 @@ export default function App() {
         return (
           <ChatSection
             currentView={currentView}
-            projectId={projectId}
+            projectId={sectionProjectId}
             onOpenSuggestionsDrawer={() => open("suggestionsDrawer")}
           />
         );
@@ -1162,7 +1171,7 @@ export default function App() {
         return (
           <ContentSection
             currentView={currentView}
-            projectId={projectId}
+            projectId={sectionProjectId}
             onProjectSelect={setProjectId}
             tenantId={companyContextEnabled ? tenantId : null}
             companyContextEnabled={companyContextEnabled}
@@ -1172,7 +1181,7 @@ export default function App() {
         return (
           <CommsSection
             currentView={currentView}
-            projectId={projectId}
+            projectId={sectionProjectId}
             onNavigate={setCurrentView}
           />
         );
@@ -1180,7 +1189,7 @@ export default function App() {
         return (
           <KnowledgeSection
             currentView={currentView}
-            projectId={projectId}
+            projectId={sectionProjectId}
             onNavigate={setCurrentView}
             onTaskSelect={(taskId) => {
               setSelectedTaskId(taskId as Id<"tasks">);
@@ -1192,7 +1201,7 @@ export default function App() {
         return (
           <CodeSection
             currentView={currentView}
-            projectId={projectId}
+            projectId={sectionProjectId}
             onTaskSelect={(taskId) => {
               setSelectedTaskId(taskId);
               setCurrentView("tasks");
@@ -1203,7 +1212,7 @@ export default function App() {
         return (
           <QualitySection
             currentView={currentView}
-            projectId={projectId}
+            projectId={sectionProjectId}
             selectedQcRunId={selectedQcRunId}
             setSelectedQcRunId={setSelectedQcRunId}
             onNavigate={setCurrentView}
@@ -1214,7 +1223,7 @@ export default function App() {
         return (
           <PlatformSection
             currentView={currentView}
-            projectId={projectId}
+            projectId={sectionProjectId}
             onNavigate={setCurrentView}
             onOpenHealthDashboard={() => open("healthDashboard")}
             onOpenMonitoringDashboard={() => open("monitoringDashboard")}

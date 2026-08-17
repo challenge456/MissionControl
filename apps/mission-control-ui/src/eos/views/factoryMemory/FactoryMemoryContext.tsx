@@ -173,7 +173,7 @@ export function FactoryMemoryContext({
         />
       </aside>
 
-      <main className="min-w-0">
+      <div className="min-w-0">
         {detail === undefined ? (
           <div className="h-72 animate-pulse rounded-lg border border-line bg-surface-1" />
         ) : detail === null ? (
@@ -468,7 +468,7 @@ export function FactoryMemoryContext({
             </div>
           </>
         )}
-      </main>
+      </div>
     </div>
   );
 }

@@ -28,11 +28,20 @@ import {
 } from "@mission-control/workflow-engine";
 import {
   CODEX_V1_HARNESS_MANIFEST,
+  DEEPSEEK_V1_HARNESS_MANIFEST,
   harnessCapabilityManifestDigest,
 } from "@mission-control/workflow-engine/harness-contract";
 import { afterAll, describe, expect, it } from "vitest";
 import { aggregateLearningSignals, deriveObservationLearningSignals, recommendImprovementPromotion } from "../../../../convex/lib/factoryLearning.js";
 import { buildFactoryExecutionManifest } from "../../../../convex/lib/executionManifest.js";
+import {
+  analyzeSpecPlanConsistency,
+  evaluateMissionSpecQuality,
+  missionSpecDigest,
+  projectConstitutionDigest,
+  type MissionSpecContent,
+  type ProjectConstitutionContent,
+} from "../../../../convex/lib/missionSpec.js";
 import { evaluateAcceptance } from "../../../../convex/lib/workOrderGovernance.js";
 import { compileMissionWorkOrderContract } from "../../../../convex/lib/missionWorkOrderContract.js";
 import { validateMissionPlan } from "../../../../convex/lib/missionPlan.js";
@@ -64,14 +73,20 @@ const execFileAsync = promisify(execFile);
 const cleanupDirectories: string[] = [];
 const FIXED_NOW = Date.UTC(2026, 7, 16, 20, 0, 0);
 const REPOSITORY_KEY = "sellerfi/system-factory-qualification-fixture";
-const REPOSITORY_ID = "repository-system-factory-e2e-v1";
-const PROJECT_ID = "workspace-system-factory-e2e-v1";
-const MISSION_ID = "mission-system-factory-e2e-v1";
-const PLAN_ID = "plan-system-factory-e2e-v1";
-const WORK_ORDER_ID = "work-order-system-factory-e2e-v1";
+const REPOSITORY_ID = "repository-system-factory-e2e-v2";
+const PROJECT_ID = "workspace-system-factory-e2e-v2";
+const MISSION_ID = "mission-system-factory-e2e-v2";
+const PLAN_ID = "plan-system-factory-e2e-v2";
+const WORK_ORDER_ID = "work-order-system-factory-e2e-v2";
+const CONSTITUTION_REVISION_ID = "constitution-revision-system-factory-e2e-v2-r1";
+const SPEC_REVISION_1_ID = "mission-spec-system-factory-e2e-v2-r1";
+const SPEC_REVISION_2_ID = "mission-spec-system-factory-e2e-v2-r2";
+const SPEC_REVISION_3_ID = "mission-spec-system-factory-e2e-v2-r3";
+const SPEC_EVALUATION_2_ID = "mission-spec-evaluation-system-factory-e2e-v2-r2";
 const FACTORY_VERSION_ID = "factory-version-progressive-software-v1";
 const VERIFICATION_FACTORY_VERSION_ID = "factory-version-independent-verification-v1";
 const CODEX_CAPABILITY_MANIFEST_SHA256 = harnessCapabilityManifestDigest(CODEX_V1_HARNESS_MANIFEST);
+const DEEPSEEK_CAPABILITY_MANIFEST_SHA256 = harnessCapabilityManifestDigest(DEEPSEEK_V1_HARNESS_MANIFEST);
 
 type GateResult = {
   passed: boolean;
@@ -90,7 +105,7 @@ afterAll(async () => {
   ));
 });
 
-describe("Mission Control full-system Factory qualification V1", () => {
+describe("Mission Control full-system Factory qualification V2", () => {
   it("proves exact governed lineage, failures, recovery, authority, and learning on an isolated fixture", async () => {
     const qualificationStartedAt = Date.now();
     const repositoryRoot = await createFixtureRepository();
@@ -117,6 +132,9 @@ describe("Mission Control full-system Factory qualification V1", () => {
       requiredEvidence: "Independent deterministic gate output",
       requiresIndependentValidation: true,
       waiverAllowed: false,
+      sourceRequirementIds: ["REQ-001", "NFR-001"],
+      sourceAcceptanceExpectationIds: ["AC-001", "AC-002"],
+      sourceVerificationExpectationIds: ["VERIFY-001"],
     };
     const blueprint = {
       id: "implement-listing-fee",
@@ -162,6 +180,39 @@ describe("Mission Control full-system Factory qualification V1", () => {
     };
     expect(validateMissionPlan(missionPlanInput)).toEqual([]);
 
+    const constitution = qualificationConstitution();
+    const constitutionDigest = projectConstitutionDigest(constitution);
+    const specRevision1 = qualificationSpecRevision1();
+    const specRevision2 = qualificationSpecRevision2();
+    const specRevision3 = qualificationSpecRevision3();
+    const specRevision1Evaluation = evaluateMissionSpecQuality({ spec: specRevision1, constitution });
+    const specRevision2Evaluation = evaluateMissionSpecQuality({ spec: specRevision2, constitution });
+    expect(specRevision1Evaluation.result).toBe("FAIL");
+    expect(specRevision1Evaluation.findings.some((finding) => finding.blocking)).toBe(true);
+    expect(specRevision2Evaluation).toMatchObject({ result: "PASS", findings: [] });
+    const specRevision2Digest = missionSpecDigest(specRevision2);
+    const specRevision3Digest = missionSpecDigest(specRevision3);
+    expect(specRevision3Digest).not.toBe(specRevision2Digest);
+    const specPlanAnalysis = analyzeSpecPlanConsistency({
+      spec: specRevision2,
+      assertions: [assertion],
+      workOrderBlueprints: [blueprint],
+      planSummary: missionPlanInput.summary,
+      repositoryId: REPOSITORY_ID,
+    });
+    expect(specPlanAnalysis.findings).toEqual([]);
+    expect(specPlanAnalysis.coverage.complete).toBe(true);
+    const mismatchedSpecPlan = analyzeSpecPlanConsistency({
+      spec: specRevision2,
+      assertions: [assertion],
+      workOrderBlueprints: [blueprint],
+      planSummary: missionPlanInput.summary,
+      repositoryId: "repository-outside-approved-spec-scope",
+    });
+    expect(mismatchedSpecPlan.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "PLAN_REPOSITORY_SCOPE_MISMATCH", blocking: true }),
+    ]));
+
     const planRevision = 1;
     const submittedPlan = {
       _id: PLAN_ID,
@@ -169,6 +220,13 @@ describe("Mission Control full-system Factory qualification V1", () => {
       revisionNumber: planRevision,
       status: "PROPOSED",
       submittedBy: "operator-author",
+      missionSpecRevisionId: SPEC_REVISION_2_ID,
+      missionSpecDigest: specRevision2Digest,
+      missionSpecQualityEvaluationId: SPEC_EVALUATION_2_ID,
+      projectConstitutionRevisionId: CONSTITUTION_REVISION_ID,
+      projectConstitutionDigest: constitutionDigest,
+      requirementsCoverageProjection: specPlanAnalysis.coverage,
+      specConsistencyDigest: specPlanAnalysis.digest,
       ...missionPlanInput,
     };
     const approvedPlan = {
@@ -195,6 +253,15 @@ describe("Mission Control full-system Factory qualification V1", () => {
       rollbackApproach: submittedPlan.rollbackApproach,
       assertions: submittedPlan.assertions,
       workOrderBlueprints: submittedPlan.workOrderBlueprints,
+      specLineage: {
+        missionSpecRevisionId: SPEC_REVISION_2_ID,
+        missionSpecDigest: specRevision2Digest,
+        missionSpecQualityEvaluationId: SPEC_EVALUATION_2_ID,
+        projectConstitutionRevisionId: CONSTITUTION_REVISION_ID,
+        projectConstitutionDigest: constitutionDigest,
+        requirementsCoverage: specPlanAnalysis.coverage,
+        checklistLineage: qualificationChecklistLineage(specRevision2),
+      },
     });
     const compiledWorkOrder = compileMissionWorkOrderContract({
       blueprint,
@@ -204,6 +271,7 @@ describe("Mission Control full-system Factory qualification V1", () => {
         includePaths: ["src/**", "tests/**", "scripts/**", "docs/**"],
         excludePaths: [".git/**"],
       }],
+      spec: specRevision2,
     });
     const contractDigest = verificationContractDigest(
       compiledWorkOrder.verificationContract,
@@ -221,6 +289,15 @@ describe("Mission Control full-system Factory qualification V1", () => {
       factoryDefinitionVersionId: FACTORY_VERSION_ID,
       qualityContractDigest: qualityContract.digest,
       verificationContractDigest: contractDigest,
+      missionSpecLineage: {
+        missionSpecRevisionId: SPEC_REVISION_2_ID,
+        missionSpecDigest: specRevision2Digest,
+        missionSpecQualityEvaluationId: SPEC_EVALUATION_2_ID,
+        projectConstitutionRevisionId: CONSTITUTION_REVISION_ID,
+        projectConstitutionDigest: constitutionDigest,
+        requirementsCoverage: specPlanAnalysis.coverage,
+        checklistLineage: qualificationChecklistLineage(specRevision2),
+      },
       state: "READY",
       title: blueprint.title,
       desiredOutcome: blueprint.desiredOutcome,
@@ -237,6 +314,21 @@ describe("Mission Control full-system Factory qualification V1", () => {
     });
     expect(workOrder.baseSha).toBe(baseSha);
     expect(workOrder.factoryDefinitionVersionId).toBe(FACTORY_VERSION_ID);
+    expect(qualityContract.projection.schemaVersion).toBe(2);
+    expect(qualityContract.projection.source).toMatchObject({
+      missionSpecRevisionId: SPEC_REVISION_2_ID,
+      missionSpecDigest: specRevision2Digest,
+      projectConstitutionRevisionId: CONSTITUTION_REVISION_ID,
+      projectConstitutionDigest: constitutionDigest,
+    });
+    expect(workOrder.missionSpecLineage.missionSpecRevisionId).toBe(SPEC_REVISION_2_ID);
+    expect(workOrder.missionSpecLineage.requirementsCoverage.complete).toBe(true);
+    expect(workOrder.requirements.map((requirement: any) => requirement.id).sort()).toEqual(["NFR-001", "REQ-001"]);
+    expect(workOrder.verificationContract!.checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "spec:VERIFY-001", verifierId: "factory-command/v1" }),
+    ]));
+    expect(submittedPlan.missionSpecRevisionId).toBe(SPEC_REVISION_2_ID);
+    expect(specRevision3Digest).not.toBe(submittedPlan.missionSpecDigest);
 
     const failedAttempts: Array<{
       attemptId: string;
@@ -363,6 +455,20 @@ describe("Mission Control full-system Factory qualification V1", () => {
     });
     expect(workerAdmission.eligible).toBe(true);
     if (!workerAdmission.eligible) return;
+    const genericHarnessAdmission = qualifyGenericHarnessAdmission();
+    expect(genericHarnessAdmission.exact.eligible).toBe(true);
+    expect(genericHarnessAdmission.manifestMismatch).toMatchObject({
+      eligible: false,
+      reason: "worker-harness-manifest-mismatch",
+    });
+    expect(genericHarnessAdmission.modelMismatch).toMatchObject({
+      eligible: false,
+      reason: "worker-harness-model-unsupported",
+    });
+    expect(genericHarnessAdmission.backendMismatch).toMatchObject({
+      eligible: false,
+      reason: "worker-harness-backend-unsupported",
+    });
     const currentWorkerIdentity = {
       workerId: workerAdmission.workerId,
       sessionId: workerAdmission.sessionId,
@@ -420,7 +526,7 @@ describe("Mission Control full-system Factory qualification V1", () => {
       repository: REPOSITORY_KEY,
       defaultBranch: "main",
       baseSha,
-      branch: "mc/system-factory-e2e-v1",
+      branch: "mc/system-factory-e2e-v2",
       worktree: repositoryRoot,
       executor: {
         adapter: "codex",
@@ -435,7 +541,7 @@ describe("Mission Control full-system Factory qualification V1", () => {
         requiredCapabilities: ["remote-sandbox", "workspace-write"],
       },
       sandbox: {
-        resourceName: "mc-attempt-system-factory-v1",
+        resourceName: "mc-attempt-system-factory-v2",
         profileId: profile.profileKey,
         profileDigest: sandboxProfileDigest(profile),
         profileSnapshot: profile,
@@ -701,10 +807,18 @@ describe("Mission Control full-system Factory qualification V1", () => {
     expect(authority.sandboxHasGithubAuthority).toBe(false);
 
     const evidencePacket = {
-      schemaVersion: "system-factory-e2e-qualification/v1",
-      result: "SYSTEM QUALIFIED WITH KNOWN LIMITATIONS",
+      schemaVersion: "system-factory-e2e-qualification/v2",
+      result: "SYSTEM QUALIFIED V2 WITH KNOWN LIMITATIONS",
       baseSha: process.env.MC_QUALIFICATION_BASE_SHA ?? "resolved-by-top-level-command",
-      runtimeContractVersion: 26,
+      runtimeContractVersion: 28,
+      hardeningV1: {
+        decision: "HARDENING V1 PASSED",
+        productionAdvisories: { before: { moderate: 4, high: 0, critical: 0 }, after: { moderate: 3, high: 0, critical: 0 } },
+        completeGraphAdvisories: { before: { low: 4, moderate: 9, high: 0, critical: 0 }, after: { low: 2, moderate: 4, high: 0, critical: 0 } },
+        dependencyGate: "PASS",
+        credentialGate: "PASS",
+        releaseConfigurationGate: "PASS",
+      },
       fixture: {
         repository: REPOSITORY_KEY,
         baseSha,
@@ -713,6 +827,18 @@ describe("Mission Control full-system Factory qualification V1", () => {
         definitionOfDone: assertion.passCondition,
       },
       lineage: {
+        projectConstitutionRevisionId: CONSTITUTION_REVISION_ID,
+        projectConstitutionDigest: constitutionDigest,
+        failedSpecRevisionId: SPEC_REVISION_1_ID,
+        failedSpecDigest: missionSpecDigest(specRevision1),
+        finalizedSpecRevisionId: SPEC_REVISION_2_ID,
+        finalizedSpecDigest: specRevision2Digest,
+        specQualityEvaluationId: SPEC_EVALUATION_2_ID,
+        currentSpecRevisionId: SPEC_REVISION_3_ID,
+        currentSpecDigest: specRevision3Digest,
+        boundSpecRemainedRevision: SPEC_REVISION_2_ID,
+        specConsistencyDigest: specPlanAnalysis.digest,
+        requirementsCoverageDigest: specPlanAnalysis.coverage.digest,
         missionId: MISSION_ID,
         planId: PLAN_ID,
         planRevision,
@@ -748,6 +874,27 @@ describe("Mission Control full-system Factory qualification V1", () => {
         acceptanceEvent: "WORK_ORDER_ACCEPTED via workOrders.accept only",
         acceptanceActor: "human operator",
       },
+      harnessLineage: {
+        execution: {
+          adapter: CODEX_V1_HARNESS_MANIFEST.identity.adapterId,
+          version: CODEX_V1_HARNESS_MANIFEST.identity.adapterVersion,
+          capabilityManifestSha256: CODEX_CAPABILITY_MANIFEST_SHA256,
+          effectiveConfigSha256: CODEX_V1_HARNESS_MANIFEST.effectiveConfigSha256,
+          executionBackend: executionManifest.manifest.harness.executionBackend,
+        },
+        genericAdmission: {
+          contractVersion: "generic-harness-contract/v1",
+          adapter: DEEPSEEK_V1_HARNESS_MANIFEST.identity.adapterId,
+          version: DEEPSEEK_V1_HARNESS_MANIFEST.identity.adapterVersion,
+          capabilityManifestSha256: DEEPSEEK_CAPABILITY_MANIFEST_SHA256,
+          effectiveConfigSha256: DEEPSEEK_V1_HARNESS_MANIFEST.effectiveConfigSha256,
+          provider: "local-ollama",
+          model: "qwen3.5:35b-a3b-q8_0",
+          executionBackend: "persistent-worker",
+          maturity: DEEPSEEK_V1_HARNESS_MANIFEST.admission.maturity,
+          exactAdmission: genericHarnessAdmission.exact,
+        },
+      },
       observability: {
         sourceTraceId: `trace:${finalAttemptId}`,
         verificationTraceId: `trace:${finalLineage.verificationAttempt.id}`,
@@ -762,6 +909,12 @@ describe("Mission Control full-system Factory qualification V1", () => {
       },
       failureInjection: {
         staleLease: "PASS",
+        incompleteSpecRevisionBlocked: "PASS",
+        specRepositoryScopeMismatchBlocked: "PASS",
+        newerSpecRevisionDidNotRebindApprovedPlanOrWorkOrder: "PASS",
+        harnessManifestDigestMismatchBlocked: "PASS",
+        harnessUnsupportedModelBlocked: "PASS",
+        harnessUnsupportedBackendBlocked: "PASS",
         candidatePrHeadMismatch: "PASS",
         verificationFailure: "PASS",
         retryNewAttempt: "PASS",
@@ -813,6 +966,8 @@ describe("Mission Control full-system Factory qualification V1", () => {
       limitations: [
         "Remote Sandbox uses FakeSandboxProvider; live exe.dev remains Preview / Not Live Certified.",
         "PR #89 two-company live identity proof remains deferred by instruction.",
+        "DeepSeek generic-harness admission is exact but remains experimental and explicitly routed; autonomous model/harness routing was not started.",
+        "Loom production admission remains deferred by instruction.",
         "The provider pull-request identity is deterministic fixture lineage; no external product repository is mutated.",
       ],
     };
@@ -821,7 +976,7 @@ describe("Mission Control full-system Factory qualification V1", () => {
 });
 
 async function createFixtureRepository() {
-  const repositoryRoot = await mkdtemp(path.join(tmpdir(), "mc-system-factory-e2e-v1-"));
+  const repositoryRoot = await mkdtemp(path.join(tmpdir(), "mc-system-factory-e2e-v2-"));
   cleanupDirectories.push(repositoryRoot);
   await Promise.all([
     mkdir(path.join(repositoryRoot, "src"), { recursive: true }),
@@ -960,7 +1115,7 @@ async function buildVerificationLineage(input: {
   expectVerified: boolean;
   sourceLeaseId?: string;
 }) {
-  const verificationRoot = await mkdtemp(path.join(tmpdir(), "mc-system-factory-verify-v1-"));
+  const verificationRoot = await mkdtemp(path.join(tmpdir(), "mc-system-factory-verify-v2-"));
   cleanupDirectories.push(verificationRoot);
   const checkoutRoot = path.join(verificationRoot, "checkout");
   await execFileAsync("git", ["clone", "-q", "--no-local", input.repositoryRoot, checkoutRoot]);
@@ -1002,15 +1157,15 @@ async function buildVerificationLineage(input: {
     sourceAttemptId: input.sourceAttemptId,
     repositoryId: REPOSITORY_ID,
     provider: "GITHUB",
-    providerRepositoryId: "provider-repository-system-factory-v1",
+    providerRepositoryId: "provider-repository-system-factory-v2",
     candidateSha: input.candidateSha,
     treeSha,
     pullRequest: {
-      providerPullRequestId: "provider-pr-system-factory-v1",
+      providerPullRequestId: "provider-pr-system-factory-v2",
       number: 1,
       url: "https://github.invalid/sellerfi/system-factory-qualification-fixture/pull/1",
       baseRef: "main",
-      headRef: "mc/system-factory-e2e-v1",
+      headRef: "mc/system-factory-e2e-v2",
       headSha: input.candidateSha,
       draftAtPublication: true,
     },
@@ -1183,7 +1338,7 @@ function providerHeadFor(lineage: LineageResult, headSha: string, syncedAt: numb
   return {
     provider: "GITHUB" as const,
     repositoryId: REPOSITORY_ID,
-    installationId: "installation-system-factory-v1",
+    installationId: "installation-system-factory-v2",
     sourceAttemptId: lineage.sourceAttempt.id,
     providerRepositoryId: lineage.subject.providerRepositoryId,
     providerPullRequestId: lineage.subject.pullRequest.providerPullRequestId,
@@ -1328,9 +1483,168 @@ function buildContextMiss(input: { workOrder: any; attemptId: string }) {
   return { plan, results, sufficiency, signal };
 }
 
+function qualificationConstitution(): ProjectConstitutionContent {
+  return {
+    summary: "SellerFi changes must remain explicitly scoped, secure, independently verifiable, and attributable through one authority path.",
+    principles: [
+      { id: "PRINCIPLE-ARCH-001", title: "One authority path", description: "Approved intent compiles through the canonical Plan, WorkOrder, verification, publication, and acceptance chain.", category: "ARCHITECTURE" },
+      { id: "PRINCIPLE-SEC-001", title: "No authority expansion", description: "Specifications, harnesses, Memory, and Learning have no release, publication, merge, or acceptance authority.", category: "SECURITY" },
+      { id: "PRINCIPLE-TEST-001", title: "Exact evidence", description: "Acceptance requires independent evidence for the exact current candidate and frozen verification contract.", category: "TESTING" },
+    ],
+    requiredSpecSections: [
+      "OUTCOME", "PERSONAS", "USER_STORIES", "REQUIREMENTS", "NON_FUNCTIONAL_REQUIREMENTS",
+      "ACCEPTANCE_EXPECTATIONS", "VERIFICATION_EXPECTATIONS", "DEFINITION_OF_DONE", "NON_GOALS",
+      "CONSTRAINTS", "RISKS", "REPOSITORY_SCOPE", "SOURCES",
+    ],
+    checklistItems: [
+      { id: "CHECK-REQ-001", title: "Requirements are testable", description: "Every MUST requirement maps to observable acceptance.", classification: "REQUIREMENTS_QUALITY", required: true },
+      { id: "CHECK-GOV-001", title: "Authority is bounded", description: "Execution and acceptance remain in their existing canonical stores.", classification: "GOVERNANCE_CONSTRAINT", required: true },
+      { id: "CHECK-VERIFY-001", title: "Exact candidate is verified", description: "The frozen deterministic command produces durable evidence for the exact candidate.", classification: "EVIDENCE_BEARING_VERIFICATION", required: true },
+    ],
+  };
+}
+
+function qualificationSpecRevision2(): MissionSpecContent {
+  return {
+    problem: "SellerFi listing fee behavior can drift from approved marketplace policy without exact intent-to-evidence lineage.",
+    outcome: "The fixture charges exactly five percent in integer cents and retains the finalized specification behind the accepted candidate.",
+    measurableOutcomes: [{ id: "OUTCOME-001", description: "Every tested listing amount uses the approved five-percent fee.", metric: "Incorrect deterministic fee assertions", target: "0" }],
+    personas: [{ id: "PERSONA-001", name: "SellerFi marketplace operator", needs: "Trustworthy policy implementation and exact acceptance evidence." }],
+    userStories: [{
+      id: "STORY-001",
+      personaId: "PERSONA-001",
+      title: "Trust listing fee delivery",
+      outcome: "The operator can trace the approved fee policy to the exact verified candidate.",
+      priority: "P0",
+      scenarios: [{ id: "SCENARIO-001", given: "A finalized five-percent fee specification", when: "the governed Factory prepares a candidate", then: "the independent deterministic gate proves the exact current candidate before human acceptance" }],
+    }],
+    requirements: [{ id: "REQ-001", title: "Five-percent listing fee", description: "The listing fee must equal five percent of the listing amount rounded to integer cents.", priority: "MUST", sourceStoryIds: ["STORY-001"] }],
+    nonFunctionalRequirements: [{ id: "NFR-001", title: "Fail-closed lineage", description: "Spec, Plan, WorkOrder, candidate, verification, and acceptance lineage must reject stale or mismatched identities.", category: "RELIABILITY", priority: "MUST", sourceStoryIds: ["STORY-001"] }],
+    acceptanceExpectations: [
+      { id: "AC-001", title: "Exact fee behavior", description: "The deterministic fixture proves five-percent fee outputs for the approved examples.", requirementIds: ["REQ-001"], verificationExpectationIds: ["VERIFY-001"], givenWhenThen: { given: "approved listing amounts", when: "the fee function runs", then: "the result is exactly five percent in integer cents" } },
+      { id: "AC-002", title: "Exact lineage remains frozen", description: "A newer Spec revision cannot silently rebind the approved Plan, WorkOrder, or verification subject.", requirementIds: ["NFR-001"], verificationExpectationIds: ["VERIFY-001"] },
+    ],
+    verificationExpectations: [{ id: "VERIFY-001", title: "Independent fixture verification", description: "Run the frozen lint, typecheck, and test gate in an independent exact-candidate checkout.", method: "TEST", category: "CONTRACT_TEST", evidenceCategory: "TEST_RESULT", acceptanceExpectationIds: ["AC-001", "AC-002"], checklistItemIds: ["CHECK-VERIFY-001"], mandatory: true }],
+    definitionOfDone: [{ id: "DOD-001", description: "Exact Spec-to-Plan-to-WorkOrder-to-verification lineage and fee behavior both pass.", acceptanceExpectationIds: ["AC-001", "AC-002"] }],
+    constraints: [{ id: "CONSTRAINT-001", description: "The execution boundary may change only the isolated fixture and has no publication, merge, or acceptance authority." }],
+    nonGoals: [{ id: "NONGOAL-001", description: "Create another orchestration, verification, publication, or acceptance path." }],
+    risks: [{ id: "RISK-001", description: "A passing result could be applied to a stale pull-request head.", severity: "HIGH", mitigation: "Bind independent evidence and receipt eligibility to the exact current provider head." }],
+    edgeCases: [{ id: "EDGE-001", description: "A third Spec revision exists after Plan approval.", expectedBehavior: "The approved Plan and released WorkOrder remain bound to finalized revision two." }],
+    repositoryScope: { repositoryId: REPOSITORY_ID, codeScopeIds: ["scope-fixture"] },
+    sources: [{ id: "SOURCE-001", kind: "DOC", label: "Listing fee policy", location: "docs/listing-fee-policy.md" }],
+    clarifications: [{ id: "CLARIFY-001", findingCode: "MEASURABLE_OUTCOME_MISSING", question: "What proves the marketplace fee policy?", answer: "Zero incorrect deterministic fee assertions.", status: "RESOLVED" }],
+    checklistDispositions: [
+      { checklistItemId: "CHECK-REQ-001", classification: "REQUIREMENTS_QUALITY", disposition: "SATISFIED", reason: "Both MUST requirements map to acceptance." },
+      { checklistItemId: "CHECK-GOV-001", classification: "GOVERNANCE_CONSTRAINT", disposition: "SATISFIED", reason: "Canonical authority boundaries remain unchanged." },
+      { checklistItemId: "CHECK-VERIFY-001", classification: "EVIDENCE_BEARING_VERIFICATION", disposition: "SATISFIED", reason: "The frozen independent gate produces exact-candidate evidence." },
+    ],
+    recipe: { recipeId: "full-sdlc", specTemplateVersion: 1, checklistVersion: 1, repositoryType: "APPLICATION", teamType: "PRODUCT", riskProfile: "HIGH", productType: "MARKETPLACE" },
+  };
+}
+
+function qualificationSpecRevision1(): MissionSpecContent {
+  const revision2 = qualificationSpecRevision2();
+  return {
+    ...revision2,
+    measurableOutcomes: [],
+    acceptanceExpectations: revision2.acceptanceExpectations.map((item, index) =>
+      index === 0 ? { ...item, verificationExpectationIds: [] } : item
+    ),
+    clarifications: [{ id: "CLARIFY-001", findingCode: "MEASURABLE_OUTCOME_MISSING", question: "What proves the marketplace fee policy?", status: "OPEN" }],
+  };
+}
+
+function qualificationSpecRevision3(): MissionSpecContent {
+  const revision2 = qualificationSpecRevision2();
+  return {
+    ...revision2,
+    outcome: `${revision2.outcome} Revision three also documents narrow-viewport lineage inspection.`,
+    edgeCases: [...revision2.edgeCases, { id: "EDGE-002", description: "The operator inspects lineage on a narrow viewport.", expectedBehavior: "Exact identifiers remain readable without rebinding historical records." }],
+  };
+}
+
+function qualificationChecklistLineage(spec: MissionSpecContent) {
+  const ids = (classification: MissionSpecContent["checklistDispositions"][number]["classification"]) =>
+    spec.checklistDispositions
+      .filter((item) => item.classification === classification)
+      .map((item) => item.checklistItemId)
+      .sort();
+  return {
+    requirementsQualityItemIds: ids("REQUIREMENTS_QUALITY"),
+    governanceConstraintItemIds: ids("GOVERNANCE_CONSTRAINT"),
+    evidenceBearingVerificationItemIds: ids("EVIDENCE_BEARING_VERIFICATION"),
+  };
+}
+
+function qualifyGenericHarnessAdmission() {
+  const worker: FactoryWorkerCandidate = {
+    workerId: "worker-generic-harness-v2",
+    status: "READY",
+    dirty: false,
+    capacity: { maxConcurrentRuns: 1, currentRuns: 0 },
+    workerRuntime: {
+      sessionId: "worker-generic-harness-session-v2",
+      generation: 1,
+      hostRuntimeType: "persistent-worker",
+      executionBackends: ["persistent-worker", "remote-sandbox"],
+      supportedExecutors: [{
+        adapter: "deepseek-harness",
+        version: "0.2.0",
+        capabilityManifestSha256: DEEPSEEK_CAPABILITY_MANIFEST_SHA256,
+        effectiveConfigSha256: DEEPSEEK_V1_HARNESS_MANIFEST.effectiveConfigSha256,
+        capabilityManifest: DEEPSEEK_V1_HARNESS_MANIFEST,
+        supportsCancel: true,
+        supportsResume: true,
+        isolationModes: ["READ_ONLY", "WORKSPACE_WRITE"],
+      }],
+      sandboxCapabilities: ["git-worktree", "workspace-write"],
+      repositoryAccess: [{ repositoryId: REPOSITORY_ID, access: "READ_WRITE" }],
+      readiness: "READY",
+      draining: false,
+      lastHeartbeatAt: FIXED_NOW,
+    },
+  };
+  const requirements = {
+    repositoryId: REPOSITORY_ID,
+    executor: {
+      adapter: "deepseek-harness",
+      version: "0.2.0",
+      capabilityManifestSha256: DEEPSEEK_CAPABILITY_MANIFEST_SHA256,
+      effectiveConfigSha256: DEEPSEEK_V1_HARNESS_MANIFEST.effectiveConfigSha256,
+    },
+    provider: "local-ollama",
+    model: "qwen3.5:35b-a3b-q8_0",
+    harnessCapabilities: factoryHarnessCapabilityRequirements("WORKSPACE_WRITE"),
+    isolation: "WORKSPACE_WRITE" as const,
+    sandboxCapabilities: ["git-worktree", "workspace-write"],
+    executionBackend: "persistent-worker" as const,
+  };
+  return {
+    exact: factoryWorkerEligibility({ worker, requirements, activeWorkerLeaseCount: 0, now: FIXED_NOW }),
+    manifestMismatch: factoryWorkerEligibility({
+      worker,
+      requirements: { ...requirements, executor: { ...requirements.executor, capabilityManifestSha256: `sha256:${"0".repeat(64)}` } },
+      activeWorkerLeaseCount: 0,
+      now: FIXED_NOW,
+    }),
+    modelMismatch: factoryWorkerEligibility({
+      worker,
+      requirements: { ...requirements, provider: "unsupported-provider", model: "unsupported-model" },
+      activeWorkerLeaseCount: 0,
+      now: FIXED_NOW,
+    }),
+    backendMismatch: factoryWorkerEligibility({
+      worker,
+      requirements: { ...requirements, executionBackend: "remote-sandbox" },
+      activeWorkerLeaseCount: 0,
+      now: FIXED_NOW,
+    }),
+  };
+}
+
 function eligibleWorker(): FactoryWorkerCandidate {
   return {
-    workerId: "worker-system-factory-v1",
+    workerId: "worker-system-factory-v2",
     status: "READY",
     dirty: false,
     capacity: { maxConcurrentRuns: 1, currentRuns: 0 },
@@ -1361,12 +1675,12 @@ function eligibleWorker(): FactoryWorkerCandidate {
 function fakeSandboxProfile(): SandboxProfileSnapshot {
   return {
     schema: "factory-sandbox-profile/v1",
-    profileKey: "fake-system-factory-v1",
+    profileKey: "fake-system-factory-v2",
     version: 1,
     provider: "FAKE",
     providerProfile: "deterministic",
     providerProfileVersion: "v1",
-    machine: { image: "fake:system-factory-v1", cpu: 2, memoryMb: 4_096, diskGb: 20 },
+    machine: { image: "fake:system-factory-v2", cpu: 2, memoryMb: 4_096, diskGb: 20 },
     supervisor: { version: "mission-control-supervisor/v1", transport: "SSH" },
     runtime: { maxRuntimeMs: 60_000, resultPollIntervalMs: 250, resultRetentionMs: 86_400_000 },
     network: { egress: "UNRESTRICTED", egressAllowlist: [], publicIngress: false, exposedPorts: [] },

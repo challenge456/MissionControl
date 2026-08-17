@@ -145,9 +145,16 @@ export function AgentRegistryView({
 
   if (!agents || !tasks || !project) {
     return (
-      <section className="flex-1 overflow-auto p-6">
-        <div className="h-6 w-40 rounded animate-pulse bg-surface-2 mb-2" />
-        <div className="h-4 w-56 rounded animate-pulse bg-surface-2" />
+      <section className="flex min-h-0 flex-1 flex-col overflow-auto bg-app">
+        <PageHeader
+          title="Agent Registry"
+          description="Loading the workspace agent roster and operating status."
+          eyebrow="Agents"
+        />
+        <div className="p-6" role="status" aria-label="Loading agent registry">
+          <div className="mb-2 h-6 w-40 animate-pulse rounded bg-surface-2" />
+          <div className="h-4 w-56 animate-pulse rounded bg-surface-2" />
+        </div>
       </section>
     );
   }

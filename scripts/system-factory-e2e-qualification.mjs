@@ -7,10 +7,12 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const evidenceDirectory = path.join(repoRoot, "docs/testing/evidence/system-factory-e2e-v1");
+const evidenceDirectory = path.join(repoRoot, "docs/testing/evidence/system-factory-e2e-v2");
 const scenarioEvidencePath = path.join(evidenceDirectory, "scenario-evidence.json");
 const automatedChecksPath = path.join(evidenceDirectory, "automated-checks.json");
-const baseSha = gitValue(["rev-parse", "origin/main"]);
+const baseSha =
+  process.env.MC_QUALIFICATION_BASE_SHA ??
+  gitValue(["merge-base", "HEAD", "origin/main"]);
 const startedHead = gitValue(["rev-parse", "HEAD"]);
 const startedAt = new Date().toISOString();
 const checks = [];
@@ -18,6 +20,26 @@ const checks = [];
 mkdirSync(evidenceDirectory, { recursive: true });
 
 const steps = [
+  {
+    name: "frozen dependency, advisory, credential, and release configuration gates",
+    command: "pnpm",
+    args: ["run", "release:security"],
+  },
+  {
+    name: "release hardening contract tests",
+    command: "pnpm",
+    args: [
+      "exec", "vitest", "run",
+      "scripts/lib/dependency-audit-gate.test.mjs",
+      "scripts/lib/repository-secret-scan.test.mjs",
+      "scripts/lib/release-config.test.mjs",
+    ],
+  },
+  {
+    name: "historical V1 evidence immutability",
+    command: "git",
+    args: ["diff", "--exit-code", baseSha, "--", "docs/testing/evidence/system-factory-e2e-v1"],
+  },
   {
     name: "prepare canonical workspace packages",
     command: "pnpm",
@@ -36,6 +58,10 @@ const steps = [
       "src/__tests__/sandboxReconciler.test.ts",
       "src/__tests__/sandboxCredentials.test.ts",
       "src/__tests__/githubAppPublisher.test.ts",
+      "src/__tests__/auth.test.ts",
+      "src/__tests__/orchestrationSecurity.test.ts",
+      "src/__tests__/harnessAdapterRegistry.test.ts",
+      "src/__tests__/deepseekHarnessExecutorAdapter.test.ts",
     ],
     env: {
       MC_SYSTEM_QUALIFICATION_EVIDENCE: scenarioEvidencePath,
@@ -48,11 +74,15 @@ const steps = [
     args: [
       "exec", "vitest", "run",
       "convex/__tests__/missionPlan.test.ts",
-      "convex/__tests__/qualityContract.test.ts",
+      "convex/__tests__/missionSpec.test.ts",
+      "convex/__tests__/missionSpecAuthority.test.ts",
       "convex/__tests__/missionWorkOrderContract.test.ts",
+      "convex/__tests__/factoryConfiguration.test.ts",
+      "convex/__tests__/factoryWorkerRuntime.test.ts",
+      "convex/__tests__/executionManifest.test.ts",
+      "convex/__tests__/qualityContract.test.ts",
       "convex/__tests__/workOrderGovernance.test.ts",
       "convex/__tests__/factoryRuntimeGoldenPath.test.ts",
-      "convex/__tests__/factoryWorkerRuntime.test.ts",
       "convex/__tests__/codexFactoryWorkerGuardrails.test.ts",
       "convex/__tests__/executionRecovery.test.ts",
       "convex/__tests__/factoryMemory.test.ts",
@@ -65,6 +95,15 @@ const steps = [
       "convex/__tests__/verificationEligibilitySchemaContract.test.ts",
       "convex/__tests__/githubAppReadiness.test.ts",
       "convex/__tests__/githubCiIngest.test.ts",
+    ],
+  },
+  {
+    name: "generic harness contract and exact manifest admission",
+    command: "pnpm",
+    args: [
+      "--filter", "@mission-control/workflow-engine", "exec", "vitest", "run",
+      "src/__tests__/executorAdapter.test.ts",
+      "src/__tests__/harnessContract.test.ts",
     ],
   },
   {
@@ -168,7 +207,7 @@ function gitValue(args) {
 
 function writeAutomatedChecks() {
   writeFileSync(automatedChecksPath, JSON.stringify({
-    schemaVersion: "system-factory-e2e-automated-checks/v1",
+    schemaVersion: "system-factory-e2e-automated-checks/v2",
     baseSha,
     startedHead,
     startedAt,

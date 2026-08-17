@@ -9,6 +9,7 @@ import { PageHeader } from "./components/PageHeader";
 import { TabBar } from "./components/TabBar";
 import { cn } from "@/lib/utils";
 import { DOCS_SITE_PAGES } from "@/lib/docsSiteConfig";
+import { escapeHtml } from "@/lib/markdownRender";
 
 // ---------------------------------------------------------------------------
 // TABS
@@ -80,9 +81,10 @@ function SearchTab() {
   };
 
   function highlight(text: string, q: string) {
-    if (!q.trim()) return text;
+    const escapedText = escapeHtml(text);
+    if (!q.trim()) return escapedText;
     const regex = new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi");
-    return text.replace(regex, '<mark class="bg-info-soft text-info-accent rounded px-0.5">$1</mark>');
+    return escapedText.replace(regex, '<mark class="bg-info-soft text-info-accent rounded px-0.5">$1</mark>');
   }
 
   return (
