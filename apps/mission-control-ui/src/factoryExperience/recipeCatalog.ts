@@ -32,6 +32,22 @@ export interface FactoryRecipe {
   maxCorrectiveIterations: number;
   mutatesRepository: boolean;
   complexity: "Focused" | "Standard" | "Comprehensive";
+  specTemplateVersion: number;
+  checklistVersion: number;
+  requiredSpecSectionIds: string[];
+  checklistReferences: Array<{
+    id: string;
+    classification:
+      | "REQUIREMENTS_QUALITY"
+      | "GOVERNANCE_CONSTRAINT"
+      | "EVIDENCE_BEARING_VERIFICATION";
+  }>;
+  specProfileDefaults: {
+    repositoryType: "APPLICATION" | "LIBRARY" | "SERVICE" | "MONOREPO" | "OTHER";
+    teamType: "PRODUCT" | "PLATFORM" | "INFRASTRUCTURE" | "OTHER";
+    riskProfile: "LOW" | "STANDARD" | "HIGH" | "REGULATED";
+    productType: "SAAS" | "MARKETPLACE" | "INTERNAL_TOOL" | "API" | "OTHER";
+  };
 }
 
 export interface FactoryRecipeRecommendation {
@@ -56,8 +72,46 @@ const code = (
   owner: string,
 ): FactoryRecipePhase => ({ id, label, kind: "code", owner });
 
+const SPEC_INTAKE_DEFAULTS: Pick<
+  FactoryRecipe,
+  | "specTemplateVersion"
+  | "checklistVersion"
+  | "requiredSpecSectionIds"
+  | "checklistReferences"
+  | "specProfileDefaults"
+> = {
+  specTemplateVersion: 1,
+  checklistVersion: 1,
+  requiredSpecSectionIds: [
+    "OUTCOME",
+    "PERSONAS",
+    "USER_STORIES",
+    "REQUIREMENTS",
+    "ACCEPTANCE_EXPECTATIONS",
+    "VERIFICATION_EXPECTATIONS",
+    "DEFINITION_OF_DONE",
+    "NON_GOALS",
+    "CONSTRAINTS",
+    "RISKS",
+    "REPOSITORY_SCOPE",
+    "SOURCES",
+  ],
+  checklistReferences: [
+    { id: "RQ-CLEAR-001", classification: "REQUIREMENTS_QUALITY" },
+    { id: "GOV-SCOPE-001", classification: "GOVERNANCE_CONSTRAINT" },
+    { id: "EV-PROOF-001", classification: "EVIDENCE_BEARING_VERIFICATION" },
+  ],
+  specProfileDefaults: {
+    repositoryType: "APPLICATION",
+    teamType: "PRODUCT",
+    riskProfile: "STANDARD",
+    productType: "SAAS",
+  },
+};
+
 export const FACTORY_RECIPES: FactoryRecipe[] = [
   {
+    ...SPEC_INTAKE_DEFAULTS,
     id: "scout",
     name: "Scout",
     shortDescription:
@@ -88,6 +142,7 @@ export const FACTORY_RECIPES: FactoryRecipe[] = [
     complexity: "Focused",
   },
   {
+    ...SPEC_INTAKE_DEFAULTS,
     id: "plan",
     name: "Plan",
     shortDescription:
@@ -120,6 +175,7 @@ export const FACTORY_RECIPES: FactoryRecipe[] = [
     complexity: "Focused",
   },
   {
+    ...SPEC_INTAKE_DEFAULTS,
     id: "build",
     name: "Build",
     shortDescription:
@@ -152,6 +208,7 @@ export const FACTORY_RECIPES: FactoryRecipe[] = [
     complexity: "Focused",
   },
   {
+    ...SPEC_INTAKE_DEFAULTS,
     id: "quality",
     name: "Quality",
     shortDescription:
@@ -179,6 +236,7 @@ export const FACTORY_RECIPES: FactoryRecipe[] = [
     complexity: "Focused",
   },
   {
+    ...SPEC_INTAKE_DEFAULTS,
     id: "build-test",
     name: "Build + Test",
     shortDescription:
@@ -214,6 +272,7 @@ export const FACTORY_RECIPES: FactoryRecipe[] = [
     complexity: "Standard",
   },
   {
+    ...SPEC_INTAKE_DEFAULTS,
     id: "build-review",
     name: "Build + Review",
     shortDescription:
@@ -248,6 +307,7 @@ export const FACTORY_RECIPES: FactoryRecipe[] = [
     complexity: "Standard",
   },
   {
+    ...SPEC_INTAKE_DEFAULTS,
     id: "plan-build-test",
     name: "Plan + Build + Test",
     shortDescription:
@@ -282,7 +342,12 @@ export const FACTORY_RECIPES: FactoryRecipe[] = [
     complexity: "Standard",
   },
   {
+    ...SPEC_INTAKE_DEFAULTS,
     id: "full-sdlc",
+    specProfileDefaults: {
+      ...SPEC_INTAKE_DEFAULTS.specProfileDefaults,
+      riskProfile: "HIGH",
+    },
     name: "Full SDLC",
     shortDescription:
       "Research, plan, build, test, independently review, verify, publish a candidate, and wait for human acceptance.",

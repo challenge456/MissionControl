@@ -4,6 +4,7 @@ import {
   aggregateLearningSignals,
   buildImprovementCandidate,
   deriveObservationLearningSignals,
+  deriveMissionSpecLearningSignals,
   deriveRecipeMismatch,
   IMPROVEMENT_CANDIDATE_TYPES,
   learningClusterKey,
@@ -194,6 +195,19 @@ describe("Factory Learning deterministic domain", () => {
       signalType: "RECIPE_MISMATCH",
       deterministicKey: "recipe:build-test:build-before-typecheck",
     });
+  });
+
+  it("projects Spec defects as advisory recurring evidence with exact finding lineage", () => {
+    const signals = deriveMissionSpecLearningSignals([
+      { code: "AMBIGUOUS_PLACEHOLDER", path: "requirements[3].description", message: "Replace TBD.", blocking: true },
+      { code: "ACCEPTANCE_VERIFICATION_MISSING", path: "acceptanceExpectations[0]", message: "Map verification.", blocking: true },
+      { code: "STABLE_ID_INVALID", path: "requirements[0].id", message: "Use a stable ID.", blocking: true },
+    ]);
+    expect(signals).toHaveLength(2);
+    expect(signals).toEqual(expect.arrayContaining([
+      expect.objectContaining({ signalType: "PROMPT_AMBIGUITY", findingCode: "AMBIGUOUS_PLACEHOLDER" }),
+      expect.objectContaining({ signalType: "CONTEXT_MISS", findingCode: "ACCEPTANCE_VERIFICATION_MISSING" }),
+    ]));
   });
 
   it("keeps the V1 candidate taxonomy exact and bounded", () => {

@@ -65,4 +65,54 @@ describe("approved Plan Quality Contract projection", () => {
 
     expect(revised).not.toBe(first);
   });
+
+  it("freezes exact Spec, Constitution, coverage, and non-authoritative checklist lineage", () => {
+    const specBound = compileApprovedPlanQualityContract({
+      ...input,
+      assertions: [{
+        ...input.assertions[0],
+        sourceRequirementIds: ["REQ-001"],
+        sourceAcceptanceExpectationIds: ["AC-001"],
+        sourceVerificationExpectationIds: ["VERIFY-001"],
+      }],
+      specLineage: {
+        missionSpecRevisionId: "spec-revision-2",
+        missionSpecDigest: "sha256:spec",
+        missionSpecQualityEvaluationId: "spec-evaluation-2",
+        projectConstitutionRevisionId: "constitution-1",
+        projectConstitutionDigest: "sha256:constitution",
+        requirementsCoverage: {
+          schemaVersion: 1,
+          rows: [{
+            specRequirementId: "REQ-001",
+            acceptanceExpectationIds: ["AC-001"],
+            planAssertionIds: ["REQ-1"],
+            workOrderBlueprintIds: ["implement"],
+            acceptanceCriterionIds: ["REQ-1"],
+            verificationCheckIds: ["spec:VERIFY-001"],
+            complete: true,
+          }],
+          complete: true,
+          digest: "sha256:coverage",
+        },
+        checklistLineage: {
+          requirementsQualityItemIds: ["CHECK-REQ-001"],
+          governanceConstraintItemIds: ["CHECK-GOV-001"],
+          evidenceBearingVerificationItemIds: ["CHECK-VERIFY-001"],
+        },
+      },
+    });
+
+    expect(specBound.projection).toMatchObject({
+      schemaVersion: 2,
+      source: {
+        missionSpecRevisionId: "spec-revision-2",
+        projectConstitutionRevisionId: "constitution-1",
+      },
+      checklistLineage: {
+        requirementsQualityItemIds: ["CHECK-REQ-001"],
+        evidenceBearingVerificationItemIds: ["CHECK-VERIFY-001"],
+      },
+    });
+  });
 });

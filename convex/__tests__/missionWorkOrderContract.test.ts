@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { compileMissionWorkOrderContract } from "../lib/missionWorkOrderContract";
 import type { MissionPlanAssertionInput, MissionPlanBlueprintInput } from "../lib/missionPlan";
+import type { MissionSpecContent } from "../lib/missionSpec";
 
 const assertion: MissionPlanAssertionInput = {
   assertionId: "focused-tests",
@@ -46,6 +47,28 @@ const blueprint: MissionPlanBlueprintInput = {
   dependsOnBlueprintIds: [],
   assertionIds: [assertion.assertionId],
 };
+
+const spec = {
+  requirements: [{
+    id: "REQ-001",
+    title: "Exact binding",
+    description: "The Plan and WorkOrder retain the exact Spec revision.",
+    priority: "MUST",
+    sourceStoryIds: ["STORY-001"],
+  }],
+  nonFunctionalRequirements: [],
+  verificationExpectations: [{
+    id: "VERIFY-001",
+    title: "Spec lineage test",
+    description: "Run exact lineage regression tests.",
+    method: "TEST",
+    category: "UNIT_TEST",
+    evidenceCategory: "TEST_RESULT",
+    acceptanceExpectationIds: ["AC-001"],
+    checklistItemIds: ["CHECK-VERIFY-001"],
+    mandatory: true,
+  }],
+} as MissionSpecContent;
 
 describe("Mission WorkOrder contract compiler", () => {
   it("materializes an enforced exact-argv verifier and bounded local authority", () => {
@@ -115,5 +138,29 @@ describe("Mission WorkOrder contract compiler", () => {
 
     expect(contract.metadata).toEqual({});
     expect(contract).not.toHaveProperty("verificationContract");
+  });
+
+  it("maps only evidence-bearing Spec expectations into WorkOrder verification", () => {
+    const contract = compileMissionWorkOrderContract({
+      blueprint,
+      assertions: [{
+        ...assertion,
+        sourceRequirementIds: ["REQ-001"],
+        sourceAcceptanceExpectationIds: ["AC-001"],
+        sourceVerificationExpectationIds: ["VERIFY-001"],
+      }],
+      rollbackApproach: "Revert the candidate commit.",
+      codeScopes: [{ includePaths: ["convex/**"], excludePaths: [] }],
+      spec,
+    });
+
+    expect(contract.requirements).toEqual([expect.objectContaining({ id: "REQ-001" })]);
+    expect(contract.verificationContract?.checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "spec:VERIFY-001", verifierId: "mission-spec-expectation/v1" }),
+    ]));
+    expect(contract.acceptanceCriteria[0].requiredEvidence).toEqual([
+      { category: "TEST_RESULT", minimumCount: 1, independent: true },
+    ]);
+    expect(JSON.stringify(contract)).not.toContain("CHECK-REQ-001");
   });
 });

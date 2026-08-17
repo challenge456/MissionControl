@@ -132,6 +132,9 @@ export function emptyAssertion(id: string): MissionPlanAssertionInput {
     requiredEvidence: "",
     requiresIndependentValidation: true,
     waiverAllowed: false,
+    sourceRequirementIds: [],
+    sourceAcceptanceExpectationIds: [],
+    sourceVerificationExpectationIds: [],
   };
 }
 
@@ -201,6 +204,9 @@ export function missionPlanPayload(values: MissionPlanValues) {
       outcome: assertion.outcome.trim(),
       passCondition: assertion.passCondition.trim(),
       requiredEvidence: assertion.requiredEvidence.trim(),
+      sourceRequirementIds: [...new Set(assertion.sourceRequirementIds ?? [])],
+      sourceAcceptanceExpectationIds: [...new Set(assertion.sourceAcceptanceExpectationIds ?? [])],
+      sourceVerificationExpectationIds: [...new Set(assertion.sourceVerificationExpectationIds ?? [])],
     })),
   };
 }

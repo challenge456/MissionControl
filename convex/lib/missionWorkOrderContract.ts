@@ -2,6 +2,7 @@ import type {
   MissionPlanAssertionInput,
   MissionPlanBlueprintInput,
 } from "./missionPlan";
+import { specVerificationCheckId, type MissionSpecContent } from "./missionSpec";
 
 const DEFAULT_DENIED_PATHS = [
   ".env*",
@@ -31,6 +32,7 @@ export function compileMissionWorkOrderContract(input: {
   assertions: MissionPlanAssertionInput[];
   rollbackApproach?: string;
   codeScopes: Array<{ includePaths: string[]; excludePaths: string[] }>;
+  spec?: MissionSpecContent;
 }) {
   const linkedAssertions = input.blueprint.assertionIds.map((assertionId) => {
     const assertion = input.assertions.find((candidate) => candidate.assertionId === assertionId);
@@ -38,30 +40,88 @@ export function compileMissionWorkOrderContract(input: {
     return assertion;
   });
   const policy = input.blueprint.implementationPolicy;
-  const requirements = linkedAssertions.map((assertion) => ({
-    id: `requirement:${assertion.assertionId}`,
-    title: assertion.title,
-    description: assertion.outcome,
-    type: "FUNCTIONAL" as const,
-    category: "FUNCTIONAL" as const,
-    priority: "MUST" as const,
-  }));
+  const specRequirements = input.spec
+    ? [...input.spec.requirements, ...input.spec.nonFunctionalRequirements]
+    : [];
+  const linkedSpecRequirementIds = unique(linkedAssertions.flatMap((assertion) => assertion.sourceRequirementIds ?? []));
+  const requirements = input.spec
+    ? linkedSpecRequirementIds.map((requirementId) => {
+      const requirement = specRequirements.find((candidate) => candidate.id === requirementId);
+      if (!requirement) throw new Error(`Mission WorkOrder references unknown Spec requirement ${requirementId}`);
+      const nonFunctional = "category" in requirement;
+      return {
+        id: requirement.id,
+        title: requirement.title,
+        description: requirement.description,
+        type: nonFunctional ? "NON_FUNCTIONAL" as const : "FUNCTIONAL" as const,
+        category: nonFunctional ? requirement.category : "FUNCTIONAL" as const,
+        priority: requirement.priority,
+      };
+    })
+    : linkedAssertions.map((assertion) => ({
+      id: `requirement:${assertion.assertionId}`,
+      title: assertion.title,
+      description: assertion.outcome,
+      type: "FUNCTIONAL" as const,
+      category: "FUNCTIONAL" as const,
+      priority: "MUST" as const,
+    }));
+
+  const verificationExpectations = input.spec?.verificationExpectations ?? [];
+  const linkedVerificationExpectationIds = unique(linkedAssertions.flatMap((assertion) => assertion.sourceVerificationExpectationIds ?? []));
+  const specVerificationChecks = linkedVerificationExpectationIds.map((expectationId) => {
+    const expectation = verificationExpectations.find((candidate) => candidate.id === expectationId);
+    if (!expectation) throw new Error(`Mission WorkOrder references unknown Spec verification expectation ${expectationId}`);
+    return {
+      id: specVerificationCheckId(expectation.id),
+      name: expectation.title,
+      category: expectation.category,
+      verifierId: "mission-spec-expectation/v1",
+      mandatory: expectation.mandatory,
+      acceptanceCriterionIds: linkedAssertions
+        .filter((assertion) => assertion.sourceVerificationExpectationIds?.includes(expectation.id))
+        .map((assertion) => assertion.assertionId),
+      evidenceCategory: expectation.evidenceCategory,
+    };
+  });
+
+  const acceptanceCriteria = linkedAssertions.map((assertion) => {
+    const mappedExpectations = (assertion.sourceVerificationExpectationIds ?? [])
+      .map((id) => verificationExpectations.find((candidate) => candidate.id === id))
+      .filter(Boolean) as MissionSpecContent["verificationExpectations"];
+    return {
+      id: assertion.assertionId,
+      title: assertion.title,
+      description: `${assertion.passCondition} Evidence: ${assertion.requiredEvidence}`,
+      requirementIds: input.spec ? unique(assertion.sourceRequirementIds ?? []) : [`requirement:${assertion.assertionId}`],
+      requiredEvidence: mappedExpectations.length > 0
+        ? mappedExpectations.map((expectation) => ({
+          category: expectation.evidenceCategory,
+          minimumCount: 1,
+          independent: assertion.requiresIndependentValidation,
+        }))
+        : undefined,
+      verificationMethod: assertion.verificationMethod,
+      status: "PENDING" as const,
+    };
+  });
 
   if (!input.blueprint.isMutating || !policy) {
     return {
       requirements,
-      acceptanceCriteria: linkedAssertions.map((assertion) => ({
-        id: assertion.assertionId,
-        title: assertion.title,
-        description: `${assertion.passCondition} Evidence: ${assertion.requiredEvidence}`,
-        requirementIds: [`requirement:${assertion.assertionId}`],
-        verificationMethod: assertion.verificationMethod,
-        status: "PENDING" as const,
-      })),
+      acceptanceCriteria,
+      ...(specVerificationChecks.length > 0 ? {
+        verificationContract: {
+          schemaVersion: 1 as const,
+          enforcementMode: "ENFORCED" as const,
+          checks: specVerificationChecks,
+          requireHumanReview: linkedAssertions.some((assertion) => ["MANUAL", "CHECKLIST"].includes(assertion.verificationMethod)),
+        },
+      } : {}),
       requiredApprovals: unique(input.blueprint.requiredApprovals),
       metadata: input.rollbackApproach?.trim()
-        ? { rollbackApproach: input.rollbackApproach.trim() }
-        : {},
+        ? { rollbackApproach: input.rollbackApproach.trim(), specVerificationExpectationIds: linkedVerificationExpectationIds }
+        : linkedVerificationExpectationIds.length > 0 ? { specVerificationExpectationIds: linkedVerificationExpectationIds } : {},
     };
   }
 
@@ -87,18 +147,14 @@ export function compileMissionWorkOrderContract(input: {
 
   return {
     requirements,
-    acceptanceCriteria: linkedAssertions.map((assertion) => ({
-      id: assertion.assertionId,
-      title: assertion.title,
-      description: `${assertion.passCondition} Evidence: ${assertion.requiredEvidence}`,
-      requirementIds: [`requirement:${assertion.assertionId}`],
-      requiredEvidence: [{
-        category: verification.evidenceCategory,
-        minimumCount: 1,
-        independent: true,
-      }],
-      verificationMethod: assertion.verificationMethod,
-      status: "PENDING" as const,
+    acceptanceCriteria: acceptanceCriteria.map((criterion) => ({
+      ...criterion,
+      requiredEvidence: [
+        ...(criterion.requiredEvidence ?? []),
+        ...((criterion.requiredEvidence ?? []).some((evidence) =>
+          evidence.category === verification.evidenceCategory && evidence.independent
+        ) ? [] : [{ category: verification.evidenceCategory, minimumCount: 1, independent: true }]),
+      ],
     })),
     positiveConstraints: unique(input.blueprint.constraints),
     negativeConstraints: [
@@ -147,7 +203,7 @@ export function compileMissionWorkOrderContract(input: {
           commandClass: verification.commandClass,
           timeoutMs: verification.timeoutMs,
         },
-      }],
+      }, ...specVerificationChecks],
       requiredRisks: [{
         id: candidateRiskId,
         description: "The published candidate may differ from the exact immutable subject independently verified for acceptance.",
@@ -170,6 +226,7 @@ export function compileMissionWorkOrderContract(input: {
         verifierId: "factory-command/v1",
         minimumBoundary: "SEPARATE_ATTEMPT",
       },
+      specVerificationExpectationIds: linkedVerificationExpectationIds,
     },
   };
 }

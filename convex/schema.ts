@@ -44,6 +44,13 @@ import {
   factoryRelationValidator,
   factoryRetrievalStrategyValidator,
 } from "./lib/factoryMemoryValidators";
+import {
+  missionSpecContentValidator,
+  missionSpecFindingValidator,
+  missionSpecLineageValidator,
+  projectConstitutionContentValidator,
+  requirementsCoverageProjectionValidator,
+} from "./lib/missionSpecValidators";
 
 // ============================================================================
 // ENUMS (as union types)
@@ -823,6 +830,9 @@ export default defineSchema({
       budgetDefaults: v.optional(v.any()),
       riskThresholds: v.optional(v.any()),
     })),
+    // Planning lineage only. Runtime policy remains in governancePolicies,
+    // policyEnvelopes, Quality Contracts, and Verification Plans.
+    currentConstitutionRevisionId: v.optional(v.id("projectConstitutionRevisions")),
     
     // Human-readable task identifier config
     taskPrefix: v.optional(v.string()),   // e.g., "MC", "OPS" — derived from slug if not set
@@ -1514,6 +1524,7 @@ export default defineSchema({
     budgetUsd: v.optional(v.number()),
     spentUsd: v.number(),
     currentPlanId: v.optional(v.id("missionPlans")),
+    currentSpecRevisionId: v.optional(v.id("missionSpecRevisions")),
     activeWorkOrderId: v.optional(v.id("workOrders")),
     blockingReason: v.optional(v.string()),
     requiredHumanAction: v.optional(v.string()),
@@ -1560,6 +1571,15 @@ export default defineSchema({
     materializationVersion: v.optional(v.number()),
     qualityContractProjection: v.optional(v.any()),
     qualityContractDigest: v.optional(v.string()),
+    missionSpecRevisionId: v.optional(v.id("missionSpecRevisions")),
+    missionSpecDigest: v.optional(v.string()),
+    missionSpecQualityEvaluationId: v.optional(v.id("missionSpecQualityEvaluations")),
+    projectConstitutionRevisionId: v.optional(v.id("projectConstitutionRevisions")),
+    projectConstitutionDigest: v.optional(v.string()),
+    requirementsCoverageProjection: v.optional(requirementsCoverageProjectionValidator),
+    specConsistencyFindings: v.optional(v.array(missionSpecFindingValidator)),
+    specConsistencyDigest: v.optional(v.string()),
+    specConsistencyEvaluatedAt: v.optional(v.number()),
     assertions: v.optional(v.array(v.object({
       assertionId: v.string(),
       title: v.string(),
@@ -1569,6 +1589,9 @@ export default defineSchema({
       requiredEvidence: v.string(),
       requiresIndependentValidation: v.boolean(),
       waiverAllowed: v.boolean(),
+      sourceRequirementIds: v.optional(v.array(v.string())),
+      sourceAcceptanceExpectationIds: v.optional(v.array(v.string())),
+      sourceVerificationExpectationIds: v.optional(v.array(v.string())),
     }))),
     workOrderBlueprints: v.array(v.object({
       id: v.string(),
@@ -1691,6 +1714,89 @@ export default defineSchema({
     .index("by_mission_timestamp", ["missionId", "timestamp"])
     .index("by_idempotency", ["idempotencyKey"]),
 
+  // Immutable, attributable planning principles. These records reference the
+  // existing runtime-policy system without becoming a second policy engine.
+  projectConstitutionRevisions: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.id("projects"),
+    baseRevisionId: v.optional(v.id("projectConstitutionRevisions")),
+    idempotencyKey: v.string(),
+    revisionNumber: v.number(),
+    title: v.string(),
+    content: projectConstitutionContentValidator,
+    governancePolicyId: v.optional(v.id("governancePolicies")),
+    policyEnvelopeId: v.optional(v.id("policyEnvelopes")),
+    digest: v.string(),
+    createdBy: v.string(),
+    createdActorSource: v.union(v.literal("AUTHENTICATED"), v.literal("DEVELOPMENT_FALLBACK")),
+    createdAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_revision", ["projectId", "revisionNumber"])
+    .index("by_idempotency", ["idempotencyKey"]),
+
+  // Content is insert-only. Revising creates a new row and retains exact base,
+  // Constitution, author, and digest lineage.
+  missionSpecRevisions: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.id("projects"),
+    missionId: v.id("missions"),
+    baseRevisionId: v.optional(v.id("missionSpecRevisions")),
+    idempotencyKey: v.string(),
+    revisionNumber: v.number(),
+    projectConstitutionRevisionId: v.id("projectConstitutionRevisions"),
+    projectConstitutionDigest: v.string(),
+    content: missionSpecContentValidator,
+    digest: v.string(),
+    createdBy: v.string(),
+    createdActorSource: v.union(v.literal("AUTHENTICATED"), v.literal("DEVELOPMENT_FALLBACK")),
+    createdAt: v.number(),
+  })
+    .index("by_mission", ["missionId"])
+    .index("by_mission_revision", ["missionId", "revisionNumber"])
+    .index("by_idempotency", ["idempotencyKey"]),
+
+  missionSpecQualityEvaluations: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.id("projects"),
+    missionId: v.id("missions"),
+    missionSpecRevisionId: v.id("missionSpecRevisions"),
+    missionSpecDigest: v.string(),
+    projectConstitutionRevisionId: v.id("projectConstitutionRevisions"),
+    projectConstitutionDigest: v.string(),
+    idempotencyKey: v.string(),
+    rulesetVersion: v.number(),
+    result: v.union(v.literal("PASS"), v.literal("FAIL")),
+    findings: v.array(missionSpecFindingValidator),
+    evaluatedBy: v.string(),
+    evaluatedActorSource: v.union(v.literal("AUTHENTICATED"), v.literal("DEVELOPMENT_FALLBACK")),
+    evaluatedAt: v.number(),
+  })
+    .index("by_mission", ["missionId"])
+    .index("by_project_evaluated", ["projectId", "evaluatedAt"])
+    .index("by_spec", ["missionSpecRevisionId"])
+    .index("by_spec_time", ["missionSpecRevisionId", "evaluatedAt"])
+    .index("by_idempotency", ["idempotencyKey"]),
+
+  // FINALIZED means planning-ready only. It is intentionally not APPROVED and
+  // carries no execution, verification, publication, or acceptance authority.
+  missionSpecDecisions: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.id("projects"),
+    missionId: v.id("missions"),
+    missionSpecRevisionId: v.id("missionSpecRevisions"),
+    missionSpecQualityEvaluationId: v.id("missionSpecQualityEvaluations"),
+    idempotencyKey: v.string(),
+    decisionType: v.literal("FINALIZED"),
+    rationale: v.string(),
+    decidedBy: v.string(),
+    decidedActorSource: v.union(v.literal("AUTHENTICATED"), v.literal("DEVELOPMENT_FALLBACK")),
+    decidedAt: v.number(),
+  })
+    .index("by_mission", ["missionId"])
+    .index("by_spec", ["missionSpecRevisionId"])
+    .index("by_idempotency", ["idempotencyKey"]),
+
   workOrders: defineTable({
     tenantId: v.optional(v.id("tenants")),
     projectId: v.optional(v.id("projects")),
@@ -1698,6 +1804,7 @@ export default defineSchema({
     missionPlanId: v.optional(v.id("missionPlans")),
     missionPlanRevision: v.optional(v.number()),
     qualityContractDigest: v.optional(v.string()),
+    missionSpecLineage: v.optional(missionSpecLineageValidator),
     missionSequence: v.optional(v.number()),
     missionRole: v.optional(v.union(v.literal("WORKER"), v.literal("VALIDATOR"))),
     isMutating: v.optional(v.boolean()),
@@ -6225,6 +6332,8 @@ export default defineSchema({
     observationId: v.optional(v.id("traceObservations")),
     evalScoreId: v.optional(v.id("evalScores")),
     factoryDefinitionVersionId: v.optional(v.id("factoryDefinitionVersions")),
+    missionSpecRevisionId: v.optional(v.id("missionSpecRevisions")),
+    specFindingCode: v.optional(v.string()),
     signalType: v.union(
       v.literal("HUMAN_CORRECTION"),
       v.literal("REPEATED_INSTRUCTION"),
@@ -6251,7 +6360,8 @@ export default defineSchema({
       v.literal("RUN_EVENT"),
       v.literal("TRACE"),
       v.literal("HUMAN_DECISION"),
-      v.literal("CONFIGURATION_REGISTRY")
+      v.literal("CONFIGURATION_REGISTRY"),
+      v.literal("MISSION_SPEC_QUALITY")
     ),
     sourceId: v.string(),
     reasonCode: v.string(),

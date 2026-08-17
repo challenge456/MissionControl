@@ -29,6 +29,8 @@ const SOURCE_TYPES = [
   "git-history",
   "artifact",
   "regression-case",
+  "project-constitution",
+  "mission-spec",
 ] as const;
 
 function dateBoundary(value: string, endOfDay = false): number | undefined {

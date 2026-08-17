@@ -122,6 +122,7 @@ export async function createWorkOrderRecord(ctx: any, args: any) {
     missionPlanId: args.missionPlanId,
     missionPlanRevision: args.missionPlanRevision ?? missionPlan?.revisionNumber,
     qualityContractDigest,
+    missionSpecLineage: args.missionSpecLineage,
     missionSequence: missionBlueprint?.sequence,
     missionRole: args.missionId ? (args.missionRole ?? "WORKER") : undefined,
     isMutating: args.missionId ? missionBlueprint?.isMutating : args.isMutating,

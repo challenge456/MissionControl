@@ -25,6 +25,8 @@ export const FACTORY_MEMORY_SOURCE_TYPES = [
   "git-history",
   "artifact",
   "regression-case",
+  "project-constitution",
+  "mission-spec",
 ] as const;
 export type FactoryMemorySourceType =
   (typeof FACTORY_MEMORY_SOURCE_TYPES)[number];
