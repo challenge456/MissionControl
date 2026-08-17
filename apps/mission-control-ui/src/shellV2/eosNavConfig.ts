@@ -71,7 +71,7 @@ export const EOS_NAV_GROUPS: NavGroup[] = [
   ]},
   { id: "administration", label: "Settings", icon: Building2, items: [
     { view: "projects" as MainView, label: "Workspaces & Repositories", icon: Building2 },
-    { view: "model-routing" as MainView, label: "Model Routing", icon: Route },
+    { view: "model-routing" as MainView, label: "Execution Routing", icon: Route },
     { view: "gateway" as MainView, label: "Gateway", icon: Cog },
     { view: "system" as MainView, label: "Database", icon: Cog },
   ]},

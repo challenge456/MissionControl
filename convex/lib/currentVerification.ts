@@ -7,9 +7,13 @@ import {
   qualityGateStateForCurrentEligibility,
 } from "./qualityGateDecision";
 
+export type CurrentVerificationRoutingOutcome = ReturnType<
+  typeof evaluateCurrentVerificationEligibility
+>;
+
 export type CurrentVerificationResult = Omit<
   ReturnType<typeof evaluateCurrentVerificationEligibility>,
-  "exactIdentity"
+  "exactIdentity" | "verifiedOutcome" | "verificationRecordedAt"
 > & {
   exactIdentity?: VerificationIdentityTuple;
 };
@@ -19,6 +23,25 @@ export async function getCurrentVerificationResult(
   workOrder: any,
   now = Date.now(),
 ): Promise<CurrentVerificationResult> {
+  const current = await getCurrentVerificationRoutingOutcome(ctx, workOrder, now);
+  const {
+    verifiedOutcome: _verifiedOutcome,
+    verificationRecordedAt: _verificationRecordedAt,
+    ...acceptanceEligibility
+  } = current;
+  return acceptanceEligibility;
+}
+
+/**
+ * Return the canonical Policy V2 evaluation with its strictly verified outcome
+ * classification. Acceptance deliberately consumes the narrower projection
+ * above so this internal routing signal does not alter the public API shape.
+ */
+export async function getCurrentVerificationRoutingOutcome(
+  ctx: any,
+  workOrder: any,
+  now = Date.now(),
+): Promise<CurrentVerificationRoutingOutcome> {
   const [attempts, results, receipts, evidence, providerHeads, repository, installations] = await Promise.all([
     ctx.db.query("workflowRuns").withIndex("by_work_order", (q: any) => q.eq("workOrderId", workOrder._id)).collect(),
     ctx.db.query("verificationRuns").withIndex("by_work_order", (q: any) => q.eq("workOrderId", workOrder._id)).collect(),

@@ -34,6 +34,12 @@ async function loadRowsForKey(
     .collect();
 }
 
+function isFactoryControlFlag(key: string) {
+  return key.startsWith("factory-memory.")
+    || key.startsWith("model-routing.")
+    || key.startsWith("execution-routing.");
+}
+
 /** All flags (known registry + any ad-hoc rows), resolved for optional project scope. */
 export const list = query({
   args: {
@@ -52,7 +58,7 @@ export const isEnabled = query({
     projectId: v.optional(v.id("projects")),
   },
   handler: async (ctx, args) => {
-    if (args.key.startsWith("factory-memory.")) {
+    if (isFactoryControlFlag(args.key)) {
       if (!args.projectId) return false;
       await requireWorkspacePermission(
         ctx,
@@ -80,25 +86,32 @@ export const setFlag = mutation({
         `Invalid flag key "${args.key}" — expected dot-separated lowercase segments, e.g. "ui.shell.v2"`,
       );
     }
+    if (args.description !== undefined && args.description.trim().length > 1_000) {
+      throw new Error("Feature flag descriptions must be at most 1,000 characters.");
+    }
     let actorId = args.actorId;
-    if (args.key.startsWith("factory-memory.")) {
+    let tenantId;
+    if (isFactoryControlFlag(args.key)) {
       if (!args.projectId)
-        throw new Error("Factory Memory flags must be scoped to a workspace.");
+        throw new Error("Factory control flags must be scoped to a workspace.");
       const access = await requireWorkspacePermission(
         ctx,
         args.projectId,
         FACTORY_PERMISSIONS.MANAGE_AUTOMATION,
       );
       actorId = access.actorId;
+      tenantId = access.project.tenantId;
     } else if (args.key.startsWith("control-plane.")) {
       if (!args.projectId)
         throw new Error("Control-plane flags must be scoped to a workspace.");
       const project = await ctx.db.get(args.projectId);
       if (!project?.tenantId)
         throw new Error("Workspace company assignment is incomplete.");
-      await requireWorkspaceAccess(ctx, project.tenantId, project._id, {
+      const access = await requireWorkspaceAccess(ctx, project.tenantId, project._id, {
         permission: COMPANY_PERMISSIONS.MANAGE_WORKSPACES,
       });
+      actorId = String(access.membership.operatorId ?? "demo:company-administrator");
+      tenantId = project.tenantId;
     }
 
     const now = Date.now();
@@ -130,6 +143,7 @@ export const setFlag = mutation({
     }
 
     await ctx.db.insert("activities", {
+      tenantId,
       projectId: args.projectId,
       actorType: "HUMAN",
       actorId,

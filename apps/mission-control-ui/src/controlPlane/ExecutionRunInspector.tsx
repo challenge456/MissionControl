@@ -14,6 +14,25 @@ import { ExecutionRecoveryCard, type ExecutionRecoveryData } from "./ExecutionRe
 import { ReviewEvidencePackage, type ReviewEvidencePackageData } from "./ReviewEvidencePackage";
 import { FactoryContextRunCard } from "./FactoryContextRunCard";
 
+type FrozenExecutionRoutingSnapshot = {
+  algorithmVersion: string;
+  evidenceCutoffAt: number;
+  result: {
+    mode: string;
+    recommendedTupleKey?: string;
+    appliedTupleKey?: string;
+    fallbackReason?: string;
+    candidates: Array<{
+      tuple: { tupleKey: string; harness: { adapter: string; version: string }; model: { provider: string; modelId: string }; backend: string };
+      eligible: boolean;
+      rejectionReasons: string[];
+      score?: number;
+      evidenceCoverage: number;
+      evidence: { verifiedAttemptCount: number; attemptCount: number };
+    }>;
+  };
+};
+
 export function ExecutionRunInspector({
   open,
   workflowRunId,
@@ -92,6 +111,8 @@ export function ExecutionRunInspector({
     && ((inspector.run.metadata as { completionMode?: string; receiptPacketKey?: string } | undefined)?.completionMode === "VERIFICATION_ONLY"
       || ((inspector.run.metadata as { receiptPacketKey?: string } | undefined)?.receiptPacketKey
         && (inspector.run.steps ?? []).every((step: any) => step.status === "PENDING")));
+  const routingSnapshot = routingDecision?.executionRoutingSnapshot as FrozenExecutionRoutingSnapshot | undefined;
+  const appliedRoute = routingSnapshot?.result.candidates.find((candidate) => candidate.tuple.tupleKey === routingSnapshot.result.appliedTupleKey);
   const verificationRun = inspector?.verificationRuns?.[0];
   const navigateToRecords = (target: EvidenceLineageStage["target"]) => {
     document.getElementById(`run-${target}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -330,9 +351,9 @@ export function ExecutionRunInspector({
               <Card className="p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <div className="text-sm font-medium text-foreground">Model routing evidence</div>
+                    <div className="text-sm font-medium text-foreground">Execution routing evidence</div>
                     <div className="mt-1 text-xs text-muted-foreground">
-                      The exact policy decision captured before provider execution.
+                      The immutable harness, model, backend, policy, and verified-evidence decision captured before execution.
                     </div>
                   </div>
                   <Badge variant="outline">
@@ -341,13 +362,22 @@ export function ExecutionRunInspector({
                 </div>
                 {routingDecision ? (
                   <div className="mt-4 grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
-                    <Meta label="Selected model" value={routingDecision.selectedModelId ?? "No safe route"} />
-                    <Meta label="Provider" value={routingDecision.selectedProvider ?? "—"} />
+                    <Meta label="Selected tuple" value={appliedRoute ? `${appliedRoute.tuple.harness.adapter}/${appliedRoute.tuple.harness.version} · ${appliedRoute.tuple.model.modelId} · ${appliedRoute.tuple.backend}` : routingDecision.selectedModelId ?? "No safe route"} />
+                    <Meta label="Provider" value={appliedRoute?.tuple.model.provider ?? routingDecision.selectedProvider ?? "—"} />
                     <Meta label="Source" value={routingDecision.source} />
                     <Meta label="Policy version" value={`v${routingDecision.policyVersion}`} />
+                    <Meta label="Algorithm" value={routingDecision.algorithmVersion ?? "Legacy model routing"} />
+                    <Meta label="Decision digest" value={inspector.run.routingDecisionDigest ?? routingDecision.decisionDigest ?? "—"} />
+                    <Meta label="Evidence cutoff" value={routingSnapshot?.evidenceCutoffAt ? new Date(routingSnapshot.evidenceCutoffAt).toLocaleString() : "—"} />
+                    <Meta label="Evidence coverage" value={appliedRoute ? `${Math.round(appliedRoute.evidenceCoverage * 100)}% · ${appliedRoute.evidence.verifiedAttemptCount}/${appliedRoute.evidence.attemptCount} verified` : "Unknown"} />
                     <div className="md:col-span-2 xl:col-span-4">
                       <Meta label="Explanation" value={routingDecision.explanation} />
                     </div>
+                    {routingSnapshot?.result.fallbackReason ? (
+                      <div className="md:col-span-2 xl:col-span-4">
+                        <Meta label="Fallback reason" value={routingSnapshot.result.fallbackReason} />
+                      </div>
+                    ) : null}
                   </div>
                 ) : (
                   <p className="mt-3 text-sm text-muted-foreground">

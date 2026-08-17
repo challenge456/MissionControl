@@ -948,7 +948,7 @@ function AdvancedFactoryPanel({
     definitions?.filter((item) => item.status === "ACTIVE").length ?? 0;
   const links = [
     { id: "projects", label: "Factory configuration" },
-    { id: "model-routing", label: "Model routing" },
+    { id: "model-routing", label: "Execution routing" },
     { id: "policies", label: "Policies" },
     { id: "memory", label: "Factory Memory" },
     { id: "trace-inspector", label: "Observability & evals" },

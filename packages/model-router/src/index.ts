@@ -13,6 +13,11 @@
 export { ModelRouter } from "./router";
 export { CostEstimator } from "./cost-estimator";
 export { resolveModelRoute } from "./policy";
+export {
+  EXECUTION_ROUTING_ALGORITHM_VERSION,
+  resolveExecutionRoute,
+  workOrderRiskToExecutionTier,
+} from "./execution-routing";
 export { ClaudeProvider, CLAUDE_MODELS } from "./providers/claude";
 export { OpenAIProvider, OPENAI_MODELS } from "./providers/openai";
 export type {
@@ -37,3 +42,18 @@ export type {
   RoutingSource,
   RoutingTier,
 } from "./policy";
+export type {
+  ExecutionBackend,
+  ExecutionEligibilityFacts,
+  ExecutionEligibilityReasonCode,
+  ExecutionEvidence,
+  ExecutionRiskTier,
+  ExecutionRoutingCandidate,
+  ExecutionRoutingCandidateResult,
+  ExecutionRoutingInput,
+  ExecutionRoutingMetricScore,
+  ExecutionRoutingMode,
+  ExecutionRoutingPolicy,
+  ExecutionRoutingResult,
+  ExecutionTuple,
+} from "./execution-routing";
