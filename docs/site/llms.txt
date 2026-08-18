@@ -5,6 +5,7 @@ overview/product-direction.md — North Star, canonical delivery hierarchy, V1 p
 operator-control-plane/overview.md — Governed Decision Center, dispatch and proof separation, Fleet Operator persona evaluations, and North Star alignment.
 ../validation/2026-07-31-integrated-control-plane-evidence.md — Post-merge automated and browser verification for the integrated V1 control plane.
 software-factory-enhancement/factory-learning.md — Deterministic learning signals, reviewable candidates, governed experiments, read-only agent configuration drift, permissions, recovery, and rollout monitoring.
+software-factory-enhancement/review-intelligence.md — Evidence-first WorkOrder review, criterion evidence, implementation decisions, advisory residual findings, exact lineage, and authority boundaries.
 
 skill-automations/overview.md — Governed deterministic skill Automation lifecycle, architecture, status, and source map.
 skill-automations/implementation-design.md — Architecture decisions, extension points, and LEVEL_1 safety boundary.

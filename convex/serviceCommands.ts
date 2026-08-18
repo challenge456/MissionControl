@@ -546,6 +546,75 @@ export const reportVerificationAttempt = action({
   },
 });
 
+export const recordReviewDecisionCandidate = action({
+  args: { envelope, payloadJson: v.string() },
+  handler: async (ctx, args): Promise<any> => {
+    const payload = await authorize(ctx, args.envelope, args.payloadJson, "review.decision-candidate.record");
+    const scope = await ctx.runQuery(internal.serviceCommands.resolveExecutionScope, {
+      workflowRunId: payload.workflowRunId,
+    });
+    const receipt = await claimScoped(ctx, args.envelope, scope);
+    try {
+      const result = await ctx.runMutation(internal.reviewIntelligence.recordAgentDecisionCandidate, {
+        workOrderId: payload.workOrderId,
+        workflowRunId: payload.workflowRunId,
+        serviceActorId: `service:${args.envelope.serviceId}`,
+        category: payload.category,
+        proposedTarget: payload.proposedTarget,
+        summary: payload.summary,
+        rationale: payload.rationale,
+        sourceReference: payload.sourceReference,
+        idempotencyKey: payload.idempotencyKey,
+      });
+      await ctx.runMutation(internal.serviceCommands.complete, {
+        receiptId: receipt.receiptId,
+        status: "SUCCEEDED",
+        resultReference: result?._id ? String(result._id) : undefined,
+      });
+      return result;
+    } catch (error) {
+      await fail(ctx, receipt.receiptId, error);
+      throw error;
+    }
+  },
+});
+
+export const recordResidualReviewAnalysis = action({
+  args: { envelope, payloadJson: v.string() },
+  handler: async (ctx, args): Promise<any> => {
+    const payload = await authorize(ctx, args.envelope, args.payloadJson, "review.residual-analysis.record");
+    const scope = await ctx.runQuery(internal.serviceCommands.resolveExecutionScope, {
+      workflowRunId: payload.workflowRunId,
+    });
+    const receipt = await claimScoped(ctx, args.envelope, scope);
+    try {
+      const result = await ctx.runMutation(internal.reviewIntelligence.recordResidualAnalysis, {
+        workOrderId: payload.workOrderId,
+        workflowRunId: payload.workflowRunId,
+        verificationRunId: payload.verificationRunId,
+        reviewerId: `service:${args.envelope.serviceId}:${payload.reviewerId}`,
+        provider: payload.provider,
+        model: payload.model,
+        promptVersion: payload.promptVersion,
+        contextDigest: payload.contextDigest,
+        findings: payload.findings,
+        tokenUsage: payload.tokenUsage,
+        estimatedCostUsd: payload.estimatedCostUsd,
+        idempotencyKey: payload.idempotencyKey,
+      });
+      await ctx.runMutation(internal.serviceCommands.complete, {
+        receiptId: receipt.receiptId,
+        status: "SUCCEEDED",
+        resultReference: result?._id ? String(result._id) : undefined,
+      });
+      return result;
+    } catch (error) {
+      await fail(ctx, receipt.receiptId, error);
+      throw error;
+    }
+  },
+});
+
 export const authorizeFactoryPublication = action({
   args: { envelope, payloadJson: v.string() },
   handler: async (ctx, args): Promise<any> => {

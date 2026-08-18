@@ -1,0 +1,63 @@
+{
+  "appUrl": "http://127.0.0.1:5180",
+  "workspaceId": "sn76etsp1y10t230g4jjtxqnsn8bygtw",
+  "workOrderId": "yh741dqfydd6kxw2dsj7ynjfzn8caqp8",
+  "surfaces": [
+    "basic intent, criterion evidence drill-through, stale gate, raw diff",
+    "intermediate recovery, decisions, semantic groups, advisory residuals",
+    "advanced exact IDs, digests, currentness, authority",
+    "mobile basic review and keyboard focus"
+  ],
+  "screenshots": [
+    "screenshots/01-basic-1440-light.png",
+    "screenshots/02-intermediate-1440-light.png",
+    "screenshots/03-advanced-1024-dark.png",
+    "screenshots/04-basic-390-light.png"
+  ],
+  "accessibility": [
+    {
+      "surface": "basic-1440-light",
+      "passes": 17,
+      "incomplete": 1,
+      "violations": []
+    },
+    {
+      "surface": "advanced-1024-dark",
+      "passes": 20,
+      "incomplete": 1,
+      "violations": []
+    },
+    {
+      "surface": "basic-390-light",
+      "passes": 17,
+      "incomplete": 1,
+      "violations": []
+    }
+  ],
+  "consoleErrors": [],
+  "pageErrors": [],
+  "failedRequests": [],
+  "matrix": {
+    "viewports": [
+      "1440x900",
+      "1024x768",
+      "390x844"
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "experienceLevels": [
+      "Basic",
+      "Intermediate",
+      "Advanced"
+    ],
+    "navigation": [
+      "direct URL",
+      "refresh",
+      "back",
+      "forward",
+      "keyboard focus"
+    ]
+  }
+}

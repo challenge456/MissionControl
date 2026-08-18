@@ -412,9 +412,15 @@ function candidateTypeForCluster(
     case "DETERMINISTIC_GATE_FAILURE":
       return "MODIFY_GATE";
     case "HUMAN_CORRECTION":
-      return /typecheck|lint|format|schema|test|build/.test(cluster.deterministicKey)
+      return /typecheck|lint|format|schema|test|build|deterministic.gate|acceptance.criterion|human.defect/.test(cluster.deterministicKey)
         ? "ADD_DETERMINISTIC_GATE"
         : "UPDATE_AGENT_RULE";
+    case "REPEATED_REVIEW_FINDING":
+      return /security|deterministic.gate|acceptance.criterion|human.defect/.test(cluster.deterministicKey)
+        ? "ADD_DETERMINISTIC_GATE"
+        : /architecture/.test(cluster.deterministicKey)
+          ? "ADD_DOCUMENTATION"
+          : "UPDATE_AGENT_RULE";
     case "UNNECESSARY_AGENT_USAGE":
     case "TOKEN_WASTE":
       return "REPLACE_AGENT_WITH_CODE";
@@ -435,7 +441,6 @@ function candidateTypeForCluster(
     case "AGENT_CONFIG_DRIFT":
     case "REPEATED_INSTRUCTION":
     case "HUMAN_INTERVENTION":
-    case "REPEATED_REVIEW_FINDING":
       return "UPDATE_AGENT_RULE";
   }
 }

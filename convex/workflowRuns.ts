@@ -16,7 +16,7 @@ import { snapshotWorkflowDefinition } from "./lib/workflowSnapshot";
 import { assertAuthorizedDeliveryRecord, requireAuthorizedDeliveryScope } from "./lib/deliveryAuthorization";
 import { COMPANY_PERMISSIONS } from "./lib/companyAccess";
 import { buildExecutionRecoverySummary } from "./lib/executionRecovery";
-import { buildFactoryAttemptReviewReadModel } from "./lib/factoryReviewReadModel";
+import { buildFactoryAttemptReviewReadModel, loadFactoryAttemptReviewReadModel } from "./lib/factoryReviewReadModel";
 import { getEffectiveOperatorControl } from "./lib/operatorControls";
 import {
   automationDesignValidator,
@@ -533,18 +533,12 @@ export const getInspector = query({
       run.factoryDefinitionVersionId ? ctx.db.get(run.factoryDefinitionVersionId) : null,
       run.repositoryId ? ctx.db.get(run.repositoryId) : null,
     ]);
-    const reviewReadModel = buildFactoryAttemptReviewReadModel({
-      now: Date.now(),
-      run,
-      workOrder,
-      events: orderedEvents,
-      artifacts,
-      receipts,
-      evidenceEnvelopes,
-      prChecks,
-      missionPlan,
-      repository,
-    });
+    const reviewReadModel = workOrder
+      ? await loadFactoryAttemptReviewReadModel(ctx, { now: Date.now(), run, workOrder })
+      : buildFactoryAttemptReviewReadModel({
+          now: Date.now(), run, workOrder, events: orderedEvents, artifacts,
+          receipts, evidenceEnvelopes, prChecks, missionPlan, repository,
+        });
     const projectedRun = reviewReadModel.run;
     const fileChanges = reviewReadModel.fileChanges;
     const continuousEvidenceLineage = buildContinuousEvidenceLineage({

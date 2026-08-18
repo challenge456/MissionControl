@@ -10,6 +10,7 @@ export type CriterionEvidenceStatus =
 type CriterionLike = {
   id: string;
   title: string;
+  requirementIds?: string[];
   verificationMethod?: string;
   requiredEvidence?: Array<{ independent?: boolean }>;
 };
@@ -285,6 +286,7 @@ export function buildReviewPackage(input: {
       verifier: receipt?.verifier ?? null,
       result: receipt?.result ?? null,
       evidenceLocation: receipt?.evidenceLocation ?? receipt?.artifactReference ?? null,
+      evidenceEnvelopeIds: receipt?.evidenceEnvelopeIds ?? [],
       validUntil: receipt?.validUntil ?? null,
       integrityIssue,
     };
