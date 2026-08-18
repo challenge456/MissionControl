@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { canonicalHash } from "@mission-control/shared";
-import { ExeDevSandboxProvider, type ExeDevTransport } from "../exeDevSandboxProvider.js";
+import { ExeDevSandboxProvider, exeDevCommandErrorDetail, type ExeDevTransport } from "../exeDevSandboxProvider.js";
 import type { SandboxProfileSnapshot } from "../sandboxProvider.js";
 
 describe("ExeDevSandboxProvider", () => {
@@ -14,6 +14,30 @@ describe("ExeDevSandboxProvider", () => {
       readiness: "BLOCKED",
       errors: expect.arrayContaining([expect.stringMatching(/Live exe\.dev lifecycle certification/)]),
     });
+  });
+
+  it("blocks resource sizes below the live-proven exe.dev N=1 floor", async () => {
+    const provider = new ExeDevSandboxProvider({ lobbyJson: vi.fn(), vmText: vi.fn() } as ExeDevTransport);
+    const undersized = profile();
+    undersized.machine = { ...undersized.machine, cpu: 1, memoryMb: 512, diskGb: 5 };
+
+    await expect(provider.validateProfile(undersized)).resolves.toMatchObject({
+      dispatchable: false,
+      readiness: "BLOCKED",
+      errors: expect.arrayContaining([
+        expect.stringMatching(/at least 2 CPUs/),
+        expect.stringMatching(/at least 2048 MB/),
+        expect.stringMatching(/at least 10 GB/),
+      ]),
+    });
+  });
+
+  it("preserves provider diagnostics emitted on stdout when stderr is empty", () => {
+    expect(exeDevCommandErrorDetail({
+      stdout: "minimum resource size is not supported\n",
+      stderr: "",
+      message: "Command failed",
+    })).toBe("minimum resource size is not supported");
   });
 
   it("allocates the exact Attempt resource without public ports or embedded credentials", async () => {
@@ -45,8 +69,14 @@ describe("ExeDevSandboxProvider", () => {
       .mockResolvedValueOnce([{ vm_name: "mc-attempt-0123456789abcdef", id: "vm-1", status: "ready" }])
       .mockResolvedValueOnce({ removed: true })
       .mockResolvedValueOnce([]);
-    const vmText = vi.fn().mockResolvedValue("321");
-    const provider = new ExeDevSandboxProvider({ lobbyJson, vmText } as ExeDevTransport);
+    const vmText = vi.fn()
+      .mockRejectedValueOnce(new Error("transient SSH upload failure"))
+      .mockResolvedValue("321");
+    const provider = new ExeDevSandboxProvider(
+      { lobbyJson, vmText } as ExeDevTransport,
+      Date.now,
+      async () => undefined,
+    );
     const allocation = { provider: "EXE_DEV" as const, providerResourceId: "vm-1", resourceName: "mc-attempt-0123456789abcdef", state: "READY" as const, createdAt: 1 };
     const executionManifest = manifest();
     await provider.start({
@@ -57,11 +87,22 @@ describe("ExeDevSandboxProvider", () => {
       environment: { OPENAI_API_KEY: "attempt-only", OPENAI_BASE_URL: "https://openrouter.ai/api/v1" },
     });
 
-    expect(vmText).toHaveBeenCalledTimes(4);
-    const uploadedConfig = JSON.parse(Buffer.from(vmText.mock.calls[2][2], "base64").toString("utf8"));
+    expect(vmText).toHaveBeenCalledTimes(5);
+    expect(vmText.mock.calls[0][1]).toBe(vmText.mock.calls[1][1]);
+    expect(vmText.mock.calls[0][2]).toBe(vmText.mock.calls[1][2]);
+    const uploadedConfig = JSON.parse(Buffer.from(vmText.mock.calls[3][2], "base64").toString("utf8"));
     expect(uploadedConfig.executionManifest).toEqual(executionManifest);
-    expect(vmText.mock.calls[3][1]).toContain("git clone --quiet");
-    expect(vmText.mock.calls[3][1]).not.toContain("attempt-only");
+    const supervisorLaunch = vmText.mock.calls[4][1];
+    expect(supervisorLaunch).toContain("git clone --quiet");
+    expect(supervisorLaunch).toContain("command -v setsid");
+    expect(supervisorLaunch).toContain("nohup setsid node");
+    expect(supervisorLaunch).toContain("2>&1 &\nprintf '%s'");
+    expect(supervisorLaunch).not.toContain("&;");
+    expect(supervisorLaunch).not.toContain("attempt-only");
+    await provider.cancel(allocation, "test cancellation");
+    const cancellation = vmText.mock.calls[5][1];
+    expect(cancellation).toContain('kill -TERM -- "-$pid"');
+    expect(cancellation).toContain('kill -KILL -- "-$pid"');
     const receipt = await provider.terminate(allocation);
     expect(receipt.resourceAbsent).toBe(true);
     expect(lobbyJson.mock.calls[1][0]).toEqual(["rm", allocation.resourceName, "--json"]);

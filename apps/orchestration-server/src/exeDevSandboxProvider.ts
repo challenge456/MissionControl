@@ -42,6 +42,9 @@ export class ExeDevSandboxProvider implements SandboxProvider {
     const errors = [...validation.errors];
     if (profile.provider !== "EXE_DEV") errors.push("exe.dev provider requires an EXE_DEV profile.");
     if (!/^[A-Za-z0-9._:/@+-]+$/.test(profile.machine.image)) errors.push("exe.dev image identifier contains unsupported characters.");
+    if (profile.machine.cpu < 2) errors.push("The certified exe.dev N=1 profile requires at least 2 CPUs.");
+    if (profile.machine.memoryMb < 2_048) errors.push("The certified exe.dev N=1 profile requires at least 2048 MB of memory.");
+    if (profile.machine.diskGb < 10) errors.push("The certified exe.dev N=1 profile requires at least 10 GB of disk.");
     return {
       ...validation,
       valid: errors.length === 0,
@@ -126,10 +129,11 @@ export class ExeDevSandboxProvider implements SandboxProvider {
       `git clone --quiet ${REMOTE_ROOT}/repository.bundle ${REMOTE_ROOT}/repository`,
       `git -C ${REMOTE_ROOT}/repository checkout --quiet ${request.sourceSha}`,
       `rm -f ${REMOTE_ROOT}/repository.bundle`,
-      `nohup node ${REMOTE_ROOT}/supervisor.mjs ${REMOTE_ROOT}/config.json >${REMOTE_ROOT}/supervisor.log 2>&1 &`,
+      "command -v setsid >/dev/null",
+      `nohup setsid node ${REMOTE_ROOT}/supervisor.mjs ${REMOTE_ROOT}/config.json >${REMOTE_ROOT}/supervisor.log 2>&1 &`,
       `printf '%s' \"$!\" >${REMOTE_ROOT}/pid`,
       `cat ${REMOTE_ROOT}/pid`,
-    ].join("; "));
+    ].join("\n"));
     return { processId: `${request.allocation.providerResourceId}:supervisor`, startedAt: this.now(), state: "RUNNING" };
   }
 
@@ -147,7 +151,17 @@ export class ExeDevSandboxProvider implements SandboxProvider {
     assertSafeSandboxResourceName(allocation.resourceName);
     await this.transport.vmText(
       allocation.resourceName,
-      `if test -f ${REMOTE_ROOT}/pid; then kill -TERM \"$(cat ${REMOTE_ROOT}/pid)\" 2>/dev/null || true; fi`,
+      [
+        `if test -f ${REMOTE_ROOT}/pid; then`,
+        `pid="$(cat ${REMOTE_ROOT}/pid)"`,
+        'kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true',
+        "for attempt in 1 2 3 4 5 6 7 8 9 10; do",
+        'if ! kill -0 -- "-$pid" 2>/dev/null; then exit 0; fi',
+        "sleep 0.1",
+        "done",
+        'kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true',
+        "fi",
+      ].join("\n"),
     );
   }
 
@@ -175,7 +189,17 @@ export class ExeDevSandboxProvider implements SandboxProvider {
 
   private async upload(resourceName: string, remotePath: string, content: Buffer) {
     const encoded = content.toString("base64");
-    await this.transport.vmText(resourceName, `umask 077; mkdir -p ${REMOTE_ROOT}; base64 -d >${remotePath}`, encoded);
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        await this.transport.vmText(resourceName, `umask 077; mkdir -p ${REMOTE_ROOT}; base64 -d >${remotePath}`, encoded);
+        return;
+      } catch (error) {
+        lastError = error;
+        if (attempt < 3) await this.sleep(attempt * 500);
+      }
+    }
+    throw lastError;
   }
 }
 
@@ -216,7 +240,8 @@ export class ExeDevSshTransport implements ExeDevTransport {
       }
       return (await spawnWithInput("ssh", args, input, 60_000)).stdout;
     } catch (error: any) {
-      throw new Error(`exe.dev command failed: ${redactSandboxText(error?.stderr ?? error?.message)}`);
+      const detail = exeDevCommandErrorDetail(error);
+      throw new Error(`exe.dev command failed: ${redactSandboxText(detail)}`);
     }
   }
 
@@ -233,6 +258,12 @@ export class ExeDevSshTransport implements ExeDevTransport {
     this.trustedHosts.add(host);
     return knownHosts;
   }
+}
+
+export function exeDevCommandErrorDetail(error: any) {
+  return String(error?.stderr ?? "").trim()
+    || String(error?.stdout ?? "").trim()
+    || String(error?.message ?? "exe.dev command failed");
 }
 
 function findVm(payload: any, name: string) {

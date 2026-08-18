@@ -167,6 +167,15 @@ describe("CodexV1ExecutorAdapter", () => {
       "-o",
       "/var/lib/mission-control/attempt/executor-result.json",
     ]));
+    expect(invocation.args.flatMap((argument, index, args) => argument === "-c" ? [args[index + 1]] : []))
+      .toEqual([
+        'model_provider="mission-control-openrouter"',
+        'model_providers.mission-control-openrouter.name="OpenRouter"',
+        'model_providers.mission-control-openrouter.base_url="https://openrouter.ai/api/v1"',
+        'model_providers.mission-control-openrouter.env_key="OPENAI_API_KEY"',
+        'model_providers.mission-control-openrouter.wire_api="responses"',
+        "model_providers.mission-control-openrouter.supports_websockets=false",
+      ]);
     expect(adapter.capabilities().authority).toEqual({
       worker: "NONE",
       verification: "NONE",

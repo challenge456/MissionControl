@@ -89,6 +89,14 @@ const PROCESS_TERMINATION_GRACE_MS = 5_000;
 const CODEX_PINNED_NATIVE_DIGESTS: Record<string, string> = {
   "darwin-arm64": "ae1d3ffe6d48aec6a4dc3f50e7eb8e0d11962485a6a9406c5a7012139383da02",
 };
+const REMOTE_OPENROUTER_CONFIG_OVERRIDES = [
+  'model_provider="mission-control-openrouter"',
+  'model_providers.mission-control-openrouter.name="OpenRouter"',
+  'model_providers.mission-control-openrouter.base_url="https://openrouter.ai/api/v1"',
+  'model_providers.mission-control-openrouter.env_key="OPENAI_API_KEY"',
+  'model_providers.mission-control-openrouter.wire_api="responses"',
+  "model_providers.mission-control-openrouter.supports_websockets=false",
+] as const;
 const FACTORY_RESULT_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -410,7 +418,7 @@ export class CodexV1ExecutorAdapter implements HarnessExecutorAdapter<CodexPrepa
     const remoteRequest = { ...request, repositoryRoot: context.repositoryRoot, workingDirectory: context.repositoryRoot };
     return {
       command: this.executable,
-      args: commandArguments(remoteRequest, context.resultPath),
+      args: commandArguments(remoteRequest, context.resultPath, undefined, REMOTE_OPENROUTER_CONFIG_OVERRIDES),
       resultPath: context.resultPath,
       model: request.model,
       prompt: request.prompt,
@@ -440,10 +448,16 @@ export class CodexV1ExecutorAdapter implements HarnessExecutorAdapter<CodexPrepa
   }
 }
 
-function commandArguments(request: ExecutorRequest, outputPath: string, outputSchemaPath?: string): string[] {
+function commandArguments(
+  request: ExecutorRequest,
+  outputPath: string,
+  outputSchemaPath?: string,
+  configOverrides: readonly string[] = [],
+): string[] {
   return [
     "-a",
     "never",
+    ...configOverrides.flatMap((value) => ["-c", value]),
     "exec",
     "--json",
     "--ephemeral",

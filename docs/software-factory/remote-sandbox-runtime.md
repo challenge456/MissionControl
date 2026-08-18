@@ -94,7 +94,7 @@ It proves one canonical worker lease, one sandbox start, content-addressed mater
 
 Live certification is deliberately separate from code integration. Do not upgrade an account, purchase capacity, allocate a VM, change credentials or payment settings, or run a live lifecycle without explicit Product Owner authorization.
 
-Routine Factory configuration cannot self-assert certification; profiles created there freeze `liveCertified=false` and remain blocked. Until capacity, explicit authorization, and a future control-plane certification workflow exist, production status remains **Preview / Not Live Certified**. A live certification must begin with read-only readiness, then one explicitly approved cheap lifecycle canary, then one GREEN-risk Factory Attempt. Any missing credential-revocation or exact resource-absence proof is a failed certification.
+Routine Factory configuration cannot self-assert certification; profiles created there freeze `liveCertified=false` and remain blocked. The operator-authorized 2026-08-17 exe.dev run completed as **Live Certified With Known Limitations**; see [Remote Sandbox Live Certification V1](./remote-sandbox-live-certification-v1.md). This does not change the production rollout state: profiles remain Preview and globally disabled until a reviewed pinned Codex image and an explicit control-plane certification/activation path exist. Any future certification must begin with read-only readiness, then one explicitly approved cheap lifecycle canary, then one GREEN-risk Factory Attempt. Any missing credential-revocation or exact resource-absence proof is a failed certification.
 
 ## Runtime contract
 
