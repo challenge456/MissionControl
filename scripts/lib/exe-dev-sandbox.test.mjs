@@ -52,6 +52,10 @@ describe("exe.dev sandbox doctor contracts", () => {
 
     expect(command).toContain(`--name=${CANARY_NAME}`);
     expect(command).toContain("--tag=mission-control-sandbox-doctor");
+    expect(command).toContain(
+      "--comment=Mission-Control-read-only-lifecycle-canary-delete-immediately",
+    );
+    expect(command.some((part) => /[\s;&|`$<>()]/.test(part))).toBe(false);
     expect(command).toContain("--no-email");
     expect(command.some((part) => part.startsWith("--env"))).toBe(false);
     expect(command.some((part) => part.startsWith("--integration"))).toBe(false);
