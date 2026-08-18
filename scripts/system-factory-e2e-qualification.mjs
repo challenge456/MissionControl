@@ -7,7 +7,11 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const evidenceDirectory = path.join(repoRoot, "docs/testing/evidence/system-factory-e2e-v2");
+const evidenceSlug = process.env.MC_QUALIFICATION_EVIDENCE_SLUG ?? "system-factory-e2e-v2";
+if (!/^[a-z0-9][a-z0-9-]*$/.test(evidenceSlug)) {
+  throw new Error("MC_QUALIFICATION_EVIDENCE_SLUG must be a simple lowercase evidence directory name.");
+}
+const evidenceDirectory = path.join(repoRoot, "docs/testing/evidence", evidenceSlug);
 const scenarioEvidencePath = path.join(evidenceDirectory, "scenario-evidence.json");
 const automatedChecksPath = path.join(evidenceDirectory, "automated-checks.json");
 const baseSha =
@@ -40,6 +44,11 @@ const steps = [
     command: "git",
     args: ["diff", "--exit-code", baseSha, "--", "docs/testing/evidence/system-factory-e2e-v1"],
   },
+  ...(evidenceSlug === "system-factory-e2e-v2" ? [] : [{
+    name: "historical V2 evidence immutability",
+    command: "git",
+    args: ["diff", "--exit-code", baseSha, "--", "docs/testing/evidence/system-factory-e2e-v2"],
+  }]),
   {
     name: "prepare canonical workspace packages",
     command: "pnpm",
@@ -89,6 +98,10 @@ const steps = [
       "convex/__tests__/observabilityGoldenPath.test.ts",
       "convex/__tests__/workflowObservability.test.ts",
       "convex/__tests__/factoryLearning.test.ts",
+      "convex/__tests__/reviewPackage.test.ts",
+      "convex/__tests__/reviewIntelligence.test.ts",
+      "convex/__tests__/reviewIntelligenceAuthority.test.ts",
+      "convex/__tests__/reviewIntelligenceGoldenPath.test.ts",
       "convex/__tests__/policyV2Verification.test.ts",
       "convex/__tests__/qualityGateDecision.test.ts",
       "convex/__tests__/verificationPersistence.test.ts",
@@ -136,6 +149,7 @@ const steps = [
       "src/factoryExperience/phaseProjection.test.ts",
       "src/factoryExperience/recipeCatalog.test.ts",
       "src/factoryExperience/useFactoryExperienceLevel.test.tsx",
+      "src/controlPlane/ReviewEvidencePackage.test.tsx",
     ],
   },
   {

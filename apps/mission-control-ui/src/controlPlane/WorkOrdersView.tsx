@@ -232,6 +232,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
   const reopenWorkOrder = useMutation(api.workOrders.reopenWorkOrder);
   const supersedeWorkOrder = useMutation(api.workOrders.supersedeWorkOrder);
   const expireGovernanceRecords = useMutation(api.workOrders.expireGovernanceRecords);
+  const recordReviewJudgment = useMutation(api.reviewIntelligence.recordReviewJudgment);
   const seedDemo = useMutation(api.workOrders.seedDemo);
 
   const filtered = useMemo(() => filterWorkOrders(workOrders ?? [], filters), [workOrders, filters]);
@@ -600,7 +601,30 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
 
                 {selected.reviewPackage ? (
                   <Section title="Candidate decision">
-                    <ReviewEvidencePackage review={selected.reviewPackage as ReviewEvidencePackageData} />
+                    <ReviewEvidencePackage
+                      review={selected.reviewPackage as ReviewEvidencePackageData}
+                      onInspectEvidence={(criterion) => {
+                        openRunInspector({
+                          runId: selected.reviewPackage.reviewIntelligence.exactLineage.workflowRunId as Id<"workflowRuns">,
+                          receiptId: criterion.receiptId as Id<"verificationReceipts">,
+                          criterionId: criterion.id,
+                        });
+                      }}
+                      onRecordJudgment={async (judgment) => {
+                        await recordReviewJudgment({
+                          workOrderId: judgment.workOrderId as Id<"workOrders">,
+                          workflowRunId: judgment.workflowRunId as Id<"workflowRuns">,
+                          expectedWorkOrderRevisionNumber: judgment.workOrderRevisionNumber,
+                          expectedCandidateRevision: judgment.candidateRevision,
+                          reviewPackageDigest: judgment.reviewPackageDigest,
+                          action: judgment.action,
+                          correctionCategory: judgment.correctionCategory,
+                          summary: judgment.summary,
+                          sourceReference: `work-order:${judgment.workOrderId}`,
+                          idempotencyKey: `ui-review:${judgment.workOrderId}:${crypto.randomUUID()}`,
+                        });
+                      }}
+                    />
                   </Section>
                 ) : null}
 

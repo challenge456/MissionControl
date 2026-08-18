@@ -114,6 +114,7 @@ interface SignalDraft {
     | "RUN_EVENT"
     | "TRACE"
     | "HUMAN_DECISION"
+    | "REVIEW_JUDGMENT"
     | "CONFIGURATION_REGISTRY"
     | "MISSION_SPEC_QUALITY";
   sourceId: string;
@@ -139,6 +140,7 @@ interface SignalDraft {
   observedTokens?: number;
   observedCostUsd?: number;
   metadata?: unknown;
+  evidenceFingerprint?: string;
 }
 
 function boundedText(value: unknown, maximum = 1_000): string {
@@ -272,7 +274,7 @@ async function insertSignal(
     normalizedSignature,
     deterministicKey: boundedText(draft.deterministicKey),
     clusterKey,
-    evidenceFingerprint: `${draft.sourceType}:${draft.sourceId}:${draft.signalType}`,
+    evidenceFingerprint: draft.evidenceFingerprint ?? `${draft.sourceType}:${draft.sourceId}:${draft.signalType}`,
     evidenceRefs: draft.evidenceRefs.map((item) => boundedText(item, 500)).slice(0, 10),
     confidence: Math.max(0, Math.min(1, draft.confidence)),
     severity: draft.severity,
@@ -599,6 +601,49 @@ async function collectSourceSignals(
         workflowRunId: decision.workflowRunId,
       });
     }
+  }
+
+  // Review corrections are advisory learning evidence. Multiple equivalent
+  // comments on one WorkOrder count once; candidate thresholding therefore
+  // requires the same correction pattern on independent WorkOrders.
+  const correctionJudgments = await ctx.db
+    .query("reviewJudgments")
+    .withIndex("by_project_action", (q) => q.eq("projectId", access.project._id).eq("action", "CORRECTION"))
+    .order("desc")
+    .take(MAX_SOURCE_ROWS);
+  const observedCorrections = new Set<string>();
+  for (const judgment of correctionJudgments) {
+    if (judgment.recordedAt < windowStart || !judgment.correctionCategory || !judgment.normalizedCorrection) continue;
+    if (!(await sourceBelongsToRepository(ctx, scope, judgment))) continue;
+    const independentKey = `${judgment.workOrderId}:${judgment.correctionCategory}:${judgment.normalizedCorrection}`;
+    if (observedCorrections.has(independentKey)) continue;
+    observedCorrections.add(independentKey);
+    const workOrder = await ctx.db.get(judgment.workOrderId);
+    if (!workOrder) continue;
+    const repeatedFinding = [
+      "ARCHITECTURAL_REVIEW_PATTERN", "MISSING_DETERMINISTIC_GATE",
+      "REPEATED_SECURITY_COMMENT", "REPEATED_SCOPE_CORRECTION",
+    ].includes(judgment.correctionCategory);
+    await add({
+      signalType: repeatedFinding ? "REPEATED_REVIEW_FINDING" : "HUMAN_CORRECTION",
+      sourceType: "REVIEW_JUDGMENT",
+      sourceId: String(judgment._id),
+      reasonCode: judgment.correctionCategory,
+      reasonSummary: judgment.summary,
+      deterministicKey: `${judgment.correctionCategory}:${judgment.normalizedCorrection}`,
+      evidenceFingerprint: `review-correction:${judgment.workOrderId}:${judgment.correctionCategory}:${judgment.normalizedCorrection}`,
+      evidenceRefs: [
+        `review-judgment:${judgment._id}`,
+        `work-order:${judgment.workOrderId}:revision:${judgment.workOrderRevisionNumber}`,
+        `attempt:${judgment.workflowRunId}:candidate:${judgment.candidateRevision ?? "unknown"}`,
+      ],
+      confidence: 1,
+      severity: workOrder.riskLevel,
+      observedAt: judgment.recordedAt,
+      workOrderId: judgment.workOrderId,
+      workflowRunId: judgment.workflowRunId,
+      metadata: { correctionCategory: judgment.correctionCategory, reviewPackageDigest: judgment.reviewPackageDigest, acceptanceAuthority: false },
+    });
   }
 
   const exhaustedRoutes = await ctx.db

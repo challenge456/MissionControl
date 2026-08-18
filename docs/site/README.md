@@ -27,6 +27,7 @@ Open **Knowledge → Docs → Documentation** in the EOS sidebar (`pnpm dev:demo
 ### Software Factory enhancement
 - [Factory Learning and continuous improvement](./software-factory-enhancement/factory-learning.md)
 - [Progressive Factory experience](./software-factory-enhancement/progressive-factory-experience.md)
+- [Evidence-first human review](./software-factory-enhancement/review-intelligence.md)
 
 ### Overview
 - [What is Mission Control?](./overview/readme.md)

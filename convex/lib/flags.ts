@@ -67,6 +67,7 @@ export const KNOWN_FLAGS: FlagDefinition[] = [
   { key: "factory-memory.agentic-retrieval", description: "Bounded Context Planner and sufficiency loop", defaultEnabled: false },
   { key: "factory-memory.knowledge-graph", description: "Bounded Factory Knowledge Graph traversal and path inspection", defaultEnabled: false },
   { key: "factory-memory.context-engine", description: "Frozen Attempt Context Packages, verification influence, and context evals", defaultEnabled: false },
+  { key: "review-intelligence.residual-ai", description: "Optional post-verification advisory residual analysis", defaultEnabled: false },
 ];
 
 const KNOWN_FLAG_MAP: Map<string, FlagDefinition> = new Map(

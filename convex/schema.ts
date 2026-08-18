@@ -51,6 +51,14 @@ import {
   projectConstitutionContentValidator,
   requirementsCoverageProjectionValidator,
 } from "./lib/missionSpecValidators";
+import {
+  decisionCandidateCategoryValidator,
+  decisionCandidateStatusValidator,
+  decisionCandidateTargetValidator,
+  residualFindingValidator,
+  reviewActionValidator,
+  reviewCorrectionCategoryValidator,
+} from "./lib/reviewIntelligenceValidators";
 
 // ============================================================================
 // ENUMS (as union types)
@@ -2348,6 +2356,115 @@ export default defineSchema({
     .index("by_run", ["workflowRunId"])
     .index("by_verification_run", ["verificationRunId"])
     .index("by_idempotency", ["idempotencyKey"]),
+
+  // Advisory review context over canonical delivery and verification records.
+  // None of these tables can verify, publish, merge, or accept work.
+  decisionCandidates: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.id("projects"),
+    repositoryId: v.optional(v.id("workspaceRepositories")),
+    missionId: v.optional(v.id("missions")),
+    missionSpecRevisionId: v.optional(v.id("missionSpecRevisions")),
+    missionPlanId: v.optional(v.id("missionPlans")),
+    workOrderId: v.id("workOrders"),
+    workOrderRevisionNumber: v.number(),
+    workflowRunId: v.id("workflowRuns"),
+    sourceSessionId: v.optional(v.string()),
+    candidateRevision: v.optional(v.string()),
+    pullRequestUrl: v.optional(v.string()),
+    category: decisionCandidateCategoryValidator,
+    proposedTarget: decisionCandidateTargetValidator,
+    origin: v.union(v.literal("HUMAN"), v.literal("AGENT")),
+    originActorId: v.string(),
+    capturedBy: v.string(),
+    trustedSource: v.boolean(),
+    summary: v.string(),
+    sourceReference: v.string(),
+    contentDigest: v.string(),
+    status: decisionCandidateStatusValidator,
+    rationale: v.optional(v.string()),
+    decisionReason: v.optional(v.string()),
+    decidedBy: v.optional(v.string()),
+    decidedAt: v.optional(v.number()),
+    resultingArtifactType: v.optional(v.union(
+      v.literal("SPEC_REVISION"), v.literal("PLAN_REVISION"),
+      v.literal("WORK_ORDER_REVISION"), v.literal("ADR_DOCUMENTATION"),
+    )),
+    resultingArtifactId: v.optional(v.string()),
+    idempotencyKey: v.string(),
+    createdAt: v.number(),
+    acceptanceAuthority: v.literal(false),
+  })
+    .index("by_idempotency", ["idempotencyKey"])
+    .index("by_work_order_created", ["workOrderId", "createdAt"])
+    .index("by_attempt_created", ["workflowRunId", "createdAt"])
+    .index("by_project_status", ["projectId", "status"]),
+
+  reviewJudgments: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.id("projects"),
+    repositoryId: v.optional(v.id("workspaceRepositories")),
+    missionId: v.optional(v.id("missions")),
+    missionSpecRevisionId: v.optional(v.id("missionSpecRevisions")),
+    missionPlanId: v.optional(v.id("missionPlans")),
+    workOrderId: v.id("workOrders"),
+    workOrderRevisionNumber: v.number(),
+    workflowRunId: v.id("workflowRuns"),
+    candidateRevision: v.optional(v.string()),
+    pullRequestUrl: v.optional(v.string()),
+    reviewPackageDigest: v.string(),
+    action: reviewActionValidator,
+    correctionCategory: v.optional(reviewCorrectionCategoryValidator),
+    summary: v.string(),
+    sourceReference: v.optional(v.string()),
+    normalizedCorrection: v.optional(v.string()),
+    actorId: v.string(),
+    actorSource: v.union(v.literal("AUTHENTICATED"), v.literal("DEVELOPMENT_FALLBACK")),
+    idempotencyKey: v.string(),
+    recordedAt: v.number(),
+    acceptanceAuthority: v.literal(false),
+  })
+    .index("by_idempotency", ["idempotencyKey"])
+    .index("by_work_order_recorded", ["workOrderId", "recordedAt"])
+    .index("by_attempt_recorded", ["workflowRunId", "recordedAt"])
+    .index("by_project_action", ["projectId", "action"]),
+
+  residualReviewAnalyses: defineTable({
+    tenantId: v.optional(v.id("tenants")),
+    projectId: v.id("projects"),
+    repositoryId: v.optional(v.id("workspaceRepositories")),
+    missionId: v.optional(v.id("missions")),
+    workOrderId: v.id("workOrders"),
+    workOrderRevisionNumber: v.number(),
+    workflowRunId: v.id("workflowRuns"),
+    verificationRunId: v.id("verificationRuns"),
+    verificationSubjectId: v.string(),
+    verificationSubjectDigest: v.string(),
+    verificationPlanId: v.string(),
+    verificationPlanDigest: v.string(),
+    evidenceSetDigest: v.string(),
+    sourceRevision: v.string(),
+    candidateRevision: v.string(),
+    contextDigest: v.string(),
+    reviewerId: v.string(),
+    executionActorId: v.string(),
+    provider: v.string(),
+    model: v.string(),
+    promptVersion: v.string(),
+    tokenUsage: v.optional(v.object({
+      input: v.optional(v.number()), output: v.optional(v.number()),
+      cached: v.optional(v.number()), total: v.optional(v.number()),
+    })),
+    estimatedCostUsd: v.optional(v.number()),
+    findings: v.array(residualFindingValidator),
+    idempotencyKey: v.string(),
+    createdAt: v.number(),
+    authority: v.literal("ADVISORY"),
+    acceptanceAuthority: v.literal(false),
+  })
+    .index("by_idempotency", ["idempotencyKey"])
+    .index("by_work_order_created", ["workOrderId", "createdAt"])
+    .index("by_attempt_created", ["workflowRunId", "createdAt"]),
 
   runEvents: defineTable({
     tenantId: v.optional(v.id("tenants")),
@@ -6388,6 +6505,7 @@ export default defineSchema({
       v.literal("RUN_EVENT"),
       v.literal("TRACE"),
       v.literal("HUMAN_DECISION"),
+      v.literal("REVIEW_JUDGMENT"),
       v.literal("CONFIGURATION_REGISTRY"),
       v.literal("MISSION_SPEC_QUALITY")
     ),

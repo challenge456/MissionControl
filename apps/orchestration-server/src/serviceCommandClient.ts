@@ -16,6 +16,8 @@ export type ServiceCapability =
   | "verification:claim"
   | "verification:renew"
   | "verification:report"
+  | "review.decision-candidate.record"
+  | "review.residual-analysis.record"
   | "sandboxes.list-reconcile"
   | "sandboxes.report-reconcile"
   | "executions.claim"

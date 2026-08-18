@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ReviewEvidencePackage, type ReviewEvidencePackageData } from "./ReviewEvidencePackage";
 
@@ -12,6 +12,54 @@ const ready: ReviewEvidencePackageData = {
   ci: { status: "PASS", runUrl: "https://github.com/acme/repo/actions/1", evaluationId: "check-1", headSha: "head", prState: "OPEN", lenses: [] },
   criteria: [{ id: "tests", title: "Tests pass", verificationMethod: "TEST", status: "PASS", receiptId: "receipt-1", verifier: "validator:ci", result: "454 tests passed", evidenceLocation: null, validUntil: null, integrityIssue: null }],
   changedFiles: ["src/feature.ts"], deviations: [], failedChecks: [], risks: [], riskLevel: "MEDIUM", reviewerFocus: ["Review repository publication boundary"], rollbackApproach: "Revert the PR.", recovery: { attempts: 2, staleRecoveries: 1 },
+};
+
+const reviewIntelligence: NonNullable<ReviewEvidencePackageData["reviewIntelligence"]> = {
+  projectionVersion: 1,
+  digest: "sha256:package",
+  intent: {
+    mission: { id: "mission-1", title: "Protect checkout", objective: "Keep unauthorized buyers out." },
+    spec: { id: "spec-1", revisionNumber: 2, digest: "sha256:spec" },
+    plan: { id: "plan-1", revisionNumber: 3, status: "APPROVED", summary: "Add an authorization guard." },
+    workOrder: { id: "wo-1", revisionNumber: 2, title: "Add guard", desiredOutcome: "Return 403." },
+    qualityContractDigest: "sha256:quality",
+    definitionOfDone: [{ id: "tests", title: "Tests pass" }],
+  },
+  criterionMatrix: [{
+    criterion: { id: "tests", title: "Tests pass", description: null, requirementIds: ["req-1"] },
+    specRequirements: [{ id: "req-1", title: "Tests remain green", priority: "MUST" }],
+    planAssertions: [{ id: "assertion-1", title: "Regression suite", verificationMethod: "TEST", requiredEvidence: "Test output" }],
+    verificationChecks: [{ id: "check-1", name: "Regression", verifierId: "validator:ci", status: "PASS", evidenceIds: ["envelope-1"] }],
+    evidence: [{ id: "envelope-1", verificationRunId: "verification-1", sourceAttemptId: "run-doc-1", artifactReferences: ["artifact:test"], contentHash: "sha256:evidence", candidateRevision: "head", recordedAt: 100 }],
+    result: "PASS", method: "TEST", receiptId: "receipt-1", verifier: "validator:ci", current: true, integrityIssue: null,
+  }],
+  changes: {
+    summary: "Added a bounded authorization guard.",
+    semanticGroups: [{ id: "authentication", name: "Authentication", method: "DETERMINISTIC", authority: "ADVISORY", files: [{ path: "src/auth.ts" }] }],
+    rawDiffUrl: "https://github.com/acme/repo/pull/1/files",
+  },
+  failedOrRecovered: [{ eventType: "RUN_RETRIED", sequenceNumber: 14, status: "RUNNING", summary: "Retried after a stale lease." }],
+  decisions: [{ _id: "decision-1", category: "ARCHITECTURE_CHOICE", proposedTarget: "ADR_DOCUMENTATION", summary: "Keep policy evaluation server-side.", status: "PROPOSED", origin: "AGENT", originActorId: "agent:worker", trustedSource: true, contentDigest: "sha256:decision" }],
+  historicalDecisionCount: 0,
+  judgments: [],
+  historicalJudgmentCount: 0,
+  residualAnalyses: [{
+    _id: "analysis-1", current: true, reviewerId: "service:reviewer", provider: "openai", model: "review-model",
+    promptVersion: "residual-v1", contextDigest: "sha256:context", evidenceSetDigest: "sha256:evidence",
+    tokenUsage: { total: 812 }, estimatedCostUsd: 0.0134, authority: "ADVISORY",
+    findings: [{ findingId: "finding-1", category: "MAINTAINABILITY_CONCERN", summary: "Consider extracting the shared predicate.", fileReferences: ["src/auth.ts"], authority: "ADVISORY" }],
+  }],
+  residualRisks: ["Consider extracting the shared predicate."],
+  exactLineage: {
+    workOrderId: "wo-1", workOrderRevisionNumber: 2, workflowRunId: "run-doc-1",
+    candidateRevision: "head", reviewPackageDigest: "sha256:subject", current: true,
+    currentnessReasons: [], missionSpecRevisionId: "spec-1", verificationSubjectId: "subject-1",
+    verificationPlanId: "verification-plan-1", evidenceSetDigest: "sha256:evidence",
+  },
+  authority: {
+    deterministicEvidence: "CANONICAL_VERIFICATION", advisoryFindings: "ADVISORY",
+    reviewPackage: "PROJECTION", reviewApproval: "NOT_ACCEPTANCE", acceptanceMutation: "workOrders.accept",
+  },
 };
 
 describe("ReviewEvidencePackage", () => {
@@ -29,10 +77,12 @@ describe("ReviewEvidencePackage", () => {
   });
 
   it("keeps blocker reasons and missing evidence visible", () => {
-    render(<ReviewEvidencePackage review={{ ...ready, status: "BLOCKED", summary: "One blocker.", nextAction: "Fix CI.", blockers: ["Exact-head GitHub CI is failing."], ci: { ...ready.ci, status: "FAIL" } }} />);
+    render(<ReviewEvidencePackage review={{ ...ready, status: "BLOCKED", summary: "One blocker.", nextAction: "Fix CI.", blockers: ["Exact-head GitHub CI is failing."], ci: { ...ready.ci, status: "FAIL" }, reviewIntelligence }} onRecordJudgment={async () => {}} />);
     expect(screen.getByText("BLOCKED")).toBeInTheDocument();
     expect(screen.getByText(/Exact-head GitHub CI is failing/)).toBeInTheDocument();
     expect(screen.getByText("Fix CI.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Record review" }));
+    expect(screen.getByRole("option", { name: "Approve review package (not acceptance)" })).toBeDisabled();
   });
 
   it("explains when the execution worker attempted to verify its own work", () => {
@@ -69,5 +119,50 @@ describe("ReviewEvidencePackage", () => {
 
     expect(screen.getByText("Show 2 more")).toBeInTheDocument();
     expect(screen.getByText(/src\/file-10\.ts/)).toBeInTheDocument();
+  });
+
+  it("progressively reveals decisions, semantic groups, advisory findings, and exact lineage", () => {
+    render(<ReviewEvidencePackage review={{ ...ready, reviewIntelligence }} />);
+    expect(screen.getByText("Protect checkout")).toBeInTheDocument();
+    expect(screen.queryByText("Keep policy evaluation server-side.")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Intermediate" }));
+    expect(screen.getByText("Keep policy evaluation server-side.")).toBeInTheDocument();
+    expect(screen.getByText("Authentication", { exact: false })).toBeInTheDocument();
+    expect(screen.getByText("ADVISORY")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Advanced" }));
+    expect(screen.getByText("Canonical IDs, digests, and currentness")).toBeInTheDocument();
+    expect(screen.getByText("workOrders.accept")).toBeInTheDocument();
+    expect(screen.getByText("req-1")).toBeInTheDocument();
+    expect(screen.getByText("assertion-1")).toBeInTheDocument();
+    expect(screen.getByText("envelope-1")).toBeInTheDocument();
+    expect(screen.getByText("residual-v1")).toBeInTheDocument();
+    expect(screen.getByText("812 / $0.0134")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /open raw diff/i })).toHaveAttribute("href", "https://github.com/acme/repo/pull/1/files");
+  });
+
+  it("drills from a criterion into the exact receipt when the host provides navigation", () => {
+    const inspected: Array<{ id: string; receiptId: string }> = [];
+    render(<ReviewEvidencePackage review={{ ...ready, reviewIntelligence }} onInspectEvidence={(criterion) => inspected.push(criterion)} />);
+    fireEvent.click(screen.getByRole("button", { name: "Inspect exact evidence" }));
+    expect(inspected).toEqual([{ id: "tests", receiptId: "receipt-1" }]);
+  });
+
+  it("records a bounded review correction without presenting it as acceptance", async () => {
+    const calls: any[] = [];
+    render(<ReviewEvidencePackage review={{ ...ready, reviewIntelligence }} onRecordJudgment={async (input) => { calls.push(input); }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Record review" }));
+    fireEvent.change(screen.getByLabelText("Action"), { target: { value: "CORRECTION" } });
+    fireEvent.change(screen.getByLabelText("Learning category"), { target: { value: "MISSING_DETERMINISTIC_GATE" } });
+    fireEvent.change(screen.getByLabelText("Review judgment summary"), { target: { value: "Promote this invariant into a deterministic regression." } });
+    fireEvent.click(screen.getByRole("button", { name: "Record judgment" }));
+
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]).toMatchObject({
+      action: "CORRECTION", correctionCategory: "MISSING_DETERMINISTIC_GATE",
+      workOrderId: "wo-1", workflowRunId: "run-doc-1", reviewPackageDigest: "sha256:subject",
+    });
+    expect(screen.getByText(/Approval here is not WorkOrder acceptance/)).toBeInTheDocument();
   });
 });

@@ -91,6 +91,7 @@ export function ExecutionRunInspector({
       : "skip"
   );
   const requestCancellation = useMutation(api.workflowRuns.requestCancellation);
+  const recordReviewJudgment = useMutation(api.reviewIntelligence.recordReviewJudgment);
   const [cancelReason, setCancelReason] = useState("");
   const [canceling, setCanceling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
@@ -187,7 +188,24 @@ export function ExecutionRunInspector({
                 </div>
               </Card>
 
-              <ReviewEvidencePackage review={inspector.reviewPackage as ReviewEvidencePackageData} />
+              <ReviewEvidencePackage
+                review={inspector.reviewPackage as ReviewEvidencePackageData}
+                onInspectEvidence={() => navigateToRecords("receipts")}
+                onRecordJudgment={async (judgment) => {
+                  await recordReviewJudgment({
+                    workOrderId: judgment.workOrderId as Id<"workOrders">,
+                    workflowRunId: judgment.workflowRunId as Id<"workflowRuns">,
+                    expectedWorkOrderRevisionNumber: judgment.workOrderRevisionNumber,
+                    expectedCandidateRevision: judgment.candidateRevision,
+                    reviewPackageDigest: judgment.reviewPackageDigest,
+                    action: judgment.action,
+                    correctionCategory: judgment.correctionCategory,
+                    summary: judgment.summary,
+                    sourceReference: `run-inspector:${judgment.workflowRunId}`,
+                    idempotencyKey: `ui-review:${judgment.workOrderId}:${crypto.randomUUID()}`,
+                  });
+                }}
+              />
 
               <FactoryContextRunCard enabled={factoryContextEnabled} detail={factoryContext} />
 
