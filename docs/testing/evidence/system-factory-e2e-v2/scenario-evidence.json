@@ -1,7 +1,7 @@
 {
   "schemaVersion": "system-factory-e2e-qualification/v2",
   "result": "SYSTEM QUALIFIED V2 WITH KNOWN LIMITATIONS",
-  "baseSha": "ed2a8a9d686a7c1109aab381efa7eba369f8e996",
+  "baseSha": "e9d6b93e2edd5cf81beddd627abfbb67e7f85086",
   "runtimeContractVersion": 28,
   "hardeningV1": {
     "decision": "HARDENING V1 PASSED",
@@ -83,7 +83,7 @@
       "attempt-source-repaired",
       "attempt-source-current-head"
     ],
-    "executionManifestDigest": "sha256:16af189ad8340e51f26963af2867d0011a0eedb5efbe79bcb8910a7a9e7b5715",
+    "executionManifestDigest": "sha256:dcafcea040325872e7dcd7f738267f827f93f08555db12f55e4f568d74b20e91",
     "executionBackend": "remote-sandbox",
     "candidateShas": [
       "911cc67e464c075ddd7081ac5d72ceb2e9dc11bc",
@@ -119,8 +119,8 @@
     "execution": {
       "adapter": "codex",
       "version": "v1",
-      "capabilityManifestSha256": "sha256:4837270edf70ebb3efdc9e23b24ac2fe6c5eaf454f6c8f53a1ea2902c7b6226f",
-      "effectiveConfigSha256": "703467cc06f69929e44fd57043ca6fc8a5388620139d727811f348e94a6454ef",
+      "capabilityManifestSha256": "sha256:7e8b7435f6dab9a8a9a09b90ae1791110c3593ad1b38cdc48227d18069ec1c06",
+      "effectiveConfigSha256": "94daa9e3e1ee5ce2e3d8ca9116ec29c1a1eb8d78e232d1abb383cbdf2e7d6081",
       "executionBackend": "remote-sandbox"
     },
     "genericAdmission": {
@@ -232,9 +232,9 @@
     "sandboxHasGithubAuthority": false
   },
   "performance": {
-    "durationMs": 8562,
-    "sourceGateDurationMs": 3380,
-    "verificationDurationMs": 4738,
+    "durationMs": 9325,
+    "sourceGateDurationMs": 3745,
+    "verificationDurationMs": 5099,
     "sandboxProviderRuntimeMs": 1,
     "deterministicGateRuns": 7,
     "sourceAttempts": 5,

@@ -14,6 +14,13 @@ export const CODEX_HARNESS_EFFECTIVE_CONFIG = {
   outputSchema: "factory-result/v1",
   darwinArm64ExecutableSha256: "ae1d3ffe6d48aec6a4dc3f50e7eb8e0d11962485a6a9406c5a7012139383da02",
   resultContract: "factory-result/v1",
+  remoteModelProvider: {
+    id: "mission-control-openrouter",
+    baseUrl: "https://openrouter.ai/api/v1",
+    envKey: "OPENAI_API_KEY",
+    wireApi: "responses",
+    supportsWebsockets: false,
+  },
 } as const;
 
 export const DEEPSEEK_HARNESS_EFFECTIVE_CONFIG = {

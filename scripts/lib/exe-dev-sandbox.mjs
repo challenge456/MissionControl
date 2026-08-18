@@ -133,7 +133,7 @@ export function buildCreateVmCommand(name) {
     "--memory=2GB",
     "--disk=10GB",
     `--tag=${SANDBOX_DOCTOR_TAG}`,
-    "--comment=Mission Control read-only lifecycle canary; delete immediately",
+    "--comment=Mission-Control-read-only-lifecycle-canary-delete-immediately",
     "--no-email",
     "--json",
   ];
