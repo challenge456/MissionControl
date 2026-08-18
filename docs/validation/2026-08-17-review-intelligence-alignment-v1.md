@@ -10,6 +10,8 @@ exact-lineage projection without creating a second verifier, acceptance store,
 publication path, merge action, or top-level review product. Raw source review
 remains available.
 
+Draft pull request: https://github.com/jaydubya818/MissionControl/pull/119
+
 The isolated branch starts from exact then-current `origin/main`
 `e9d6b93e2edd5cf81beddd627abfbb67e7f85086`. The runtime contract started at
 v29. The public-change extractor found exactly seven new Review Intelligence and

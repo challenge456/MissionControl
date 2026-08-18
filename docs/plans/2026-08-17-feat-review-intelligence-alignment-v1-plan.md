@@ -1,7 +1,7 @@
 ---
 title: "feat: Review Intelligence & Alignment V1"
 type: feat
-status: active
+status: complete
 date: 2026-08-17
 base_sha: e9d6b93e2edd5cf81beddd627abfbb67e7f85086
 runtime_contract_before: 29
@@ -403,7 +403,8 @@ that explicit delta.
 - [x] Existing V2 qualification evidence is byte-for-byte unchanged.
 - [x] The extended composed qualification, browser matrix, accessibility, full
       tests, runtime guard, and build pass.
-- [ ] A draft PR is created; no production flag is enabled and no merge occurs.
+- [x] Draft PR #119 is created; no production flag is enabled and no merge
+      occurs.
 
 ## Publication
 
