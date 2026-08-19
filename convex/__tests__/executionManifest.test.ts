@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildFactoryExecutionManifest, type FactoryExecutionManifestInput } from "../lib/executionManifest";
+import {
+  buildFactoryExecutionManifest,
+  factorySandboxResourceName,
+  type FactoryExecutionManifestInput,
+} from "../lib/executionManifest";
 import { CODEX_V1_HARNESS_MANIFEST, DEEPSEEK_V1_HARNESS_MANIFEST, harnessCapabilityManifestDigest } from "@mission-control/workflow-engine";
 
 const input: FactoryExecutionManifestInput = {
@@ -56,6 +60,8 @@ const input: FactoryExecutionManifestInput = {
   codeScopes: [{ id: "scope-1", slug: "ui", includePaths: ["apps/ui/**"], excludePaths: ["apps/ui/generated/**"] }],
   allowedTools: ["apply_patch", "exec_command"],
   routedModel: "gpt-5",
+  maxAttempts: 3,
+  maxCostUsd: 5,
   maxRuntimeMinutes: 60,
   initialContext: { task: "Add the buyer gate" },
 };
@@ -87,6 +93,15 @@ describe("Factory execution manifest", () => {
       requiredCapabilities: ["git-worktree", "workspace-write"],
       harnessId: "codex-cli",
       capabilityManifestSha256: harnessCapabilityManifestDigest(CODEX_V1_HARNESS_MANIFEST),
+    });
+    expect(result.manifest.retryPolicy).toEqual({
+      schema: "factory-remote-retry-policy/v1",
+      maxAttempts: 3,
+      maxTotalWallClockMs: 3_600_000,
+      maxModelSpendUsd: 5,
+      maxProviderResources: 1,
+      retryableFailureClasses: ["RETRYABLE_INFRA", "RETRYABLE_EXECUTION"],
+      failClosedFailureClasses: ["NON_RETRYABLE_RESULT", "UNKNOWN"],
     });
     expect(result.manifest.intent).toMatchObject({ title: "Add the buyer gate", acceptanceCriterionIds: ["ac-1"] });
     expect(result.manifest.workOrderSpecification).toMatchObject({ riskLevel: "MEDIUM", acceptanceCriteria: [{ id: "ac-1" }] });
@@ -122,7 +137,11 @@ describe("Factory execution manifest", () => {
 
   it("freezes remote sandbox execution into the existing v1 manifest", () => {
     const sandbox = {
-      resourceName: "mc-attempt-0123456789abcdef",
+      resourceName: factorySandboxResourceName({
+        projectId: "project-1",
+        workflowRunId: input.runId,
+        attemptId: input.runId,
+      }),
       profileId: "profile-1",
       profileDigest: "sha256:profile",
       profileSnapshot: { schema: "factory-sandbox-profile/v1", provider: "EXE_DEV" },
@@ -139,6 +158,12 @@ describe("Factory execution manifest", () => {
     });
 
     expect(result.manifest.version).toBe("factory-execution-manifest/v1");
+    expect(result.manifest.causation.workflowRunId).toBe(input.runId);
+    expect(result.manifest.sandbox?.resourceName).toBe(factorySandboxResourceName({
+      projectId: "project-1",
+      workflowRunId: result.manifest.causation.workflowRunId,
+      attemptId: input.runId,
+    }));
     expect(result.manifest.harness.executionBackend).toBe("remote-sandbox");
     expect(result.manifest.sandbox).toEqual(sandbox);
     expect(result.digest).toMatch(/^sha256:[a-f0-9]{64}$/);

@@ -1,0 +1,569 @@
+{
+  "schema": "remote-codex-structured-output-qualification/v1",
+  "decision": "BLOCKED",
+  "startedAt": "2026-08-19T01:57:46.317Z",
+  "completedAt": "2026-08-19T02:00:14.066Z",
+  "baseline": {
+    "frozenOriginMainSha": "75981d8ae1bd49e235cc1478bac3d0f853fc717f",
+    "branchHeadBeforeQualification": "75981d8ae1bd49e235cc1478bac3d0f853fc717f",
+    "mergeBase": "75981d8ae1bd49e235cc1478bac3d0f853fc717f",
+    "runtimeContractVersion": 30,
+    "node": "v24.18.1",
+    "codex": "codex-cli 0.146.0",
+    "providerReadiness": {
+      "checkedAt": "2026-08-19T01:57:46.316Z",
+      "authenticated": true,
+      "vmCount": 0,
+      "maxVms": 50,
+      "liveAllocationAllowed": true,
+      "automaticIntegrationCount": 0,
+      "providerCostPerVmUsd": null
+    }
+  },
+  "constraints": {
+    "maximumConcurrentVms": 1,
+    "guardedAutoEnabled": false,
+    "publicationAuthority": "CONTROL_PLANE_ONLY",
+    "acceptanceAuthority": "workOrders.accept",
+    "resultContract": "factory-result/v1",
+    "transportEnvelope": "factory-sandbox-result/v1"
+  },
+  "factoryPolicy": {
+    "schema": "factory-remote-retry-policy/v1",
+    "maxAttempts": 2,
+    "maxTotalWallClockMs": 720000,
+    "maxModelSpendUsd": 0.1,
+    "maxProviderResources": 1,
+    "retryableFailureClasses": [
+      "RETRYABLE_INFRA",
+      "RETRYABLE_EXECUTION"
+    ]
+  },
+  "profile": {
+    "schema": "factory-sandbox-profile/v1",
+    "profileKey": "exe-remote-codex-qualification-n1",
+    "version": 1,
+    "provider": "EXE_DEV",
+    "providerProfile": "individual-small",
+    "providerProfileVersion": "structured-output-qualification-v1",
+    "machine": {
+      "image": "node:24-bookworm",
+      "cpu": 2,
+      "memoryMb": 4096,
+      "diskGb": 20
+    },
+    "supervisor": {
+      "version": "mission-control-supervisor/v1",
+      "transport": "SSH"
+    },
+    "runtime": {
+      "maxRuntimeMs": 330000,
+      "resultPollIntervalMs": 500,
+      "resultRetentionMs": 86400000
+    },
+    "network": {
+      "egress": "UNRESTRICTED",
+      "egressAllowlist": [],
+      "publicIngress": false,
+      "exposedPorts": []
+    },
+    "credentials": {
+      "inference": "ATTEMPT_SCOPED_OPENROUTER",
+      "repositoryAccess": "CONTROL_PLANE_SNAPSHOT",
+      "githubAuthority": "NONE",
+      "providerAuthority": "NONE"
+    },
+    "spend": {
+      "maxUsd": 0.05,
+      "enforcement": "PROVIDER_KEY_LIMIT"
+    },
+    "teardown": {
+      "terminateOnEveryTerminalState": true,
+      "verifyResourceAbsent": true,
+      "supportsResume": false
+    },
+    "preview": {
+      "mode": "DISABLED"
+    },
+    "readiness": {
+      "state": "DEGRADED",
+      "checkedAt": 1787104666317,
+      "reason": "Live certified with unrestricted outbound egress and ephemeral Codex installation.",
+      "egressEnforcementProven": false,
+      "liveCertified": true,
+      "evidenceReference": "docs/software-factory/remote-sandbox-live-certification-v1.md"
+    },
+    "digest": "sha256:f676990a55e525be917dd0a84390869d8904597dac684b78d8774f9af55923d3"
+  },
+  "schedule": [
+    {
+      "phase": "STRUCTURED_OUTPUT_QUALIFICATION",
+      "executionId": "qualification-bug-fix-1",
+      "workloadKey": "bug-fix"
+    },
+    {
+      "phase": "STRUCTURED_OUTPUT_QUALIFICATION",
+      "executionId": "qualification-data-migration-1",
+      "workloadKey": "data-migration"
+    },
+    {
+      "phase": "STRUCTURED_OUTPUT_QUALIFICATION",
+      "executionId": "qualification-bug-fix-2",
+      "workloadKey": "bug-fix"
+    },
+    {
+      "phase": "STRUCTURED_OUTPUT_QUALIFICATION",
+      "executionId": "qualification-data-migration-2",
+      "workloadKey": "data-migration"
+    },
+    {
+      "phase": "STRUCTURED_OUTPUT_QUALIFICATION",
+      "executionId": "qualification-bug-fix-3",
+      "workloadKey": "bug-fix"
+    },
+    {
+      "phase": "PILOT_REMOTE_REGRESSION",
+      "executionId": "pilot-regression-bug-fix-3",
+      "workloadKey": "bug-fix"
+    },
+    {
+      "phase": "PILOT_REMOTE_REGRESSION",
+      "executionId": "pilot-regression-security-policy-3",
+      "workloadKey": "security-policy"
+    },
+    {
+      "phase": "PILOT_REMOTE_REGRESSION",
+      "executionId": "pilot-regression-data-migration-3",
+      "workloadKey": "data-migration"
+    }
+  ],
+  "executions": [
+    {
+      "executionId": "qualification-bug-fix-1",
+      "phase": "STRUCTURED_OUTPUT_QUALIFICATION",
+      "workloadKey": "bug-fix",
+      "workloadClass": "BUG_FIX",
+      "workloadTitle": "Correct integer-cent listing fee behavior",
+      "risk": "LOW",
+      "lineage": {
+        "missionId": "mission-qualification-bug-fix-1",
+        "planId": "plan-qualification-bug-fix-1",
+        "workOrderId": "work-order-qualification-bug-fix-1",
+        "workOrderRevisionNumber": 1,
+        "factoryDefinitionId": "factory-remote-codex-structured-output",
+        "factoryDefinitionVersionId": "factory-remote-codex-structured-output-v1",
+        "factoryVersion": 1,
+        "factoryConfigurationDigest": "sha256:b9f1f1ef65b23dd55b70df8d6d15b6fbca2fb6728ddb07a356ee25c7f51793db"
+      },
+      "sourceSha": "3c28c8c414aeeb673bd11d5a316f709977eb5573",
+      "factoryPolicy": {
+        "schema": "factory-remote-retry-policy/v1",
+        "maxAttempts": 2,
+        "maxTotalWallClockMs": 720000,
+        "maxModelSpendUsd": 0.1,
+        "maxProviderResources": 1,
+        "retryableFailureClasses": [
+          "RETRYABLE_INFRA",
+          "RETRYABLE_EXECUTION"
+        ]
+      },
+      "attempts": [
+        {
+          "attemptId": "attempt-qualification-bug-fix-1-1",
+          "attemptNumber": 1,
+          "retryOfAttemptId": null,
+          "workflowRunId": "workflow-qualification-bug-fix-1-1",
+          "leaseId": "lease-qualification-bug-fix-1-1",
+          "sourceSha": "3c28c8c414aeeb673bd11d5a316f709977eb5573",
+          "manifest": {
+            "version": "factory-execution-manifest/v1",
+            "causation": {
+              "missionId": "mission-qualification-bug-fix-1",
+              "missionPlanId": "plan-qualification-bug-fix-1",
+              "workOrderId": "work-order-qualification-bug-fix-1",
+              "workOrderRevisionNumber": 1,
+              "workflowRunId": "workflow-qualification-bug-fix-1-1",
+              "attemptId": "attempt-qualification-bug-fix-1-1"
+            },
+            "factory": {
+              "definitionId": "factory-remote-codex-structured-output",
+              "definitionVersionId": "factory-remote-codex-structured-output-v1",
+              "version": 1,
+              "configurationDigest": "sha256:b9f1f1ef65b23dd55b70df8d6d15b6fbca2fb6728ddb07a356ee25c7f51793db"
+            },
+            "repository": {
+              "repository": "sellerfi-pilot/bug-fix",
+              "baseSha": "3c28c8c414aeeb673bd11d5a316f709977eb5573",
+              "allowedPaths": [
+                "src/**"
+              ],
+              "excludedPaths": [
+                "tests/**",
+                "package.json",
+                ".git/**"
+              ]
+            },
+            "intent": {
+              "title": "Correct integer-cent listing fee behavior"
+            },
+            "harness": {
+              "adapter": "codex",
+              "version": "v1",
+              "harnessId": "codex-cli",
+              "harnessVersion": "0.146.0",
+              "provider": "openrouter",
+              "model": "openai/gpt-5.1-codex-mini",
+              "executionBackend": "remote-sandbox",
+              "isolation": "WORKSPACE_WRITE",
+              "pullRequestAuthority": "CONTROL_PLANE_ONLY",
+              "timeoutMs": 300000
+            },
+            "sandbox": {
+              "profileDigest": "sha256:f676990a55e525be917dd0a84390869d8904597dac684b78d8774f9af55923d3",
+              "supervisorVersion": "mission-control-supervisor/v1",
+              "credentialGrants": [
+                {
+                  "kind": "INFERENCE",
+                  "secretValueIncluded": false,
+                  "githubAuthority": "NONE",
+                  "providerAuthority": "NONE"
+                }
+              ]
+            },
+            "retryPolicy": {
+              "schema": "factory-remote-retry-policy/v1",
+              "maxAttempts": 2,
+              "maxTotalWallClockMs": 720000,
+              "maxModelSpendUsd": 0.1,
+              "maxProviderResources": 1,
+              "retryableFailureClasses": [
+                "RETRYABLE_INFRA",
+                "RETRYABLE_EXECUTION"
+              ]
+            }
+          },
+          "manifestDigest": "sha256:5f0346b8a39a1d86f747b110856d9eb5e07e6225d071084f22f656def5b61976",
+          "harness": {
+            "adapter": "codex",
+            "version": "v1",
+            "harnessId": "codex-cli",
+            "harnessVersion": "0.146.0",
+            "provider": "openrouter",
+            "model": "openai/gpt-5.1-codex-mini",
+            "executionBackend": "remote-sandbox",
+            "isolation": "WORKSPACE_WRITE",
+            "pullRequestAuthority": "CONTROL_PLANE_ONLY",
+            "timeoutMs": 300000
+          },
+          "invocation": {
+            "command": "npx",
+            "package": "@openai/codex@0.146.0",
+            "args": [
+              "-a",
+              "never",
+              "-c",
+              "model_provider=\"mission-control-openrouter\"",
+              "-c",
+              "model_providers.mission-control-openrouter.name=\"OpenRouter\"",
+              "-c",
+              "model_providers.mission-control-openrouter.base_url=\"https://openrouter.ai/api/v1\"",
+              "-c",
+              "model_providers.mission-control-openrouter.env_key=\"OPENAI_API_KEY\"",
+              "-c",
+              "model_providers.mission-control-openrouter.wire_api=\"responses\"",
+              "-c",
+              "model_providers.mission-control-openrouter.supports_websockets=false",
+              "exec",
+              "--json",
+              "--ephemeral",
+              "--ignore-user-config",
+              "--ignore-rules",
+              "--sandbox",
+              "workspace-write",
+              "--color",
+              "never",
+              "-C",
+              "/var/lib/mission-control/attempt/repository",
+              "-o",
+              "/var/lib/mission-control/attempt/executor-result.json",
+              "--output-schema",
+              "/var/lib/mission-control/attempt/factory-result.schema.json",
+              "-m",
+              "openai/gpt-5.1-codex-mini",
+              "Fix the listing fee defect in src/listingFee.mjs. The fee is five percent of non-negative integer cents, rounded to the nearest cent. Preserve strict input validation. Do not modify tests or package.json. Run npm test.\n\nThis is the first Attempt.\n\nReturn exactly one JSON object and no prose. It must contain schema with the exact value factory-result/v1, status, summary, completedAcceptanceCriterionIds, incompleteAcceptanceCriterionIds, unknownAcceptanceCriterionIds, verificationCommands, knownRisks, and nextAction.\n\nUse only these acceptance criterion IDs: BUG-001, BUG-002.\n\nRepository mutation is limited to these approved repository-relative boundaries:\n- src/**\nDenied repository-relative boundaries:\n- tests/**\n- package.json\n- .git/**\nDo not expose credentials in output, artifacts, or logs."
+            ],
+            "outputSchemaPath": "/var/lib/mission-control/attempt/factory-result.schema.json",
+            "outputSchema": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "schema",
+                "status",
+                "summary",
+                "completedAcceptanceCriterionIds",
+                "incompleteAcceptanceCriterionIds",
+                "unknownAcceptanceCriterionIds",
+                "verificationCommands",
+                "knownRisks",
+                "nextAction"
+              ],
+              "properties": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "factory-result/v1"
+                  ]
+                },
+                "status": {
+                  "enum": [
+                    "COMPLETED",
+                    "BLOCKED",
+                    "FAILED"
+                  ]
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "completedAcceptanceCriterionIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "incompleteAcceptanceCriterionIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "unknownAcceptanceCriterionIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "verificationCommands": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "knownRisks": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "nextAction": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "events": [
+            {
+              "type": "SANDBOX_REQUESTED",
+              "occurredAt": 1787104670492,
+              "resourceName": "mc-attempt-26aa0b123de0aefc",
+              "attemptId": "attempt-qualification-bug-fix-1-1",
+              "metadata": {
+                "provider": "EXE_DEV",
+                "profileDigest": "sha256:f676990a55e525be917dd0a84390869d8904597dac684b78d8774f9af55923d3",
+                "readiness": "DEGRADED"
+              }
+            },
+            {
+              "type": "SANDBOX_ALLOCATED",
+              "occurredAt": 1787104674112,
+              "resourceName": "mc-attempt-26aa0b123de0aefc",
+              "attemptId": "attempt-qualification-bug-fix-1-1",
+              "metadata": {
+                "providerResourceId": "mc-attempt-26aa0b123de0aefc"
+              }
+            },
+            {
+              "type": "SANDBOX_STARTED",
+              "occurredAt": 1787104678351,
+              "resourceName": "mc-attempt-26aa0b123de0aefc",
+              "attemptId": "attempt-qualification-bug-fix-1-1",
+              "metadata": {
+                "processId": "mc-attempt-26aa0b123de0aefc:supervisor"
+              }
+            },
+            {
+              "type": "SANDBOX_RESULT_RECEIVED",
+              "occurredAt": 1787104802473,
+              "resourceName": "mc-attempt-26aa0b123de0aefc",
+              "attemptId": "attempt-qualification-bug-fix-1-1",
+              "metadata": {
+                "resultDigest": "sha256:ca7775c0d9952f0302278d71b890134df81f1a4ca6c4eda8a52481191deb7c09",
+                "status": "FAILED",
+                "providerCostUsd": null,
+                "inferenceCostUsd": null
+              }
+            },
+            {
+              "type": "SANDBOX_CREDENTIAL_REVOKED",
+              "occurredAt": 1787104802888,
+              "resourceName": "mc-attempt-26aa0b123de0aefc",
+              "attemptId": "attempt-qualification-bug-fix-1-1",
+              "metadata": {
+                "grantKey": "mc-attempt-1d6d530612c2cfb4176a",
+                "externalCredentialId": "1c5944ca464a097525cc59e1a05c1f7582d6fd8f1c2144e2b217a62c2d628b5e"
+              }
+            },
+            {
+              "type": "SANDBOX_TERMINATION_REQUESTED",
+              "occurredAt": 1787104802888,
+              "resourceName": "mc-attempt-26aa0b123de0aefc",
+              "attemptId": "attempt-qualification-bug-fix-1-1",
+              "metadata": {
+                "providerResourceId": "mc-attempt-26aa0b123de0aefc"
+              }
+            },
+            {
+              "type": "SANDBOX_TERMINATED",
+              "occurredAt": 1787104805882,
+              "resourceName": "mc-attempt-26aa0b123de0aefc",
+              "attemptId": "attempt-qualification-bug-fix-1-1",
+              "metadata": {
+                "confirmedAbsentAt": 1787104805882
+              }
+            }
+          ],
+          "inventoryBefore": {
+            "checkedAt": "2026-08-19T01:57:50.464Z",
+            "authenticated": true,
+            "vmCount": 0,
+            "maxVms": 50,
+            "liveAllocationAllowed": true,
+            "automaticIntegrationCount": 0,
+            "providerCostPerVmUsd": null
+          },
+          "inventoryAfter": {
+            "checkedAt": "2026-08-19T02:00:10.061Z",
+            "authenticated": true,
+            "vmCount": 0,
+            "maxVms": 50,
+            "liveAllocationAllowed": true,
+            "automaticIntegrationCount": 0,
+            "providerCostPerVmUsd": null
+          },
+          "cleanup": {
+            "credentialIssued": true,
+            "credentialGrantKey": "mc-attempt-1d6d530612c2cfb4176a",
+            "credentialSecretPersisted": false,
+            "credentialRevoked": true,
+            "resourceName": "mc-attempt-26aa0b123de0aefc",
+            "resourceAbsent": true,
+            "finalVmCount": 0,
+            "passed": true
+          },
+          "startedAt": "2026-08-19T01:57:46.403Z",
+          "finishedAt": "2026-08-19T02:00:10.061Z",
+          "durationMs": 143658,
+          "transportBundleSchema": "factory-sandbox-result/v1",
+          "transportBundleDigest": "sha256:ca7775c0d9952f0302278d71b890134df81f1a4ca6c4eda8a52481191deb7c09",
+          "transportStatus": "FAILED",
+          "structuredResult": {
+            "schema": "factory-result/v1",
+            "status": "FAILED",
+            "summary": "No accepted factory-result/v1 was available; output-file state was SCHEMA_INVALID.",
+            "completedAcceptanceCriterionIds": [],
+            "incompleteAcceptanceCriterionIds": [],
+            "unknownAcceptanceCriterionIds": [],
+            "verificationCommands": [],
+            "knownRisks": [
+              "NON_RETRYABLE_RESULT:RESULT_SCHEMA_INVALID"
+            ],
+            "nextAction": "Inspect the bounded remote execution evidence before deciding whether to retry."
+          },
+          "resultProvenance": {
+            "source": "NONE",
+            "outputFile": {
+              "state": "SCHEMA_INVALID",
+              "byteLength": 468
+            },
+            "jsonl": {
+              "byteLength": 10585,
+              "lineCount": 29,
+              "malformedLineCount": 0,
+              "terminalCompletedCount": 1,
+              "terminalFailureCount": 0,
+              "validCandidateCount": 0
+            },
+            "context": {
+              "attemptId": "attempt-qualification-bug-fix-1-1",
+              "manifestDigest": "sha256:5f0346b8a39a1d86f747b110856d9eb5e07e6225d071084f22f656def5b61976",
+              "sourceSha": "3c28c8c414aeeb673bd11d5a316f709977eb5573"
+            }
+          },
+          "changedFiles": [
+            "src/listingFee.mjs"
+          ],
+          "executor": {
+            "exitCode": 0,
+            "stdoutDigest": "sha256:514f3f534b7c68839a511bd94b1b9d079db498b6bb7d87f156aaf925ef637e66",
+            "stderrDigest": "sha256:96a27fbba212394304ee38175d936800eecec24e0dc902d4da83e5d5f72299e0",
+            "stdoutTail": "{\"type\":\"thread.started\",\"thread_id\":\"01a017bd-65a6-70a3-852b-31d8d1223d7c\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"error\",\"message\":\"Model metadata for `openai/gpt-5.1-codex-mini` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.\"}}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_1\",\"type\":\"reasoning\",\"text\":\"**Planning bug fixes**\\n\\nI'm thinking about how to tackle the task of fixing the bug with the listing fee file. It seems like I might need a multi-step plan to get this sorted properly. I'll definitely use the planning tool to outline the steps I need to take. Breaking it down will help me ensure I don't miss anything important while working through the process.  Let's get this plan together!\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_2\",\"type\":\"todo_list\",\"items\":[{\"text\":\"Review ${PWD}/src/listingFee.mjs and understand requirements\",\"completed\":false},{\"text\":\"Adjust calculation code to compute rounding correctly and keep validation\",\"completed\":false},{\"text\":\"Run npm test and summarize results\",\"completed\":false}]}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_3\",\"type\":\"reasoning\",\"text\":\"**Preparing for tool call**\\n\\nI need to make sure I provide a clear instructions preamble before making the tool call. Should I open the file? Yes, that's a necessary step. I'll send a preamble message to set the context properly. It's all about making sure everything is clear and effective when I execute the tool. This will help the user understand what's happening and ensure the process goes smoothly. Let's get things set up!\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_4\",\"type\":\"command_execution\",\"command\":\"/bin/bash -lc ls\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_4\",\"type\":\"command_execution\",\"command\":\"/bin/bash -lc ls\",\"aggregated_output\":\"package.json\\nsrc\\ntests\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item",
+            "stderrTail": "Reading additional input from stdin...\nnpm notice\nnpm notice New major version of npm available! 11.17.0 -> 12.0.2\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.0.2\nnpm notice To update run: npm install -g npm@12.0.2\nnpm notice\n"
+          },
+          "usage": {
+            "providerCostUsd": null,
+            "inferenceCostUsd": null,
+            "inputTokens": 101223,
+            "outputTokens": 3490,
+            "observedAt": 1787104801348,
+            "providerRuntimeMs": 122400,
+            "enforcement": "OBSERVATION_ONLY"
+          },
+          "eventualSuccess": false,
+          "failure": {
+            "class": "NON_RETRYABLE_RESULT",
+            "code": "RESULT_SCHEMA_INVALID",
+            "stage": "RESULT_RECONSTRUCTION",
+            "retryable": false,
+            "summary": "No accepted factory-result/v1 was available; output-file state was SCHEMA_INVALID."
+          },
+          "retryDecision": {
+            "allowed": false,
+            "reason": "FAILURE_CLASS_NOT_RETRYABLE"
+          }
+        }
+      ],
+      "retries": 0,
+      "eventualSuccess": false,
+      "successfulAttemptId": null,
+      "structuredResult": null,
+      "resultProvenance": null,
+      "candidate": null,
+      "verification": null,
+      "acceptance": null,
+      "cleanup": {
+        "credentialIssued": true,
+        "credentialGrantKey": "mc-attempt-1d6d530612c2cfb4176a",
+        "credentialSecretPersisted": false,
+        "credentialRevoked": true,
+        "resourceName": "mc-attempt-26aa0b123de0aefc",
+        "resourceAbsent": true,
+        "finalVmCount": 0,
+        "passed": true
+      },
+      "durationMs": 143743
+    }
+  ],
+  "finalInventory": {
+    "checkedAt": "2026-08-19T02:00:14.066Z",
+    "authenticated": true,
+    "vmCount": 0,
+    "maxVms": 50,
+    "liveAllocationAllowed": true,
+    "automaticIntegrationCount": 0,
+    "providerCostPerVmUsd": null
+  },
+  "totalRemoteExecutionTimeMs": 143743,
+  "totalAttempts": 1,
+  "totalRetries": 0,
+  "totalModelCostUsd": null,
+  "totalProviderCostUsd": null
+}

@@ -1156,6 +1156,14 @@ export default defineSchema({
     resourceAbsentAt: v.optional(v.number()),
     teardownReceipt: v.optional(v.any()),
     failureReason: v.optional(v.string()),
+    failureClass: v.optional(v.union(
+      v.literal("RETRYABLE_INFRA"),
+      v.literal("RETRYABLE_EXECUTION"),
+      v.literal("NON_RETRYABLE_RESULT"),
+      v.literal("UNKNOWN"),
+    )),
+    failureCode: v.optional(v.string()),
+    retryable: v.optional(v.boolean()),
     providerMetadata: v.optional(v.any()),
     updatedAt: v.number(),
   })
@@ -4577,6 +4585,22 @@ export default defineSchema({
     evidenceState: v.optional(v.union(v.literal("PASSING"), v.literal("FAILING"), v.literal("STALE"), v.literal("MISSING"), v.literal("UNKNOWN"))),
     worktree: v.optional(v.string()),
     failureReason: v.optional(v.string()),
+    failureClass: v.optional(v.union(
+      v.literal("RETRYABLE_INFRA"),
+      v.literal("RETRYABLE_EXECUTION"),
+      v.literal("NON_RETRYABLE_RESULT"),
+      v.literal("UNKNOWN"),
+    )),
+    failureCode: v.optional(v.string()),
+    failureStage: v.optional(v.string()),
+    retryable: v.optional(v.boolean()),
+    retryDecision: v.optional(v.object({
+      allowed: v.boolean(),
+      reason: v.string(),
+      evaluatedAt: v.number(),
+      sourceAttemptId: v.optional(v.string()),
+      replacementAttemptId: v.optional(v.string()),
+    })),
     humanInterventions: v.optional(v.number()),
 
     // Timing

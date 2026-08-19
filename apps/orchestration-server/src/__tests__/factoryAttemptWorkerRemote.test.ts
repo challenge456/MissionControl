@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import { canonicalHash } from "@mission-control/shared";
 import { CODEX_V1_HARNESS_MANIFEST, harnessCapabilityManifestDigest } from "@mission-control/workflow-engine";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FactoryAttemptWorker, type FactoryAttemptWorkerDependencies } from "../factoryAttemptWorker.js";
+import { assertRemoteCandidateIdentity, FactoryAttemptWorker, type FactoryAttemptWorkerDependencies } from "../factoryAttemptWorker.js";
 import { FakeSandboxProvider } from "../fakeSandboxProvider.js";
 import { FakeSandboxCredentialBroker } from "../sandboxCredentials.js";
 import { createPatchDescriptor, createSandboxResultBundle, encodeSandboxResultBundle } from "../sandboxResultBundle.js";
@@ -40,6 +40,20 @@ afterEach(async () => {
 });
 
 describe("FactoryAttemptWorker remote Sandbox backend", () => {
+  it("rejects stale source and wrong candidate SHAs as non-retryable result failures", () => {
+    for (const input of [
+      { expectedSourceSha: "a".repeat(40), observedSourceSha: "b".repeat(40), expectedCandidateSha: "c".repeat(40), observedCandidateSha: "c".repeat(40), code: "CANDIDATE_SOURCE_SHA_MISMATCH" },
+      { expectedSourceSha: "a".repeat(40), observedSourceSha: "a".repeat(40), expectedCandidateSha: "c".repeat(40), observedCandidateSha: "d".repeat(40), code: "CANDIDATE_SHA_MISMATCH" },
+    ]) {
+      try {
+        assertRemoteCandidateIdentity(input);
+        throw new Error("Expected candidate identity rejection.");
+      } catch (error: any) {
+        expect(error.failure).toMatchObject({ class: "NON_RETRYABLE_RESULT", code: input.code, retryable: false });
+      }
+    }
+  });
+
   it("runs beneath the canonical worker lease, verifies on the host, cleans up, and only then publishes one PR", async () => {
     const checkoutRoot = await mkdtemp(path.join(tmpdir(), "mc-remote-worker-"));
     cleanup.push(checkoutRoot);
@@ -65,15 +79,29 @@ describe("FactoryAttemptWorker remote Sandbox backend", () => {
       attemptId: "factory-run-remote",
       workOrderId: "work-order-1",
       workOrderRevisionNumber: 1,
-      workflowRunId: "workflow-run-remote",
+      workflowRunId: "factory-run-remote",
       manifestDigest,
       profileDigest: sandboxProfileDigest(selectedProfile),
       sourceSha,
       supervisorVersion: "mission-control-supervisor/v1",
+      harness: {
+        adapter: "codex",
+        version: "v1",
+        harnessId: "codex-cli",
+        harnessVersion: "0.146.0",
+        provider: "openai",
+        model: "gpt-5",
+      },
       environment: { provider: selectedProfile.provider, image: selectedProfile.machine.image },
       startedAt: 1,
       finishedAt: 2,
       status: "COMPLETED",
+      resultProvenance: {
+        source: "OUTPUT_FILE",
+        outputFile: { state: "VALID", byteLength: 100 },
+        jsonl: { byteLength: 0, lineCount: 0, malformedLineCount: 0, terminalCompletedCount: 0, terminalFailureCount: 0, validCandidateCount: 0 },
+        context: { attemptId: "factory-run-remote", manifestDigest, sourceSha },
+      },
       structuredResult: {
         schema: "factory-result/v1",
         status: "COMPLETED",
@@ -93,7 +121,7 @@ describe("FactoryAttemptWorker remote Sandbox backend", () => {
       events: [{ type: "RESULT_WRITTEN", occurredAt: 2 }],
       patch: createPatchDescriptor(patchBytes),
       executor: { exitCode: 0, stdoutDigest: "sha256:stdout", stderrDigest: "sha256:stderr", stdoutTail: "", stderrTail: "" },
-      usage: { providerCostUsd: 0.01, inferenceCostUsd: 0.03, providerRuntimeMs: 1, observedAt: 2, enforcement: "PROVIDER_REPORTED" },
+      usage: { providerCostUsd: 0.01, inferenceCostUsd: 0.03, inputTokens: 10, outputTokens: 5, providerRuntimeMs: 1, observedAt: 2, enforcement: "PROVIDER_REPORTED" },
     });
     const provider = new FakeSandboxProvider({ result: encodeSandboxResultBundle(resultBundle) });
     const credentials = new FakeSandboxCredentialBroker();
@@ -208,6 +236,7 @@ describe("FactoryAttemptWorker remote Sandbox backend", () => {
       attemptId: "factory-run-remote", workflowRunId: "workflow-run-remote", manifestDigest, sourceSha, profile: selectedProfile,
     });
     const startRequest = provider.startRequest(manifest.sandbox.resourceName);
+    expect(startRequest?.workflowRunId).toBe("factory-run-remote");
     expect(Object.keys(startRequest?.environment ?? {}).sort()).toEqual(["OPENAI_API_KEY", "OPENAI_BASE_URL"]);
     expect(JSON.stringify(startRequest)).not.toContain("test-private-key");
     expect(JSON.stringify(startRequest)).not.toContain("MISSION_CONTROL_SERVICE_COMMAND_SECRET");
@@ -238,11 +267,11 @@ function profile(): SandboxProfileSnapshot {
 }
 
 function executionManifest(selectedProfile: SandboxProfileSnapshot, baseSha: string, worktree: string) {
-  const resourceName = stableSandboxResourceName({ projectId: "project-1", workflowRunId: "workflow-run-remote", attemptId: "factory-run-remote" });
+  const resourceName = stableSandboxResourceName({ projectId: "project-1", workflowRunId: "factory-run-remote", attemptId: "factory-run-remote" });
   return {
     version: "factory-execution-manifest/v1",
     causation: {
-      workOrderId: "work-order-1", workOrderRevisionNumber: 1, workflowRunId: "workflow-run-remote",
+      workOrderId: "work-order-1", workOrderRevisionNumber: 1, workflowRunId: "factory-run-remote",
       factoryDefinitionVersionId: "factory-version-1", factoryConfigurationDigest: "factory-v1-test", factoryPurpose: "SOFTWARE",
     },
     harness: {
@@ -262,6 +291,15 @@ function executionManifest(selectedProfile: SandboxProfileSnapshot, baseSha: str
       requiredHarnessCapabilities: [],
       pullRequestAuthority: "CONTROL_PLANE_ONLY", timeoutMs: 60_000,
     },
+    retryPolicy: {
+      schema: "factory-remote-retry-policy/v1",
+      maxAttempts: 3,
+      maxTotalWallClockMs: 300_000,
+      maxModelSpendUsd: 3,
+      maxProviderResources: 1,
+      retryableFailureClasses: ["RETRYABLE_INFRA", "RETRYABLE_EXECUTION"],
+      failClosedFailureClasses: ["NON_RETRYABLE_RESULT", "UNKNOWN"],
+    },
     repository: { baseSha, worktree, allowedPaths: ["src/**"], excludedPaths: [] },
     sandbox: {
       resourceName, profileId: "sandbox-profile-1", profileDigest: sandboxProfileDigest(selectedProfile), profileSnapshot: selectedProfile,
@@ -272,7 +310,7 @@ function executionManifest(selectedProfile: SandboxProfileSnapshot, baseSha: str
     },
     workflow: { steps: [{ modelRoute: "gpt-5" }] },
     compiledPrompt: "Implement the approved remote sandbox change.",
-    intent: { title: "Remote sandbox worker fixture" },
+    intent: { title: "Remote sandbox worker fixture", acceptanceCriterionIds: ["ac-remote"] },
     workOrderSpecification: {
       riskLevel: "MEDIUM", riskReasons: ["Bounded source change"], requiredApprovals: [],
       acceptanceCriteria: [{ id: "ac-remote", title: "Remote change is independently verified", requiredEvidence: [{ category: "TEST_RESULT", minimumCount: 1, independent: true }] }],

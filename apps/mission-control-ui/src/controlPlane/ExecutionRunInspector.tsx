@@ -54,7 +54,6 @@ export function ExecutionRunInspector({
     reason: string;
     runtime?: string;
     model?: string;
-    worktree?: string;
   }) => Promise<void>;
   onClose: () => void;
 }) {
@@ -415,7 +414,6 @@ export function ExecutionRunInspector({
                         reason,
                         runtime: inspector.run.runtime,
                         model: inspector.run.model,
-                        worktree: inspector.run.worktree,
                       })
                     : undefined}
                 />

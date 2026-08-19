@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  evaluateRemoteRetryPolicy,
   dispatchApprovalAllowed,
   dispatchInvalidatesVerificationReceipts,
   findActiveRun,
   nextStateForRunStatus,
+  latestRequiredRemoteRetryRun,
   publicDispatchActorAllowed,
+  resolveRemoteRetryFactoryVersion,
   validateDispatchable,
   resolveRetryExecutionBinding,
   validateRetryRequest,
@@ -118,7 +121,7 @@ describe("work order dispatch policy", () => {
 });
 
 describe("work order recovery dispatch", () => {
-  it("preserves the prior branch and worktree as one retry binding", () => {
+  it("does not inherit a failed Attempt branch or worktree into its replacement", () => {
     expect(resolveRetryExecutionBinding({
       priorRun: {
         _id: "run-1",
@@ -126,12 +129,12 @@ describe("work order recovery dispatch", () => {
         worktree: "/tmp/governed-proof",
       },
     })).toEqual({
-      branch: "codex/governed-proof",
-      worktree: "/tmp/governed-proof",
+      branch: undefined,
+      worktree: undefined,
     });
   });
 
-  it("preserves the root binding across a failed recovery chain", () => {
+  it("does not inherit a root binding across a failed recovery chain", () => {
     const root = {
       _id: "run-1",
       branch: "codex/governed-proof",
@@ -148,9 +151,101 @@ describe("work order recovery dispatch", () => {
       priorRun: failedRetry,
       lineage: [root, failedRetry],
     })).toEqual({
-      branch: "codex/governed-proof",
-      worktree: "/tmp/governed-proof",
+      branch: undefined,
+      worktree: undefined,
     });
+  });
+
+  it("honors an explicit operator-selected replacement binding", () => {
+    expect(resolveRetryExecutionBinding({
+      branch: "codex/replacement",
+      worktree: "/tmp/replacement",
+      priorRun: { _id: "run-1", branch: "codex/old", worktree: "/tmp/old" },
+    })).toEqual({ branch: "codex/replacement", worktree: "/tmp/replacement" });
+  });
+
+  it("rejects a branch or normalized worktree reused from the failed lineage", () => {
+    const lineage = [
+      { _id: "run-1", branch: "codex/root", worktree: "/tmp/root/" },
+      { _id: "run-2", branch: "codex/retry", worktree: "/tmp/retry" },
+    ];
+    expect(() => resolveRetryExecutionBinding({ branch: "codex/root", lineage }))
+      .toThrow(/fresh branch/);
+    expect(() => resolveRetryExecutionBinding({ worktree: "/tmp/root", lineage }))
+      .toThrow(/fresh worktree/);
+  });
+
+  it("requires the latest failed remote Attempt on the same revision and Task as retry parent", () => {
+    const runs = [
+      {
+        _id: "run-1",
+        status: "FAILED" as const,
+        startedAt: 100,
+        parentTaskId: "task-1",
+        executionManifest: {
+          causation: { workOrderRevisionNumber: 2 },
+          harness: { executionBackend: "remote-sandbox" },
+        },
+      },
+      {
+        _id: "run-2",
+        status: "FAILED" as const,
+        startedAt: 200,
+        parentTaskId: "task-1",
+        executionManifest: {
+          causation: { workOrderRevisionNumber: 2 },
+          harness: { executionBackend: "remote-sandbox" },
+        },
+      },
+    ];
+    expect(latestRequiredRemoteRetryRun({
+      runs,
+      workOrderRevisionNumber: 2,
+      parentTaskId: "task-1",
+    })?._id).toBe("run-2");
+    expect(latestRequiredRemoteRetryRun({
+      runs,
+      workOrderRevisionNumber: 3,
+      parentTaskId: "task-1",
+    })).toBeUndefined();
+  });
+
+  it("does not force retry lineage after a newer successful Attempt", () => {
+    expect(latestRequiredRemoteRetryRun({
+      workOrderRevisionNumber: 2,
+      runs: [
+        {
+          _id: "run-1",
+          status: "FAILED",
+          startedAt: 100,
+          executionManifest: {
+            causation: { workOrderRevisionNumber: 2 },
+            harness: { executionBackend: "remote-sandbox" },
+          },
+        },
+        {
+          _id: "run-2",
+          status: "COMPLETED",
+          startedAt: 200,
+          executionManifest: {
+            causation: { workOrderRevisionNumber: 2 },
+            harness: { executionBackend: "remote-sandbox" },
+          },
+        },
+      ],
+    })).toBeUndefined();
+  });
+
+  it("freezes a remote retry to its prior Factory Version", () => {
+    expect(resolveRemoteRetryFactoryVersion({
+      retryingRemote: true,
+      priorFactoryDefinitionVersionId: "factory-v1",
+    })).toBe("factory-v1");
+    expect(() => resolveRemoteRetryFactoryVersion({
+      retryingRemote: true,
+      priorFactoryDefinitionVersionId: "factory-v1",
+      requestedFactoryDefinitionVersionId: "factory-v2",
+    })).toThrow(/cannot replace/);
   });
 
   it("allows a reasoned retry of a failed run from the same WorkOrder", () => {
@@ -202,7 +297,60 @@ describe("work order recovery dispatch", () => {
       })
     ).toEqual({ ok: false, reason: "retry-reason-required" });
   });
+
+  it("permits only a classified remote transient inside every frozen bound", () => {
+    const remote = {
+      failureClass: "RETRYABLE_INFRA",
+      retryable: true,
+      policy: remoteRetryPolicy(),
+      attemptsUsed: 1,
+      totalWallClockMs: 30_000,
+      observedModelSpendUsd: null,
+      activeProviderResources: 0,
+    };
+    expect(evaluateRemoteRetryPolicy(remote)).toEqual({ allowed: true, reason: "WITHIN_FROZEN_BUDGET" });
+    expect(validateRetryRequest({
+      workOrderId: "wo-1",
+      retryReason: "Transient SSH result read failed.",
+      priorRun: { workOrderId: "wo-1", status: "FAILED" },
+      remote,
+    })).toEqual({
+      ok: true,
+      reason: "Transient SSH result read failed.",
+      retryDecision: { allowed: true, reason: "WITHIN_FROZEN_BUDGET" },
+    });
+  });
+
+  it.each([
+    ["FAILURE_CLASS_NOT_RETRYABLE", { failureClass: "UNKNOWN", retryable: false }],
+    ["MAX_ATTEMPTS_EXHAUSTED", { attemptsUsed: 3 }],
+    ["MAX_WALL_CLOCK_EXHAUSTED", { totalWallClockMs: 600_000 }],
+    ["MAX_MODEL_SPEND_EXHAUSTED", { observedModelSpendUsd: 3 }],
+    ["MAX_PROVIDER_RESOURCES_EXHAUSTED", { activeProviderResources: 1 }],
+  ] as const)("fails closed for remote retry decision %s", (reason, override) => {
+    expect(evaluateRemoteRetryPolicy({
+      failureClass: "RETRYABLE_EXECUTION",
+      retryable: true,
+      policy: remoteRetryPolicy(),
+      attemptsUsed: 1,
+      totalWallClockMs: 30_000,
+      observedModelSpendUsd: null,
+      activeProviderResources: 0,
+      ...override,
+    })).toEqual({ allowed: false, reason });
+  });
 });
+
+function remoteRetryPolicy() {
+  return {
+    schema: "factory-remote-retry-policy/v1",
+    maxAttempts: 3,
+    maxTotalWallClockMs: 600_000,
+    maxModelSpendUsd: 3,
+    maxProviderResources: 1,
+    retryableFailureClasses: ["RETRYABLE_INFRA", "RETRYABLE_EXECUTION"],
+  };
+}
 
 describe("work order lifecycle synchronization", () => {
   it("moves completed verified work to DONE", () => {

@@ -133,6 +133,16 @@ export function factoryAttemptRequiresReplacementOnClaim(input: {
   return hadExecutionOwnership && leaseIsInactive && !hasRecoverablePublicationCheckpoint;
 }
 
+export function lostFactoryAttemptFailure(input: { executionBackend?: string }) {
+  if (input.executionBackend !== "remote-sandbox") return {};
+  return {
+    failureClass: "RETRYABLE_INFRA" as const,
+    failureCode: "WORKER_LEASE_LOST",
+    failureStage: "EXECUTOR",
+    retryable: true,
+  };
+}
+
 export function expiredFactoryLeaseIdIsReplay(input: {
   lease?: AttemptLease;
   leaseId: string;
