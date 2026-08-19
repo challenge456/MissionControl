@@ -1,0 +1,290 @@
+[
+  {
+    "executionId": "bug-fix-1",
+    "backend": "persistent-worker",
+    "attemptId": "attempt-9e1588dce8fc-bug-fix-1-1",
+    "schema": "factory-result/v1",
+    "status": "COMPLETED",
+    "terminalStructuredResult": true,
+    "source": "CODEX_EXEC_OUTPUT",
+    "outputFile": null,
+    "jsonl": null,
+    "completedAcceptanceCriterionIds": [
+      "BUG-001",
+      "BUG-002"
+    ],
+    "incompleteAcceptanceCriterionIds": [],
+    "unknownAcceptanceCriterionIds": []
+  },
+  {
+    "executionId": "bug-fix-2",
+    "backend": "persistent-worker",
+    "attemptId": "attempt-9e1588dce8fc-bug-fix-2-1",
+    "schema": "factory-result/v1",
+    "status": "COMPLETED",
+    "terminalStructuredResult": true,
+    "source": "CODEX_EXEC_OUTPUT",
+    "outputFile": null,
+    "jsonl": null,
+    "completedAcceptanceCriterionIds": [
+      "BUG-001",
+      "BUG-002"
+    ],
+    "incompleteAcceptanceCriterionIds": [],
+    "unknownAcceptanceCriterionIds": []
+  },
+  {
+    "executionId": "bug-fix-3",
+    "backend": "remote-sandbox",
+    "attemptId": "attempt-9e1588dce8fc-bug-fix-3-1",
+    "schema": "factory-result/v1",
+    "status": "COMPLETED",
+    "terminalStructuredResult": true,
+    "source": "OUTPUT_FILE",
+    "outputFile": {
+      "state": "VALID",
+      "byteLength": 454
+    },
+    "jsonl": {
+      "byteLength": 4558,
+      "lineCount": 17,
+      "malformedLineCount": 0,
+      "terminalCompletedCount": 1,
+      "terminalFailureCount": 0,
+      "validCandidateCount": 1
+    },
+    "completedAcceptanceCriterionIds": [
+      "BUG-001",
+      "BUG-002"
+    ],
+    "incompleteAcceptanceCriterionIds": [],
+    "unknownAcceptanceCriterionIds": []
+  },
+  {
+    "executionId": "feature-1",
+    "backend": "persistent-worker",
+    "attemptId": "attempt-9e1588dce8fc-feature-1-1",
+    "schema": "factory-result/v1",
+    "status": "COMPLETED",
+    "terminalStructuredResult": true,
+    "source": "CODEX_EXEC_OUTPUT",
+    "outputFile": null,
+    "jsonl": null,
+    "completedAcceptanceCriterionIds": [
+      "FEATURE-001",
+      "FEATURE-002"
+    ],
+    "incompleteAcceptanceCriterionIds": [],
+    "unknownAcceptanceCriterionIds": []
+  },
+  {
+    "executionId": "feature-2",
+    "backend": "persistent-worker",
+    "attemptId": "attempt-9e1588dce8fc-feature-2-1",
+    "schema": "factory-result/v1",
+    "status": "COMPLETED",
+    "terminalStructuredResult": true,
+    "source": "CODEX_EXEC_OUTPUT",
+    "outputFile": null,
+    "jsonl": null,
+    "completedAcceptanceCriterionIds": [
+      "FEATURE-001",
+      "FEATURE-002"
+    ],
+    "incompleteAcceptanceCriterionIds": [],
+    "unknownAcceptanceCriterionIds": []
+  },
+  {
+    "executionId": "feature-3",
+    "backend": "persistent-worker",
+    "attemptId": "attempt-9e1588dce8fc-feature-3-1",
+    "schema": "factory-result/v1",
+    "status": "COMPLETED",
+    "terminalStructuredResult": true,
+    "source": "CODEX_EXEC_OUTPUT",
+    "outputFile": null,
+    "jsonl": null,
+    "completedAcceptanceCriterionIds": [
+      "FEATURE-001",
+      "FEATURE-002"
+    ],
+    "incompleteAcceptanceCriterionIds": [],
+    "unknownAcceptanceCriterionIds": []
+  },
+  {
+    "executionId": "refactor-1",
+    "backend": "persistent-worker",
+    "attemptId": "attempt-9e1588dce8fc-refactor-1-1",
+    "schema": "factory-result/v1",
+    "status": "COMPLETED",
+    "terminalStructuredResult": true,
+    "source": "CODEX_EXEC_OUTPUT",
+    "outputFile": null,
+    "jsonl": null,
+    "completedAcceptanceCriterionIds": [
+      "REFACTOR-001",
+      "REFACTOR-002"
+    ],
+    "incompleteAcceptanceCriterionIds": [],
+    "unknownAcceptanceCriterionIds": []
+  },
+  {
+    "executionId": "refactor-2",
+    "backend": "persistent-worker",
+    "attemptId": "attempt-9e1588dce8fc-refactor-2-1",
+    "schema": "factory-result/v1",
+    "status": "COMPLETED",
+    "terminalStructuredResult": true,
+    "source": "CODEX_EXEC_OUTPUT",
+    "outputFile": null,
+    "jsonl": null,
+    "completedAcceptanceCriterionIds": [
+      "REFACTOR-001",
+      "REFACTOR-002"
+    ],
+    "incompleteAcceptanceCriterionIds": [],
+    "unknownAcceptanceCriterionIds": []
+  },
+  {
+    "executionId": "refactor-3",
+    "backend": "persistent-worker",
+    "attemptId": "attempt-9e1588dce8fc-refactor-3-1",
+    "schema": "factory-result/v1",
+    "status": "COMPLETED",
+    "terminalStructuredResult": true,
+    "source": "CODEX_EXEC_OUTPUT",
+    "outputFile": null,
+    "jsonl": null,
+    "completedAcceptanceCriterionIds": [
+      "REFACTOR-001",
+      "REFACTOR-002"
+    ],
+    "incompleteAcceptanceCriterionIds": [],
+    "unknownAcceptanceCriterionIds": []
+  },
+  {
+    "executionId": "security-policy-1",
+    "backend": "persistent-worker",
+    "attemptId": "attempt-9e1588dce8fc-security-policy-1-1",
+    "schema": "factory-result/v1",
+    "status": "COMPLETED",
+    "terminalStructuredResult": true,
+    "source": "CODEX_EXEC_OUTPUT",
+    "outputFile": null,
+    "jsonl": null,
+    "completedAcceptanceCriterionIds": [
+      "SECURITY-001",
+      "SECURITY-002"
+    ],
+    "incompleteAcceptanceCriterionIds": [],
+    "unknownAcceptanceCriterionIds": []
+  },
+  {
+    "executionId": "security-policy-2",
+    "backend": "persistent-worker",
+    "attemptId": "attempt-9e1588dce8fc-security-policy-2-1",
+    "schema": "factory-result/v1",
+    "status": "COMPLETED",
+    "terminalStructuredResult": true,
+    "source": "CODEX_EXEC_OUTPUT",
+    "outputFile": null,
+    "jsonl": null,
+    "completedAcceptanceCriterionIds": [
+      "SECURITY-001",
+      "SECURITY-002"
+    ],
+    "incompleteAcceptanceCriterionIds": [],
+    "unknownAcceptanceCriterionIds": []
+  },
+  {
+    "executionId": "security-policy-3",
+    "backend": "remote-sandbox",
+    "attemptId": "attempt-9e1588dce8fc-security-policy-3-1",
+    "schema": "factory-result/v1",
+    "status": "COMPLETED",
+    "terminalStructuredResult": true,
+    "source": "OUTPUT_FILE",
+    "outputFile": {
+      "state": "VALID",
+      "byteLength": 389
+    },
+    "jsonl": {
+      "byteLength": 4046,
+      "lineCount": 15,
+      "malformedLineCount": 0,
+      "terminalCompletedCount": 1,
+      "terminalFailureCount": 0,
+      "validCandidateCount": 1
+    },
+    "completedAcceptanceCriterionIds": [
+      "SECURITY-001",
+      "SECURITY-002"
+    ],
+    "incompleteAcceptanceCriterionIds": [],
+    "unknownAcceptanceCriterionIds": []
+  },
+  {
+    "executionId": "data-migration-1",
+    "backend": "persistent-worker",
+    "attemptId": "attempt-9e1588dce8fc-data-migration-1-1",
+    "schema": "factory-result/v1",
+    "status": "COMPLETED",
+    "terminalStructuredResult": true,
+    "source": "CODEX_EXEC_OUTPUT",
+    "outputFile": null,
+    "jsonl": null,
+    "completedAcceptanceCriterionIds": [
+      "MIGRATION-001",
+      "MIGRATION-002",
+      "MIGRATION-003"
+    ],
+    "incompleteAcceptanceCriterionIds": [],
+    "unknownAcceptanceCriterionIds": []
+  },
+  {
+    "executionId": "data-migration-2",
+    "backend": "persistent-worker",
+    "attemptId": "attempt-9e1588dce8fc-data-migration-2-1",
+    "schema": "factory-result/v1",
+    "status": "COMPLETED",
+    "terminalStructuredResult": true,
+    "source": "CODEX_EXEC_OUTPUT",
+    "outputFile": null,
+    "jsonl": null,
+    "completedAcceptanceCriterionIds": [
+      "MIGRATION-001",
+      "MIGRATION-002",
+      "MIGRATION-003"
+    ],
+    "incompleteAcceptanceCriterionIds": [],
+    "unknownAcceptanceCriterionIds": []
+  },
+  {
+    "executionId": "data-migration-3",
+    "backend": "remote-sandbox",
+    "attemptId": "attempt-9e1588dce8fc-data-migration-3-1",
+    "schema": "factory-result/v1",
+    "status": "COMPLETED",
+    "terminalStructuredResult": true,
+    "source": "OUTPUT_FILE",
+    "outputFile": {
+      "state": "VALID",
+      "byteLength": 648
+    },
+    "jsonl": {
+      "byteLength": 21616,
+      "lineCount": 39,
+      "malformedLineCount": 0,
+      "terminalCompletedCount": 1,
+      "terminalFailureCount": 0,
+      "validCandidateCount": 1
+    },
+    "completedAcceptanceCriterionIds": [
+      "MIGRATION-001",
+      "MIGRATION-002",
+      "MIGRATION-003"
+    ],
+    "incompleteAcceptanceCriterionIds": [],
+    "unknownAcceptanceCriterionIds": []
+  }
+]

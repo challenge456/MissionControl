@@ -1,0 +1,185 @@
+{
+  "mode": "ADVISORY",
+  "guardedAutoEnabled": false,
+  "decisions": [
+    {
+      "executionId": "bug-fix-1",
+      "actualTupleKey": "codex-local-production",
+      "recommendedTupleKey": "codex-local-production",
+      "appliedTupleKey": "codex-local-production",
+      "rationale": "Advisory mode records the recommendation while the current certified tuple remains authoritative.",
+      "outcome": "VERIFIED",
+      "latencyMs": 30493,
+      "costUsd": null,
+      "guardedAutoApplied": false
+    },
+    {
+      "executionId": "bug-fix-2",
+      "actualTupleKey": "codex-local-production",
+      "recommendedTupleKey": "codex-local-production",
+      "appliedTupleKey": "codex-local-production",
+      "rationale": "Advisory mode records the recommendation while the current certified tuple remains authoritative.",
+      "outcome": "VERIFIED",
+      "latencyMs": 24679,
+      "costUsd": null,
+      "guardedAutoApplied": false
+    },
+    {
+      "executionId": "bug-fix-3",
+      "actualTupleKey": "codex-exedev-preview",
+      "recommendedTupleKey": "codex-local-production",
+      "appliedTupleKey": "codex-local-production",
+      "rationale": "Advisory mode records the recommendation while the current certified tuple remains authoritative.",
+      "outcome": "VERIFIED",
+      "latencyMs": 88900,
+      "costUsd": null,
+      "guardedAutoApplied": false
+    },
+    {
+      "executionId": "feature-1",
+      "actualTupleKey": "codex-local-production",
+      "recommendedTupleKey": "codex-local-production",
+      "appliedTupleKey": "codex-local-production",
+      "rationale": "Advisory mode records the recommendation while the current certified tuple remains authoritative.",
+      "outcome": "VERIFIED",
+      "latencyMs": 31616,
+      "costUsd": null,
+      "guardedAutoApplied": false
+    },
+    {
+      "executionId": "feature-2",
+      "actualTupleKey": "codex-local-production",
+      "recommendedTupleKey": "codex-local-production",
+      "appliedTupleKey": "codex-local-production",
+      "rationale": "Advisory mode records the recommendation while the current certified tuple remains authoritative.",
+      "outcome": "VERIFIED",
+      "latencyMs": 40059,
+      "costUsd": null,
+      "guardedAutoApplied": false
+    },
+    {
+      "executionId": "feature-3",
+      "actualTupleKey": "codex-local-production",
+      "recommendedTupleKey": "codex-local-production",
+      "appliedTupleKey": "codex-local-production",
+      "rationale": "Advisory mode records the recommendation while the current certified tuple remains authoritative.",
+      "outcome": "VERIFIED",
+      "latencyMs": 29351,
+      "costUsd": null,
+      "guardedAutoApplied": false
+    },
+    {
+      "executionId": "refactor-1",
+      "actualTupleKey": "codex-local-production",
+      "recommendedTupleKey": "codex-local-production",
+      "appliedTupleKey": "codex-local-production",
+      "rationale": "Advisory mode records the recommendation while the current certified tuple remains authoritative.",
+      "outcome": "VERIFIED",
+      "latencyMs": 32528,
+      "costUsd": null,
+      "guardedAutoApplied": false
+    },
+    {
+      "executionId": "refactor-2",
+      "actualTupleKey": "codex-local-production",
+      "recommendedTupleKey": "codex-local-production",
+      "appliedTupleKey": "codex-local-production",
+      "rationale": "Advisory mode records the recommendation while the current certified tuple remains authoritative.",
+      "outcome": "VERIFIED",
+      "latencyMs": 25080,
+      "costUsd": null,
+      "guardedAutoApplied": false
+    },
+    {
+      "executionId": "refactor-3",
+      "actualTupleKey": "codex-local-production",
+      "recommendedTupleKey": "codex-local-production",
+      "appliedTupleKey": "codex-local-production",
+      "rationale": "Advisory mode records the recommendation while the current certified tuple remains authoritative.",
+      "outcome": "VERIFIED",
+      "latencyMs": 28726,
+      "costUsd": null,
+      "guardedAutoApplied": false
+    },
+    {
+      "executionId": "security-policy-1",
+      "actualTupleKey": "codex-local-production",
+      "recommendedTupleKey": "codex-local-production",
+      "appliedTupleKey": "codex-local-production",
+      "rationale": "Advisory mode records the recommendation while the current certified tuple remains authoritative.",
+      "outcome": "VERIFIED",
+      "latencyMs": 29344,
+      "costUsd": null,
+      "guardedAutoApplied": false
+    },
+    {
+      "executionId": "security-policy-2",
+      "actualTupleKey": "codex-local-production",
+      "recommendedTupleKey": "codex-local-production",
+      "appliedTupleKey": "codex-local-production",
+      "rationale": "Advisory mode records the recommendation while the current certified tuple remains authoritative.",
+      "outcome": "VERIFIED",
+      "latencyMs": 23658,
+      "costUsd": null,
+      "guardedAutoApplied": false
+    },
+    {
+      "executionId": "security-policy-3",
+      "actualTupleKey": "codex-exedev-preview",
+      "recommendedTupleKey": "codex-local-production",
+      "appliedTupleKey": "codex-local-production",
+      "rationale": "Advisory mode records the recommendation while the current certified tuple remains authoritative.",
+      "outcome": "VERIFIED",
+      "latencyMs": 89437,
+      "costUsd": null,
+      "guardedAutoApplied": false
+    },
+    {
+      "executionId": "data-migration-1",
+      "actualTupleKey": "codex-local-production",
+      "recommendedTupleKey": "codex-local-production",
+      "appliedTupleKey": "codex-local-production",
+      "rationale": "Advisory mode records the recommendation while the current certified tuple remains authoritative.",
+      "outcome": "VERIFIED",
+      "latencyMs": 39090,
+      "costUsd": null,
+      "guardedAutoApplied": false
+    },
+    {
+      "executionId": "data-migration-2",
+      "actualTupleKey": "codex-local-production",
+      "recommendedTupleKey": "codex-local-production",
+      "appliedTupleKey": "codex-local-production",
+      "rationale": "Advisory mode records the recommendation while the current certified tuple remains authoritative.",
+      "outcome": "VERIFIED",
+      "latencyMs": 52402,
+      "costUsd": null,
+      "guardedAutoApplied": false
+    },
+    {
+      "executionId": "data-migration-3",
+      "actualTupleKey": "codex-exedev-preview",
+      "recommendedTupleKey": "codex-local-production",
+      "appliedTupleKey": "codex-local-production",
+      "rationale": "Advisory mode records the recommendation while the current certified tuple remains authoritative.",
+      "outcome": "VERIFIED",
+      "latencyMs": 230971,
+      "costUsd": null,
+      "guardedAutoApplied": false
+    }
+  ],
+  "guardedAutoAppliedCount": 0,
+  "recommendationAgreementRate": 0.8,
+  "recommendationAgreementCount": 12,
+  "sampleCount": 15,
+  "medianLocalLatencyMs": 29922,
+  "medianRemoteLatencyMs": 89437,
+  "evidenceCoverage": {
+    "localVerifiedSamples": 12,
+    "remoteVerifiedSamples": 3,
+    "minimumVerifiedSamplesPerTuple": 5
+  },
+  "enoughEvidenceForFutureBoundedExperiment": false,
+  "betterDecisionAssessment": "The advisory local recommendation would have reduced median latency for the bounded remote samples; the sample remains too small for automatic routing.",
+  "limitation": "Remote remains Preview and therefore fails production-certification eligibility; missing exact cost prevents an economic effectiveness claim."
+}

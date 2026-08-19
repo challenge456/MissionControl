@@ -1,0 +1,30 @@
+{
+  "unchanged": true,
+  "method": "Aggregate SHA-256 over sorted per-file SHA-256 records; verified again after V3 execution.",
+  "packets": {
+    "systemQualificationV1": {
+      "files": 14,
+      "aggregateSha256": "57200a1630cd3bdd2d0d7018d4215e0e80ac9fa06889645eb37131e6b2041702"
+    },
+    "systemQualificationV2": {
+      "files": 16,
+      "aggregateSha256": "3a5c85831e87940b30e0cb507d10f51e51e440746fc5c0e471a5804e5ff18949"
+    },
+    "productionFactoryPilotV1": {
+      "files": 27,
+      "aggregateSha256": "bb8e72d7a5d70100705d977a63efd19aa57c418d05b4a049a89a5f739240ee03"
+    },
+    "productionFactoryPilotV2": {
+      "files": 19,
+      "aggregateSha256": "060fc50538b813ee3f3a94d97e46677fcbef4135a523e02eab6017a181541694"
+    },
+    "remoteCodexStructuredOutputV1": {
+      "files": 14,
+      "aggregateSha256": "ac4e657649cc10e00cad5f99274d83c212eba306549c46ca9f45b1b5e3cddc93"
+    },
+    "remoteRuntimeReliabilityV1": {
+      "files": 16,
+      "aggregateSha256": "7f33c2b46329e96d13d73395be0604ca448411ac2dbd82a6db185d36308fafc8"
+    }
+  }
+}
