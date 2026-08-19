@@ -703,6 +703,10 @@ function restrictedCandidateProfile(): SandboxProfileSnapshot {
         nodeVersion: "v26.7.0",
         codexVersion: "codex-cli 0.146.0",
         codexBinarySha256: `sha256:${"c".repeat(64)}`,
+        gitVersion: "git version 2.55.0",
+        gitBinarySha256: `sha256:${"f".repeat(64)}`,
+        busyboxVersion: "BusyBox v1.37.0",
+        busyboxBinarySha256: `sha256:${"9".repeat(64)}`,
         toolchainInputsSha256: `sha256:${"d".repeat(64)}`,
       },
       execution: {
@@ -712,6 +716,7 @@ function restrictedCandidateProfile(): SandboxProfileSnapshot {
         homePath: "/var/lib/mission-control/attempt/home",
         temporaryPath: "/var/lib/mission-control/attempt/tmp",
         noNewPrivileges: true,
+        capabilityMode: "DROP_ALL",
       },
       network: {
         enforcement: "GUEST_NFTABLES",

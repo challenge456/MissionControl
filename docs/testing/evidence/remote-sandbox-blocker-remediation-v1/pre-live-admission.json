@@ -1,0 +1,21 @@
+{
+  "schema": "mission-control-remote-sandbox-pre-live-admission/v1",
+  "observedAt": "2026-08-19T22:55:00Z",
+  "criteria": {
+    "criticalVulnerabilitiesZero": true,
+    "highVulnerabilitiesZero": true,
+    "exactLocalImageAndToolchainVerified": true,
+    "workloadNonRoot": true,
+    "allCapabilitySetsZero": true,
+    "firewallMutationBlocked": true,
+    "credentialNegativeMatrixPassed": true,
+    "denyByDefaultEgressPassed": true,
+    "twoFreshInstanceIsolationPassed": true,
+    "packageInstallBlocked": true
+  },
+  "providerEnforcedEgress": false,
+  "providerLimitation": "provider-enforced egress unavailable",
+  "localAdmissionPassed": true,
+  "registryAdmissionPending": true,
+  "liveAllocationPerformed": false
+}

@@ -187,12 +187,16 @@ if (source !== config.sourceSha) throw new Error("Frozen source SHA mismatch.");
 const executionSecurity = config.executionSecurity;
 if (executionSecurity && (executionSecurity.user !== "mc-attempt" || executionSecurity.uid !== 10001 || executionSecurity.gid !== 10001
   || executionSecurity.homePath !== "/var/lib/mission-control/attempt/home"
-  || executionSecurity.temporaryPath !== "/var/lib/mission-control/attempt/tmp" || executionSecurity.noNewPrivileges !== true)) {
+  || executionSecurity.temporaryPath !== "/var/lib/mission-control/attempt/tmp" || executionSecurity.noNewPrivileges !== true
+  || executionSecurity.capabilityMode !== "DROP_ALL")) {
   throw new Error("Frozen non-root execution identity is invalid.");
 }
 const childCommand = executionSecurity ? "setpriv" : config.executor.command;
 const childArgs = executionSecurity ? [
   "--no-new-privs",
+  "--bounding-set=-all",
+  "--inh-caps=-all",
+  "--ambient-caps=-all",
   "--reuid=" + executionSecurity.uid,
   "--regid=" + executionSecurity.gid,
   "--clear-groups",

@@ -88,6 +88,10 @@ export interface SandboxProfileSnapshot {
       nodeVersion: string;
       codexVersion: string;
       codexBinarySha256: string;
+      gitVersion: string;
+      gitBinarySha256: string;
+      busyboxVersion: string;
+      busyboxBinarySha256: string;
       toolchainInputsSha256: string;
     };
     execution: {
@@ -97,6 +101,7 @@ export interface SandboxProfileSnapshot {
       homePath: "/var/lib/mission-control/attempt/home";
       temporaryPath: "/var/lib/mission-control/attempt/tmp";
       noNewPrivileges: true;
+      capabilityMode: "DROP_ALL";
     };
     network: {
       enforcement: "GUEST_NFTABLES";
@@ -194,6 +199,10 @@ export interface SandboxSecurityProof {
     nodeVersion: string;
     codexVersion: string;
     codexBinarySha256: string;
+    gitVersion: string;
+    gitBinarySha256: string;
+    busyboxVersion: string;
+    busyboxBinarySha256: string;
     toolchainInputsSha256: string;
     executionUid: number;
     executionGid: number;
@@ -202,6 +211,19 @@ export interface SandboxSecurityProof {
     repositoryOwnerUid: number;
     repositoryOwnerGid: number;
     protectedPathsReadOnly: boolean;
+    packageCachesAbsent: boolean;
+  };
+  privilege: {
+    noNewPrivileges: boolean;
+    capabilities: {
+      inheritable: string;
+      permitted: string;
+      effective: string;
+      bounding: string;
+      ambient: string;
+    };
+    firewallMutationBlocked: boolean;
+    packageManagerCommandsAbsent: string[];
   };
   network: {
     enforcement: "GUEST_NFTABLES";
@@ -213,6 +235,7 @@ export interface SandboxSecurityProof {
     approvedEndpointReachable: boolean;
     arbitraryExternalBlocked: boolean;
     privateNetworkBlocked: boolean;
+    linkLocalBlocked: boolean;
     metadataBlocked: boolean;
     unexpectedDnsBlocked: boolean;
   };
@@ -286,18 +309,21 @@ export function validateSandboxProfile(profile: SandboxProfileSnapshot): Sandbox
     }
     if (security.qualificationOnly !== true) errors.push("The restricted exe.dev candidate must remain qualification-only.");
     if (!imageDigest || imageDigest !== security.image.digest.toLowerCase()) errors.push("Restricted candidate image must be pinned by its exact OCI digest.");
-    if (![security.image.digest, security.image.sbomDigest, security.toolchain.codexBinarySha256, security.toolchain.toolchainInputsSha256]
+    if (![security.image.digest, security.image.sbomDigest, security.toolchain.codexBinarySha256,
+      security.toolchain.gitBinarySha256, security.toolchain.busyboxBinarySha256, security.toolchain.toolchainInputsSha256]
       .every((value) => /^sha256:[a-f0-9]{64}$/i.test(value))) {
       errors.push("Restricted candidate provenance and toolchain digests must be exact SHA-256 values.");
     }
     if (!security.image.provenanceReference.trim()) errors.push("Restricted candidate image provenance is required.");
-    if (security.toolchain.nodeVersion !== "v26.7.0" || security.toolchain.codexVersion !== "codex-cli 0.146.0") {
+    if (security.toolchain.nodeVersion !== "v26.7.0" || security.toolchain.codexVersion !== "codex-cli 0.146.0"
+      || security.toolchain.gitVersion !== "git version 2.55.0" || security.toolchain.busyboxVersion !== "BusyBox v1.37.0") {
       errors.push("Restricted candidate toolchain identity is not certified.");
     }
     if (security.execution.user !== "mc-attempt" || security.execution.uid !== 10_001 || security.execution.gid !== 10_001
       || security.execution.homePath !== "/var/lib/mission-control/attempt/home"
       || security.execution.temporaryPath !== "/var/lib/mission-control/attempt/tmp"
-      || security.execution.noNewPrivileges !== true) {
+      || security.execution.noNewPrivileges !== true
+      || security.execution.capabilityMode !== "DROP_ALL") {
       errors.push("Restricted candidate execution identity is invalid.");
     }
     const normalizedAllowlist = [...new Set(security.network.allowedHttpsHosts)].sort();

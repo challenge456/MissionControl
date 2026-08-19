@@ -1,0 +1,36 @@
+{
+  "schema": "mission-control-remote-image-remediation-local-provenance/v1",
+  "platform": "linux/amd64",
+  "baseImage": {
+    "reference": "node:26.7.0-alpine3.23",
+    "indexDigest": "sha256:ce3cc39fe3b8b2602d3b1c4d63d301e46b48c550ecb627869853ddcdda418b63",
+    "platformDigest": "sha256:beb1f82448d01c14c85266ee5ea8cca055e1e2dbf3880bbfcc6de85838f38c4f"
+  },
+  "localImageId": "sha256:58c2bb9156e84b025ffa41e9d784ef79dadcfb5bd97e15f9ca6f0bcce8ae8cc3",
+  "localImageSizeBytes": 247538140,
+  "priorCandidateSizeBytes": 590998416,
+  "sizeReductionPercent": 58.1,
+  "nodeVersion": "v26.7.0",
+  "codexVersion": "codex-cli 0.146.0",
+  "codexPackageIntegrity": "sha512-yG3sPWNda/2YAIQIDq9MrrjoCTIQ7rxYM5IasrG3VBcuhCLTkgeg/JzqmJq1V98RE4MJ5jCxDXXQlOjrditFRw==",
+  "codexLinuxX64PackageIntegrity": "sha512-fswvyGprAPCMiOEue/7MKMk7pCjh9kZIJfJX5i9atmfnmGYbYCcUhZsEH9LEP0+0t5xyPqDbfNXY7NSxIVuXxA==",
+  "codexBinarySha256": "sha256:2e863156ed35ecc5253b1e2f907a9143077b9f7cb51942070c61996471ff6e04",
+  "gitVersion": "git version 2.55.0",
+  "gitSourceSha256": "sha256:457fdb04dc8728e007d4688695e6912e6f680727920f2a40bf11eacc17505357",
+  "gitBinarySha256": "sha256:7127059b4ebea64f4a50fc3c64601b69a9694196f3ee0396efec6378a0b45078",
+  "busyboxVersion": "BusyBox v1.37.0",
+  "busyboxSourceSha256": "sha256:3311dff32e746499f4df0d5df04d7eb396382d7e108bb9250e7b519b837043a4",
+  "busyboxConfigSha256": "sha256:dda67cd9598360c6de2863d1e4b78e72d0850323bdc0f1db306bd209b6589744",
+  "busyboxBinarySha256": "sha256:5b99e6ed2c89c6c0c31d707307de9a1405ed6b90d736a3d774d1cf16fc9c3fea",
+  "toolchainInputsSha256": "sha256:f7119d0278ae40526c3ed48b4a3eec6d927d1a003776436d251e43b2fa5f6cdd",
+  "sbom": {
+    "format": "SPDX-2.3",
+    "generator": "syft-1.37.0",
+    "packages": 27,
+    "sha256": "sha256:23412aa1261dfb9eac6c7efb295b1229192e5cb8c6e9b216e078c4a490e3fa0f"
+  },
+  "coldBuildToolchainReproduced": true,
+  "registryDigest": null,
+  "registryPublication": false,
+  "provenanceAttestation": false
+}

@@ -300,6 +300,10 @@ function assertRestrictedSecurityProof(
     || proof.toolchain?.nodeVersion !== expected.toolchain.nodeVersion
     || proof.toolchain?.codexVersion !== expected.toolchain.codexVersion
     || proof.toolchain?.codexBinarySha256 !== expected.toolchain.codexBinarySha256
+    || proof.toolchain?.gitVersion !== expected.toolchain.gitVersion
+    || proof.toolchain?.gitBinarySha256 !== expected.toolchain.gitBinarySha256
+    || proof.toolchain?.busyboxVersion !== expected.toolchain.busyboxVersion
+    || proof.toolchain?.busyboxBinarySha256 !== expected.toolchain.busyboxBinarySha256
     || proof.toolchain?.toolchainInputsSha256 !== expected.toolchain.toolchainInputsSha256
     || proof.network?.enforcement !== "GUEST_NFTABLES"
     || proof.network?.providerEnforced !== false
@@ -310,13 +314,20 @@ function assertRestrictedSecurityProof(
     || !proof.network.approvedEndpointReachable
     || !proof.network.arbitraryExternalBlocked
     || !proof.network.privateNetworkBlocked
+    || !proof.network.linkLocalBlocked
     || !proof.network.metadataBlocked
     || !proof.network.unexpectedDnsBlocked
     || !proof.filesystem?.protectedPathsReadOnly
+    || !proof.filesystem.packageCachesAbsent
     || proof.filesystem.repositoryOwnerUid !== expected.execution.uid
     || proof.filesystem.repositoryOwnerGid !== expected.execution.gid
     || proof.toolchain?.executionUid !== expected.execution.uid
-    || proof.toolchain?.executionGid !== expected.execution.gid) {
+    || proof.toolchain?.executionGid !== expected.execution.gid
+    || proof.privilege?.noNewPrivileges !== true
+    || !proof.privilege?.firewallMutationBlocked
+    || JSON.stringify(proof.privilege?.packageManagerCommandsAbsent) !== JSON.stringify(["apk", "apt", "apt-get", "dpkg", "npm", "npx", "corepack", "yarn", "yarnpkg", "pnpm", "pnpx"])
+    || Object.values(proof.privilege?.capabilities ?? {}).some((value) => value !== "0000000000000000")
+    || Object.keys(proof.privilege?.capabilities ?? {}).length !== 5) {
     throw new Error("Restricted sandbox bootstrap returned an invalid or incomplete security proof.");
   }
   return proof;

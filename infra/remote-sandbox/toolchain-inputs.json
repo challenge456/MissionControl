@@ -3,9 +3,9 @@
   "profile": "remote-sandbox/exe-dev/restricted-candidate-v1",
   "platform": "linux/amd64",
   "baseImage": {
-    "reference": "cgr.dev/chainguard/node:latest-dev",
-    "indexDigest": "sha256:a80a0ccda073dd286414fe410189d2c749038af4c874e5e2be6d6fb8acc53182",
-    "platformDigest": "sha256:7d3fb5f2b096635e0a97491b46aa9f2a32df780c6882d47d5684bdcc4932f694"
+    "reference": "node:26.7.0-alpine3.23",
+    "indexDigest": "sha256:ce3cc39fe3b8b2602d3b1c4d63d301e46b48c550ecb627869853ddcdda418b63",
+    "platformDigest": "sha256:beb1f82448d01c14c85266ee5ea8cca055e1e2dbf3880bbfcc6de85838f38c4f"
   },
   "nodeVersion": "v26.7.0",
   "codex": {
@@ -14,22 +14,58 @@
     "packageIntegrity": "sha512-yG3sPWNda/2YAIQIDq9MrrjoCTIQ7rxYM5IasrG3VBcuhCLTkgeg/JzqmJq1V98RE4MJ5jCxDXXQlOjrditFRw==",
     "linuxX64PackageIntegrity": "sha512-fswvyGprAPCMiOEue/7MKMk7pCjh9kZIJfJX5i9atmfnmGYbYCcUhZsEH9LEP0+0t5xyPqDbfNXY7NSxIVuXxA=="
   },
+  "git": {
+    "version": "2.55.0",
+    "source": "https://www.kernel.org/pub/software/scm/git/git-2.55.0.tar.xz",
+    "sourceSha256": "sha256:457fdb04dc8728e007d4688695e6912e6f680727920f2a40bf11eacc17505357",
+    "disabledRemoteFeatures": ["curl", "expat", "openssl", "perl", "python", "tcltk"]
+  },
+  "busybox": {
+    "version": "1.37.0",
+    "source": "https://busybox.net/downloads/busybox-1.37.0.tar.bz2",
+    "sourceSha256": "sha256:3311dff32e746499f4df0d5df04d7eb396382d7e108bb9250e7b519b837043a4",
+    "configSha256": "sha256:dda67cd9598360c6de2863d1e4b78e72d0850323bdc0f1db306bd209b6589744",
+    "patches": [
+      {
+        "cve": "CVE-2026-38754",
+        "upstreamCommit": "a448b6d5b21e5b21249391389b6f0551d9bea136",
+        "patchSha256": "sha256:1fded29bce8798c066d346f99be3a625fc96ae229248fdf4f6847ffcc9d8c9f6"
+      },
+      {
+        "cve": "CVE-2026-38755",
+        "source": "https://lists.busybox.net/pipermail/busybox/2026-June/092354.html",
+        "patchSha256": "sha256:f71bcd88da2796cf0e179837f9b69a741c494006c93e210203023f16b956e89c"
+      }
+    ],
+    "disabledApplets": ["awk", "wget"],
+    "disabledAppletCves": ["CVE-2026-38753", "CVE-2025-60876"]
+  },
   "executionUser": {
     "name": "mc-attempt",
     "uid": 10001,
     "gid": 10001
   },
-  "packageOverrides": {
-    "busybox": "1.38.0-r1"
+  "directRuntimePackages": {
+    "busyboxPackageMetadata": "1.37.0-r30",
+    "ca-certificates-bundle": "20260611-r0",
+    "nftables": "1.1.5-r2",
+    "setpriv": "2.41.4-r0",
+    "zlib": "1.3.2-r0"
   },
   "requiredTools": [
     "ca-certificates",
-    "git",
-    "iproute2",
     "nftables",
-    "procps",
-    "setpriv",
-    "shadow",
-    "util-linux-misc"
+    "git",
+    "setpriv"
+  ],
+  "removedRuntimePackageManagers": [
+    "apk",
+    "corepack",
+    "npm",
+    "npx",
+    "pnpm",
+    "pnpx",
+    "yarn",
+    "yarnpkg"
   ]
 }

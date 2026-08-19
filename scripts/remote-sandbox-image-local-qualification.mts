@@ -17,11 +17,14 @@ try {
       "node --version",
       "codex --version",
       "cat /etc/mission-control/codex-binary.sha256",
+      "git --version",
+      "cat /etc/mission-control/git-binary.sha256",
+      "busybox | head -n 1 | cut -d' ' -f1-2",
+      "cat /etc/mission-control/busybox-binary.sha256",
       "cat /etc/mission-control/toolchain-inputs.sha256",
       "id -u mc-attempt",
       "id -g mc-attempt",
       "setpriv --version",
-      "setsid --version",
       "nft --version",
     ].join("; "),
   ])).stdout);
@@ -43,6 +46,10 @@ try {
         nodeVersion: toolchain.nodeVersion,
         codexVersion: toolchain.codexVersion,
         codexBinarySha256: `sha256:${toolchain.codexBinarySha256}`,
+        gitVersion: toolchain.gitVersion,
+        gitBinarySha256: `sha256:${toolchain.gitBinarySha256}`,
+        busyboxVersion: toolchain.busyboxVersion,
+        busyboxBinarySha256: `sha256:${toolchain.busyboxBinarySha256}`,
         toolchainInputsSha256: `sha256:${toolchain.toolchainInputsSha256}`,
       },
       execution: {
@@ -52,6 +59,7 @@ try {
         homePath: "/var/lib/mission-control/attempt/home",
         temporaryPath: "/var/lib/mission-control/attempt/tmp",
         noNewPrivileges: true,
+        capabilityMode: "DROP_ALL",
       },
       network: {
         enforcement: "GUEST_NFTABLES",
@@ -111,7 +119,7 @@ printf 'current attempt\n' >/var/lib/mission-control/attempt/repository/current-
 cp /qualification/restricted-bootstrap.mjs /var/lib/mission-control/attempt/restricted-bootstrap.mjs
 cp /qualification/restricted-bootstrap.json /var/lib/mission-control/attempt/restricted-bootstrap.json
 node /var/lib/mission-control/attempt/restricted-bootstrap.mjs /var/lib/mission-control/attempt/restricted-bootstrap.json >/tmp/bootstrap-output.json
-setpriv --no-new-privs --reuid=10001 --regid=10001 --clear-groups -- sh -c '
+setpriv --no-new-privs --bounding-set=-all --inh-caps=-all --ambient-caps=-all --reuid=10001 --regid=10001 --clear-groups -- sh -c '
   test "$OPENAI_API_KEY" = "attempt-scoped-test-only"
   test "$OPENAI_BASE_URL" = "https://openrouter.ai/api/v1"
   test -z "\${OPENROUTER_MANAGEMENT_API_KEY:-}"
@@ -123,6 +131,19 @@ setpriv --no-new-privs --reuid=10001 --regid=10001 --clear-groups -- sh -c '
   touch /var/lib/mission-control/attempt/repository/workspace-write-succeeds
   ! touch /etc/mission-control/forbidden-write
   ! touch /usr/forbidden-write
+  ! command -v apk
+  ! command -v npm
+  ! command -v npx
+  ! command -v corepack
+  ! command -v yarn
+  ! command -v yarnpkg
+  ! command -v pnpm
+  ! command -v pnpx
+  test ! -e /root/.npm
+  test ! -e /var/lib/mission-control/attempt/home/.npm
+  test ! -e /var/lib/mission-control/attempt/home/.cache/yarn
+  test ! -e /var/lib/mission-control/attempt/home/.local/share/pnpm
+  test ! -e /var/lib/mission-control/attempt/home/.pnpm-store
   test ! -e /var/lib/mission-control/attempt/previous-attempt-sentinel
 '
 touch /var/lib/mission-control/attempt/previous-attempt-sentinel
@@ -149,21 +170,27 @@ cat /var/lib/mission-control/attempt/security-proof.json
     credentialNegativeChecksPassed: true,
     workspaceWriteAllowed: true,
     protectedPathsReadOnly: true,
+    packageInstallBlocked: true,
+    packageCachesAbsent: true,
     proof,
   };
 }
 
 function parseToolchain(stdout: string) {
-  const [nodeVersion, codexVersion, codexBinarySha256, toolchainInputsSha256, uid, gid, setprivVersion, setsidVersion, nftVersion] = stdout.trim().split("\n");
+  const [nodeVersion, codexVersion, codexBinarySha256, gitVersion, gitBinarySha256, busyboxVersion,
+    busyboxBinarySha256, toolchainInputsSha256, uid, gid, setprivVersion, nftVersion] = stdout.trim().split("\n");
   return {
     nodeVersion,
     codexVersion,
     codexBinarySha256,
+    gitVersion,
+    gitBinarySha256,
+    busyboxVersion,
+    busyboxBinarySha256,
     toolchainInputsSha256,
     uid: Number(uid),
     gid: Number(gid),
     setprivVersion,
-    setsidVersion,
     nftVersion,
   };
 }

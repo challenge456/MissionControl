@@ -2,8 +2,21 @@ import { describe, expect, it, vi } from "vitest";
 import { canonicalHash } from "@mission-control/shared";
 import { ExeDevSandboxProvider, exeDevCommandErrorDetail, type ExeDevTransport } from "../exeDevSandboxProvider.js";
 import type { SandboxProfileSnapshot, SandboxSecurityProof } from "../sandboxProvider.js";
+import { standaloneRemoteSupervisorSource } from "../standaloneRemoteSupervisorSource.js";
+import { standaloneRestrictedSandboxBootstrapSource } from "../standaloneRestrictedSandboxBootstrapSource.js";
 
 describe("ExeDevSandboxProvider", () => {
+  it("drops every workload capability in both bootstrap probes and executor launch", () => {
+    for (const source of [standaloneRestrictedSandboxBootstrapSource(), standaloneRemoteSupervisorSource()]) {
+      expect(source).toContain('"--no-new-privs"');
+      expect(source).toContain('"--bounding-set=-all"');
+      expect(source).toContain('"--inh-caps=-all"');
+      expect(source).toContain('"--ambient-caps=-all"');
+    }
+    expect(standaloneRestrictedSandboxBootstrapSource()).toContain('"--privilege-probe"');
+    expect(standaloneRestrictedSandboxBootstrapSource()).toContain("firewallMutationBlocked");
+  });
+
   it("keeps production dispatch blocked until live lifecycle certification is recorded", async () => {
     const provider = new ExeDevSandboxProvider({ lobbyJson: vi.fn(), vmText: vi.fn() } as ExeDevTransport);
     const uncertified = profile();
@@ -256,11 +269,14 @@ function restrictedProfile(): SandboxProfileSnapshot {
       image: { digest, provenanceReference: "https://github.com/jaydubya818/MissionControl/actions/runs/1", sbomDigest: `sha256:${"b".repeat(64)}` },
       toolchain: {
         nodeVersion: "v26.7.0", codexVersion: "codex-cli 0.146.0",
-        codexBinarySha256: `sha256:${"c".repeat(64)}`, toolchainInputsSha256: `sha256:${"d".repeat(64)}`,
+        codexBinarySha256: `sha256:${"c".repeat(64)}`, gitVersion: "git version 2.55.0",
+        gitBinarySha256: `sha256:${"f".repeat(64)}`, busyboxVersion: "BusyBox v1.37.0",
+        busyboxBinarySha256: `sha256:${"9".repeat(64)}`, toolchainInputsSha256: `sha256:${"d".repeat(64)}`,
       },
       execution: {
         user: "mc-attempt", uid: 10_001, gid: 10_001,
-        homePath: "/var/lib/mission-control/attempt/home", temporaryPath: "/var/lib/mission-control/attempt/tmp", noNewPrivileges: true,
+        homePath: "/var/lib/mission-control/attempt/home", temporaryPath: "/var/lib/mission-control/attempt/tmp",
+        noNewPrivileges: true, capabilityMode: "DROP_ALL",
       },
       network: {
         enforcement: "GUEST_NFTABLES", providerEnforced: false, allowedHttpsHosts: ["openrouter.ai"],
@@ -278,15 +294,29 @@ function restrictedProof(): SandboxSecurityProof {
     observedAt: 1,
     toolchain: {
       nodeVersion: "v26.7.0", codexVersion: "codex-cli 0.146.0",
-      codexBinarySha256: `sha256:${"c".repeat(64)}`, toolchainInputsSha256: `sha256:${"d".repeat(64)}`,
+      codexBinarySha256: `sha256:${"c".repeat(64)}`, gitVersion: "git version 2.55.0",
+      gitBinarySha256: `sha256:${"f".repeat(64)}`, busyboxVersion: "BusyBox v1.37.0",
+      busyboxBinarySha256: `sha256:${"9".repeat(64)}`, toolchainInputsSha256: `sha256:${"d".repeat(64)}`,
       executionUid: 10_001, executionGid: 10_001,
     },
-    filesystem: { repositoryOwnerUid: 10_001, repositoryOwnerGid: 10_001, protectedPathsReadOnly: true },
+    filesystem: {
+      repositoryOwnerUid: 10_001, repositoryOwnerGid: 10_001,
+      protectedPathsReadOnly: true, packageCachesAbsent: true,
+    },
+    privilege: {
+      noNewPrivileges: true,
+      capabilities: {
+        inheritable: "0000000000000000", permitted: "0000000000000000", effective: "0000000000000000",
+        bounding: "0000000000000000", ambient: "0000000000000000",
+      },
+      firewallMutationBlocked: true,
+      packageManagerCommandsAbsent: ["apk", "apt", "apt-get", "dpkg", "npm", "npx", "corepack", "yarn", "yarnpkg", "pnpm", "pnpx"],
+    },
     network: {
       enforcement: "GUEST_NFTABLES", providerEnforced: false, policyDigest: `sha256:${"e".repeat(64)}`,
       allowedHttpsHosts: ["openrouter.ai"], resolvedAddresses: ["104.18.12.12"],
       controlExternalEndpointReachable: true,
-      approvedEndpointReachable: true, arbitraryExternalBlocked: true, privateNetworkBlocked: true,
+      approvedEndpointReachable: true, arbitraryExternalBlocked: true, privateNetworkBlocked: true, linkLocalBlocked: true,
       metadataBlocked: true, unexpectedDnsBlocked: true,
     },
   };

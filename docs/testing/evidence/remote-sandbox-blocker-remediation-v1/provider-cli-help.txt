@@ -1,0 +1,90 @@
+=== help ===
+
+EXE.DEV commands:
+
+  help                - Show help information
+  doc                 - Browse documentation
+  ls                  - List your VMs
+  new                 - Create a new VM
+  rm                  - Delete a VM
+  restart             - Restart a VM
+  rename              - rename a vm
+  tag                 - Add or remove tags on a VM
+  cp                  - Copy an existing VM
+  resize              - Resize a VM's resources (memory, CPU, disk)
+  comment             - Set or clear a short comment on a VM
+  domain              - Register custom domains for your VMs
+  share               - Share HTTPS VM access with others
+  whoami              - Show user information (email, keys, etc)
+  ssh-key             - Manage SSH keys for your account
+  set-region          - Set your preferred region for new VMs.
+  integrations (int)  - Manage integrations
+  billing             - View and manage your billing
+  invite              - Manage your invite link and rewards
+  shelley             - Manage Shelley agent on VMs
+  browser             - Generate a magic link to log in to the website
+  ssh                 - SSH into a VM
+  grant-support-root  - Allow exe.dev support to log in to a VM
+  exit                - Exit
+  stat                - Show vCPU, disk, IO, and network (RX/TX) metrics for a VM
+
+Run help <command> for more details
+
+
+=== new --help ===
+
+Command: new
+
+Create a new VM
+
+Options:
+  --comment       short note about the VM (max 200 bytes)
+  --cpu           number of CPUs (default 2; run 'billing plan' for plan limits)
+  --disk          disk size (e.g., 20, 20GB, 50G)
+  --env           environment variable in KEY=VALUE format (can be specified multiple times)
+  --image         container image
+  --integration   integration name to attach (can be specified multiple times or comma-separated)
+  --json          output in JSON format
+  --memory        memory allocation (e.g., 4, 4GB, 8G)
+  --name          VM name (auto-generated if not specified)
+  --no-email      do not send email notification
+  --pool          create the VM in one of your team's pools (see 'pool list')
+  --prompt        initial prompt to send to Shelley after VM creation (requires an image with Shelley, like exeuntu); use /dev/stdin to read from stdin
+  --registry-auth private container registry credentials as USERNAME:PASSWORD (e.g. octocat:ghp_xxx) for the registry hosting --image
+  --setup-script  setup script to run on first boot (max 10KiB); supports \n for newlines; use /dev/stdin to pipe from stdin
+  --tag           tag to add to the VM (can be specified multiple times or comma-separated)
+
+Examples:
+  new                                     # just give me a computer
+  new --name=b --image=ubuntu:22.04       # custom image and name
+  new --cpu=4 --memory=16GB               # 4 CPUs, 16GB RAM
+  new --disk=50GB                         # 50GB disk
+  new --tag=prod,staging                  # create with tags
+  new --env FOO=bar --env BAZ=qux         # with environment variables
+  new --integration=myproxy               # attach an integration
+  echo 'build me a web app' | ssh exe.dev new --prompt=/dev/stdin
+
+=== integrations --help ===
+
+Command: integrations
+Aliases: int
+
+Manage integrations
+
+Usage: integrations <subcommand> [args...]
+
+Subcommands:
+  list        - List your integrations
+  setup       - Set up a service integration
+  add         - Add a new integration
+  remove      - Remove an integration
+  test        - Test an integration's credential (connection check)
+  edit        - Edit an integration
+  attach      - Attach an integration to a VM, tag, or all VMs
+  detach      - Detach an integration from a VM, tag, or all VMs
+  rename      - Rename an integration
+  catalog     - Browse the catalog of ready-made service integrations
+  databases   - Browse ready-made database integrations (held endpoint + creds, SQL over TLS)
+
+=== api --help ===
+UNAVAILABLE: PROVIDER_COMMAND_FAILED: api --help failed with exit 1: exe.dev repl: command not found: "api --help"

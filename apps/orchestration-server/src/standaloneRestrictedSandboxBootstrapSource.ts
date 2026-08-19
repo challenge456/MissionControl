@@ -63,12 +63,61 @@ const approvedReachable = (host) => new Promise((resolve) => {
   request.end();
 });
 
+const absentPackageManagerCommands = ["apk", "apt", "apt-get", "dpkg", "npm", "npx", "corepack", "yarn", "yarnpkg", "pnpm", "pnpx"];
+const setprivConfinementArgs = [
+  "--no-new-privs",
+  "--bounding-set=-all",
+  "--inh-caps=-all",
+  "--ambient-caps=-all",
+];
+
+if (process.argv[2] === "--privilege-probe") {
+  const status = Object.fromEntries(readFileSync("/proc/self/status", "utf8")
+    .split("\n")
+    .map((line) => line.split(":", 2).map((value) => value.trim()))
+    .filter(([key, value]) => key && value));
+  let firewallMutationSucceeded = false;
+  try {
+    execFileSync("nft", ["add", "table", "inet", "mc_attempt_escape"], { stdio: "ignore", timeout: 5000 });
+    firewallMutationSucceeded = true;
+  } catch {}
+  if (firewallMutationSucceeded) {
+    try { execFileSync("nft", ["delete", "table", "inet", "mc_attempt_escape"], { stdio: "ignore", timeout: 5000 }); } catch {}
+  }
+  const firewallMutationBlocked = !firewallMutationSucceeded;
+  const packageManagerCommandsAbsent = absentPackageManagerCommands.filter((executable) => {
+    try {
+      execFileSync("sh", ["-c", "command -v \"$1\" >/dev/null 2>&1", "sh", executable], { stdio: "ignore", timeout: 5000 });
+      return false;
+    } catch {
+      return true;
+    }
+  });
+  const privilege = {
+    noNewPrivileges: status.NoNewPrivs === "1",
+    capabilities: {
+      inheritable: status.CapInh,
+      permitted: status.CapPrm,
+      effective: status.CapEff,
+      bounding: status.CapBnd,
+      ambient: status.CapAmb,
+    },
+    firewallMutationBlocked,
+    packageManagerCommandsAbsent,
+  };
+  const zeroCapabilities = Object.values(privilege.capabilities).every((value) => value === "0000000000000000");
+  process.stdout.write(JSON.stringify(privilege));
+  process.exit(privilege.noNewPrivileges && zeroCapabilities && firewallMutationBlocked
+    && packageManagerCommandsAbsent.length === absentPackageManagerCommands.length ? 0 : 1);
+}
+
 if (process.argv[2] === "--probe") {
   const probe = JSON.parse(process.env.MC_NETWORK_PROBE ?? "{}");
   const result = {
     approvedEndpointReachable: await approvedReachable(probe.approvedHost),
     arbitraryExternalBlocked: await connectBlocked(probe.controlExternalIp, 443),
     privateNetworkBlocked: await connectBlocked("10.0.0.1", 80),
+    linkLocalBlocked: await connectBlocked("169.254.1.1", 80),
     metadataBlocked: await connectBlocked("169.254.169.254", 80),
     unexpectedDnsBlocked: await unexpectedDnsBlocked(),
   };
@@ -109,7 +158,8 @@ const security = config.security;
 if (process.getuid?.() !== 0 || security?.schema !== "factory-sandbox-security/v1"
   || security.profile !== "remote-sandbox/exe-dev/restricted-candidate-v1"
   || security.qualificationOnly !== true || security.network?.enforcement !== "GUEST_NFTABLES"
-  || security.network?.providerEnforced !== false || JSON.stringify(security.network.allowedHttpsHosts) !== JSON.stringify(["openrouter.ai"])) {
+  || security.network?.providerEnforced !== false || JSON.stringify(security.network.allowedHttpsHosts) !== JSON.stringify(["openrouter.ai"])
+  || security.execution?.noNewPrivileges !== true || security.execution?.capabilityMode !== "DROP_ALL") {
   throw new Error("Restricted sandbox bootstrap configuration is invalid.");
 }
 if (config.expectedImage !== config.observedProviderImage) throw new Error("Provider image identity does not match the frozen digest reference.");
@@ -119,11 +169,16 @@ const observedToolchain = {
   nodeVersion: command("node", ["--version"]),
   codexVersion: command("codex", ["--version"]),
   codexBinarySha256: fileSha256(nativeCodex),
+  gitVersion: command("git", ["--version"]),
+  gitBinarySha256: fileSha256("/usr/local/bin/git"),
+  busyboxVersion: command("busybox", []).split(" ").slice(0, 2).join(" "),
+  busyboxBinarySha256: fileSha256("/bin/busybox"),
   toolchainInputsSha256: fileSha256("/etc/mission-control/toolchain-inputs.json"),
   executionUid: Number(command("id", ["-u", security.execution.user])),
   executionGid: Number(command("id", ["-g", security.execution.user])),
 };
-for (const field of ["nodeVersion", "codexVersion", "codexBinarySha256", "toolchainInputsSha256"]) {
+for (const field of ["nodeVersion", "codexVersion", "codexBinarySha256", "gitVersion", "gitBinarySha256",
+  "busyboxVersion", "busyboxBinarySha256", "toolchainInputsSha256"]) {
   if (observedToolchain[field] !== security.toolchain[field]) throw new Error("Observed " + field + " does not match the frozen toolchain.");
 }
 if (observedToolchain.executionUid !== security.execution.uid || observedToolchain.executionGid !== security.execution.gid) {
@@ -209,7 +264,7 @@ const probeEnvironment = {
   MC_NETWORK_PROBE: JSON.stringify({ approvedHost: security.network.allowedHttpsHosts[0], controlExternalIp }),
 };
 const probe = JSON.parse(execFileSync("setpriv", [
-  "--no-new-privs",
+  ...setprivConfinementArgs,
   "--reuid=" + security.execution.uid,
   "--regid=" + security.execution.gid,
   "--clear-groups",
@@ -219,8 +274,19 @@ const probe = JSON.parse(execFileSync("setpriv", [
   "--probe",
 ], { encoding: "utf8", env: probeEnvironment, timeout: 20000 }));
 
+const privilege = JSON.parse(execFileSync("setpriv", [
+  ...setprivConfinementArgs,
+  "--reuid=" + security.execution.uid,
+  "--regid=" + security.execution.gid,
+  "--clear-groups",
+  "--",
+  process.execPath,
+  process.argv[1],
+  "--privilege-probe",
+], { encoding: "utf8", env: probeEnvironment, timeout: 20000 }));
+
 const protectedPathsReadOnly = execFileSync("setpriv", [
-  "--no-new-privs",
+  ...setprivConfinementArgs,
   "--reuid=" + security.execution.uid,
   "--regid=" + security.execution.gid,
   "--clear-groups",
@@ -229,6 +295,20 @@ const protectedPathsReadOnly = execFileSync("setpriv", [
   "-c",
   "test ! -w /etc && test ! -w /usr && test ! -w /var/lib/mission-control",
 ], { timeout: 10000 }).length === 0;
+const packageCachePathsAbsent = [
+  "/root/.npm",
+  security.execution.homePath + "/.npm",
+  security.execution.homePath + "/.cache/yarn",
+  security.execution.homePath + "/.local/share/pnpm",
+  security.execution.homePath + "/.pnpm-store",
+  "/var/cache/apt",
+  "/var/lib/apt",
+].every((entryPath) => {
+  try { statSync(entryPath); return false; } catch { return true; }
+});
+let apkCacheAbsent = true;
+try { apkCacheAbsent = readdirSync("/var/cache/apk").length === 0; } catch {}
+const packageCachesAbsent = packageCachePathsAbsent && apkCacheAbsent;
 const repositoryStat = statSync(repositoryRoot);
 const proof = {
   schema: "factory-sandbox-security-proof/v1",
@@ -239,7 +319,9 @@ const proof = {
     repositoryOwnerUid: repositoryStat.uid,
     repositoryOwnerGid: repositoryStat.gid,
     protectedPathsReadOnly,
+    packageCachesAbsent,
   },
+  privilege,
   network: {
     enforcement: "GUEST_NFTABLES",
     providerEnforced: false,
@@ -253,6 +335,7 @@ const proof = {
 if (proof.filesystem.repositoryOwnerUid !== security.execution.uid
   || proof.filesystem.repositoryOwnerGid !== security.execution.gid
   || !proof.filesystem.protectedPathsReadOnly
+  || !proof.filesystem.packageCachesAbsent
   || !Object.values(probe).every(Boolean)) {
   throw new Error("Restricted sandbox bootstrap proof did not pass every fail-closed check.");
 }

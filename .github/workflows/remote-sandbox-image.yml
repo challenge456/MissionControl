@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - codex/remote-sandbox-hardening-v1
+      - codex/remote-sandbox-blocker-remediation-v1
     paths:
       - infra/remote-sandbox/**
       - .github/workflows/remote-sandbox-image.yml
@@ -87,9 +88,15 @@ jobs:
           observed_node="$(docker run --rm --entrypoint node "$image" --version)"
           observed_codex="$(docker run --rm --entrypoint codex "$image" --version)"
           codex_sha="$(docker run --rm --entrypoint sh "$image" -c 'cat /etc/mission-control/codex-binary.sha256')"
+          observed_git="$(docker run --rm --entrypoint git "$image" --version)"
+          git_sha="$(docker run --rm --entrypoint sh "$image" -c 'cat /etc/mission-control/git-binary.sha256')"
+          observed_busybox="$(docker run --rm --entrypoint sh "$image" -c "busybox | head -n 1 | cut -d' ' -f1-2")"
+          busybox_sha="$(docker run --rm --entrypoint sh "$image" -c 'cat /etc/mission-control/busybox-binary.sha256')"
           toolchain_inputs_sha="$(docker run --rm --entrypoint sh "$image" -c 'cat /etc/mission-control/toolchain-inputs.sha256')"
           test "$observed_node" = "v26.7.0"
           test "$observed_codex" = "codex-cli 0.146.0"
+          test "$observed_git" = "git version 2.55.0"
+          test "$observed_busybox" = "BusyBox v1.37.0"
           docker push "$image"
           digest="$(docker buildx imagetools inspect "$image" --format '{{json .Manifest}}' | jq -r '.digest')"
           test -n "$digest"
@@ -103,9 +110,13 @@ jobs:
             --arg node "$observed_node" \
             --arg codex "$observed_codex" \
             --arg codexSha256 "sha256:$codex_sha" \
+            --arg git "$observed_git" \
+            --arg gitSha256 "sha256:$git_sha" \
+            --arg busybox "$observed_busybox" \
+            --arg busyboxSha256 "sha256:$busybox_sha" \
             --arg toolchainInputsSha256 "sha256:$toolchain_inputs_sha" \
             --arg sbomSha256 "sha256:$sbom_sha" \
-            '{schema:$schema,image:$image,sourceSha:$sourceSha,nodeVersion:$node,codexVersion:$codex,codexBinarySha256:$codexSha256,toolchainInputsSha256:$toolchainInputsSha256,sbomSha256:$sbomSha256}' \
+            '{schema:$schema,image:$image,sourceSha:$sourceSha,nodeVersion:$node,codexVersion:$codex,codexBinarySha256:$codexSha256,gitVersion:$git,gitBinarySha256:$gitSha256,busyboxVersion:$busybox,busyboxBinarySha256:$busyboxSha256,toolchainInputsSha256:$toolchainInputsSha256,sbomSha256:$sbomSha256}' \
             >remote-sandbox-image-provenance.json
           echo "digest=$digest" >>"$GITHUB_OUTPUT"
 
