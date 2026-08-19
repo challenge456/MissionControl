@@ -69,23 +69,23 @@ Execute Option 1 only while every result is evidence-backed. Fall back to Option
 
 ## Acceptance Criteria
 
-- [ ] Reconcile PR #125 candidate code and preserve its evidence without changing PR #125.
-- [ ] Record source layer, dependency path, reachability, removability, fix availability, action, and residual risk for all seven High findings.
-- [ ] Minimize the final runtime image without removing required supervisor, Git, Node, Codex, certificate, network-policy, or Mission Control functionality.
-- [ ] Pin the exact base image, Node, Codex package/binary, package graph, final image, and SBOM digests with no floating tags.
-- [ ] Produce an unsuppressed image scan with 0 Critical and 0 High findings before live admission.
-- [ ] Re-check current exe.dev network/API capabilities and explicitly preserve the provider-enforced egress limitation if no control exists.
-- [ ] Prove guest deny-by-default egress permits only required inference destinations and blocks unauthorized public, RFC1918, link-local, metadata, and unexpected DNS targets where enforceable.
-- [ ] Prove the Codex workload is non-root, lacks `CAP_NET_ADMIN`, cannot modify nftables, cannot install packages, and cannot access host/provider administration.
-- [ ] Prove only the Attempt inference credential is present; all management, GitHub, Mission Control, verification, acceptance, and publication credentials are absent.
-- [ ] Prove protected system paths, dedicated workspace writes, no package-cache leakage, and no prior-Attempt persistence across two fresh instances.
+- [x] Reconcile PR #125 candidate code and preserve its evidence without changing PR #125.
+- [x] Record source layer, dependency path, reachability, removability, fix availability, action, and residual risk for all seven High findings.
+- [x] Minimize the final runtime image without removing required supervisor, Git, Node, Codex, certificate, network-policy, or Mission Control functionality.
+- [x] Pin the exact base image, Node, Codex package/binary, package graph, final image, and SBOM digests with no floating tags.
+- [x] Produce an unsuppressed image scan with 0 Critical and 0 High findings before live admission.
+- [x] Re-check current exe.dev network/API capabilities and explicitly preserve the provider-enforced egress limitation if no control exists.
+- [x] Prove guest deny-by-default egress permits only required inference destinations and blocks unauthorized public, RFC1918, link-local, metadata, and unexpected DNS targets where enforceable.
+- [x] Prove the Codex workload is non-root, lacks `CAP_NET_ADMIN`, cannot modify nftables, cannot install packages, and cannot access host/provider administration.
+- [x] Prove only the Attempt inference credential is present; all management, GitHub, Mission Control, verification, acceptance, and publication credentials are absent.
+- [x] Prove protected system paths, dedicated workspace writes, no package-cache leakage, and no prior-Attempt persistence across two fresh instances.
 - [ ] Run the live bug-fix, security/policy, and schema-migration gate serially at maximum one VM only if every pre-live criterion passes; require 3/3 first-pass with no retries.
 - [ ] Run the bounded live negative matrix only after admission and require every forbidden action to fail safely.
-- [ ] Compare allocation, readiness, startup, execution, teardown, and total-cycle performance with unknowns preserved as `null`.
-- [ ] Run the complete requested repository, runtime, routing, security, build, smoke, lint, and qualification matrix.
+- [x] Compare allocation, readiness, startup, execution, teardown, and total-cycle performance with unknowns preserved as `null`.
+- [x] Run the complete requested repository, runtime, routing, security, build, smoke, lint, and qualification matrix.
 - [ ] Preserve final provider VM inventory zero and obtain fresh GitHub CI and Vercel evidence for durable changes.
-- [ ] Determine whether this branch supersedes, reconciles, or leaves PR #125 blocked, without losing its evidence.
-- [ ] Return exactly one permitted terminal decision and avoid any unsupported isolation claim.
+- [x] Determine whether this branch supersedes, reconciles, or leaves PR #125 blocked, without losing its evidence.
+- [x] Return exactly one permitted terminal decision and avoid any unsupported isolation claim.
 
 ## Work Log
 
@@ -99,6 +99,21 @@ Execute Option 1 only while every result is evidence-backed. Fall back to Option
 **Learnings:**
 - The remediation can remain within the existing SandboxProvider/exe.dev architecture.
 - Live admission remains strictly downstream of the unsuppressed image and privilege gates.
+
+### 2026-08-19 - Remediation, admission, and terminal live gate
+
+**Actions:**
+- Replaced the prior Wolfi development image with a digest-pinned Node Alpine runtime, checksum-pinned source builds for minimal Git and BusyBox, and an exact final package set. Removed package managers, OpenSSL runtime packages, unused BusyBox applets, caches, and build toolchains from the final image.
+- Audited all seven PR #125 High findings and retained the raw unsuppressed findings. Local and registry Grype gates both reached 0 Critical / 0 High; the exact public GHCR digest and GitHub provenance attestation are recorded.
+- Proved two fresh local instances with UID/GID 10001, `NoNewPrivs`, all five capability sets empty, blocked firewall mutation, absent package managers/caches, exact allowlisted egress, protected system paths, and no cross-Attempt state.
+- Reconfirmed that exe.dev exposes no provider egress primitive. The profile remains visibly `DEGRADED` and qualification-only.
+- Ran exactly three live exe.dev Attempts serially with no retries. Each failed closed before executor start because the provider-reported image identity did not exactly match the requested digest-qualified image reference. All three credentials were revoked and stale-key probes returned `401`; all exact resources were deleted; final inventory was zero.
+- Ran the complete composed Factory qualification, full repository tests, TypeScript, lint, skill lint, runtime guard, production build, orchestration smoke, secret scan, and whitespace check successfully.
+
+**Learnings:**
+- Image vulnerability remediation and local guest-boundary proof are complete, but they cannot substitute for live proof.
+- The current blocking condition is the exe.dev image-identity reporting boundary, not a waived security finding. A future gate must first reconcile the provider's normalized image identity with the immutable digest without weakening the fail-closed check, then run a new 3/3 first-pass qualification.
+- PR #126 supersedes PR #125 as the remediation draft, but remains `HOLD` and non-mergeable. PR #125 remains unchanged with its evidence preserved.
 
 ## Notes
 

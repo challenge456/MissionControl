@@ -1,0 +1,12 @@
+{
+  "schema": "remote-sandbox-hardening-runner-failure/v1",
+  "qualificationRunId": "525f8ba4cfc5",
+  "startedAt": "2026-08-19T23:07:48.064Z",
+  "failureStage": "LOCAL_RUNNER_INITIALIZATION",
+  "error": "ReferenceError: Cannot access 'RevocationProbingCredentialBroker' before initialization",
+  "remoteAttemptsStarted": 0,
+  "credentialsIssued": 0,
+  "providerResourcesAllocated": 0,
+  "finalExeDevInventory": 0,
+  "disposition": "Runner class initialization moved before the top-level invocation; this pre-allocation failure is excluded from the live 3-workload first-pass denominator."
+}

@@ -1,0 +1,41 @@
+{
+  "schema": "mission-control-remote-image-registry-provenance/v1",
+  "sourceSha": "0c03a6ff796bf87e458b7e4e53ad3476b78dc78e",
+  "workflowRunId": 32311157907,
+  "workflowUrl": "https://github.com/jaydubya818/MissionControl/actions/runs/32311157907",
+  "image": "ghcr.io/jaydubya818/mission-control-remote-sandbox@sha256:ce142e3f1782d921e54203c748db590dd0f2650cc12cf801002729f07bb0f4ec",
+  "digest": "sha256:ce142e3f1782d921e54203c748db590dd0f2650cc12cf801002729f07bb0f4ec",
+  "publicPull": {
+    "verified": true,
+    "verifiedAt": "2026-08-19T23:04:00.000Z",
+    "registryHttpStatus": 200,
+    "contentType": "application/vnd.docker.distribution.manifest.v2+json"
+  },
+  "attestation": {
+    "verified": true,
+    "count": 1,
+    "reference": "https://github.com/jaydubya818/MissionControl/attestations/sha256:ce142e3f1782d921e54203c748db590dd0f2650cc12cf801002729f07bb0f4ec"
+  },
+  "sbom": {
+    "format": "SPDX-2.3",
+    "sha256": "sha256:07f4780fafb2e77505ca94fd5c168b9c60e3692cb73a4491b7bbfc451878dc27"
+  },
+  "vulnerabilityScan": {
+    "grypeVersion": "0.117.0",
+    "critical": 0,
+    "high": 0,
+    "suppressionCount": 0,
+    "vexCount": 0,
+    "artifactSha256": "sha256:7f04faf00091de9d8ff6a0f3c24645beb952163adc00d75fd768976a0ceae249"
+  },
+  "toolchain": {
+    "nodeVersion": "v26.7.0",
+    "codexVersion": "codex-cli 0.146.0",
+    "codexBinarySha256": "sha256:2e863156ed35ecc5253b1e2f907a9143077b9f7cb51942070c61996471ff6e04",
+    "gitVersion": "git version 2.55.0",
+    "gitBinarySha256": "sha256:7127059b4ebea64f4a50fc3c64601b69a9694196f3ee0396efec6378a0b45078",
+    "busyboxVersion": "BusyBox v1.37.0",
+    "busyboxBinarySha256": "sha256:5b99e6ed2c89c6c0c31d707307de9a1405ed6b90d736a3d774d1cf16fc9c3fea",
+    "toolchainInputsSha256": "sha256:f7119d0278ae40526c3ed48b4a3eec6d927d1a003776436d251e43b2fa5f6cdd"
+  }
+}

@@ -30,7 +30,7 @@
     "sha256": "sha256:23412aa1261dfb9eac6c7efb295b1229192e5cb8c6e9b216e078c4a490e3fa0f"
   },
   "coldBuildToolchainReproduced": true,
-  "registryDigest": null,
-  "registryPublication": false,
-  "provenanceAttestation": false
+  "registryDigest": "sha256:ce142e3f1782d921e54203c748db590dd0f2650cc12cf801002729f07bb0f4ec",
+  "registryPublication": true,
+  "provenanceAttestation": true
 }
