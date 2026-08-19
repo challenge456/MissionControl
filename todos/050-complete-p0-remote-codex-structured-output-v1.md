@@ -1,5 +1,6 @@
 ---
-status: ready
+status: complete
+completed_at: 2026-08-18
 priority: p0
 issue_id: "050"
 tags: [factory, remote-sandbox, codex, structured-output, retry, exe-dev, qualification]
@@ -107,37 +108,37 @@ changes, document the authority and migration impact before implementing them.
 
 ## Acceptance Criteria
 
-- [ ] The exact two failed remote workloads and all 16 failed Attempts are
+- [x] The exact two failed remote workloads and all 16 failed Attempts are
   reconstructed in an evidence-backed failure table.
-- [ ] Observed evidence is distinguished from reconstructed or unavailable
+- [x] Observed evidence is distinguished from reconstructed or unavailable
   evidence; raw stdout/stderr/JSONL is never invented.
-- [ ] Exactly one canonical `factory-result/v1` contract has deterministic
+- [x] Exactly one canonical `factory-result/v1` contract has deterministic
   acceptance rules for Attempt, manifest, source, harness/model, candidate,
   terminal status, and bounded diagnostics.
-- [ ] Process exit zero without an accepted result fails closed.
-- [ ] JSONL recovery is deterministic, bounded, terminal-state aware,
+- [x] Process exit zero without an accepted result fails closed.
+- [x] JSONL recovery is deterministic, bounded, terminal-state aware,
   context-bound, ambiguity rejecting, and provenance preserving.
-- [ ] Result persistence cannot expose partial output as complete.
-- [ ] Failure taxonomy distinguishes `RETRYABLE_INFRA`,
+- [x] Result persistence cannot expose partial output as complete.
+- [x] Failure taxonomy distinguishes `RETRYABLE_INFRA`,
   `RETRYABLE_EXECUTION`, `NON_RETRYABLE_RESULT`, and `UNKNOWN`; `UNKNOWN` fails
   closed.
-- [ ] Retry limits freeze max Attempts, wall clock, model spend where observed,
+- [x] Retry limits freeze max Attempts, wall clock, model spend where observed,
   and provider resources; every retry creates a fresh Attempt identity.
-- [ ] Fault injection proves missing/truncated/invalid output, JSONL recovery,
+- [x] Fault injection proves missing/truncated/invalid output, JSONL recovery,
   transport interruption, supervisor crash, stale Attempt, wrong candidate,
   timeout, and cancellation behavior with exact cleanup and revocation.
-- [ ] Idempotency tests prove no stale candidate, verification, credential,
+- [x] Idempotency tests prove no stale candidate, verification, credential,
   lease, or evidence reuse/overwrite.
-- [ ] Focused and compatibility suites requested by the qualification pass.
-- [ ] A bounded live exe.dev run reaches 5/5 valid outputs across at least two
+- [x] Focused and compatibility suites requested by the qualification pass.
+- [x] A bounded live exe.dev run reaches 5/5 valid outputs across at least two
   materially different workloads with max concurrency one.
-- [ ] The three pilot remote workloads reach 3/3 valid outputs and continue
+- [x] The three pilot remote workloads reach 3/3 valid outputs and continue
   through independent verification and acceptance when expected to succeed.
-- [ ] Every live scenario revokes its Attempt credential, removes its VM, and
+- [x] Every live scenario revokes its Attempt credential, removes its VM, and
   final exe.dev inventory is zero.
-- [ ] Token, cost, retry, and timing evidence preserves unknown costs as `null`.
-- [ ] Fresh GitHub CI and Vercel results are recorded for durable changes.
-- [ ] A draft PR is opened only if durable changes are justified; it is not
+- [x] Token, cost, retry, and timing evidence preserves unknown costs as `null`.
+- [x] Fresh GitHub CI and Vercel results are recorded for durable changes.
+- [x] A draft PR is opened only if durable changes are justified; it is not
   merged and Guarded Auto remains disabled.
 
 ## Work Log
@@ -176,3 +177,21 @@ changes, document the authority and migration impact before implementing them.
   broaden Factory architecture.
 - Final decision must be exactly one of: `REMOTE CODEX STRUCTURED OUTPUT
   QUALIFIED`, `QUALIFIED WITH LIMITATIONS`, or `BLOCKED`.
+
+## Completion record
+
+### 2026-08-18 - Contract, retry, live qualification, and publication
+
+**By:** Codex
+
+**Actions:**
+
+- Implemented strict `factory-result/v1` validation, bounded terminal-aware JSONL reconstruction, exact frozen identity checks, bounded redacted diagnostics, and atomic diagnostics/result persistence.
+- Froze the remote retry taxonomy and Attempt/wall-clock/known-spend/provider-resource budgets; replacement retries use new run, lease, workspace, credential, sandbox, and evidence identities.
+- Passed the complete deterministic failure-injection and compatibility matrix, then `pnpm run qualify:factory` on the final reviewed code.
+- Ran the bounded live exe.dev qualification at maximum concurrency one: 5/5 across two workload classes, followed by the exact three pilot remote regressions at 3/3 through candidate, independent verification, and acceptance eligibility.
+- Preserved the initial live schema failure, the diagnostic root-cause run, and an excluded identity-reuse run instead of counting them as eligible evidence.
+- Confirmed all eight eligible Attempt credentials revoked, all eight VMs absent, and final exe.dev inventory zero.
+- Opened draft PR #121 without merge or Guarded Auto and obtained green GitHub CI and both Vercel deployments.
+
+**Result:** `REMOTE CODEX STRUCTURED OUTPUT QUALIFIED`. This qualifies the requested result boundary only; overall Factory production qualification remains out of scope.
