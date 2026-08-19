@@ -1,0 +1,2388 @@
+{
+  "samples": 3,
+  "successes": 3,
+  "firstPassStructuredResultSuccesses": 3,
+  "firstPassVerificationSuccesses": 3,
+  "jsonlReconstructionCount": 0,
+  "outputFileCount": 3,
+  "maximumConcurrentVms": 1,
+  "executions": [
+    {
+      "executionId": "bug-fix-3",
+      "workloadKey": "bug-fix",
+      "workloadClass": "BUG_FIX",
+      "title": "Correct integer-cent listing fee behavior",
+      "repetition": 3,
+      "risk": "LOW",
+      "backend": "remote-sandbox",
+      "lineage": {
+        "constitutionRevisionId": "constitution-production-factory-pilot-v3",
+        "constitutionDigest": "sha256:3f4e964ad3b98534e761fba55f37ab63c961460b8d5f8b7b3e555cc48b2c5492",
+        "missionId": "mission-bug-fix-3",
+        "specRevisionId": "spec-bug-fix-3-r1",
+        "specDigest": "sha256:a3cc0dca89ce660bc277128afb1741284296e879b1522417d7543e3832c5a6fd",
+        "specQuality": {
+          "result": "PASS",
+          "findingCount": 0,
+          "authority": "PLANNING_READY_ONLY"
+        },
+        "planId": "plan-bug-fix-3",
+        "planRevision": 1,
+        "planAuthoredBy": "pilot-operator-author",
+        "planApprovedBy": "pilot-operator-approver",
+        "planApprovalSeparate": true,
+        "qualityContractDigest": "sha256:5184064666b98f93fa4e3597f2923aad0ffe67aed2e5c0fbc15683534bfda6ea",
+        "workOrderId": "work-order-bug-fix-3",
+        "workOrderRevision": 1,
+        "factoryVersionId": "factory-codex-exedev-certified-v1",
+        "factoryMemory": {
+          "authority": "ADVISORY",
+          "result": "CONTEXT_PACKAGE_ASSEMBLED"
+        },
+        "contextPackageId": "context-bug-fix-3",
+        "contextPackage": {
+          "schema": "factory-context-package/v1",
+          "contextPackageId": "context-bug-fix-3",
+          "workloadKey": "bug-fix",
+          "sourceFiles": [
+            "package.json",
+            "src/listingFee.mjs",
+            "tests/listingFee.test.mjs"
+          ],
+          "implementationFiles": [
+            "src/listingFee.mjs"
+          ],
+          "testFiles": [
+            "tests/listingFee.test.mjs"
+          ],
+          "requirements": [
+            "Listing fees use five percent of non-negative integer cents.",
+            "Invalid monetary inputs fail deterministically."
+          ],
+          "acceptanceCriteria": [
+            {
+              "id": "BUG-001",
+              "title": "Five-percent regression passes",
+              "method": "node --test"
+            },
+            {
+              "id": "BUG-002",
+              "title": "Invalid inputs fail closed",
+              "method": "node --test"
+            }
+          ],
+          "authority": "ADVISORY",
+          "sufficient": true,
+          "missingSources": [],
+          "additionalAuthorizedContext": null
+        },
+        "contextPackageDigest": "sha256:fef5da8d1e9b206b49c1cf5904e3b4294cb4465712dd04d052c542663eb848c3",
+        "qualifiedWorkloadConfiguration": {
+          "schema": "factory-qualified-workload-configuration/v1",
+          "workloadKey": "bug-fix",
+          "securityContextVariant": null,
+          "additionalAuthorizedContext": null,
+          "runtimeMs": 300000,
+          "executorTimeoutMs": 270000,
+          "modelMetadataConfig": "supported",
+          "globalDefault": false,
+          "digest": "sha256:61ee051ab9faf79ac7f9914ea68c2ed7db6e681138f2181749526ec9600c5021"
+        },
+        "timings": {
+          "missionToPlanMs": 1,
+          "planToWorkOrderMs": 0,
+          "queueAdmissionMs": 0
+        }
+      },
+      "context": {
+        "sufficient": true,
+        "contextPackageId": "context-bug-fix-3",
+        "contextPackageDigest": "sha256:fef5da8d1e9b206b49c1cf5904e3b4294cb4465712dd04d052c542663eb848c3",
+        "missingSources": [],
+        "qualifiedWorkloadConfiguration": {
+          "schema": "factory-qualified-workload-configuration/v1",
+          "workloadKey": "bug-fix",
+          "securityContextVariant": null,
+          "additionalAuthorizedContext": null,
+          "runtimeMs": 300000,
+          "executorTimeoutMs": 270000,
+          "modelMetadataConfig": "supported",
+          "globalDefault": false,
+          "digest": "sha256:61ee051ab9faf79ac7f9914ea68c2ed7db6e681138f2181749526ec9600c5021"
+        }
+      },
+      "attempts": [
+        {
+          "attemptId": "attempt-9e1588dce8fc-bug-fix-3-1",
+          "attemptNumber": 1,
+          "retryOfAttemptId": null,
+          "worker": {
+            "workerId": "worker-production-exedev-n1",
+            "sessionId": "session-production-pilot-v3-9e1588dce8fc-remote-sandbox",
+            "generation": 1,
+            "current": true,
+            "maxConcurrentRuns": 1
+          },
+          "lease": {
+            "id": "lease-9e1588dce8fc-bug-fix-3-1",
+            "current": true,
+            "acquiredAt": "2026-08-19T17:34:38.374Z"
+          },
+          "sourceSha": "5c732726caf5d4f1f4aba98542578bd92a4e8497",
+          "backend": "remote-sandbox",
+          "governedConfiguration": {
+            "schema": "factory-qualified-workload-configuration/v1",
+            "workloadKey": "bug-fix",
+            "securityContextVariant": null,
+            "additionalAuthorizedContext": null,
+            "runtimeMs": 300000,
+            "executorTimeoutMs": 270000,
+            "modelMetadataConfig": "supported",
+            "globalDefault": false,
+            "digest": "sha256:61ee051ab9faf79ac7f9914ea68c2ed7db6e681138f2181749526ec9600c5021"
+          },
+          "status": "COMPLETED",
+          "startedAt": "2026-08-19T17:34:38.374Z",
+          "events": [
+            {
+              "type": "SANDBOX_REQUESTED",
+              "occurredAt": 1787160882599,
+              "resourceName": "mc-attempt-62d17bd80b1dd129",
+              "attemptId": "attempt-9e1588dce8fc-bug-fix-3-1",
+              "metadata": {
+                "provider": "EXE_DEV",
+                "profileDigest": "sha256:da9857033b6d03c230d9335a1961f46cce3d23fe9807e357bb118e6125fbf063",
+                "readiness": "DEGRADED"
+              }
+            },
+            {
+              "type": "SANDBOX_ALLOCATED",
+              "occurredAt": 1787160886212,
+              "resourceName": "mc-attempt-62d17bd80b1dd129",
+              "attemptId": "attempt-9e1588dce8fc-bug-fix-3-1",
+              "metadata": {
+                "providerResourceId": "mc-attempt-62d17bd80b1dd129"
+              }
+            },
+            {
+              "type": "SANDBOX_STARTED",
+              "occurredAt": 1787160890597,
+              "resourceName": "mc-attempt-62d17bd80b1dd129",
+              "attemptId": "attempt-9e1588dce8fc-bug-fix-3-1",
+              "metadata": {
+                "processId": "mc-attempt-62d17bd80b1dd129:supervisor"
+              }
+            },
+            {
+              "type": "SANDBOX_RESULT_RECEIVED",
+              "occurredAt": 1787160959226,
+              "resourceName": "mc-attempt-62d17bd80b1dd129",
+              "attemptId": "attempt-9e1588dce8fc-bug-fix-3-1",
+              "metadata": {
+                "resultDigest": "sha256:8e6a69c41cff77885322319b0485fbab68cbf77716345694cd5cd322bad79855",
+                "status": "COMPLETED",
+                "providerCostUsd": null,
+                "inferenceCostUsd": null
+              }
+            },
+            {
+              "type": "SANDBOX_CREDENTIAL_REVOKED",
+              "occurredAt": 1787160959787,
+              "resourceName": "mc-attempt-62d17bd80b1dd129",
+              "attemptId": "attempt-9e1588dce8fc-bug-fix-3-1",
+              "metadata": {
+                "grantKey": "mc-attempt-639f7bbb82f764c23569",
+                "externalCredentialId": "ed6be0c6791dc94836600660a11e197e10fdae4106b19ddcd8609357d598927f"
+              }
+            },
+            {
+              "type": "SANDBOX_TERMINATION_REQUESTED",
+              "occurredAt": 1787160959787,
+              "resourceName": "mc-attempt-62d17bd80b1dd129",
+              "attemptId": "attempt-9e1588dce8fc-bug-fix-3-1",
+              "metadata": {
+                "providerResourceId": "mc-attempt-62d17bd80b1dd129"
+              }
+            },
+            {
+              "type": "SANDBOX_TERMINATED",
+              "occurredAt": 1787160962660,
+              "resourceName": "mc-attempt-62d17bd80b1dd129",
+              "attemptId": "attempt-9e1588dce8fc-bug-fix-3-1",
+              "metadata": {
+                "confirmedAbsentAt": 1787160962660
+              }
+            }
+          ],
+          "harness": {
+            "adapter": "codex",
+            "version": "v1",
+            "harnessVersion": "0.146.0",
+            "authority": {
+              "worker": "NONE",
+              "verification": "NONE",
+              "publication": "NONE",
+              "acceptance": "NONE",
+              "memory": "NONE",
+              "observability": "NONE",
+              "learning": "NONE"
+            },
+            "actualTuple": {
+              "provider": "openrouter",
+              "model": "openai/gpt-5.1-codex-mini",
+              "backend": "remote-sandbox"
+            }
+          },
+          "usage": {
+            "providerCostUsd": null,
+            "inferenceCostUsd": null,
+            "inputTokens": 36035,
+            "outputTokens": 1068,
+            "observedAt": 1787160957593,
+            "providerRuntimeMs": 66964,
+            "enforcement": "OBSERVATION_ONLY"
+          },
+          "cleanup": {
+            "observed": true,
+            "passed": true,
+            "status": "COMPLETED",
+            "credentialRevoked": true,
+            "resourceAbsent": true,
+            "resourceName": "mc-attempt-62d17bd80b1dd129",
+            "finalVmCount": 0
+          },
+          "remoteResult": {
+            "invocation": {
+              "outputSchemaPath": "/var/lib/mission-control/attempt/factory-result.schema.json",
+              "outputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "schema",
+                  "status",
+                  "summary",
+                  "completedAcceptanceCriterionIds",
+                  "incompleteAcceptanceCriterionIds",
+                  "unknownAcceptanceCriterionIds",
+                  "verificationCommands",
+                  "knownRisks",
+                  "nextAction"
+                ],
+                "properties": {
+                  "schema": {
+                    "type": "string",
+                    "enum": [
+                      "factory-result/v1"
+                    ]
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "COMPLETED",
+                      "BLOCKED",
+                      "FAILED"
+                    ]
+                  },
+                  "summary": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000
+                  },
+                  "completedAcceptanceCriterionIds": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 2000
+                    }
+                  },
+                  "incompleteAcceptanceCriterionIds": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 2000
+                    }
+                  },
+                  "unknownAcceptanceCriterionIds": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 2000
+                    }
+                  },
+                  "verificationCommands": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 2000
+                    }
+                  },
+                  "knownRisks": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 2000
+                    }
+                  },
+                  "nextAction": {
+                    "type": "string",
+                    "maxLength": 4000
+                  }
+                }
+              }
+            },
+            "identity": {
+              "publicRunId": "run-9e1588dce8fc-bug-fix-3-1",
+              "workflowDocumentId": "workflow-doc-9e1588dce8fc-bug-fix-3-1",
+              "manifestResourceName": "mc-attempt-62d17bd80b1dd129",
+              "allocatedResourceName": "mc-attempt-62d17bd80b1dd129"
+            },
+            "bundleStatus": "COMPLETED",
+            "structuredStatus": "COMPLETED",
+            "resultProvenance": {
+              "source": "OUTPUT_FILE",
+              "outputFile": {
+                "state": "VALID",
+                "byteLength": 454
+              },
+              "jsonl": {
+                "byteLength": 4558,
+                "lineCount": 17,
+                "malformedLineCount": 0,
+                "terminalCompletedCount": 1,
+                "terminalFailureCount": 0,
+                "validCandidateCount": 1
+              },
+              "context": {
+                "attemptId": "attempt-9e1588dce8fc-bug-fix-3-1",
+                "manifestDigest": "sha256:577411a7d937c2f805ada43cc73ffde388ce1909077e69c4ce4a2a8635df0298",
+                "sourceSha": "5c732726caf5d4f1f4aba98542578bd92a4e8497"
+              }
+            },
+            "governedConfiguration": {
+              "schema": "factory-qualified-workload-configuration/v1",
+              "workloadKey": "bug-fix",
+              "securityContextVariant": null,
+              "additionalAuthorizedContext": null,
+              "runtimeMs": 300000,
+              "executorTimeoutMs": 270000,
+              "modelMetadataConfig": "supported",
+              "globalDefault": false,
+              "digest": "sha256:61ee051ab9faf79ac7f9914ea68c2ed7db6e681138f2181749526ec9600c5021",
+              "profileDigest": "sha256:da9857033b6d03c230d9335a1961f46cce3d23fe9807e357bb118e6125fbf063",
+              "modelCatalogDigest": "sha256:8190f002e89c955982792d5293f05343bb0b97e240ab9688979edd703d9eda41"
+            },
+            "resultOutput": {
+              "state": "VALID",
+              "byteLength": 454,
+              "digest": "sha256:46c8fa5e8b64e6dab9eca09d7bd1c72028e302bb564d993f2a3499d5b35fb736",
+              "tail": "{\"schema\":\"factory-result/v1\",\"status\":\"COMPLETED\",\"summary\":\"Shifted `listingFee` to compute a rounded 5% fee while keeping the non-negative integer validation intact; npm test passes.\",\"completedAcceptanceCriterionIds\":[\"BUG-001\",\"BUG-002\"],\"incompleteAcceptanceCriterionIds\":[],\"unknownAcceptanceCriterionIds\":[],\"verificationCommands\":[\"npm test\"],\"knownRisks\":[],\"nextAction\":\"Consider expanding tests if fee rounding policies become more complex.\"}",
+              "validationIssues": []
+            },
+            "summary": "Shifted `listingFee` to compute a rounded 5% fee while keeping the non-negative integer validation intact; npm test passes.",
+            "executorExitCode": 0,
+            "stdoutDigest": "sha256:94b46399a912cd3d84cedadedf2f75a9f7ffb3911c3f0c9992e10271eec484f8",
+            "stderrDigest": "sha256:96a27fbba212394304ee38175d936800eecec24e0dc902d4da83e5d5f72299e0",
+            "stderrTail": "Reading additional input from stdin...\nnpm notice\nnpm notice New major version of npm available! 11.17.0 -> 12.0.2\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.0.2\nnpm notice To update run: npm install -g npm@12.0.2\nnpm notice\n"
+          },
+          "structuredResult": {
+            "schema": "factory-result/v1",
+            "status": "COMPLETED",
+            "summary": "Shifted `listingFee` to compute a rounded 5% fee while keeping the non-negative integer validation intact; npm test passes.",
+            "completedAcceptanceCriterionIds": [
+              "BUG-001",
+              "BUG-002"
+            ],
+            "incompleteAcceptanceCriterionIds": [],
+            "unknownAcceptanceCriterionIds": [],
+            "verificationCommands": [
+              "npm test"
+            ],
+            "knownRisks": [],
+            "nextAction": "Consider expanding tests if fee rounding policies become more complex."
+          },
+          "terminalStructuredResult": true,
+          "failure": null,
+          "executionMetrics": {
+            "allocationMs": 3613,
+            "readinessMs": 4385,
+            "executionMs": 68629,
+            "teardownMs": 3434
+          },
+          "candidate": {
+            "sourceSha": "5c732726caf5d4f1f4aba98542578bd92a4e8497",
+            "candidateSha": "8ec79c4ffa7ad5119dc3415658824d29fe2316b9",
+            "treeSha": "6f9dcf962b9362aa4c8be8814c87ad12f6dd79a3",
+            "changedFiles": [
+              "src/listingFee.mjs"
+            ],
+            "linesAdded": 1,
+            "linesDeleted": 1,
+            "diffSha256": "sha256:4d081af037d4faf9129ae9ab7bcde25539c46de71a6052261b115c710704b252"
+          },
+          "verification": {
+            "attemptId": "verification-bug-fix-3",
+            "sourceAttemptId": null,
+            "verifierId": "verifier-bug-fix-3",
+            "independent": true,
+            "candidateSha": "8ec79c4ffa7ad5119dc3415658824d29fe2316b9",
+            "treeSha": "6f9dcf962b9362aa4c8be8814c87ad12f6dd79a3",
+            "verdict": "VERIFIED",
+            "reason": "Independent exact-candidate gate passed.",
+            "command": "npm test",
+            "exitCode": 0,
+            "outputSha256": "sha256:3e4c23d334562a16831a0ba66330f360d97014d9ec262a33c688cac892e21d32",
+            "durationMs": 285,
+            "acceptanceAuthority": false
+          },
+          "retryDecision": {
+            "allowed": false,
+            "reason": "NOT_REQUIRED"
+          },
+          "finishedAt": "2026-08-19T17:36:07.225Z",
+          "durationMs": 88851
+        }
+      ],
+      "terminalStructuredResult": true,
+      "firstPassStructuredResultSuccess": true,
+      "firstPassVerificationSuccess": true,
+      "eventualVerificationSuccess": true,
+      "firstPassSuccess": true,
+      "eventualSuccess": true,
+      "retries": 0,
+      "cancellationCount": 0,
+      "verification": {
+        "attemptId": "verification-bug-fix-3",
+        "sourceAttemptId": null,
+        "verifierId": "verifier-bug-fix-3",
+        "independent": true,
+        "candidateSha": "8ec79c4ffa7ad5119dc3415658824d29fe2316b9",
+        "treeSha": "6f9dcf962b9362aa4c8be8814c87ad12f6dd79a3",
+        "verdict": "VERIFIED",
+        "reason": "Independent exact-candidate gate passed.",
+        "command": "npm test",
+        "exitCode": 0,
+        "outputSha256": "sha256:3e4c23d334562a16831a0ba66330f360d97014d9ec262a33c688cac892e21d32",
+        "durationMs": 285,
+        "acceptanceAuthority": false
+      },
+      "evidence": {
+        "envelopes": [
+          {
+            "id": "evidence-bug-fix-3-bug-001",
+            "criterionId": "BUG-001",
+            "sourceAttemptId": "attempt-9e1588dce8fc-bug-fix-3-1",
+            "verificationAttemptId": "verification-bug-fix-3-1",
+            "sourceRevision": "5c732726caf5d4f1f4aba98542578bd92a4e8497",
+            "candidateRevision": "8ec79c4ffa7ad5119dc3415658824d29fe2316b9",
+            "producer": {
+              "actorId": "verifier-bug-fix-3",
+              "independent": true
+            }
+          },
+          {
+            "id": "evidence-bug-fix-3-bug-002",
+            "criterionId": "BUG-002",
+            "sourceAttemptId": "attempt-9e1588dce8fc-bug-fix-3-1",
+            "verificationAttemptId": "verification-bug-fix-3-1",
+            "sourceRevision": "5c732726caf5d4f1f4aba98542578bd92a4e8497",
+            "candidateRevision": "8ec79c4ffa7ad5119dc3415658824d29fe2316b9",
+            "producer": {
+              "actorId": "verifier-bug-fix-3",
+              "independent": true
+            }
+          }
+        ],
+        "unknown": []
+      },
+      "evidenceCompleteness": 1,
+      "qualityGate": {
+        "state": "ELIGIBLE",
+        "exactCurrent": true,
+        "acceptanceAuthority": false
+      },
+      "prLineage": {
+        "mode": "DETERMINISTIC_PROVIDER_FIXTURE",
+        "repository": "sellerfi-pilot/bug-fix",
+        "headSha": "8ec79c4ffa7ad5119dc3415658824d29fe2316b9",
+        "url": "https://github.com/sellerfi-pilot/bug-fix/pull/3",
+        "published": false,
+        "humanMergeRequired": true
+      },
+      "review": {
+        "authority": "PROJECTION_ADVISORY",
+        "residualAiEnabled": false,
+        "reviewPackage": {
+          "status": "APPROVED",
+          "approvedByActorType": "HUMAN",
+          "acceptanceAuthority": false,
+          "accepting": false,
+          "traversal": [
+            "INTENT",
+            "CRITERION",
+            "EVIDENCE",
+            "VERIFICATION",
+            "IMPLEMENTATION_DECISION",
+            "RAW_DIFF"
+          ],
+          "rawDiffDigest": "sha256:4d081af037d4faf9129ae9ab7bcde25539c46de71a6052261b115c710704b252"
+        },
+        "unknownEvidence": 0,
+        "residualRisk": [],
+        "implementationDecisions": [
+          {
+            "decision": "Use the bounded bug-fix implementation.",
+            "attributableTo": "attempt-9e1588dce8fc-bug-fix-3-1"
+          }
+        ],
+        "semanticGroups": [
+          {
+            "id": "other",
+            "name": "Other",
+            "method": "DETERMINISTIC",
+            "authority": "ADVISORY",
+            "files": [
+              {
+                "path": "src/listingFee.mjs"
+              }
+            ]
+          }
+        ],
+        "criterionTrace": [
+          {
+            "criterion": {
+              "id": "BUG-001",
+              "title": "Five-percent regression passes",
+              "description": null,
+              "requirementIds": [
+                "REQ-001",
+                "REQ-002"
+              ]
+            },
+            "specRequirements": [
+              {
+                "id": "REQ-001",
+                "title": "Listing fees use five percent of non-negative integer cents.",
+                "priority": "MUST"
+              },
+              {
+                "id": "REQ-002",
+                "title": "Invalid monetary inputs fail deterministically.",
+                "priority": "MUST"
+              }
+            ],
+            "planAssertions": [],
+            "verificationChecks": [
+              {
+                "id": "check-bug-fix-3-bug-001",
+                "name": "npm test",
+                "verifierId": "verifier-bug-fix-3",
+                "status": "PASSED",
+                "evidenceIds": [
+                  "evidence-bug-fix-3-bug-001"
+                ]
+              }
+            ],
+            "evidence": [
+              {
+                "id": "evidence-bug-fix-3-bug-001",
+                "verificationRunId": "verification-bug-fix-3",
+                "sourceAttemptId": "attempt-9e1588dce8fc-bug-fix-3-1",
+                "producer": {
+                  "actorId": "verifier-bug-fix-3",
+                  "independent": true
+                },
+                "category": "TEST_RESULT",
+                "artifactIds": [],
+                "artifactReferences": [
+                  {
+                    "kind": "VERIFICATION_OUTPUT",
+                    "digest": "sha256:3e4c23d334562a16831a0ba66330f360d97014d9ec262a33c688cac892e21d32"
+                  }
+                ],
+                "contentHash": "sha256:3e4c23d334562a16831a0ba66330f360d97014d9ec262a33c688cac892e21d32",
+                "sourceRevision": "5c732726caf5d4f1f4aba98542578bd92a4e8497",
+                "candidateRevision": "8ec79c4ffa7ad5119dc3415658824d29fe2316b9",
+                "recordedAt": "2026-08-19T17:36:07.225Z"
+              }
+            ],
+            "result": "PASS",
+            "method": "node --test",
+            "receiptId": "receipt-bug-fix-3-bug-001",
+            "verifier": "verifier-bug-fix-3",
+            "current": true,
+            "integrityIssue": null,
+            "lineage": {
+              "missionSpecRevisionId": "spec-bug-fix-3-r1",
+              "missionSpecDigest": "sha256:a3cc0dca89ce660bc277128afb1741284296e879b1522417d7543e3832c5a6fd",
+              "missionPlanId": "plan-bug-fix-3",
+              "missionPlanRevisionNumber": 1,
+              "qualityContractDigest": "sha256:5184064666b98f93fa4e3597f2923aad0ffe67aed2e5c0fbc15683534bfda6ea",
+              "workOrderId": "work-order-bug-fix-3",
+              "workOrderRevisionNumber": 1,
+              "workflowRunId": "attempt-9e1588dce8fc-bug-fix-3-1",
+              "candidateRevision": "8ec79c4ffa7ad5119dc3415658824d29fe2316b9",
+              "verificationRunId": "verification-bug-fix-3",
+              "verificationSubjectId": null,
+              "verificationSubjectDigest": null,
+              "verificationPlanId": null,
+              "verificationPlanDigest": null,
+              "evidenceSetDigest": null,
+              "qualityGateDecisionId": null
+            }
+          },
+          {
+            "criterion": {
+              "id": "BUG-002",
+              "title": "Invalid inputs fail closed",
+              "description": null,
+              "requirementIds": [
+                "REQ-001",
+                "REQ-002"
+              ]
+            },
+            "specRequirements": [
+              {
+                "id": "REQ-001",
+                "title": "Listing fees use five percent of non-negative integer cents.",
+                "priority": "MUST"
+              },
+              {
+                "id": "REQ-002",
+                "title": "Invalid monetary inputs fail deterministically.",
+                "priority": "MUST"
+              }
+            ],
+            "planAssertions": [],
+            "verificationChecks": [
+              {
+                "id": "check-bug-fix-3-bug-002",
+                "name": "npm test",
+                "verifierId": "verifier-bug-fix-3",
+                "status": "PASSED",
+                "evidenceIds": [
+                  "evidence-bug-fix-3-bug-002"
+                ]
+              }
+            ],
+            "evidence": [
+              {
+                "id": "evidence-bug-fix-3-bug-002",
+                "verificationRunId": "verification-bug-fix-3",
+                "sourceAttemptId": "attempt-9e1588dce8fc-bug-fix-3-1",
+                "producer": {
+                  "actorId": "verifier-bug-fix-3",
+                  "independent": true
+                },
+                "category": "TEST_RESULT",
+                "artifactIds": [],
+                "artifactReferences": [
+                  {
+                    "kind": "VERIFICATION_OUTPUT",
+                    "digest": "sha256:3e4c23d334562a16831a0ba66330f360d97014d9ec262a33c688cac892e21d32"
+                  }
+                ],
+                "contentHash": "sha256:3e4c23d334562a16831a0ba66330f360d97014d9ec262a33c688cac892e21d32",
+                "sourceRevision": "5c732726caf5d4f1f4aba98542578bd92a4e8497",
+                "candidateRevision": "8ec79c4ffa7ad5119dc3415658824d29fe2316b9",
+                "recordedAt": "2026-08-19T17:36:07.225Z"
+              }
+            ],
+            "result": "PASS",
+            "method": "node --test",
+            "receiptId": "receipt-bug-fix-3-bug-002",
+            "verifier": "verifier-bug-fix-3",
+            "current": true,
+            "integrityIssue": null,
+            "lineage": {
+              "missionSpecRevisionId": "spec-bug-fix-3-r1",
+              "missionSpecDigest": "sha256:a3cc0dca89ce660bc277128afb1741284296e879b1522417d7543e3832c5a6fd",
+              "missionPlanId": "plan-bug-fix-3",
+              "missionPlanRevisionNumber": 1,
+              "qualityContractDigest": "sha256:5184064666b98f93fa4e3597f2923aad0ffe67aed2e5c0fbc15683534bfda6ea",
+              "workOrderId": "work-order-bug-fix-3",
+              "workOrderRevisionNumber": 1,
+              "workflowRunId": "attempt-9e1588dce8fc-bug-fix-3-1",
+              "candidateRevision": "8ec79c4ffa7ad5119dc3415658824d29fe2316b9",
+              "verificationRunId": "verification-bug-fix-3",
+              "verificationSubjectId": null,
+              "verificationSubjectDigest": null,
+              "verificationPlanId": null,
+              "verificationPlanDigest": null,
+              "evidenceSetDigest": null,
+              "qualityGateDecisionId": null
+            }
+          }
+        ],
+        "correctionRequired": false,
+        "durationMs": 1
+      },
+      "acceptance": {
+        "operation": "workOrders.accept",
+        "fixtureActorType": "HUMAN",
+        "eligible": true,
+        "blockingReasons": [],
+        "accepted": true,
+        "mergePerformed": false
+      },
+      "cleanup": {
+        "observed": true,
+        "passed": true,
+        "status": "COMPLETED",
+        "credentialRevoked": true,
+        "resourceAbsent": true,
+        "resourceName": "mc-attempt-62d17bd80b1dd129",
+        "finalVmCount": 0
+      },
+      "cost": {
+        "observed": false,
+        "modelUsd": null,
+        "infrastructureUsd": null,
+        "totalUsd": null,
+        "limitation": "exe.dev does not expose a per-VM scenario price; any unavailable model/provider cost remains null."
+      },
+      "metrics": {
+        "missionToPlanMs": 1,
+        "planToWorkOrderMs": 0,
+        "queueAdmissionMs": 0,
+        "localExecutionMs": null,
+        "remoteAllocationMs": 3613,
+        "remoteReadinessMs": 4385,
+        "remoteExecutionMs": 68629,
+        "teardownMs": 3434,
+        "executionMs": 88851,
+        "verificationMs": 285,
+        "reviewMs": 1,
+        "totalCycleMs": 88900
+      }
+    },
+    {
+      "executionId": "security-policy-3",
+      "workloadKey": "security-policy",
+      "workloadClass": "SECURITY_POLICY",
+      "title": "Fail closed when authorization context is missing",
+      "repetition": 3,
+      "risk": "HIGH",
+      "backend": "remote-sandbox",
+      "lineage": {
+        "constitutionRevisionId": "constitution-production-factory-pilot-v3",
+        "constitutionDigest": "sha256:3f4e964ad3b98534e761fba55f37ab63c961460b8d5f8b7b3e555cc48b2c5492",
+        "missionId": "mission-security-policy-3",
+        "specRevisionId": "spec-security-policy-3-r1",
+        "specDigest": "sha256:b8746371b4da80e067227f133dbcc0f466c53f9eb36bb08c8c93341470ab3d32",
+        "specQuality": {
+          "result": "PASS",
+          "findingCount": 0,
+          "authority": "PLANNING_READY_ONLY"
+        },
+        "planId": "plan-security-policy-3",
+        "planRevision": 1,
+        "planAuthoredBy": "pilot-operator-author",
+        "planApprovedBy": "pilot-operator-approver",
+        "planApprovalSeparate": true,
+        "qualityContractDigest": "sha256:5bd8528fc2c1f53f78d42c8cb2bf26fcac12b24a4c708d8f3dba7ad1d7ccb9fb",
+        "workOrderId": "work-order-security-policy-3",
+        "workOrderRevision": 1,
+        "factoryVersionId": "factory-codex-exedev-certified-v1",
+        "factoryMemory": {
+          "authority": "ADVISORY",
+          "result": "CONTEXT_PACKAGE_ASSEMBLED"
+        },
+        "contextPackageId": "context-security-policy-3",
+        "contextPackage": {
+          "schema": "factory-context-package/v1",
+          "contextPackageId": "context-security-policy-3",
+          "workloadKey": "security-policy",
+          "sourceFiles": [
+            "package.json",
+            "src/authorization.mjs",
+            "tests/authorization.test.mjs"
+          ],
+          "implementationFiles": [
+            "src/authorization.mjs"
+          ],
+          "testFiles": [
+            "tests/authorization.test.mjs"
+          ],
+          "requirements": [
+            "Missing or malformed authorization context is denied.",
+            "Only owner and administrator roles may change a listing."
+          ],
+          "acceptanceCriteria": [
+            {
+              "id": "SECURITY-001",
+              "title": "Missing context fails closed",
+              "method": "node --test"
+            },
+            {
+              "id": "SECURITY-002",
+              "title": "Role allowlist is exact",
+              "method": "node --test"
+            }
+          ],
+          "authority": "ADVISORY",
+          "sufficient": true,
+          "missingSources": [],
+          "additionalAuthorizedContext": "Authorized repository context: this is a bounded code change in a disposable fixture repository. Editing src/authorization.mjs and running the existing tests are explicitly authorized by the approved WorkOrder. No production identity, credential, policy bypass, publication, acceptance, or provider administration is requested. The required JSON is the terminal execution report after the code edit and test, not a substitute for the code change."
+        },
+        "contextPackageDigest": "sha256:1bcf94e40bf50a84d2144f0040a09ea341e68441503e88d101322c447572f248",
+        "qualifiedWorkloadConfiguration": {
+          "schema": "factory-qualified-workload-configuration/v1",
+          "workloadKey": "security-policy",
+          "securityContextVariant": "D",
+          "additionalAuthorizedContext": "Authorized repository context: this is a bounded code change in a disposable fixture repository. Editing src/authorization.mjs and running the existing tests are explicitly authorized by the approved WorkOrder. No production identity, credential, policy bypass, publication, acceptance, or provider administration is requested. The required JSON is the terminal execution report after the code edit and test, not a substitute for the code change.",
+          "runtimeMs": 300000,
+          "executorTimeoutMs": 270000,
+          "modelMetadataConfig": "supported",
+          "globalDefault": false,
+          "digest": "sha256:6aa782139093a409608bd956cd450b6775106cbc7be5685a851383e6867569d5"
+        },
+        "timings": {
+          "missionToPlanMs": 1,
+          "planToWorkOrderMs": 0,
+          "queueAdmissionMs": 0
+        }
+      },
+      "context": {
+        "sufficient": true,
+        "contextPackageId": "context-security-policy-3",
+        "contextPackageDigest": "sha256:1bcf94e40bf50a84d2144f0040a09ea341e68441503e88d101322c447572f248",
+        "missingSources": [],
+        "qualifiedWorkloadConfiguration": {
+          "schema": "factory-qualified-workload-configuration/v1",
+          "workloadKey": "security-policy",
+          "securityContextVariant": "D",
+          "additionalAuthorizedContext": "Authorized repository context: this is a bounded code change in a disposable fixture repository. Editing src/authorization.mjs and running the existing tests are explicitly authorized by the approved WorkOrder. No production identity, credential, policy bypass, publication, acceptance, or provider administration is requested. The required JSON is the terminal execution report after the code edit and test, not a substitute for the code change.",
+          "runtimeMs": 300000,
+          "executorTimeoutMs": 270000,
+          "modelMetadataConfig": "supported",
+          "globalDefault": false,
+          "digest": "sha256:6aa782139093a409608bd956cd450b6775106cbc7be5685a851383e6867569d5"
+        }
+      },
+      "attempts": [
+        {
+          "attemptId": "attempt-9e1588dce8fc-security-policy-3-1",
+          "attemptNumber": 1,
+          "retryOfAttemptId": null,
+          "worker": {
+            "workerId": "worker-production-exedev-n1",
+            "sessionId": "session-production-pilot-v3-9e1588dce8fc-remote-sandbox",
+            "generation": 1,
+            "current": true,
+            "maxConcurrentRuns": 1
+          },
+          "lease": {
+            "id": "lease-9e1588dce8fc-security-policy-3-1",
+            "current": true,
+            "acquiredAt": "2026-08-19T17:40:07.647Z"
+          },
+          "sourceSha": "9b6fabb1ae165eb81e4fb8371ae64eb67be3f8f0",
+          "backend": "remote-sandbox",
+          "governedConfiguration": {
+            "schema": "factory-qualified-workload-configuration/v1",
+            "workloadKey": "security-policy",
+            "securityContextVariant": "D",
+            "additionalAuthorizedContext": "Authorized repository context: this is a bounded code change in a disposable fixture repository. Editing src/authorization.mjs and running the existing tests are explicitly authorized by the approved WorkOrder. No production identity, credential, policy bypass, publication, acceptance, or provider administration is requested. The required JSON is the terminal execution report after the code edit and test, not a substitute for the code change.",
+            "runtimeMs": 300000,
+            "executorTimeoutMs": 270000,
+            "modelMetadataConfig": "supported",
+            "globalDefault": false,
+            "digest": "sha256:6aa782139093a409608bd956cd450b6775106cbc7be5685a851383e6867569d5"
+          },
+          "status": "COMPLETED",
+          "startedAt": "2026-08-19T17:40:07.647Z",
+          "events": [
+            {
+              "type": "SANDBOX_REQUESTED",
+              "occurredAt": 1787161212021,
+              "resourceName": "mc-attempt-9fdc9f679c2981f7",
+              "attemptId": "attempt-9e1588dce8fc-security-policy-3-1",
+              "metadata": {
+                "provider": "EXE_DEV",
+                "profileDigest": "sha256:8e70a62b82b9f8949401294f146b004dfaf34311151f97a1cf87a3f28a3402fa",
+                "readiness": "DEGRADED"
+              }
+            },
+            {
+              "type": "SANDBOX_ALLOCATED",
+              "occurredAt": 1787161215677,
+              "resourceName": "mc-attempt-9fdc9f679c2981f7",
+              "attemptId": "attempt-9e1588dce8fc-security-policy-3-1",
+              "metadata": {
+                "providerResourceId": "mc-attempt-9fdc9f679c2981f7"
+              }
+            },
+            {
+              "type": "SANDBOX_STARTED",
+              "occurredAt": 1787161220096,
+              "resourceName": "mc-attempt-9fdc9f679c2981f7",
+              "attemptId": "attempt-9e1588dce8fc-security-policy-3-1",
+              "metadata": {
+                "processId": "mc-attempt-9fdc9f679c2981f7:supervisor"
+              }
+            },
+            {
+              "type": "SANDBOX_RESULT_RECEIVED",
+              "occurredAt": 1787161288982,
+              "resourceName": "mc-attempt-9fdc9f679c2981f7",
+              "attemptId": "attempt-9e1588dce8fc-security-policy-3-1",
+              "metadata": {
+                "resultDigest": "sha256:2bc983d8e705ea5b6d6679a6d3e56ec5e821251be3389afa4557ee3beacd8467",
+                "status": "COMPLETED",
+                "providerCostUsd": null,
+                "inferenceCostUsd": null
+              }
+            },
+            {
+              "type": "SANDBOX_CREDENTIAL_REVOKED",
+              "occurredAt": 1787161289564,
+              "resourceName": "mc-attempt-9fdc9f679c2981f7",
+              "attemptId": "attempt-9e1588dce8fc-security-policy-3-1",
+              "metadata": {
+                "grantKey": "mc-attempt-b037e4d4b6032b97e325",
+                "externalCredentialId": "31dae003c0583d8e2e44fc4ff5df35ac0919f8afdaf260c2d19584f3d135e2c7"
+              }
+            },
+            {
+              "type": "SANDBOX_TERMINATION_REQUESTED",
+              "occurredAt": 1787161289564,
+              "resourceName": "mc-attempt-9fdc9f679c2981f7",
+              "attemptId": "attempt-9e1588dce8fc-security-policy-3-1",
+              "metadata": {
+                "providerResourceId": "mc-attempt-9fdc9f679c2981f7"
+              }
+            },
+            {
+              "type": "SANDBOX_TERMINATED",
+              "occurredAt": 1787161292585,
+              "resourceName": "mc-attempt-9fdc9f679c2981f7",
+              "attemptId": "attempt-9e1588dce8fc-security-policy-3-1",
+              "metadata": {
+                "confirmedAbsentAt": 1787161292585
+              }
+            }
+          ],
+          "harness": {
+            "adapter": "codex",
+            "version": "v1",
+            "harnessVersion": "0.146.0",
+            "authority": {
+              "worker": "NONE",
+              "verification": "NONE",
+              "publication": "NONE",
+              "acceptance": "NONE",
+              "memory": "NONE",
+              "observability": "NONE",
+              "learning": "NONE"
+            },
+            "actualTuple": {
+              "provider": "openrouter",
+              "model": "openai/gpt-5.1-codex-mini",
+              "backend": "remote-sandbox"
+            }
+          },
+          "usage": {
+            "providerCostUsd": null,
+            "inferenceCostUsd": null,
+            "inputTokens": 30049,
+            "outputTokens": 1037,
+            "observedAt": 1787161288313,
+            "providerRuntimeMs": 68174,
+            "enforcement": "OBSERVATION_ONLY"
+          },
+          "cleanup": {
+            "observed": true,
+            "passed": true,
+            "status": "COMPLETED",
+            "credentialRevoked": true,
+            "resourceAbsent": true,
+            "resourceName": "mc-attempt-9fdc9f679c2981f7",
+            "finalVmCount": 0
+          },
+          "remoteResult": {
+            "invocation": {
+              "outputSchemaPath": "/var/lib/mission-control/attempt/factory-result.schema.json",
+              "outputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "schema",
+                  "status",
+                  "summary",
+                  "completedAcceptanceCriterionIds",
+                  "incompleteAcceptanceCriterionIds",
+                  "unknownAcceptanceCriterionIds",
+                  "verificationCommands",
+                  "knownRisks",
+                  "nextAction"
+                ],
+                "properties": {
+                  "schema": {
+                    "type": "string",
+                    "enum": [
+                      "factory-result/v1"
+                    ]
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "COMPLETED",
+                      "BLOCKED",
+                      "FAILED"
+                    ]
+                  },
+                  "summary": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000
+                  },
+                  "completedAcceptanceCriterionIds": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 2000
+                    }
+                  },
+                  "incompleteAcceptanceCriterionIds": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 2000
+                    }
+                  },
+                  "unknownAcceptanceCriterionIds": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 2000
+                    }
+                  },
+                  "verificationCommands": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 2000
+                    }
+                  },
+                  "knownRisks": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 2000
+                    }
+                  },
+                  "nextAction": {
+                    "type": "string",
+                    "maxLength": 4000
+                  }
+                }
+              }
+            },
+            "identity": {
+              "publicRunId": "run-9e1588dce8fc-security-policy-3-1",
+              "workflowDocumentId": "workflow-doc-9e1588dce8fc-security-policy-3-1",
+              "manifestResourceName": "mc-attempt-9fdc9f679c2981f7",
+              "allocatedResourceName": "mc-attempt-9fdc9f679c2981f7"
+            },
+            "bundleStatus": "COMPLETED",
+            "structuredStatus": "COMPLETED",
+            "resultProvenance": {
+              "source": "OUTPUT_FILE",
+              "outputFile": {
+                "state": "VALID",
+                "byteLength": 389
+              },
+              "jsonl": {
+                "byteLength": 4046,
+                "lineCount": 15,
+                "malformedLineCount": 0,
+                "terminalCompletedCount": 1,
+                "terminalFailureCount": 0,
+                "validCandidateCount": 1
+              },
+              "context": {
+                "attemptId": "attempt-9e1588dce8fc-security-policy-3-1",
+                "manifestDigest": "sha256:af998f88087d8ed1da48d87b149d3aa90701451c377d54effa67727f74eb6278",
+                "sourceSha": "9b6fabb1ae165eb81e4fb8371ae64eb67be3f8f0"
+              }
+            },
+            "governedConfiguration": {
+              "schema": "factory-qualified-workload-configuration/v1",
+              "workloadKey": "security-policy",
+              "securityContextVariant": "D",
+              "additionalAuthorizedContext": "Authorized repository context: this is a bounded code change in a disposable fixture repository. Editing src/authorization.mjs and running the existing tests are explicitly authorized by the approved WorkOrder. No production identity, credential, policy bypass, publication, acceptance, or provider administration is requested. The required JSON is the terminal execution report after the code edit and test, not a substitute for the code change.",
+              "runtimeMs": 300000,
+              "executorTimeoutMs": 270000,
+              "modelMetadataConfig": "supported",
+              "globalDefault": false,
+              "digest": "sha256:6aa782139093a409608bd956cd450b6775106cbc7be5685a851383e6867569d5",
+              "profileDigest": "sha256:8e70a62b82b9f8949401294f146b004dfaf34311151f97a1cf87a3f28a3402fa",
+              "modelCatalogDigest": "sha256:8190f002e89c955982792d5293f05343bb0b97e240ab9688979edd703d9eda41"
+            },
+            "resultOutput": {
+              "state": "VALID",
+              "byteLength": 389,
+              "digest": "sha256:619da0e31c7889a81d7d9fe21c7dfb724028c0a11494171e96b9d1a801f19309",
+              "tail": "{\"schema\":\"factory-result/v1\",\"status\":\"COMPLETED\",\"summary\":\"Updated canEditListing so it only approves owner or admin contexts and reran npm test to confirm all suites pass.\",\"completedAcceptanceCriterionIds\":[\"SECURITY-001\",\"SECURITY-002\"],\"incompleteAcceptanceCriterionIds\":[],\"unknownAcceptanceCriterionIds\":[],\"verificationCommands\":[\"npm test\"],\"knownRisks\":[],\"nextAction\":\"None.\"}",
+              "validationIssues": []
+            },
+            "summary": "Updated canEditListing so it only approves owner or admin contexts and reran npm test to confirm all suites pass.",
+            "executorExitCode": 0,
+            "stdoutDigest": "sha256:8cf9cbda9e6518dd843d78d7c48c011ca77502200c6d11d31951967a6e0bac41",
+            "stderrDigest": "sha256:96a27fbba212394304ee38175d936800eecec24e0dc902d4da83e5d5f72299e0",
+            "stderrTail": "Reading additional input from stdin...\nnpm notice\nnpm notice New major version of npm available! 11.17.0 -> 12.0.2\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.0.2\nnpm notice To update run: npm install -g npm@12.0.2\nnpm notice\n"
+          },
+          "structuredResult": {
+            "schema": "factory-result/v1",
+            "status": "COMPLETED",
+            "summary": "Updated canEditListing so it only approves owner or admin contexts and reran npm test to confirm all suites pass.",
+            "completedAcceptanceCriterionIds": [
+              "SECURITY-001",
+              "SECURITY-002"
+            ],
+            "incompleteAcceptanceCriterionIds": [],
+            "unknownAcceptanceCriterionIds": [],
+            "verificationCommands": [
+              "npm test"
+            ],
+            "knownRisks": [],
+            "nextAction": "None."
+          },
+          "terminalStructuredResult": true,
+          "failure": null,
+          "executionMetrics": {
+            "allocationMs": 3656,
+            "readinessMs": 4419,
+            "executionMs": 68886,
+            "teardownMs": 3603
+          },
+          "candidate": {
+            "sourceSha": "9b6fabb1ae165eb81e4fb8371ae64eb67be3f8f0",
+            "candidateSha": "b45473f0ff3a01a51a595a8ae378319c657bad7d",
+            "treeSha": "9dcac4dfa5966662c3a51acee73b37ee8a4e2b87",
+            "changedFiles": [
+              "src/authorization.mjs"
+            ],
+            "linesAdded": 2,
+            "linesDeleted": 2,
+            "diffSha256": "sha256:79a65f87c8e501c350efe6c7446e2e47018f74b02d8924e8722f2c86c84fb54d"
+          },
+          "verification": {
+            "attemptId": "verification-security-policy-3",
+            "sourceAttemptId": null,
+            "verifierId": "verifier-security-policy-3",
+            "independent": true,
+            "candidateSha": "b45473f0ff3a01a51a595a8ae378319c657bad7d",
+            "treeSha": "9dcac4dfa5966662c3a51acee73b37ee8a4e2b87",
+            "verdict": "VERIFIED",
+            "reason": "Independent exact-candidate gate passed.",
+            "command": "npm test",
+            "exitCode": 0,
+            "outputSha256": "sha256:f6c54b8643d4a3d1192f0d8eb0ee2ef117648f05e999ca47ca8452a5820e766f",
+            "durationMs": 272,
+            "acceptanceAuthority": false
+          },
+          "retryDecision": {
+            "allowed": false,
+            "reason": "NOT_REQUIRED"
+          },
+          "finishedAt": "2026-08-19T17:41:37.034Z",
+          "durationMs": 89387
+        }
+      ],
+      "terminalStructuredResult": true,
+      "firstPassStructuredResultSuccess": true,
+      "firstPassVerificationSuccess": true,
+      "eventualVerificationSuccess": true,
+      "firstPassSuccess": true,
+      "eventualSuccess": true,
+      "retries": 0,
+      "cancellationCount": 0,
+      "verification": {
+        "attemptId": "verification-security-policy-3",
+        "sourceAttemptId": null,
+        "verifierId": "verifier-security-policy-3",
+        "independent": true,
+        "candidateSha": "b45473f0ff3a01a51a595a8ae378319c657bad7d",
+        "treeSha": "9dcac4dfa5966662c3a51acee73b37ee8a4e2b87",
+        "verdict": "VERIFIED",
+        "reason": "Independent exact-candidate gate passed.",
+        "command": "npm test",
+        "exitCode": 0,
+        "outputSha256": "sha256:f6c54b8643d4a3d1192f0d8eb0ee2ef117648f05e999ca47ca8452a5820e766f",
+        "durationMs": 272,
+        "acceptanceAuthority": false
+      },
+      "evidence": {
+        "envelopes": [
+          {
+            "id": "evidence-security-policy-3-security-001",
+            "criterionId": "SECURITY-001",
+            "sourceAttemptId": "attempt-9e1588dce8fc-security-policy-3-1",
+            "verificationAttemptId": "verification-security-policy-3-1",
+            "sourceRevision": "9b6fabb1ae165eb81e4fb8371ae64eb67be3f8f0",
+            "candidateRevision": "b45473f0ff3a01a51a595a8ae378319c657bad7d",
+            "producer": {
+              "actorId": "verifier-security-policy-3",
+              "independent": true
+            }
+          },
+          {
+            "id": "evidence-security-policy-3-security-002",
+            "criterionId": "SECURITY-002",
+            "sourceAttemptId": "attempt-9e1588dce8fc-security-policy-3-1",
+            "verificationAttemptId": "verification-security-policy-3-1",
+            "sourceRevision": "9b6fabb1ae165eb81e4fb8371ae64eb67be3f8f0",
+            "candidateRevision": "b45473f0ff3a01a51a595a8ae378319c657bad7d",
+            "producer": {
+              "actorId": "verifier-security-policy-3",
+              "independent": true
+            }
+          }
+        ],
+        "unknown": []
+      },
+      "evidenceCompleteness": 1,
+      "qualityGate": {
+        "state": "ELIGIBLE",
+        "exactCurrent": true,
+        "acceptanceAuthority": false
+      },
+      "prLineage": {
+        "mode": "DETERMINISTIC_PROVIDER_FIXTURE",
+        "repository": "sellerfi-pilot/security-policy",
+        "headSha": "b45473f0ff3a01a51a595a8ae378319c657bad7d",
+        "url": "https://github.com/sellerfi-pilot/security-policy/pull/3",
+        "published": false,
+        "humanMergeRequired": true
+      },
+      "review": {
+        "authority": "PROJECTION_ADVISORY",
+        "residualAiEnabled": false,
+        "reviewPackage": {
+          "status": "APPROVED",
+          "approvedByActorType": "HUMAN",
+          "acceptanceAuthority": false,
+          "accepting": false,
+          "traversal": [
+            "INTENT",
+            "CRITERION",
+            "EVIDENCE",
+            "VERIFICATION",
+            "IMPLEMENTATION_DECISION",
+            "RAW_DIFF"
+          ],
+          "rawDiffDigest": "sha256:79a65f87c8e501c350efe6c7446e2e47018f74b02d8924e8722f2c86c84fb54d"
+        },
+        "unknownEvidence": 0,
+        "residualRisk": [
+          "Human risk review remains required before acceptance and merge."
+        ],
+        "implementationDecisions": [
+          {
+            "decision": "Use the bounded security-policy implementation.",
+            "attributableTo": "attempt-9e1588dce8fc-security-policy-3-1"
+          }
+        ],
+        "semanticGroups": [
+          {
+            "id": "authentication",
+            "name": "Authentication",
+            "method": "DETERMINISTIC",
+            "authority": "ADVISORY",
+            "files": [
+              {
+                "path": "src/authorization.mjs"
+              }
+            ]
+          }
+        ],
+        "criterionTrace": [
+          {
+            "criterion": {
+              "id": "SECURITY-001",
+              "title": "Missing context fails closed",
+              "description": null,
+              "requirementIds": [
+                "REQ-001",
+                "REQ-002"
+              ]
+            },
+            "specRequirements": [
+              {
+                "id": "REQ-001",
+                "title": "Missing or malformed authorization context is denied.",
+                "priority": "MUST"
+              },
+              {
+                "id": "REQ-002",
+                "title": "Only owner and administrator roles may change a listing.",
+                "priority": "MUST"
+              }
+            ],
+            "planAssertions": [],
+            "verificationChecks": [
+              {
+                "id": "check-security-policy-3-security-001",
+                "name": "npm test",
+                "verifierId": "verifier-security-policy-3",
+                "status": "PASSED",
+                "evidenceIds": [
+                  "evidence-security-policy-3-security-001"
+                ]
+              }
+            ],
+            "evidence": [
+              {
+                "id": "evidence-security-policy-3-security-001",
+                "verificationRunId": "verification-security-policy-3",
+                "sourceAttemptId": "attempt-9e1588dce8fc-security-policy-3-1",
+                "producer": {
+                  "actorId": "verifier-security-policy-3",
+                  "independent": true
+                },
+                "category": "TEST_RESULT",
+                "artifactIds": [],
+                "artifactReferences": [
+                  {
+                    "kind": "VERIFICATION_OUTPUT",
+                    "digest": "sha256:f6c54b8643d4a3d1192f0d8eb0ee2ef117648f05e999ca47ca8452a5820e766f"
+                  }
+                ],
+                "contentHash": "sha256:f6c54b8643d4a3d1192f0d8eb0ee2ef117648f05e999ca47ca8452a5820e766f",
+                "sourceRevision": "9b6fabb1ae165eb81e4fb8371ae64eb67be3f8f0",
+                "candidateRevision": "b45473f0ff3a01a51a595a8ae378319c657bad7d",
+                "recordedAt": "2026-08-19T17:41:37.034Z"
+              }
+            ],
+            "result": "PASS",
+            "method": "node --test",
+            "receiptId": "receipt-security-policy-3-security-001",
+            "verifier": "verifier-security-policy-3",
+            "current": true,
+            "integrityIssue": null,
+            "lineage": {
+              "missionSpecRevisionId": "spec-security-policy-3-r1",
+              "missionSpecDigest": "sha256:b8746371b4da80e067227f133dbcc0f466c53f9eb36bb08c8c93341470ab3d32",
+              "missionPlanId": "plan-security-policy-3",
+              "missionPlanRevisionNumber": 1,
+              "qualityContractDigest": "sha256:5bd8528fc2c1f53f78d42c8cb2bf26fcac12b24a4c708d8f3dba7ad1d7ccb9fb",
+              "workOrderId": "work-order-security-policy-3",
+              "workOrderRevisionNumber": 1,
+              "workflowRunId": "attempt-9e1588dce8fc-security-policy-3-1",
+              "candidateRevision": "b45473f0ff3a01a51a595a8ae378319c657bad7d",
+              "verificationRunId": "verification-security-policy-3",
+              "verificationSubjectId": null,
+              "verificationSubjectDigest": null,
+              "verificationPlanId": null,
+              "verificationPlanDigest": null,
+              "evidenceSetDigest": null,
+              "qualityGateDecisionId": null
+            }
+          },
+          {
+            "criterion": {
+              "id": "SECURITY-002",
+              "title": "Role allowlist is exact",
+              "description": null,
+              "requirementIds": [
+                "REQ-001",
+                "REQ-002"
+              ]
+            },
+            "specRequirements": [
+              {
+                "id": "REQ-001",
+                "title": "Missing or malformed authorization context is denied.",
+                "priority": "MUST"
+              },
+              {
+                "id": "REQ-002",
+                "title": "Only owner and administrator roles may change a listing.",
+                "priority": "MUST"
+              }
+            ],
+            "planAssertions": [],
+            "verificationChecks": [
+              {
+                "id": "check-security-policy-3-security-002",
+                "name": "npm test",
+                "verifierId": "verifier-security-policy-3",
+                "status": "PASSED",
+                "evidenceIds": [
+                  "evidence-security-policy-3-security-002"
+                ]
+              }
+            ],
+            "evidence": [
+              {
+                "id": "evidence-security-policy-3-security-002",
+                "verificationRunId": "verification-security-policy-3",
+                "sourceAttemptId": "attempt-9e1588dce8fc-security-policy-3-1",
+                "producer": {
+                  "actorId": "verifier-security-policy-3",
+                  "independent": true
+                },
+                "category": "TEST_RESULT",
+                "artifactIds": [],
+                "artifactReferences": [
+                  {
+                    "kind": "VERIFICATION_OUTPUT",
+                    "digest": "sha256:f6c54b8643d4a3d1192f0d8eb0ee2ef117648f05e999ca47ca8452a5820e766f"
+                  }
+                ],
+                "contentHash": "sha256:f6c54b8643d4a3d1192f0d8eb0ee2ef117648f05e999ca47ca8452a5820e766f",
+                "sourceRevision": "9b6fabb1ae165eb81e4fb8371ae64eb67be3f8f0",
+                "candidateRevision": "b45473f0ff3a01a51a595a8ae378319c657bad7d",
+                "recordedAt": "2026-08-19T17:41:37.034Z"
+              }
+            ],
+            "result": "PASS",
+            "method": "node --test",
+            "receiptId": "receipt-security-policy-3-security-002",
+            "verifier": "verifier-security-policy-3",
+            "current": true,
+            "integrityIssue": null,
+            "lineage": {
+              "missionSpecRevisionId": "spec-security-policy-3-r1",
+              "missionSpecDigest": "sha256:b8746371b4da80e067227f133dbcc0f466c53f9eb36bb08c8c93341470ab3d32",
+              "missionPlanId": "plan-security-policy-3",
+              "missionPlanRevisionNumber": 1,
+              "qualityContractDigest": "sha256:5bd8528fc2c1f53f78d42c8cb2bf26fcac12b24a4c708d8f3dba7ad1d7ccb9fb",
+              "workOrderId": "work-order-security-policy-3",
+              "workOrderRevisionNumber": 1,
+              "workflowRunId": "attempt-9e1588dce8fc-security-policy-3-1",
+              "candidateRevision": "b45473f0ff3a01a51a595a8ae378319c657bad7d",
+              "verificationRunId": "verification-security-policy-3",
+              "verificationSubjectId": null,
+              "verificationSubjectDigest": null,
+              "verificationPlanId": null,
+              "verificationPlanDigest": null,
+              "evidenceSetDigest": null,
+              "qualityGateDecisionId": null
+            }
+          }
+        ],
+        "correctionRequired": false,
+        "durationMs": 0
+      },
+      "acceptance": {
+        "operation": "workOrders.accept",
+        "fixtureActorType": "HUMAN",
+        "eligible": true,
+        "blockingReasons": [],
+        "accepted": true,
+        "mergePerformed": false
+      },
+      "cleanup": {
+        "observed": true,
+        "passed": true,
+        "status": "COMPLETED",
+        "credentialRevoked": true,
+        "resourceAbsent": true,
+        "resourceName": "mc-attempt-9fdc9f679c2981f7",
+        "finalVmCount": 0
+      },
+      "cost": {
+        "observed": false,
+        "modelUsd": null,
+        "infrastructureUsd": null,
+        "totalUsd": null,
+        "limitation": "exe.dev does not expose a per-VM scenario price; any unavailable model/provider cost remains null."
+      },
+      "metrics": {
+        "missionToPlanMs": 1,
+        "planToWorkOrderMs": 0,
+        "queueAdmissionMs": 0,
+        "localExecutionMs": null,
+        "remoteAllocationMs": 3656,
+        "remoteReadinessMs": 4419,
+        "remoteExecutionMs": 68886,
+        "teardownMs": 3603,
+        "executionMs": 89387,
+        "verificationMs": 272,
+        "reviewMs": 0,
+        "totalCycleMs": 89437
+      }
+    },
+    {
+      "executionId": "data-migration-3",
+      "workloadKey": "data-migration",
+      "workloadClass": "DATA_SCHEMA_MIGRATION",
+      "title": "Migrate listing ownership with compatibility and rollback",
+      "repetition": 3,
+      "risk": "HIGH",
+      "backend": "remote-sandbox",
+      "lineage": {
+        "constitutionRevisionId": "constitution-production-factory-pilot-v3",
+        "constitutionDigest": "sha256:3f4e964ad3b98534e761fba55f37ab63c961460b8d5f8b7b3e555cc48b2c5492",
+        "missionId": "mission-data-migration-3",
+        "specRevisionId": "spec-data-migration-3-r1",
+        "specDigest": "sha256:a5bde4e170db6d709fe568a483ff83f5ecbae15d3be6649fd45e85a7fe8cc773",
+        "specQuality": {
+          "result": "PASS",
+          "findingCount": 0,
+          "authority": "PLANNING_READY_ONLY"
+        },
+        "planId": "plan-data-migration-3",
+        "planRevision": 1,
+        "planAuthoredBy": "pilot-operator-author",
+        "planApprovedBy": "pilot-operator-approver",
+        "planApprovalSeparate": true,
+        "qualityContractDigest": "sha256:cd420d5c6fc8ba86110be065ff0f0fc71d3a81692f28c3eae4ec9a33c0164234",
+        "workOrderId": "work-order-data-migration-3",
+        "workOrderRevision": 1,
+        "factoryVersionId": "factory-codex-exedev-certified-v1",
+        "factoryMemory": {
+          "authority": "ADVISORY",
+          "result": "CONTEXT_PACKAGE_ASSEMBLED"
+        },
+        "contextPackageId": "context-data-migration-3",
+        "contextPackage": {
+          "schema": "factory-context-package/v1",
+          "contextPackageId": "context-data-migration-3",
+          "workloadKey": "data-migration",
+          "sourceFiles": [
+            "migrations/001-owner-id.mjs",
+            "package.json",
+            "src/orderOwnership.mjs",
+            "tests/orderOwnership.test.mjs"
+          ],
+          "implementationFiles": [
+            "migrations/001-owner-id.mjs",
+            "src/orderOwnership.mjs"
+          ],
+          "testFiles": [
+            "tests/orderOwnership.test.mjs"
+          ],
+          "requirements": [
+            "Current reads prefer ownerId and remain compatible with the legacy owner field.",
+            "Forward migration and rollback preserve unrelated fields and ownership data."
+          ],
+          "acceptanceCriteria": [
+            {
+              "id": "MIGRATION-001",
+              "title": "Mixed-version reads remain compatible",
+              "method": "node --test"
+            },
+            {
+              "id": "MIGRATION-002",
+              "title": "Forward migration preserves data",
+              "method": "node --test"
+            },
+            {
+              "id": "MIGRATION-003",
+              "title": "Rollback restores the legacy shape",
+              "method": "node --test"
+            }
+          ],
+          "authority": "ADVISORY",
+          "sufficient": true,
+          "missingSources": [],
+          "additionalAuthorizedContext": null
+        },
+        "contextPackageDigest": "sha256:b94d4dd2c30029755b860b8e5b1a8c35e5b4126ab1cec6b5342aa68b77023bc9",
+        "qualifiedWorkloadConfiguration": {
+          "schema": "factory-qualified-workload-configuration/v1",
+          "workloadKey": "data-migration",
+          "securityContextVariant": null,
+          "additionalAuthorizedContext": null,
+          "runtimeMs": 420000,
+          "executorTimeoutMs": 390000,
+          "modelMetadataConfig": "supported",
+          "globalDefault": false,
+          "digest": "sha256:496e33ed1ea0eeb08c0925540d247857275a1ab82eb2193cfb9a6abdfe61a88b"
+        },
+        "timings": {
+          "missionToPlanMs": 1,
+          "planToWorkOrderMs": 0,
+          "queueAdmissionMs": 0
+        }
+      },
+      "context": {
+        "sufficient": true,
+        "contextPackageId": "context-data-migration-3",
+        "contextPackageDigest": "sha256:b94d4dd2c30029755b860b8e5b1a8c35e5b4126ab1cec6b5342aa68b77023bc9",
+        "missingSources": [],
+        "qualifiedWorkloadConfiguration": {
+          "schema": "factory-qualified-workload-configuration/v1",
+          "workloadKey": "data-migration",
+          "securityContextVariant": null,
+          "additionalAuthorizedContext": null,
+          "runtimeMs": 420000,
+          "executorTimeoutMs": 390000,
+          "modelMetadataConfig": "supported",
+          "globalDefault": false,
+          "digest": "sha256:496e33ed1ea0eeb08c0925540d247857275a1ab82eb2193cfb9a6abdfe61a88b"
+        }
+      },
+      "attempts": [
+        {
+          "attemptId": "attempt-9e1588dce8fc-data-migration-3-1",
+          "attemptNumber": 1,
+          "retryOfAttemptId": null,
+          "worker": {
+            "workerId": "worker-production-exedev-n1",
+            "sessionId": "session-production-pilot-v3-9e1588dce8fc-remote-sandbox",
+            "generation": 1,
+            "current": true,
+            "maxConcurrentRuns": 1
+          },
+          "lease": {
+            "id": "lease-9e1588dce8fc-data-migration-3-1",
+            "current": true,
+            "acquiredAt": "2026-08-19T17:43:08.579Z"
+          },
+          "sourceSha": "50e81bc2b06d4c7ea069f87e1815a0e93e12ebfe",
+          "backend": "remote-sandbox",
+          "governedConfiguration": {
+            "schema": "factory-qualified-workload-configuration/v1",
+            "workloadKey": "data-migration",
+            "securityContextVariant": null,
+            "additionalAuthorizedContext": null,
+            "runtimeMs": 420000,
+            "executorTimeoutMs": 390000,
+            "modelMetadataConfig": "supported",
+            "globalDefault": false,
+            "digest": "sha256:496e33ed1ea0eeb08c0925540d247857275a1ab82eb2193cfb9a6abdfe61a88b"
+          },
+          "status": "COMPLETED",
+          "startedAt": "2026-08-19T17:43:08.579Z",
+          "events": [
+            {
+              "type": "SANDBOX_REQUESTED",
+              "occurredAt": 1787161392627,
+              "resourceName": "mc-attempt-94c4c0cc41ae4f4a",
+              "attemptId": "attempt-9e1588dce8fc-data-migration-3-1",
+              "metadata": {
+                "provider": "EXE_DEV",
+                "profileDigest": "sha256:67ca2f18f58e13a107822555741ff04412d2e1339e454605dd35bbef8282393d",
+                "readiness": "DEGRADED"
+              }
+            },
+            {
+              "type": "SANDBOX_ALLOCATED",
+              "occurredAt": 1787161396068,
+              "resourceName": "mc-attempt-94c4c0cc41ae4f4a",
+              "attemptId": "attempt-9e1588dce8fc-data-migration-3-1",
+              "metadata": {
+                "providerResourceId": "mc-attempt-94c4c0cc41ae4f4a"
+              }
+            },
+            {
+              "type": "SANDBOX_STARTED",
+              "occurredAt": 1787161400337,
+              "resourceName": "mc-attempt-94c4c0cc41ae4f4a",
+              "attemptId": "attempt-9e1588dce8fc-data-migration-3-1",
+              "metadata": {
+                "processId": "mc-attempt-94c4c0cc41ae4f4a:supervisor"
+              }
+            },
+            {
+              "type": "SANDBOX_RESULT_RECEIVED",
+              "occurredAt": 1787161611053,
+              "resourceName": "mc-attempt-94c4c0cc41ae4f4a",
+              "attemptId": "attempt-9e1588dce8fc-data-migration-3-1",
+              "metadata": {
+                "resultDigest": "sha256:b8964895d1eee1530f7c4e284645a69658c3343fbee0d990b940bccb392dc100",
+                "status": "COMPLETED",
+                "providerCostUsd": null,
+                "inferenceCostUsd": null
+              }
+            },
+            {
+              "type": "SANDBOX_CREDENTIAL_REVOKED",
+              "occurredAt": 1787161611628,
+              "resourceName": "mc-attempt-94c4c0cc41ae4f4a",
+              "attemptId": "attempt-9e1588dce8fc-data-migration-3-1",
+              "metadata": {
+                "grantKey": "mc-attempt-e46485b0d0f787695538",
+                "externalCredentialId": "bd86dc64169f60fc57ee8f0e4810d39a694999486167fd911b5525bac6013a9c"
+              }
+            },
+            {
+              "type": "SANDBOX_TERMINATION_REQUESTED",
+              "occurredAt": 1787161611628,
+              "resourceName": "mc-attempt-94c4c0cc41ae4f4a",
+              "attemptId": "attempt-9e1588dce8fc-data-migration-3-1",
+              "metadata": {
+                "providerResourceId": "mc-attempt-94c4c0cc41ae4f4a"
+              }
+            },
+            {
+              "type": "SANDBOX_TERMINATED",
+              "occurredAt": 1787161614909,
+              "resourceName": "mc-attempt-94c4c0cc41ae4f4a",
+              "attemptId": "attempt-9e1588dce8fc-data-migration-3-1",
+              "metadata": {
+                "confirmedAbsentAt": 1787161614909
+              }
+            }
+          ],
+          "harness": {
+            "adapter": "codex",
+            "version": "v1",
+            "harnessVersion": "0.146.0",
+            "authority": {
+              "worker": "NONE",
+              "verification": "NONE",
+              "publication": "NONE",
+              "acceptance": "NONE",
+              "memory": "NONE",
+              "observability": "NONE",
+              "learning": "NONE"
+            },
+            "actualTuple": {
+              "provider": "openrouter",
+              "model": "openai/gpt-5.1-codex-mini",
+              "backend": "remote-sandbox"
+            }
+          },
+          "usage": {
+            "providerCostUsd": null,
+            "inferenceCostUsd": null,
+            "inputTokens": 112354,
+            "outputTokens": 8548,
+            "observedAt": 1787161609722,
+            "providerRuntimeMs": 209345,
+            "enforcement": "OBSERVATION_ONLY"
+          },
+          "cleanup": {
+            "observed": true,
+            "passed": true,
+            "status": "COMPLETED",
+            "credentialRevoked": true,
+            "resourceAbsent": true,
+            "resourceName": "mc-attempt-94c4c0cc41ae4f4a",
+            "finalVmCount": 0
+          },
+          "remoteResult": {
+            "invocation": {
+              "outputSchemaPath": "/var/lib/mission-control/attempt/factory-result.schema.json",
+              "outputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "schema",
+                  "status",
+                  "summary",
+                  "completedAcceptanceCriterionIds",
+                  "incompleteAcceptanceCriterionIds",
+                  "unknownAcceptanceCriterionIds",
+                  "verificationCommands",
+                  "knownRisks",
+                  "nextAction"
+                ],
+                "properties": {
+                  "schema": {
+                    "type": "string",
+                    "enum": [
+                      "factory-result/v1"
+                    ]
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "COMPLETED",
+                      "BLOCKED",
+                      "FAILED"
+                    ]
+                  },
+                  "summary": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000
+                  },
+                  "completedAcceptanceCriterionIds": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 2000
+                    }
+                  },
+                  "incompleteAcceptanceCriterionIds": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 2000
+                    }
+                  },
+                  "unknownAcceptanceCriterionIds": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 2000
+                    }
+                  },
+                  "verificationCommands": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 2000
+                    }
+                  },
+                  "knownRisks": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 2000
+                    }
+                  },
+                  "nextAction": {
+                    "type": "string",
+                    "maxLength": 4000
+                  }
+                }
+              }
+            },
+            "identity": {
+              "publicRunId": "run-9e1588dce8fc-data-migration-3-1",
+              "workflowDocumentId": "workflow-doc-9e1588dce8fc-data-migration-3-1",
+              "manifestResourceName": "mc-attempt-94c4c0cc41ae4f4a",
+              "allocatedResourceName": "mc-attempt-94c4c0cc41ae4f4a"
+            },
+            "bundleStatus": "COMPLETED",
+            "structuredStatus": "COMPLETED",
+            "resultProvenance": {
+              "source": "OUTPUT_FILE",
+              "outputFile": {
+                "state": "VALID",
+                "byteLength": 648
+              },
+              "jsonl": {
+                "byteLength": 21616,
+                "lineCount": 39,
+                "malformedLineCount": 0,
+                "terminalCompletedCount": 1,
+                "terminalFailureCount": 0,
+                "validCandidateCount": 1
+              },
+              "context": {
+                "attemptId": "attempt-9e1588dce8fc-data-migration-3-1",
+                "manifestDigest": "sha256:d3dd81b124c277a9cc3324304628c5bfc789d46b64e1d6ded656fb3ebdfd6144",
+                "sourceSha": "50e81bc2b06d4c7ea069f87e1815a0e93e12ebfe"
+              }
+            },
+            "governedConfiguration": {
+              "schema": "factory-qualified-workload-configuration/v1",
+              "workloadKey": "data-migration",
+              "securityContextVariant": null,
+              "additionalAuthorizedContext": null,
+              "runtimeMs": 420000,
+              "executorTimeoutMs": 390000,
+              "modelMetadataConfig": "supported",
+              "globalDefault": false,
+              "digest": "sha256:496e33ed1ea0eeb08c0925540d247857275a1ab82eb2193cfb9a6abdfe61a88b",
+              "profileDigest": "sha256:67ca2f18f58e13a107822555741ff04412d2e1339e454605dd35bbef8282393d",
+              "modelCatalogDigest": "sha256:8190f002e89c955982792d5293f05343bb0b97e240ab9688979edd703d9eda41"
+            },
+            "resultOutput": {
+              "state": "VALID",
+              "byteLength": 648,
+              "digest": "sha256:1beb3c65970ed111d7a245f16c59cdc2c0238df5f50a46931856e75af0a68433",
+              "tail": "{\"schema\":\"factory-result/v1\",\"status\":\"COMPLETED\",\"summary\":\"Updated `src/orderOwnership.mjs:1-3` so `readOwnerId` prefers `ownerId` and still falls back to the legacy `owner` field, and replaced `migrations/001-owner-id.mjs:1-41` with idempotent `migrateOwner`/`rollbackOwner` helpers that move the ownership value while preserving unrelated fields.\",\"completedAcceptanceCriterionIds\":[\"MIGRATION-001\",\"MIGRATION-002\",\"MIGRATION-003\"],\"incompleteAcceptanceCriterionIds\":[],\"unknownAcceptanceCriterionIds\":[],\"verificationCommands\":[\"npm test\"],\"knownRisks\":[],\"nextAction\":\"Confirm the migration behavior against real data samples if available.\"}",
+              "validationIssues": []
+            },
+            "summary": "Updated `src/orderOwnership.mjs:1-3` so `readOwnerId` prefers `ownerId` and still falls back to the legacy `owner` field, and replaced `migrations/001-owner-id.mjs:1-41` with idempotent `migrateOwner`/`rollbackOwner` helpers that move the ownership value while preserving unrelated fields.",
+            "executorExitCode": 0,
+            "stdoutDigest": "sha256:fa317aa66867e955bef939fe286e9e1ffc269fb97845aa98bd0446595e5d99b1",
+            "stderrDigest": "sha256:96a27fbba212394304ee38175d936800eecec24e0dc902d4da83e5d5f72299e0",
+            "stderrTail": "Reading additional input from stdin...\nnpm notice\nnpm notice New major version of npm available! 11.17.0 -> 12.0.2\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.0.2\nnpm notice To update run: npm install -g npm@12.0.2\nnpm notice\n"
+          },
+          "structuredResult": {
+            "schema": "factory-result/v1",
+            "status": "COMPLETED",
+            "summary": "Updated `src/orderOwnership.mjs:1-3` so `readOwnerId` prefers `ownerId` and still falls back to the legacy `owner` field, and replaced `migrations/001-owner-id.mjs:1-41` with idempotent `migrateOwner`/`rollbackOwner` helpers that move the ownership value while preserving unrelated fields.",
+            "completedAcceptanceCriterionIds": [
+              "MIGRATION-001",
+              "MIGRATION-002",
+              "MIGRATION-003"
+            ],
+            "incompleteAcceptanceCriterionIds": [],
+            "unknownAcceptanceCriterionIds": [],
+            "verificationCommands": [
+              "npm test"
+            ],
+            "knownRisks": [],
+            "nextAction": "Confirm the migration behavior against real data samples if available."
+          },
+          "terminalStructuredResult": true,
+          "failure": null,
+          "executionMetrics": {
+            "allocationMs": 3441,
+            "readinessMs": 4269,
+            "executionMs": 210716,
+            "teardownMs": 3856
+          },
+          "candidate": {
+            "sourceSha": "50e81bc2b06d4c7ea069f87e1815a0e93e12ebfe",
+            "candidateSha": "e098d231fd8b52258eb6b33a0af0d1341b5f6766",
+            "treeSha": "9a1ef7520e21947c7497acd5ad2fcb1c83db3bbc",
+            "changedFiles": [
+              "migrations/001-owner-id.mjs",
+              "src/orderOwnership.mjs"
+            ],
+            "linesAdded": 44,
+            "linesDeleted": 3,
+            "diffSha256": "sha256:d5bdc4a754b8eb39a24b3f314ae65db91d74542fe96ab6644dc6998b3df5e96e"
+          },
+          "verification": {
+            "attemptId": "verification-data-migration-3",
+            "sourceAttemptId": null,
+            "verifierId": "verifier-data-migration-3",
+            "independent": true,
+            "candidateSha": "e098d231fd8b52258eb6b33a0af0d1341b5f6766",
+            "treeSha": "9a1ef7520e21947c7497acd5ad2fcb1c83db3bbc",
+            "verdict": "VERIFIED",
+            "reason": "Independent exact-candidate gate passed.",
+            "command": "npm test",
+            "exitCode": 0,
+            "outputSha256": "sha256:e4f9e516f9c810d8024ff830e99f25dff4e2a420c42b65edb68f1f7186fb6778",
+            "durationMs": 279,
+            "acceptanceAuthority": false
+          },
+          "retryDecision": {
+            "allowed": false,
+            "reason": "NOT_REQUIRED"
+          },
+          "finishedAt": "2026-08-19T17:46:59.500Z",
+          "durationMs": 230921
+        }
+      ],
+      "terminalStructuredResult": true,
+      "firstPassStructuredResultSuccess": true,
+      "firstPassVerificationSuccess": true,
+      "eventualVerificationSuccess": true,
+      "firstPassSuccess": true,
+      "eventualSuccess": true,
+      "retries": 0,
+      "cancellationCount": 0,
+      "verification": {
+        "attemptId": "verification-data-migration-3",
+        "sourceAttemptId": null,
+        "verifierId": "verifier-data-migration-3",
+        "independent": true,
+        "candidateSha": "e098d231fd8b52258eb6b33a0af0d1341b5f6766",
+        "treeSha": "9a1ef7520e21947c7497acd5ad2fcb1c83db3bbc",
+        "verdict": "VERIFIED",
+        "reason": "Independent exact-candidate gate passed.",
+        "command": "npm test",
+        "exitCode": 0,
+        "outputSha256": "sha256:e4f9e516f9c810d8024ff830e99f25dff4e2a420c42b65edb68f1f7186fb6778",
+        "durationMs": 279,
+        "acceptanceAuthority": false
+      },
+      "evidence": {
+        "envelopes": [
+          {
+            "id": "evidence-data-migration-3-migration-001",
+            "criterionId": "MIGRATION-001",
+            "sourceAttemptId": "attempt-9e1588dce8fc-data-migration-3-1",
+            "verificationAttemptId": "verification-data-migration-3-1",
+            "sourceRevision": "50e81bc2b06d4c7ea069f87e1815a0e93e12ebfe",
+            "candidateRevision": "e098d231fd8b52258eb6b33a0af0d1341b5f6766",
+            "producer": {
+              "actorId": "verifier-data-migration-3",
+              "independent": true
+            }
+          },
+          {
+            "id": "evidence-data-migration-3-migration-002",
+            "criterionId": "MIGRATION-002",
+            "sourceAttemptId": "attempt-9e1588dce8fc-data-migration-3-1",
+            "verificationAttemptId": "verification-data-migration-3-1",
+            "sourceRevision": "50e81bc2b06d4c7ea069f87e1815a0e93e12ebfe",
+            "candidateRevision": "e098d231fd8b52258eb6b33a0af0d1341b5f6766",
+            "producer": {
+              "actorId": "verifier-data-migration-3",
+              "independent": true
+            }
+          },
+          {
+            "id": "evidence-data-migration-3-migration-003",
+            "criterionId": "MIGRATION-003",
+            "sourceAttemptId": "attempt-9e1588dce8fc-data-migration-3-1",
+            "verificationAttemptId": "verification-data-migration-3-1",
+            "sourceRevision": "50e81bc2b06d4c7ea069f87e1815a0e93e12ebfe",
+            "candidateRevision": "e098d231fd8b52258eb6b33a0af0d1341b5f6766",
+            "producer": {
+              "actorId": "verifier-data-migration-3",
+              "independent": true
+            }
+          }
+        ],
+        "unknown": []
+      },
+      "evidenceCompleteness": 1,
+      "qualityGate": {
+        "state": "ELIGIBLE",
+        "exactCurrent": true,
+        "acceptanceAuthority": false
+      },
+      "prLineage": {
+        "mode": "DETERMINISTIC_PROVIDER_FIXTURE",
+        "repository": "sellerfi-pilot/data-migration",
+        "headSha": "e098d231fd8b52258eb6b33a0af0d1341b5f6766",
+        "url": "https://github.com/sellerfi-pilot/data-migration/pull/3",
+        "published": false,
+        "humanMergeRequired": true
+      },
+      "review": {
+        "authority": "PROJECTION_ADVISORY",
+        "residualAiEnabled": false,
+        "reviewPackage": {
+          "status": "APPROVED",
+          "approvedByActorType": "HUMAN",
+          "acceptanceAuthority": false,
+          "accepting": false,
+          "traversal": [
+            "INTENT",
+            "CRITERION",
+            "EVIDENCE",
+            "VERIFICATION",
+            "IMPLEMENTATION_DECISION",
+            "RAW_DIFF"
+          ],
+          "rawDiffDigest": "sha256:d5bdc4a754b8eb39a24b3f314ae65db91d74542fe96ab6644dc6998b3df5e96e"
+        },
+        "unknownEvidence": 0,
+        "residualRisk": [
+          "Human risk review remains required before acceptance and merge."
+        ],
+        "implementationDecisions": [
+          {
+            "decision": "Use the bounded data-migration implementation.",
+            "attributableTo": "attempt-9e1588dce8fc-data-migration-3-1"
+          }
+        ],
+        "semanticGroups": [
+          {
+            "id": "migration",
+            "name": "Migration",
+            "method": "DETERMINISTIC",
+            "authority": "ADVISORY",
+            "files": [
+              {
+                "path": "migrations/001-owner-id.mjs"
+              }
+            ]
+          },
+          {
+            "id": "other",
+            "name": "Other",
+            "method": "DETERMINISTIC",
+            "authority": "ADVISORY",
+            "files": [
+              {
+                "path": "src/orderOwnership.mjs"
+              }
+            ]
+          }
+        ],
+        "criterionTrace": [
+          {
+            "criterion": {
+              "id": "MIGRATION-001",
+              "title": "Mixed-version reads remain compatible",
+              "description": null,
+              "requirementIds": [
+                "REQ-001",
+                "REQ-002"
+              ]
+            },
+            "specRequirements": [
+              {
+                "id": "REQ-001",
+                "title": "Current reads prefer ownerId and remain compatible with the legacy owner field.",
+                "priority": "MUST"
+              },
+              {
+                "id": "REQ-002",
+                "title": "Forward migration and rollback preserve unrelated fields and ownership data.",
+                "priority": "MUST"
+              }
+            ],
+            "planAssertions": [],
+            "verificationChecks": [
+              {
+                "id": "check-data-migration-3-migration-001",
+                "name": "npm test",
+                "verifierId": "verifier-data-migration-3",
+                "status": "PASSED",
+                "evidenceIds": [
+                  "evidence-data-migration-3-migration-001"
+                ]
+              }
+            ],
+            "evidence": [
+              {
+                "id": "evidence-data-migration-3-migration-001",
+                "verificationRunId": "verification-data-migration-3",
+                "sourceAttemptId": "attempt-9e1588dce8fc-data-migration-3-1",
+                "producer": {
+                  "actorId": "verifier-data-migration-3",
+                  "independent": true
+                },
+                "category": "TEST_RESULT",
+                "artifactIds": [],
+                "artifactReferences": [
+                  {
+                    "kind": "VERIFICATION_OUTPUT",
+                    "digest": "sha256:e4f9e516f9c810d8024ff830e99f25dff4e2a420c42b65edb68f1f7186fb6778"
+                  }
+                ],
+                "contentHash": "sha256:e4f9e516f9c810d8024ff830e99f25dff4e2a420c42b65edb68f1f7186fb6778",
+                "sourceRevision": "50e81bc2b06d4c7ea069f87e1815a0e93e12ebfe",
+                "candidateRevision": "e098d231fd8b52258eb6b33a0af0d1341b5f6766",
+                "recordedAt": "2026-08-19T17:46:59.500Z"
+              }
+            ],
+            "result": "PASS",
+            "method": "node --test",
+            "receiptId": "receipt-data-migration-3-migration-001",
+            "verifier": "verifier-data-migration-3",
+            "current": true,
+            "integrityIssue": null,
+            "lineage": {
+              "missionSpecRevisionId": "spec-data-migration-3-r1",
+              "missionSpecDigest": "sha256:a5bde4e170db6d709fe568a483ff83f5ecbae15d3be6649fd45e85a7fe8cc773",
+              "missionPlanId": "plan-data-migration-3",
+              "missionPlanRevisionNumber": 1,
+              "qualityContractDigest": "sha256:cd420d5c6fc8ba86110be065ff0f0fc71d3a81692f28c3eae4ec9a33c0164234",
+              "workOrderId": "work-order-data-migration-3",
+              "workOrderRevisionNumber": 1,
+              "workflowRunId": "attempt-9e1588dce8fc-data-migration-3-1",
+              "candidateRevision": "e098d231fd8b52258eb6b33a0af0d1341b5f6766",
+              "verificationRunId": "verification-data-migration-3",
+              "verificationSubjectId": null,
+              "verificationSubjectDigest": null,
+              "verificationPlanId": null,
+              "verificationPlanDigest": null,
+              "evidenceSetDigest": null,
+              "qualityGateDecisionId": null
+            }
+          },
+          {
+            "criterion": {
+              "id": "MIGRATION-002",
+              "title": "Forward migration preserves data",
+              "description": null,
+              "requirementIds": [
+                "REQ-001",
+                "REQ-002"
+              ]
+            },
+            "specRequirements": [
+              {
+                "id": "REQ-001",
+                "title": "Current reads prefer ownerId and remain compatible with the legacy owner field.",
+                "priority": "MUST"
+              },
+              {
+                "id": "REQ-002",
+                "title": "Forward migration and rollback preserve unrelated fields and ownership data.",
+                "priority": "MUST"
+              }
+            ],
+            "planAssertions": [],
+            "verificationChecks": [
+              {
+                "id": "check-data-migration-3-migration-002",
+                "name": "npm test",
+                "verifierId": "verifier-data-migration-3",
+                "status": "PASSED",
+                "evidenceIds": [
+                  "evidence-data-migration-3-migration-002"
+                ]
+              }
+            ],
+            "evidence": [
+              {
+                "id": "evidence-data-migration-3-migration-002",
+                "verificationRunId": "verification-data-migration-3",
+                "sourceAttemptId": "attempt-9e1588dce8fc-data-migration-3-1",
+                "producer": {
+                  "actorId": "verifier-data-migration-3",
+                  "independent": true
+                },
+                "category": "TEST_RESULT",
+                "artifactIds": [],
+                "artifactReferences": [
+                  {
+                    "kind": "VERIFICATION_OUTPUT",
+                    "digest": "sha256:e4f9e516f9c810d8024ff830e99f25dff4e2a420c42b65edb68f1f7186fb6778"
+                  }
+                ],
+                "contentHash": "sha256:e4f9e516f9c810d8024ff830e99f25dff4e2a420c42b65edb68f1f7186fb6778",
+                "sourceRevision": "50e81bc2b06d4c7ea069f87e1815a0e93e12ebfe",
+                "candidateRevision": "e098d231fd8b52258eb6b33a0af0d1341b5f6766",
+                "recordedAt": "2026-08-19T17:46:59.500Z"
+              }
+            ],
+            "result": "PASS",
+            "method": "node --test",
+            "receiptId": "receipt-data-migration-3-migration-002",
+            "verifier": "verifier-data-migration-3",
+            "current": true,
+            "integrityIssue": null,
+            "lineage": {
+              "missionSpecRevisionId": "spec-data-migration-3-r1",
+              "missionSpecDigest": "sha256:a5bde4e170db6d709fe568a483ff83f5ecbae15d3be6649fd45e85a7fe8cc773",
+              "missionPlanId": "plan-data-migration-3",
+              "missionPlanRevisionNumber": 1,
+              "qualityContractDigest": "sha256:cd420d5c6fc8ba86110be065ff0f0fc71d3a81692f28c3eae4ec9a33c0164234",
+              "workOrderId": "work-order-data-migration-3",
+              "workOrderRevisionNumber": 1,
+              "workflowRunId": "attempt-9e1588dce8fc-data-migration-3-1",
+              "candidateRevision": "e098d231fd8b52258eb6b33a0af0d1341b5f6766",
+              "verificationRunId": "verification-data-migration-3",
+              "verificationSubjectId": null,
+              "verificationSubjectDigest": null,
+              "verificationPlanId": null,
+              "verificationPlanDigest": null,
+              "evidenceSetDigest": null,
+              "qualityGateDecisionId": null
+            }
+          },
+          {
+            "criterion": {
+              "id": "MIGRATION-003",
+              "title": "Rollback restores the legacy shape",
+              "description": null,
+              "requirementIds": [
+                "REQ-001",
+                "REQ-002"
+              ]
+            },
+            "specRequirements": [
+              {
+                "id": "REQ-001",
+                "title": "Current reads prefer ownerId and remain compatible with the legacy owner field.",
+                "priority": "MUST"
+              },
+              {
+                "id": "REQ-002",
+                "title": "Forward migration and rollback preserve unrelated fields and ownership data.",
+                "priority": "MUST"
+              }
+            ],
+            "planAssertions": [],
+            "verificationChecks": [
+              {
+                "id": "check-data-migration-3-migration-003",
+                "name": "npm test",
+                "verifierId": "verifier-data-migration-3",
+                "status": "PASSED",
+                "evidenceIds": [
+                  "evidence-data-migration-3-migration-003"
+                ]
+              }
+            ],
+            "evidence": [
+              {
+                "id": "evidence-data-migration-3-migration-003",
+                "verificationRunId": "verification-data-migration-3",
+                "sourceAttemptId": "attempt-9e1588dce8fc-data-migration-3-1",
+                "producer": {
+                  "actorId": "verifier-data-migration-3",
+                  "independent": true
+                },
+                "category": "TEST_RESULT",
+                "artifactIds": [],
+                "artifactReferences": [
+                  {
+                    "kind": "VERIFICATION_OUTPUT",
+                    "digest": "sha256:e4f9e516f9c810d8024ff830e99f25dff4e2a420c42b65edb68f1f7186fb6778"
+                  }
+                ],
+                "contentHash": "sha256:e4f9e516f9c810d8024ff830e99f25dff4e2a420c42b65edb68f1f7186fb6778",
+                "sourceRevision": "50e81bc2b06d4c7ea069f87e1815a0e93e12ebfe",
+                "candidateRevision": "e098d231fd8b52258eb6b33a0af0d1341b5f6766",
+                "recordedAt": "2026-08-19T17:46:59.500Z"
+              }
+            ],
+            "result": "PASS",
+            "method": "node --test",
+            "receiptId": "receipt-data-migration-3-migration-003",
+            "verifier": "verifier-data-migration-3",
+            "current": true,
+            "integrityIssue": null,
+            "lineage": {
+              "missionSpecRevisionId": "spec-data-migration-3-r1",
+              "missionSpecDigest": "sha256:a5bde4e170db6d709fe568a483ff83f5ecbae15d3be6649fd45e85a7fe8cc773",
+              "missionPlanId": "plan-data-migration-3",
+              "missionPlanRevisionNumber": 1,
+              "qualityContractDigest": "sha256:cd420d5c6fc8ba86110be065ff0f0fc71d3a81692f28c3eae4ec9a33c0164234",
+              "workOrderId": "work-order-data-migration-3",
+              "workOrderRevisionNumber": 1,
+              "workflowRunId": "attempt-9e1588dce8fc-data-migration-3-1",
+              "candidateRevision": "e098d231fd8b52258eb6b33a0af0d1341b5f6766",
+              "verificationRunId": "verification-data-migration-3",
+              "verificationSubjectId": null,
+              "verificationSubjectDigest": null,
+              "verificationPlanId": null,
+              "verificationPlanDigest": null,
+              "evidenceSetDigest": null,
+              "qualityGateDecisionId": null
+            }
+          }
+        ],
+        "correctionRequired": false,
+        "durationMs": 0
+      },
+      "acceptance": {
+        "operation": "workOrders.accept",
+        "fixtureActorType": "HUMAN",
+        "eligible": true,
+        "blockingReasons": [],
+        "accepted": true,
+        "mergePerformed": false
+      },
+      "cleanup": {
+        "observed": true,
+        "passed": true,
+        "status": "COMPLETED",
+        "credentialRevoked": true,
+        "resourceAbsent": true,
+        "resourceName": "mc-attempt-94c4c0cc41ae4f4a",
+        "finalVmCount": 0
+      },
+      "cost": {
+        "observed": false,
+        "modelUsd": null,
+        "infrastructureUsd": null,
+        "totalUsd": null,
+        "limitation": "exe.dev does not expose a per-VM scenario price; any unavailable model/provider cost remains null."
+      },
+      "metrics": {
+        "missionToPlanMs": 1,
+        "planToWorkOrderMs": 0,
+        "queueAdmissionMs": 0,
+        "localExecutionMs": null,
+        "remoteAllocationMs": 3441,
+        "remoteReadinessMs": 4269,
+        "remoteExecutionMs": 210716,
+        "teardownMs": 3856,
+        "executionMs": 230921,
+        "verificationMs": 279,
+        "reviewMs": 0,
+        "totalCycleMs": 230971
+      }
+    }
+  ]
+}

@@ -1,0 +1,90 @@
+{
+  "schemaVersion": "factory-reliability-scorecard/v1",
+  "population": 15,
+  "dimensions": {
+    "executionReliability": {
+      "observedValue": 1,
+      "sampleCount": 15,
+      "coverage": 1,
+      "confidence": "HIGH",
+      "limitations": []
+    },
+    "verificationReliability": {
+      "observedValue": 1,
+      "sampleCount": 15,
+      "coverage": 1,
+      "confidence": "HIGH",
+      "limitations": []
+    },
+    "cleanupReliability": {
+      "observedValue": 1,
+      "sampleCount": 15,
+      "coverage": 1,
+      "confidence": "HIGH",
+      "limitations": []
+    },
+    "contextSufficiency": {
+      "observedValue": 1,
+      "sampleCount": 15,
+      "coverage": 1,
+      "confidence": "HIGH",
+      "limitations": []
+    },
+    "firstPassQuality": {
+      "observedValue": 1,
+      "sampleCount": 15,
+      "coverage": 1,
+      "confidence": "HIGH",
+      "limitations": []
+    },
+    "recoveryEffectiveness": {
+      "observedValue": null,
+      "sampleCount": 0,
+      "coverage": 0,
+      "confidence": "LOW",
+      "limitations": [
+        "No retries were observed; recovery effectiveness is unknown."
+      ]
+    },
+    "evidenceCompleteness": {
+      "observedValue": 1,
+      "sampleCount": 15,
+      "coverage": 1,
+      "confidence": "HIGH",
+      "limitations": []
+    },
+    "reviewCorrectionFrequency": {
+      "observedValue": 0,
+      "sampleCount": 15,
+      "coverage": 1,
+      "confidence": "HIGH",
+      "limitations": []
+    },
+    "costEfficiency": {
+      "observedValue": null,
+      "sampleCount": 0,
+      "coverage": 0,
+      "confidence": "LOW",
+      "limitations": [
+        "Missing model or provider cost remains null and cannot improve this dimension."
+      ]
+    },
+    "latency": {
+      "observedValue": {
+        "medianMs": 31616,
+        "p95Ms": 230971
+      },
+      "sampleCount": 15,
+      "coverage": 1,
+      "confidence": "HIGH",
+      "limitations": []
+    }
+  },
+  "failureInjectionCoverage": {
+    "observedValue": 1,
+    "sampleCount": 17,
+    "coverage": 1,
+    "confidence": "HIGH",
+    "limitations": []
+  }
+}
