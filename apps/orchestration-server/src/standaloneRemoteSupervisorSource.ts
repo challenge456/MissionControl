@@ -227,7 +227,7 @@ atomicWrite(diagnosticsPath, JSON.stringify({
   manifestDigest: config.manifestDigest,
   sourceSha: config.sourceSha,
   phase: "EXECUTOR_FINISHED",
-  executor: { exitCode, timedOut, canceled: false, stdoutDigest: digest("factory-sandbox-stdout/v1", stdout), stderrDigest: digest("factory-sandbox-stderr/v1", stderr), stdoutTail: redact(stdout.slice(-16000)), stderrTail: redact(stderr.slice(-16000)) },
+  executor: { exitCode, timedOut, canceled: false, stdoutDigest: digest("factory-sandbox-stdout/v1", stdout), stderrDigest: digest("factory-sandbox-stderr/v1", stderr), stdoutTail: redact(stdout).slice(-16000), stderrTail: redact(stderr).slice(-16000) },
   resultProvenance,
   resultOutput: { state: file.state, byteLength: file.byteLength, digest: file.digest, tail: file.tail, validationIssues: file.validationIssues },
   failure: decision ?? null,

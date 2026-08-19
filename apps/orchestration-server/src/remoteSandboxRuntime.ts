@@ -115,7 +115,12 @@ export class RemoteSandboxRuntime {
       ));
     }
     const profileDigest = sandboxProfileDigest(request.profile);
-    const resourceName = stableSandboxResourceName(request);
+    const executionWorkflowRunId = manifestWorkflowRunId(request.executionManifest);
+    const resourceName = stableSandboxResourceName({
+      projectId: request.projectId,
+      workflowRunId: executionWorkflowRunId,
+      attemptId: request.attemptId,
+    });
     const lifecycleEvents: SandboxLifecycleEvent[] = [];
     const emit = async (type: SandboxLifecycleEventType, metadata?: Record<string, unknown>) => {
       const event: SandboxLifecycleEvent = { type, occurredAt: this.now(), resourceName, attemptId: request.attemptId, metadata };
@@ -205,7 +210,7 @@ export class RemoteSandboxRuntime {
         executionManifest: request.executionManifest,
         workOrderId: request.workOrderId,
         workOrderRevisionNumber: request.workOrderRevisionNumber,
-        workflowRunId: request.workflowRunId,
+        workflowRunId: executionWorkflowRunId,
         attemptId: request.attemptId,
         manifestDigest: request.manifestDigest,
         sourceSha: request.sourceSha,
@@ -225,7 +230,7 @@ export class RemoteSandboxRuntime {
       await this.journal.recordAllocation(allocation);
       await emit("SANDBOX_STARTED", { processId: start.processId });
       failureStage = "RESULT_READ";
-      bundle = await this.waitForResult(allocation, request, profileDigest, emit);
+      bundle = await this.waitForResult(allocation, request, executionWorkflowRunId, profileDigest, emit);
       allocation = { ...allocation, state: "RESULT_READY", resultDigest: bundle.digest };
       await this.journal.recordAllocation(allocation);
       await this.journal.recordResult(bundle);
@@ -312,6 +317,7 @@ export class RemoteSandboxRuntime {
   private async waitForResult(
     allocation: SandboxAllocation,
     request: RemoteSandboxExecutionRequest,
+    executionWorkflowRunId: string,
     profileDigest: string,
     emit: (type: SandboxLifecycleEventType, metadata?: Record<string, unknown>) => Promise<void>,
   ) {
@@ -323,7 +329,7 @@ export class RemoteSandboxRuntime {
           attemptId: request.attemptId,
           workOrderId: request.workOrderId,
           workOrderRevisionNumber: request.workOrderRevisionNumber,
-          workflowRunId: request.workflowRunId,
+          workflowRunId: executionWorkflowRunId,
           manifestDigest: request.manifestDigest,
           profileDigest,
           sourceSha: request.sourceSha,
@@ -438,6 +444,19 @@ function harnessIdentity(manifest: Record<string, unknown>): SandboxResultBundle
     provider: String(harness?.provider ?? ""),
     model: String(harness?.model ?? ""),
   };
+}
+
+function manifestWorkflowRunId(manifest: Record<string, unknown>) {
+  const workflowRunId = (manifest as any)?.causation?.workflowRunId;
+  if (typeof workflowRunId !== "string" || !workflowRunId.trim()) {
+    throw new RemoteSandboxExecutionError(remoteFailure(
+      "NON_RETRYABLE_RESULT",
+      "MANIFEST_ATTEMPT_IDENTITY_INVALID",
+      "PROFILE",
+      "Remote execution manifest is missing its public workflow run identity.",
+    ));
+  }
+  return workflowRunId.trim();
 }
 
 function manifestAcceptanceCriterionIds(manifest: Record<string, unknown>) {

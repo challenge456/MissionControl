@@ -57,6 +57,51 @@ describe("remote sandbox contracts", () => {
     const tampered = { ...bundle, structuredResult: { ...bundle.structuredResult, summary: "tampered" } };
     expect(() => parseAndValidateSandboxResultBundle(Buffer.from(JSON.stringify(tampered)), expected)).toThrow(/digest is invalid/);
   });
+
+  it("preserves a typed retryable failure when no accepted structured result exists", () => {
+    const completed = resultBundle();
+    const failed = createSandboxResultBundle({
+      ...withoutDigest(completed),
+      status: "TIMED_OUT",
+      failure: {
+        class: "RETRYABLE_EXECUTION",
+        code: "EXECUTOR_TIMEOUT",
+        stage: "EXECUTOR",
+        retryable: true,
+        summary: "Remote executor exceeded the frozen Attempt timeout.",
+      },
+      resultProvenance: {
+        ...completed.resultProvenance,
+        source: "NONE",
+      },
+      structuredResult: {
+        ...completed.structuredResult,
+        status: "FAILED",
+        completedAcceptanceCriterionIds: [],
+        incompleteAcceptanceCriterionIds: [],
+        unknownAcceptanceCriterionIds: [],
+      },
+    });
+    const parsed = parseAndValidateSandboxResultBundle(encodeSandboxResultBundle(failed), {
+      attemptId: failed.attemptId,
+      workOrderId: failed.workOrderId,
+      workOrderRevisionNumber: failed.workOrderRevisionNumber,
+      workflowRunId: failed.workflowRunId,
+      manifestDigest: failed.manifestDigest,
+      profileDigest: failed.profileDigest,
+      sourceSha: failed.sourceSha,
+      supervisorVersion: failed.supervisorVersion,
+      harness: failed.harness,
+      acceptanceCriterionIds: ["ac-1"],
+      environment: failed.environment,
+      maxRuntimeMs: 60_000,
+    });
+    expect(parsed.failure).toMatchObject({
+      class: "RETRYABLE_EXECUTION",
+      code: "EXECUTOR_TIMEOUT",
+      retryable: true,
+    });
+  });
 });
 
 describe("RemoteSandboxRuntime", () => {
@@ -73,6 +118,12 @@ describe("RemoteSandboxRuntime", () => {
     expect(result.termination.resourceAbsent).toBe(true);
     expect(credentials.active.size).toBe(0);
     expect(journal.allocationRequests).toHaveLength(1);
+    expect(journal.allocationRequests[0].workflowRunId).toBe("workflow-doc-1");
+    expect(provider.startRequest(stableSandboxResourceName({
+      projectId: "project-1",
+      workflowRunId: "run-1",
+      attemptId: "attempt-1",
+    }))?.workflowRunId).toBe("run-1");
     expect(journal.issuedCredentials[0]).not.toHaveProperty("secret");
     expect(journal.events.map((event) => event.type)).toEqual([
       "SANDBOX_REQUESTED",
@@ -394,6 +445,50 @@ describe("sandbox supervisor", () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+
+  it("redacts an Attempt credential before truncating crash diagnostics", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "mc-standalone-secret-"));
+    try {
+      const head = await initializeRepository(directory);
+      const executionManifest = remoteExecutionManifest({ sourceSha: head, profileDigest: "sha256:profile" });
+      const manifestDigest = `sha256:${canonicalHash(executionManifest)}`;
+      const supervisorPath = path.join(directory, "supervisor.mjs");
+      const configPath = path.join(directory, "config.json");
+      const outputPath = path.join(directory, "result.json");
+      const diagnosticsPath = path.join(directory, "diagnostics.json");
+      const credential = `sk-or-v1-${"A".repeat(80)}`;
+      const stdout = `${credential} ${"x".repeat(15_995)}`;
+      await writeFile(supervisorPath, standaloneSandboxSupervisorSource());
+      await writeFile(configPath, JSON.stringify({
+        executionManifest,
+        attemptId: "attempt-1",
+        workOrderId: "work-order-1",
+        workOrderRevisionNumber: 1,
+        workflowRunId: "run-1",
+        manifestDigest,
+        profileDigest: "sha256:profile",
+        sourceSha: head,
+        environmentDescriptor: { provider: "FAKE", image: "debian:bookworm" },
+        repositoryRoot: directory,
+        outputPath,
+        diagnosticsPath,
+        executor: {
+          command: process.execPath,
+          args: ["-e", `process.stdout.write(${JSON.stringify(stdout)})`],
+          timeoutMs: 5_000,
+        },
+        environment: {},
+        faultInjection: { crashAfterDiagnostics: true },
+      }));
+
+      await expect(execFileAsync(process.execPath, [supervisorPath, configPath], { cwd: directory })).rejects.toThrow();
+      const diagnostics = await readFile(diagnosticsPath, "utf8");
+      expect(diagnostics).not.toContain(credential);
+      expect(diagnostics).not.toContain("A".repeat(32));
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 });
 
 async function initializeRepository(directory: string) {
@@ -483,10 +578,14 @@ function request(selectedProfile: SandboxProfileSnapshot) {
     projectId: "project-1",
     workOrderId: "work-order-1",
     workOrderRevisionNumber: 1,
-    workflowRunId: "run-1",
+    workflowRunId: "workflow-doc-1",
     attemptId: "attempt-1",
     attemptLeaseId: "lease-1",
-    executionManifest: { harness: harnessIdentity(), intent: { acceptanceCriterionIds: ["ac-1"] } },
+    executionManifest: {
+      causation: { workflowRunId: "run-1" },
+      harness: harnessIdentity(),
+      intent: { acceptanceCriterionIds: ["ac-1"] },
+    },
     manifestDigest: "sha256:manifest",
     sourceSha,
     profile: selectedProfile,

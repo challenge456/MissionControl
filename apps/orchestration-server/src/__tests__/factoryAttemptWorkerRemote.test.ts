@@ -79,7 +79,7 @@ describe("FactoryAttemptWorker remote Sandbox backend", () => {
       attemptId: "factory-run-remote",
       workOrderId: "work-order-1",
       workOrderRevisionNumber: 1,
-      workflowRunId: "workflow-run-remote",
+      workflowRunId: "factory-run-remote",
       manifestDigest,
       profileDigest: sandboxProfileDigest(selectedProfile),
       sourceSha,
@@ -236,6 +236,7 @@ describe("FactoryAttemptWorker remote Sandbox backend", () => {
       attemptId: "factory-run-remote", workflowRunId: "workflow-run-remote", manifestDigest, sourceSha, profile: selectedProfile,
     });
     const startRequest = provider.startRequest(manifest.sandbox.resourceName);
+    expect(startRequest?.workflowRunId).toBe("factory-run-remote");
     expect(Object.keys(startRequest?.environment ?? {}).sort()).toEqual(["OPENAI_API_KEY", "OPENAI_BASE_URL"]);
     expect(JSON.stringify(startRequest)).not.toContain("test-private-key");
     expect(JSON.stringify(startRequest)).not.toContain("MISSION_CONTROL_SERVICE_COMMAND_SECRET");
@@ -266,11 +267,11 @@ function profile(): SandboxProfileSnapshot {
 }
 
 function executionManifest(selectedProfile: SandboxProfileSnapshot, baseSha: string, worktree: string) {
-  const resourceName = stableSandboxResourceName({ projectId: "project-1", workflowRunId: "workflow-run-remote", attemptId: "factory-run-remote" });
+  const resourceName = stableSandboxResourceName({ projectId: "project-1", workflowRunId: "factory-run-remote", attemptId: "factory-run-remote" });
   return {
     version: "factory-execution-manifest/v1",
     causation: {
-      workOrderId: "work-order-1", workOrderRevisionNumber: 1, workflowRunId: "workflow-run-remote",
+      workOrderId: "work-order-1", workOrderRevisionNumber: 1, workflowRunId: "factory-run-remote",
       factoryDefinitionVersionId: "factory-version-1", factoryConfigurationDigest: "factory-v1-test", factoryPurpose: "SOFTWARE",
     },
     harness: {

@@ -17,6 +17,20 @@ Final local validation ran on 2026-08-18/19 from branch `codex/remote-codex-stru
 
 The final post-review focused orchestration run passed 44 tests, including 17 structured-result tests, 15 Remote Sandbox runtime tests, and the remote/local Factory worker lifecycle tests. The final composed execution-boundary qualification passed 65 tests, and the named compatibility run passed 83 orchestration tests and 162 Convex policy/governance tests before the final full qualification.
 
+## Final merge-audit repair
+
+The final PR #121 audit found and repaired production-only gaps that the standalone live runner did not exercise:
+
+- production dispatch, worker claim, sandbox resource naming, supervisor configuration, and result validation now share the manifest's frozen public `runId`; the Convex workflow document ID remains only the durable persistence and lease key;
+- same-revision remote failures require an explicit latest-Attempt retry parent, retain the exact frozen Factory Version and retry budget, and reject every branch or normalized worktree already present in the failed lineage;
+- lost remote worker leases persist `RETRYABLE_INFRA / WORKER_LEASE_LOST` with `retryable: true`;
+- failed supervisor bundles preserve typed transient failures without inventing acceptance-criterion success; and
+- supervisor crash diagnostics redact Attempt credentials before bounded truncation.
+
+The post-repair focused gates passed 123 Convex tests and 58 orchestration compatibility tests. The production manifest/claim regression keeps the Convex workflow document ID distinct from the public execution ID and proves the exact resource, supervisor, journal, and result bindings. Convex code generation with TypeScript checking, orchestration TypeScript, and UI TypeScript all passed.
+
+Headless browser verification on `/v2/control-work-orders` rendered the Work Orders surface, opened a failed Attempt in the Execution Run Inspector, and enabled `Retry as new run` only after a meaningful recovery reason was entered. The retry was not submitted, and the browser reported no console or page errors.
+
 ## Authoritative full command
 
 ```text
@@ -43,7 +57,9 @@ Result: PASS on the final reviewed code. The command completed all requested loc
 - repository secret scan; and
 - `git diff --check`.
 
-Notable final counts include 150 passed orchestration tests (one opt-in integration skipped), 681 passed Convex tests, and 303 passed UI tests. The generated system-qualification timestamp files were mechanically restored after the command because this qualification owns only the remote-specific evidence directory.
+Notable final post-repair counts include 152 passed orchestration tests (one opt-in integration skipped), 686 passed Convex tests, and 303 passed UI tests. The generated system-qualification timestamp files were mechanically restored after the command because this qualification owns only the remote-specific evidence directory.
+
+A final read-only provider check after qualification reported authenticated exe.dev access, zero VMs, capacity `0/50`, no automatic integrations, and live allocation readiness. No VM was created by that check.
 
 ## Live gate
 

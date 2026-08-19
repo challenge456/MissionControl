@@ -10,6 +10,7 @@ import {
   factoryAttemptRequiresReplacementOnClaim,
   factoryExecutorIdentity,
   factoryLeaseMatchesCurrentRegistration,
+  lostFactoryAttemptFailure,
   renewAttemptLease,
   validateFactoryPullRequestLineage,
 } from "../lib/factoryAttempt";
@@ -2297,6 +2298,9 @@ function mutationWorkerIdentity(args: {
 
 async function failLostAttempt(ctx: any, run: any, reason: string) {
   const now = Date.now();
+  const remoteFailure = lostFactoryAttemptFailure({
+    executionBackend: run.executionManifest?.harness?.executionBackend,
+  });
   await ctx.db.patch(run._id, {
     status: "FAILED",
     completedAt: now,
@@ -2306,6 +2310,7 @@ async function failLostAttempt(ctx: any, run: any, reason: string) {
     runtimeDisposition: "LOST",
     runtimeDispositionReason: reason,
     runtimeReconciledAt: now,
+    ...remoteFailure,
     steps: reconcileTerminalWorkflowSteps(run.steps, "FAILED", reason, now),
   });
   await insertEvent(ctx, run, {
@@ -2325,6 +2330,7 @@ async function failLostAttempt(ctx: any, run: any, reason: string) {
       priorWorkerId: run.lease?.workerId,
       priorWorkerSessionId: run.lease?.workerSessionId,
       workspaceCleanup: "PRESERVE_FOR_OPERATOR_INSPECTION",
+      ...remoteFailure,
     },
   });
   await finishAttemptTrace(ctx, run, { status: "FAILED", completedAt: now, failureReason: reason });

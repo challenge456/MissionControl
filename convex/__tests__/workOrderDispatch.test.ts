@@ -5,7 +5,9 @@ import {
   dispatchInvalidatesVerificationReceipts,
   findActiveRun,
   nextStateForRunStatus,
+  latestRequiredRemoteRetryRun,
   publicDispatchActorAllowed,
+  resolveRemoteRetryFactoryVersion,
   validateDispatchable,
   resolveRetryExecutionBinding,
   validateRetryRequest,
@@ -160,6 +162,90 @@ describe("work order recovery dispatch", () => {
       worktree: "/tmp/replacement",
       priorRun: { _id: "run-1", branch: "codex/old", worktree: "/tmp/old" },
     })).toEqual({ branch: "codex/replacement", worktree: "/tmp/replacement" });
+  });
+
+  it("rejects a branch or normalized worktree reused from the failed lineage", () => {
+    const lineage = [
+      { _id: "run-1", branch: "codex/root", worktree: "/tmp/root/" },
+      { _id: "run-2", branch: "codex/retry", worktree: "/tmp/retry" },
+    ];
+    expect(() => resolveRetryExecutionBinding({ branch: "codex/root", lineage }))
+      .toThrow(/fresh branch/);
+    expect(() => resolveRetryExecutionBinding({ worktree: "/tmp/root", lineage }))
+      .toThrow(/fresh worktree/);
+  });
+
+  it("requires the latest failed remote Attempt on the same revision and Task as retry parent", () => {
+    const runs = [
+      {
+        _id: "run-1",
+        status: "FAILED" as const,
+        startedAt: 100,
+        parentTaskId: "task-1",
+        executionManifest: {
+          causation: { workOrderRevisionNumber: 2 },
+          harness: { executionBackend: "remote-sandbox" },
+        },
+      },
+      {
+        _id: "run-2",
+        status: "FAILED" as const,
+        startedAt: 200,
+        parentTaskId: "task-1",
+        executionManifest: {
+          causation: { workOrderRevisionNumber: 2 },
+          harness: { executionBackend: "remote-sandbox" },
+        },
+      },
+    ];
+    expect(latestRequiredRemoteRetryRun({
+      runs,
+      workOrderRevisionNumber: 2,
+      parentTaskId: "task-1",
+    })?._id).toBe("run-2");
+    expect(latestRequiredRemoteRetryRun({
+      runs,
+      workOrderRevisionNumber: 3,
+      parentTaskId: "task-1",
+    })).toBeUndefined();
+  });
+
+  it("does not force retry lineage after a newer successful Attempt", () => {
+    expect(latestRequiredRemoteRetryRun({
+      workOrderRevisionNumber: 2,
+      runs: [
+        {
+          _id: "run-1",
+          status: "FAILED",
+          startedAt: 100,
+          executionManifest: {
+            causation: { workOrderRevisionNumber: 2 },
+            harness: { executionBackend: "remote-sandbox" },
+          },
+        },
+        {
+          _id: "run-2",
+          status: "COMPLETED",
+          startedAt: 200,
+          executionManifest: {
+            causation: { workOrderRevisionNumber: 2 },
+            harness: { executionBackend: "remote-sandbox" },
+          },
+        },
+      ],
+    })).toBeUndefined();
+  });
+
+  it("freezes a remote retry to its prior Factory Version", () => {
+    expect(resolveRemoteRetryFactoryVersion({
+      retryingRemote: true,
+      priorFactoryDefinitionVersionId: "factory-v1",
+    })).toBe("factory-v1");
+    expect(() => resolveRemoteRetryFactoryVersion({
+      retryingRemote: true,
+      priorFactoryDefinitionVersionId: "factory-v1",
+      requestedFactoryDefinitionVersionId: "factory-v2",
+    })).toThrow(/cannot replace/);
   });
 
   it("allows a reasoned retry of a failed run from the same WorkOrder", () => {

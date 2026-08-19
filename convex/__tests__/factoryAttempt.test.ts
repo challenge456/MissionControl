@@ -8,6 +8,7 @@ import {
   factoryAttemptMutationIsAuthorized,
   factoryAttemptRequiresReplacementOnClaim,
   factoryLeaseMatchesCurrentRegistration,
+  lostFactoryAttemptFailure,
   renewAttemptLease,
   validateFactoryPullRequestLineage,
 } from "../lib/factoryAttempt";
@@ -16,6 +17,16 @@ const workerA = { workerId: "worker-a", sessionId: "session-a", generation: 1 };
 const workerB = { workerId: "worker-b", sessionId: "session-b", generation: 3 };
 
 describe("Factory attempt leases", () => {
+  it("classifies a lost remote lease as retryable infrastructure", () => {
+    expect(lostFactoryAttemptFailure({ executionBackend: "remote-sandbox" })).toEqual({
+      failureClass: "RETRYABLE_INFRA",
+      failureCode: "WORKER_LEASE_LOST",
+      failureStage: "EXECUTOR",
+      retryable: true,
+    });
+    expect(lostFactoryAttemptFailure({ executionBackend: "persistent-worker" })).toEqual({});
+  });
+
   it("claims a pending attempt with a bounded durable lease", () => {
     const result = evaluateAttemptClaim({
       status: "PENDING",

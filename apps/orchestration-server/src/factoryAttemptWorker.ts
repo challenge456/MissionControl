@@ -1098,10 +1098,11 @@ function validateClaimManifest(claim: any) {
     const profile = manifest?.sandbox?.profileSnapshot;
     const expectedResourceName = stableSandboxResourceName({
       projectId: String(claim.projectId),
-      workflowRunId: String(claim.workflowRunId),
+      workflowRunId: String(manifest.causation.workflowRunId),
       attemptId: String(claim.runId),
     });
-    if (!validateRemoteRetryBudget(manifest?.retryPolicy)
+    if (manifest?.causation?.workflowRunId !== claim.runId
+      || !validateRemoteRetryBudget(manifest?.retryPolicy)
       || !Array.isArray(manifest?.retryPolicy?.failClosedFailureClasses)
       || manifest.retryPolicy.failClosedFailureClasses.join(",") !== "NON_RETRYABLE_RESULT,UNKNOWN"
       || manifest?.sandbox?.resourceName !== expectedResourceName

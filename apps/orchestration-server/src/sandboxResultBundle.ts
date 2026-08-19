@@ -1,7 +1,11 @@
 import { canonicalDigest } from "@mission-control/shared";
 import { SANDBOX_RESULT_SCHEMA } from "./sandboxProvider.js";
 import type { RemoteFailure } from "./remoteExecutionPolicy.js";
-import { factoryResultContextIssues, type RemoteResultProvenance } from "./remoteStructuredResult.js";
+import {
+  factoryResultContextIssues,
+  type FactoryResultV1,
+  type RemoteResultProvenance,
+} from "./remoteStructuredResult.js";
 
 export const MAX_SANDBOX_RESULT_BYTES = 10 * 1024 * 1024;
 export const MAX_SANDBOX_PATCH_BYTES = 8 * 1024 * 1024;
@@ -40,17 +44,7 @@ export interface SandboxResultBundle {
     };
   };
   failure?: RemoteFailure;
-  structuredResult: {
-    schema: "factory-result/v1";
-    status: "COMPLETED" | "BLOCKED" | "FAILED";
-    summary: string;
-    completedAcceptanceCriterionIds: string[];
-    incompleteAcceptanceCriterionIds: string[];
-    unknownAcceptanceCriterionIds: string[];
-    verificationCommands: string[];
-    knownRisks: string[];
-    nextAction: string;
-  };
+  structuredResult: FactoryResultV1;
   changedFiles: string[];
   diff: {
     filesChanged: number;
@@ -159,7 +153,8 @@ export function parseAndValidateSandboxResultBundle(
     || bundle.resultProvenance.context.sourceSha !== expected.sourceSha) {
     throw new Error("Sandbox result reconstruction context does not match the frozen Attempt.");
   }
-  if (factoryResultContextIssues(bundle.structuredResult, expected.acceptanceCriterionIds).length > 0) {
+  if (bundle.status === "COMPLETED"
+    && factoryResultContextIssues(bundle.structuredResult, expected.acceptanceCriterionIds).length > 0) {
     throw new Error("Sandbox result acceptance-criterion accounting does not match the frozen WorkOrder.");
   }
   if (bundle.finishedAt - bundle.startedAt > expected.maxRuntimeMs || bundle.usage.providerRuntimeMs > expected.maxRuntimeMs) {

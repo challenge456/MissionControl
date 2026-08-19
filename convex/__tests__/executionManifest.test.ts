@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildFactoryExecutionManifest, type FactoryExecutionManifestInput } from "../lib/executionManifest";
+import {
+  buildFactoryExecutionManifest,
+  factorySandboxResourceName,
+  type FactoryExecutionManifestInput,
+} from "../lib/executionManifest";
 import { CODEX_V1_HARNESS_MANIFEST, DEEPSEEK_V1_HARNESS_MANIFEST, harnessCapabilityManifestDigest } from "@mission-control/workflow-engine";
 
 const input: FactoryExecutionManifestInput = {
@@ -133,7 +137,11 @@ describe("Factory execution manifest", () => {
 
   it("freezes remote sandbox execution into the existing v1 manifest", () => {
     const sandbox = {
-      resourceName: "mc-attempt-0123456789abcdef",
+      resourceName: factorySandboxResourceName({
+        projectId: "project-1",
+        workflowRunId: input.runId,
+        attemptId: input.runId,
+      }),
       profileId: "profile-1",
       profileDigest: "sha256:profile",
       profileSnapshot: { schema: "factory-sandbox-profile/v1", provider: "EXE_DEV" },
@@ -150,6 +158,12 @@ describe("Factory execution manifest", () => {
     });
 
     expect(result.manifest.version).toBe("factory-execution-manifest/v1");
+    expect(result.manifest.causation.workflowRunId).toBe(input.runId);
+    expect(result.manifest.sandbox?.resourceName).toBe(factorySandboxResourceName({
+      projectId: "project-1",
+      workflowRunId: result.manifest.causation.workflowRunId,
+      attemptId: input.runId,
+    }));
     expect(result.manifest.harness.executionBackend).toBe("remote-sandbox");
     expect(result.manifest.sandbox).toEqual(sandbox);
     expect(result.digest).toMatch(/^sha256:[a-f0-9]{64}$/);

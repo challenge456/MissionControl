@@ -1650,7 +1650,7 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
         unavailable={inspectorUnavailable}
         retrying={!!selected && dispatchingId === selected.workOrder._id}
         onRetryFailedRun={selected
-          ? async ({ workflowRunId, reason, runtime, model, worktree }) => {
+          ? async ({ workflowRunId, reason, runtime, model }) => {
               setDispatchError(null);
               setDispatchingId(selected.workOrder._id);
               try {
@@ -1662,16 +1662,12 @@ export function WorkOrdersView({ projectId }: { projectId: Id<"projects"> | null
                   idempotencyKey: `ui-retry:${workflowRunId}:${globalThis.crypto?.randomUUID?.() ?? Date.now()}`,
                   runtime: runtime ?? "Mission Control UI",
                   model,
-                  worktree,
                   retryOfWorkflowRunId: workflowRunId,
                   retryReason: reason,
                   repositoryId: selected.workOrder.repositoryId,
                   codeScopeIds: selected.workOrder.codeScopeIds,
                   executionEnvironment: selected.workOrder.executionEnvironment ?? "LOCAL",
                   executorHostId: governedFactoryRequired ? activeFactoryHostId : undefined,
-                  factoryDefinitionVersionId: governedFactoryRequired
-                    ? activeFactoryVersionId
-                    : undefined,
                 });
                 if (result.reason === "routing-exhausted") {
                   throw new Error("Retry blocked: no safe model route satisfies this Work Order.");

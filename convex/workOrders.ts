@@ -6,7 +6,17 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { appendChangeRecord } from "./lib/armAudit";
 import { logTaskEvent } from "./lib/taskEvents";
 import { deriveVerificationStatus, currentWorkflowStepLabel, totalWorkflowRetries } from "./lib/workOrders";
-import { ACTIVE_RUN_STATUSES, dispatchInvalidatesVerificationReceipts, nextStateForRunStatus, publicDispatchActorAllowed, resolveRetryExecutionBinding, validateDispatchable, validateRetryRequest } from "./lib/workOrderDispatch";
+import {
+  ACTIVE_RUN_STATUSES,
+  dispatchInvalidatesVerificationReceipts,
+  latestRequiredRemoteRetryRun,
+  nextStateForRunStatus,
+  publicDispatchActorAllowed,
+  resolveRemoteRetryFactoryVersion,
+  resolveRetryExecutionBinding,
+  validateDispatchable,
+  validateRetryRequest,
+} from "./lib/workOrderDispatch";
 import { isRunNeedingAttention, summarizeFactoryMetrics } from "./lib/factoryOverview";
 import {
   approvalStatusSatisfiesRequirement,
@@ -67,7 +77,7 @@ import { reconcileTerminalWorkflowSteps } from "./lib/workflowRunState";
 import { loadTaskProjections } from "./lib/taskProjection";
 import { snapshotWorkflowDefinition } from "./lib/workflowSnapshot";
 import { buildWorkOrderTaskAuthority } from "./lib/taskAuthority";
-import { buildFactoryExecutionManifest } from "./lib/executionManifest";
+import { buildFactoryExecutionManifest, factorySandboxResourceName } from "./lib/executionManifest";
 import { loadFactoryAttemptReviewReadModel } from "./lib/factoryReviewReadModel";
 import { factoryWorkflowContractIssues } from "./lib/factoryWorkflowContract";
 import { createWorkOrderRecord } from "./lib/workOrderCreate";
@@ -2099,10 +2109,31 @@ async function dispatchWorkOrder(
       throw new Error(taskAttemptErrorMessage(taskSelection.reason));
     }
 
+    const requiredRemoteRetryRun = latestRequiredRemoteRetryRun({
+      runs: existingRuns,
+      workOrderRevisionNumber: workOrder.currentRevisionNumber ?? 1,
+      parentTaskId: selectedTask ? String(selectedTask._id) : undefined,
+    });
+    if (requiredRemoteRetryRun && !args.retryOfWorkflowRunId) {
+      throw new Error("The latest failed remote Attempt on this WorkOrder revision must be dispatched as an explicit retry.");
+    }
+    if (requiredRemoteRetryRun && args.retryOfWorkflowRunId !== requiredRemoteRetryRun._id) {
+      throw new Error("A remote retry must reference the latest failed Attempt on the same WorkOrder revision and Task.");
+    }
+
     const remoteRetryState = retryOfRun?.executionManifest
       && (retryOfRun.executionManifest as any)?.harness?.executionBackend === "remote-sandbox"
       ? await remoteRetryEvaluationState(ctx, retryOfRun, existingRuns)
       : undefined;
+    if (remoteRetryState
+      && (retryOfRun!.executionManifest as any)?.causation?.workOrderRevisionNumber !== (workOrder.currentRevisionNumber ?? 1)) {
+      throw new Error("A remote retry cannot cross a WorkOrder revision boundary.");
+    }
+    if (remoteRetryState
+      && String(retryOfRun!.factoryDefinitionVersionId ?? "")
+        !== (retryOfRun!.executionManifest as any)?.causation?.factoryDefinitionVersionId) {
+      throw new Error("A remote retry requires an exact frozen Factory Version binding.");
+    }
     const retryRequest = args.retryOfWorkflowRunId
       ? validateRetryRequest({
           workOrderId: workOrder._id,
@@ -2316,21 +2347,32 @@ async function dispatchWorkOrder(
       priorRun: retryOfRun,
       lineage: existingRuns,
     });
+    const retryFactoryDefinitionVersionId = resolveRemoteRetryFactoryVersion({
+      retryingRemote: Boolean(remoteRetryState),
+      priorFactoryDefinitionVersionId: remoteRetryState
+        ? (retryOfRun!.executionManifest as any)?.causation?.factoryDefinitionVersionId
+        : retryOfRun?.factoryDefinitionVersionId
+          ? String(retryOfRun.factoryDefinitionVersionId)
+          : undefined,
+      requestedFactoryDefinitionVersionId: args.factoryDefinitionVersionId
+        ? String(args.factoryDefinitionVersionId)
+        : undefined,
+    }) as Id<"factoryDefinitionVersions"> | undefined;
     // Execution routing is additive for V1. Legacy dispatches do not enter the
     // Factory tuple control plane unless an exact baseline (or explicit pin)
     // already exists, preserving the default-off rollout contract.
-    const executionRoutingPreview = executionRoutingRequested({
-      factoryDefinitionVersionId: args.factoryDefinitionVersionId,
+    const executionRoutingPreview = !remoteRetryState && executionRoutingRequested({
+      factoryDefinitionVersionId: retryFactoryDefinitionVersionId,
       executionRoutingPin: refreshedWorkOrder.executionRoutingPin,
     })
       ? await buildExecutionRoutingPreview(ctx, {
           workOrder: refreshedWorkOrder,
           workflow,
-          fallbackFactoryDefinitionVersionId: args.factoryDefinitionVersionId,
+          fallbackFactoryDefinitionVersionId: retryFactoryDefinitionVersionId,
         })
       : null;
     const routedFactoryDefinitionVersionId = executionRoutingPreview?.selectedFactoryDefinitionVersionId
-      ?? args.factoryDefinitionVersionId;
+      ?? retryFactoryDefinitionVersionId;
     const factoryBinding = executionRoutingPreview?.result.status === "EXHAUSTED"
       ? null
       : await resolveFactoryDispatchBinding(ctx, {
@@ -2544,7 +2586,7 @@ async function dispatchWorkOrder(
             requiredCapabilities: factoryBinding.requiredSandboxCapabilities,
           },
           sandbox: factoryBinding.executionBackend === "remote-sandbox" ? {
-            resourceName: stableSandboxResourceName({
+            resourceName: factorySandboxResourceName({
               projectId: String(refreshedWorkOrder.projectId),
               workflowRunId: runId,
               attemptId: runId,
@@ -3287,11 +3329,6 @@ async function resolveFactoryDispatchBinding(
     })),
     primaryModel,
   };
-}
-
-function stableSandboxResourceName(input: { projectId: string; workflowRunId: string; attemptId: string }) {
-  const identity = computeCanonicalHash({ namespace: "factory-sandbox-resource/v1", value: input }).slice(0, 16);
-  return `mc-attempt-${identity}`;
 }
 
 /**

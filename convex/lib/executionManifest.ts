@@ -8,6 +8,18 @@ import {
 } from "@mission-control/workflow-engine/harness-contract";
 import { factoryHarnessCapabilityRequirements } from "./harnessCapabilities";
 
+export function factorySandboxResourceName(input: {
+  projectId: string;
+  workflowRunId: string;
+  attemptId: string;
+}) {
+  const identity = computeCanonicalHash({
+    namespace: "factory-sandbox-resource/v1",
+    value: input,
+  }).slice(0, 16);
+  return `mc-attempt-${identity}`;
+}
+
 export interface FactoryExecutionManifestInput {
   runId: string;
   missionId?: string;

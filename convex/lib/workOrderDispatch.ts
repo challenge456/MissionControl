@@ -138,10 +138,83 @@ export function resolveRetryExecutionBinding(args: {
     metadata?: { retryOfWorkflowRunId?: string };
   }>;
 }) {
+  const branch = args.branch?.trim() || undefined;
+  const worktree = args.worktree?.trim() || undefined;
+  const lineage = [...(args.lineage ?? [])];
+  if (args.priorRun && !lineage.some((run) => run._id === args.priorRun?._id)) {
+    lineage.push({
+      _id: args.priorRun._id ?? "prior-run",
+      branch: args.priorRun.branch,
+      worktree: args.priorRun.worktree,
+      metadata: args.priorRun.metadata,
+    });
+  }
+  if (branch && lineage.some((run) => run.branch?.trim() === branch)) {
+    throw new Error("A retry must use a fresh branch that is not bound to its failed Attempt lineage.");
+  }
+  const normalizedWorktree = normalizeWorktree(worktree);
+  if (normalizedWorktree && lineage.some((run) => normalizeWorktree(run.worktree) === normalizedWorktree)) {
+    throw new Error("A retry must use a fresh worktree that is not bound to its failed Attempt lineage.");
+  }
   return {
-    branch: args.branch?.trim() || undefined,
-    worktree: args.worktree?.trim() || undefined,
+    branch,
+    worktree,
   };
+}
+
+function normalizeWorktree(value?: string) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed.replace(/\/+$/, "") : undefined;
+}
+
+export function latestRequiredRemoteRetryRun<T extends {
+  _id: string;
+  _creationTime?: number;
+  status: string;
+  startedAt: number;
+  parentTaskId?: string;
+  attemptPurpose?: string;
+  executionManifest?: {
+    causation?: { workOrderRevisionNumber?: number };
+    harness?: { executionBackend?: string };
+  };
+}>(args: {
+  runs: T[];
+  workOrderRevisionNumber: number;
+  parentTaskId?: string;
+}): T | undefined {
+  const latest = args.runs
+    .filter((run) =>
+      (run.attemptPurpose ?? "IMPLEMENTATION") === "IMPLEMENTATION"
+      && (run.parentTaskId ?? undefined) === (args.parentTaskId ?? undefined)
+      && run.executionManifest?.causation?.workOrderRevisionNumber === args.workOrderRevisionNumber
+    )
+    .sort((left, right) =>
+      (right._creationTime ?? right.startedAt) - (left._creationTime ?? left.startedAt)
+      || String(right._id).localeCompare(String(left._id))
+    )[0];
+  if (!latest
+    || latest.executionManifest?.harness?.executionBackend !== "remote-sandbox"
+    || !["FAILED", "CANCELED"].includes(latest.status)) {
+    return undefined;
+  }
+  return latest;
+}
+
+export function resolveRemoteRetryFactoryVersion(args: {
+  retryingRemote: boolean;
+  priorFactoryDefinitionVersionId?: string;
+  requestedFactoryDefinitionVersionId?: string;
+}) {
+  if (!args.retryingRemote) return args.requestedFactoryDefinitionVersionId;
+  if (!args.priorFactoryDefinitionVersionId) {
+    throw new Error("A remote retry requires the failed Attempt's frozen Factory Version.");
+  }
+  if (args.requestedFactoryDefinitionVersionId
+    && args.requestedFactoryDefinitionVersionId !== args.priorFactoryDefinitionVersionId) {
+    throw new Error("A remote retry cannot replace its frozen Factory Version or retry budget.");
+  }
+  return args.priorFactoryDefinitionVersionId;
 }
 
 export function validateDispatchable(args: {
