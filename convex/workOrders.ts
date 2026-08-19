@@ -1969,6 +1969,37 @@ type DispatchContextOptions = {
   metadata?: Record<string, unknown>;
 };
 
+async function remoteRetryEvaluationState(ctx: MutationCtx, priorRun: any, existingRuns: any[]) {
+  const lineage = existingRuns.filter((run) =>
+    (run.executionManifest as any)?.harness?.executionBackend === "remote-sandbox"
+    && run.factoryDefinitionVersionId === priorRun.factoryDefinitionVersionId
+    && (priorRun.parentTaskId ? run.parentTaskId === priorRun.parentTaskId : !run.parentTaskId)
+    && (run.attemptPurpose ?? "IMPLEMENTATION") === (priorRun.attemptPurpose ?? "IMPLEMENTATION")
+  );
+  const allocations = (await Promise.all(lineage.map(async (run) =>
+    await ctx.db.query("sandboxAllocations")
+      .withIndex("by_run", (q) => q.eq("workflowRunId", run._id))
+      .collect()
+  ))).flat() as any[];
+  const observedCosts = allocations.map((allocation) => allocation.inferenceCostUsd);
+  const observedModelSpendUsd = observedCosts.length > 0 && observedCosts.every((value) => typeof value === "number" && Number.isFinite(value))
+    ? observedCosts.reduce((total, value) => total + value, 0)
+    : null;
+  const totalWallClockMs = lineage.reduce((total, run) => {
+    const completedAt = typeof run.completedAt === "number" ? run.completedAt : Date.now();
+    return total + Math.max(0, completedAt - run.startedAt);
+  }, 0);
+  return {
+    failureClass: priorRun.failureClass,
+    retryable: priorRun.retryable,
+    policy: (priorRun.executionManifest as any)?.retryPolicy,
+    attemptsUsed: lineage.length,
+    totalWallClockMs,
+    observedModelSpendUsd,
+    activeProviderResources: allocations.filter((allocation) => allocation.state !== "TERMINATED").length,
+  };
+}
+
 async function dispatchWorkOrder(
   ctx: MutationCtx,
   args: DispatchArgs,
@@ -2034,6 +2065,10 @@ async function dispatchWorkOrder(
     const retryOfRun = args.retryOfWorkflowRunId
       ? await ctx.db.get(args.retryOfWorkflowRunId)
       : null;
+    const existingRuns = await ctx.db
+      .query("workflowRuns")
+      .withIndex("by_work_order", (q) => q.eq("workOrderId", args.workOrderId))
+      .collect();
     const retryTask = retryOfRun?.parentTaskId
       ? canonicalChildTasks.find(
           (task) => task._id === retryOfRun.parentTaskId
@@ -2064,6 +2099,10 @@ async function dispatchWorkOrder(
       throw new Error(taskAttemptErrorMessage(taskSelection.reason));
     }
 
+    const remoteRetryState = retryOfRun?.executionManifest
+      && (retryOfRun.executionManifest as any)?.harness?.executionBackend === "remote-sandbox"
+      ? await remoteRetryEvaluationState(ctx, retryOfRun, existingRuns)
+      : undefined;
     const retryRequest = args.retryOfWorkflowRunId
       ? validateRetryRequest({
           workOrderId: workOrder._id,
@@ -2074,6 +2113,7 @@ async function dispatchWorkOrder(
                 status: retryOfRun.status as any,
               }
             : null,
+          remote: remoteRetryState,
         })
       : null;
     if (retryRequest && !retryRequest.ok) {
@@ -2269,10 +2309,7 @@ async function dispatchWorkOrder(
       throw new Error(`Workflow not available for dispatch: ${resolvedWorkflowId}`);
     }
 
-    const existingRuns = await ctx.db
-      .query("workflowRuns")
-      .withIndex("by_work_order", (q) => q.eq("workOrderId", args.workOrderId))
-      .collect();
+    const runId = generateRunId();
     const retryExecutionBinding = resolveRetryExecutionBinding({
       branch: args.branch,
       worktree: args.worktree,
@@ -2300,6 +2337,7 @@ async function dispatchWorkOrder(
           args: {
             ...args,
             ...retryExecutionBinding,
+            attemptRunId: runId,
             factoryDefinitionVersionId: routedFactoryDefinitionVersionId,
           },
           workOrder: refreshedWorkOrder,
@@ -2470,7 +2508,6 @@ async function dispatchWorkOrder(
     });
 
     const now = Date.now();
-    const runId = generateRunId();
     const workflowSnapshot = snapshotWorkflowDefinition(workflow);
     const attemptNumbers = selectedTask
       ? nextTaskAttemptNumbers(taskAttempts, !!retryOfRun)
@@ -2567,6 +2604,8 @@ async function dispatchWorkOrder(
           })),
           allowedTools: factoryBinding.allowedTools,
           routedModel,
+          maxAttempts: factoryBinding.version.budget.maxAttempts,
+          maxCostUsd: factoryBinding.version.budget.maxCostUsd,
           maxRuntimeMinutes: factoryBinding.version.budget.maxRuntimeMinutes,
           initialContext: {
             ...options.initialContext,
@@ -2647,6 +2686,12 @@ async function dispatchWorkOrder(
       escalationOwner: refreshedWorkOrder.ownerMemberId ? String(refreshedWorkOrder.ownerMemberId) : refreshedWorkOrder.requestedBy,
       evidenceState: "UNKNOWN",
       worktree: factoryBinding?.worktree ?? args.worktree,
+      retryDecision: retryRequest?.retryDecision ? {
+        ...retryRequest.retryDecision,
+        evaluatedAt: now,
+        sourceAttemptId: retryOfRun?.runId,
+        replacementAttemptId: runId,
+      } : undefined,
       startedAt: now,
       metadata: {
         dispatchIdempotencyKey: args.idempotencyKey,
@@ -3066,7 +3111,7 @@ export const dispatchResearchEvidenceInternal = internalMutation({
 
 async function resolveFactoryDispatchBinding(
   ctx: MutationCtx,
-  input: { args: DispatchArgs; workOrder: any; workflow: any }
+  input: { args: DispatchArgs & { attemptRunId: string }; workOrder: any; workflow: any }
 ): Promise<any | null> {
   const { args, workOrder, workflow } = input;
   if (!args.factoryDefinitionVersionId) {
@@ -3232,8 +3277,8 @@ async function resolveFactoryDispatchBinding(
     executionBackend: selectedExecutionBackend,
     requiredSandboxCapabilities,
     sandboxProfile,
-    branch: args.branch?.trim() || `mc/${String(workOrder._id).slice(-12)}`,
-    worktree: args.worktree?.trim() || `${host.checkoutRoot.replace(/\/+$/, "")}/.mission-control/worktrees/${String(workOrder._id).slice(-12)}`,
+    branch: args.branch?.trim() || `mc/${String(workOrder._id).slice(-12)}-${args.attemptRunId}`,
+    worktree: args.worktree?.trim() || `${host.checkoutRoot.replace(/\/+$/, "")}/.mission-control/worktrees/${String(workOrder._id).slice(-12)}-${args.attemptRunId}`,
     allowedTools: Array.isArray(workflow.metadata?.allowedTools) ? workflow.metadata.allowedTools.filter((item: unknown): item is string => typeof item === "string") : [],
     codeScopes,
     agentBindings: (version.agentBindings ?? []).map((binding, index) => ({

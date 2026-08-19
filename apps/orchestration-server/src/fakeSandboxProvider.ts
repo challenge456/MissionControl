@@ -12,6 +12,7 @@ import { validateSandboxProfile } from "./sandboxProvider.js";
 
 export interface FakeSandboxProviderOptions {
   result?: Buffer | ((request: SandboxStartRequest) => Buffer | Promise<Buffer>);
+  diagnostics?: Record<string, unknown> | ((request: SandboxStartRequest) => Record<string, unknown> | Promise<Record<string, unknown>>);
   allocationDelayMs?: number;
   resultDelayMs?: number;
   failAt?: "ALLOCATE" | "START" | "FETCH" | "TERMINATE";
@@ -90,6 +91,15 @@ export class FakeSandboxProvider implements SandboxProvider {
     const record = this.requireRecord(allocation.resourceName);
     if (!record.result || this.now() < (record.resultReadyAt ?? 0)) return null;
     return Buffer.from(record.result);
+  }
+
+  async fetchDiagnostics(allocation: SandboxAllocation): Promise<Record<string, unknown> | null> {
+    this.calls.push(`diagnostics:${allocation.resourceName}`);
+    const record = this.requireRecord(allocation.resourceName);
+    if (!record.startRequest || !this.options.diagnostics) return null;
+    return structuredClone(typeof this.options.diagnostics === "function"
+      ? await this.options.diagnostics(record.startRequest)
+      : this.options.diagnostics);
   }
 
   async cancel(allocation: SandboxAllocation, _reason: string): Promise<void> {

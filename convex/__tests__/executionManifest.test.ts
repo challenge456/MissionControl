@@ -56,6 +56,8 @@ const input: FactoryExecutionManifestInput = {
   codeScopes: [{ id: "scope-1", slug: "ui", includePaths: ["apps/ui/**"], excludePaths: ["apps/ui/generated/**"] }],
   allowedTools: ["apply_patch", "exec_command"],
   routedModel: "gpt-5",
+  maxAttempts: 3,
+  maxCostUsd: 5,
   maxRuntimeMinutes: 60,
   initialContext: { task: "Add the buyer gate" },
 };
@@ -87,6 +89,15 @@ describe("Factory execution manifest", () => {
       requiredCapabilities: ["git-worktree", "workspace-write"],
       harnessId: "codex-cli",
       capabilityManifestSha256: harnessCapabilityManifestDigest(CODEX_V1_HARNESS_MANIFEST),
+    });
+    expect(result.manifest.retryPolicy).toEqual({
+      schema: "factory-remote-retry-policy/v1",
+      maxAttempts: 3,
+      maxTotalWallClockMs: 3_600_000,
+      maxModelSpendUsd: 5,
+      maxProviderResources: 1,
+      retryableFailureClasses: ["RETRYABLE_INFRA", "RETRYABLE_EXECUTION"],
+      failClosedFailureClasses: ["NON_RETRYABLE_RESULT", "UNKNOWN"],
     });
     expect(result.manifest.intent).toMatchObject({ title: "Add the buyer gate", acceptanceCriterionIds: ["ac-1"] });
     expect(result.manifest.workOrderSpecification).toMatchObject({ riskLevel: "MEDIUM", acceptanceCriteria: [{ id: "ac-1" }] });

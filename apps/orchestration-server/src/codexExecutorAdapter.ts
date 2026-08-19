@@ -100,16 +100,17 @@ const REMOTE_OPENROUTER_CONFIG_OVERRIDES = [
 const FACTORY_RESULT_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["status", "summary", "completedAcceptanceCriterionIds", "incompleteAcceptanceCriterionIds", "unknownAcceptanceCriterionIds", "verificationCommands", "knownRisks", "nextAction"],
+  required: ["schema", "status", "summary", "completedAcceptanceCriterionIds", "incompleteAcceptanceCriterionIds", "unknownAcceptanceCriterionIds", "verificationCommands", "knownRisks", "nextAction"],
   properties: {
-    status: { enum: ["COMPLETED", "BLOCKED", "FAILED"] },
-    summary: { type: "string" },
-    completedAcceptanceCriterionIds: { type: "array", items: { type: "string" } },
-    incompleteAcceptanceCriterionIds: { type: "array", items: { type: "string" } },
-    unknownAcceptanceCriterionIds: { type: "array", items: { type: "string" } },
-    verificationCommands: { type: "array", items: { type: "string" } },
-    knownRisks: { type: "array", items: { type: "string" } },
-    nextAction: { type: "string" },
+    schema: { type: "string", enum: ["factory-result/v1"] },
+    status: { type: "string", enum: ["COMPLETED", "BLOCKED", "FAILED"] },
+    summary: { type: "string", minLength: 1, maxLength: 4_000 },
+    completedAcceptanceCriterionIds: { type: "array", maxItems: 200, items: { type: "string", maxLength: 2_000 } },
+    incompleteAcceptanceCriterionIds: { type: "array", maxItems: 200, items: { type: "string", maxLength: 2_000 } },
+    unknownAcceptanceCriterionIds: { type: "array", maxItems: 200, items: { type: "string", maxLength: 2_000 } },
+    verificationCommands: { type: "array", maxItems: 200, items: { type: "string", maxLength: 2_000 } },
+    knownRisks: { type: "array", maxItems: 200, items: { type: "string", maxLength: 2_000 } },
+    nextAction: { type: "string", maxLength: 4_000 },
   },
 };
 
@@ -416,10 +417,13 @@ export class CodexV1ExecutorAdapter implements HarnessExecutorAdapter<CodexPrepa
 
   createRemoteInvocation(request: ExecutorRequest, context: { repositoryRoot: string; resultPath: string }) {
     const remoteRequest = { ...request, repositoryRoot: context.repositoryRoot, workingDirectory: context.repositoryRoot };
+    const outputSchemaPath = path.posix.join(path.posix.dirname(context.resultPath), "factory-result.schema.json");
     return {
       command: this.executable,
-      args: commandArguments(remoteRequest, context.resultPath, undefined, REMOTE_OPENROUTER_CONFIG_OVERRIDES),
+      args: commandArguments(remoteRequest, context.resultPath, outputSchemaPath, REMOTE_OPENROUTER_CONFIG_OVERRIDES),
       resultPath: context.resultPath,
+      outputSchemaPath,
+      outputSchema: structuredClone(FACTORY_RESULT_SCHEMA),
       model: request.model,
       prompt: request.prompt,
       allowedPaths: request.allowedPaths,

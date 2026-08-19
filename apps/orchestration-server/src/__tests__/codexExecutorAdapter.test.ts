@@ -157,6 +157,12 @@ describe("CodexV1ExecutorAdapter", () => {
     expect(invocation).toMatchObject({
       command: "/opt/codex",
       resultPath: "/var/lib/mission-control/attempt/executor-result.json",
+      outputSchemaPath: "/var/lib/mission-control/attempt/factory-result.schema.json",
+      outputSchema: expect.objectContaining({
+        type: "object",
+        additionalProperties: false,
+        required: expect.arrayContaining(["status", "summary", "verificationCommands"]),
+      }),
       prompt: request.prompt,
       allowedPaths: request.allowedPaths,
       timeoutMs: request.timeoutMs,
@@ -166,6 +172,8 @@ describe("CodexV1ExecutorAdapter", () => {
       "/var/lib/mission-control/attempt/repository",
       "-o",
       "/var/lib/mission-control/attempt/executor-result.json",
+      "--output-schema",
+      "/var/lib/mission-control/attempt/factory-result.schema.json",
     ]));
     expect(invocation.args.flatMap((argument, index, args) => argument === "-c" ? [args[index + 1]] : []))
       .toEqual([

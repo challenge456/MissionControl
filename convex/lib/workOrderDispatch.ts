@@ -55,7 +55,8 @@ export function validateRetryRequest(args: {
     workOrderId?: string;
     status: DispatchRunStatus;
   } | null;
-}): { ok: true; reason: string } | { ok: false; reason: string } {
+  remote?: RemoteRetryEvaluationInput;
+}): { ok: true; reason: string; retryDecision?: RemoteRetryDecision } | { ok: false; reason: string; retryDecision?: RemoteRetryDecision } {
   const reason = args.retryReason?.trim() ?? "";
   if (!args.priorRun) return { ok: false, reason: "retry-run-not-found" };
   if (args.priorRun.workOrderId !== args.workOrderId) {
@@ -65,7 +66,60 @@ export function validateRetryRequest(args: {
     return { ok: false, reason: `retry-run-not-recoverable:${args.priorRun.status}` };
   }
   if (reason.length < 10) return { ok: false, reason: "retry-reason-required" };
+  if (args.remote) {
+    const retryDecision = evaluateRemoteRetryPolicy(args.remote);
+    if (!retryDecision.allowed) {
+      return { ok: false, reason: `remote-retry-blocked:${retryDecision.reason}`, retryDecision };
+    }
+    return { ok: true, reason, retryDecision };
+  }
   return { ok: true, reason };
+}
+
+export interface RemoteRetryDecision {
+  allowed: boolean;
+  reason: string;
+}
+
+export interface RemoteRetryEvaluationInput {
+  failureClass?: string;
+  retryable?: boolean;
+  policy?: {
+    schema?: string;
+    maxAttempts?: number;
+    maxTotalWallClockMs?: number;
+    maxModelSpendUsd?: number;
+    maxProviderResources?: number;
+    retryableFailureClasses?: string[];
+  };
+  attemptsUsed: number;
+  totalWallClockMs: number;
+  observedModelSpendUsd: number | null;
+  activeProviderResources: number;
+}
+
+export function evaluateRemoteRetryPolicy(input: RemoteRetryEvaluationInput): RemoteRetryDecision {
+  const policy = input.policy;
+  if (!policy || policy.schema !== "factory-remote-retry-policy/v1"
+    || !Number.isSafeInteger(policy.maxAttempts) || (policy.maxAttempts ?? 0) < 1
+    || !Number.isSafeInteger(policy.maxTotalWallClockMs) || (policy.maxTotalWallClockMs ?? 0) < 1_000
+    || !Number.isFinite(policy.maxModelSpendUsd) || (policy.maxModelSpendUsd ?? 0) <= 0
+    || policy.maxProviderResources !== 1
+    || policy.retryableFailureClasses?.join(",") !== "RETRYABLE_INFRA,RETRYABLE_EXECUTION") {
+    return { allowed: false, reason: "INVALID_FROZEN_BUDGET" };
+  }
+  if (input.retryable !== true || !policy.retryableFailureClasses.includes(input.failureClass ?? "")) {
+    return { allowed: false, reason: "FAILURE_CLASS_NOT_RETRYABLE" };
+  }
+  if (input.attemptsUsed >= policy.maxAttempts!) return { allowed: false, reason: "MAX_ATTEMPTS_EXHAUSTED" };
+  if (input.totalWallClockMs >= policy.maxTotalWallClockMs!) return { allowed: false, reason: "MAX_WALL_CLOCK_EXHAUSTED" };
+  if (input.observedModelSpendUsd !== null && input.observedModelSpendUsd >= policy.maxModelSpendUsd!) {
+    return { allowed: false, reason: "MAX_MODEL_SPEND_EXHAUSTED" };
+  }
+  if (input.activeProviderResources >= policy.maxProviderResources!) {
+    return { allowed: false, reason: "MAX_PROVIDER_RESOURCES_EXHAUSTED" };
+  }
+  return { allowed: true, reason: "WITHIN_FROZEN_BUDGET" };
 }
 
 export function resolveRetryExecutionBinding(args: {
@@ -84,20 +138,9 @@ export function resolveRetryExecutionBinding(args: {
     metadata?: { retryOfWorkflowRunId?: string };
   }>;
 }) {
-  const byId = new Map((args.lineage ?? []).map((run) => [run._id, run]));
-  let bindingSource = args.priorRun ?? undefined;
-  const visited = new Set<string>();
-  while (bindingSource?.metadata?.retryOfWorkflowRunId) {
-    const parentId = bindingSource.metadata.retryOfWorkflowRunId;
-    if (visited.has(parentId)) break;
-    visited.add(parentId);
-    const parent = byId.get(parentId);
-    if (!parent) break;
-    bindingSource = parent;
-  }
   return {
-    branch: args.branch?.trim() || bindingSource?.branch,
-    worktree: args.worktree?.trim() || bindingSource?.worktree,
+    branch: args.branch?.trim() || undefined,
+    worktree: args.worktree?.trim() || undefined,
   };
 }
 

@@ -132,6 +132,8 @@ export interface SandboxStartRequest {
     command: string;
     args: string[];
     resultPath?: string;
+    outputSchemaPath?: string;
+    outputSchema?: Record<string, unknown>;
     model?: string;
     prompt: string;
     allowedPaths: string[];
@@ -161,6 +163,7 @@ export interface SandboxProvider {
   inspect(allocation: SandboxAllocation): Promise<SandboxAllocation>;
   start(request: SandboxStartRequest): Promise<SandboxStartReceipt>;
   fetchResult(allocation: SandboxAllocation): Promise<Buffer | null>;
+  fetchDiagnostics?(allocation: SandboxAllocation): Promise<Record<string, unknown> | null>;
   cancel(allocation: SandboxAllocation, reason: string): Promise<void>;
   terminate(allocation: SandboxAllocation): Promise<SandboxTerminationReceipt>;
 }
@@ -222,9 +225,19 @@ export function assertSafeSandboxResourceName(name: string) {
 }
 
 export function redactSandboxText(value: unknown) {
+  return redactSandboxValue(value).slice(0, 2_000);
+}
+
+export function redactSandboxTail(value: unknown, maxLength = 4_000) {
+  if (!Number.isSafeInteger(maxLength) || maxLength < 1 || maxLength > 16_000) {
+    throw new Error("Sandbox diagnostic tail bound is invalid.");
+  }
+  return redactSandboxValue(value).slice(-maxLength);
+}
+
+function redactSandboxValue(value: unknown) {
   return String(value ?? "")
     .replace(/\bsk-or-v1-[A-Za-z0-9_-]+/g, "[REDACTED_OPENROUTER_KEY]")
-    .replace(/\bgh[pousr]_[A-Za-z0-9_]+/g, "[REDACTED_GITHUB_TOKEN]")
-    .replace(/(authorization|cookie|token|secret|password|api[-_]?key)\s*[:=]\s*([^\s,;]+)/gi, "$1=[REDACTED]")
-    .slice(0, 2_000);
+    .replace(/\bgh[pousr]_[A-Za-z0-9_]+/g, "[REDACTED_PROVIDER_TOKEN]")
+    .replace(/(authorization|cookie|token|secret|password|api[-_]?key)\s*[:=]\s*([^\s,;]+)/gi, "$1=[REDACTED]");
 }

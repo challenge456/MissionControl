@@ -968,6 +968,15 @@ export const reportInternal = internalMutation({
         throw new Error("Factory attempt terminal status is invalid.");
       }
       if ((run.executionManifest as any)?.harness?.executionBackend === "remote-sandbox") {
+        const remoteFailure = terminal.status === "COMPLETED"
+          ? undefined
+          : normalizeRemoteFailure(terminal.remoteFailure);
+        if (terminal.status === "COMPLETED" && terminal.remoteFailure !== undefined) {
+          throw new Error("A completed remote Attempt cannot carry a failure classification.");
+        }
+        if (terminal.status !== "COMPLETED" && !remoteFailure) {
+          throw new Error("A failed remote Attempt requires a typed fail-closed classification.");
+        }
         const allocation = await ctx.db.query("sandboxAllocations")
           .withIndex("by_run", (q) => q.eq("workflowRunId", run._id))
           .order("desc")
@@ -1080,6 +1089,9 @@ export const reportInternal = internalMutation({
         throw new Error("A completed mutating Factory attempt requires durable pull-request head and URL lineage.");
       }
       const failureReason = optionalText(terminal.failureReason, 2_000);
+      const remoteFailure = terminal.status === "COMPLETED"
+        ? undefined
+        : normalizeRemoteFailure(terminal.remoteFailure);
       const steps = terminal.status === "COMPLETED"
         ? run.steps.map((step) => ({
             ...step,
@@ -1091,6 +1103,10 @@ export const reportInternal = internalMutation({
         status: terminal.status,
         completedAt,
         failureReason,
+        failureClass: remoteFailure?.class,
+        failureCode: remoteFailure?.code,
+        failureStage: remoteFailure?.stage,
+        retryable: remoteFailure?.retryable,
         steps,
         lease: undefined,
         executionPhase: "TERMINAL",
@@ -1123,7 +1139,14 @@ export const reportInternal = internalMutation({
         errorCategory: terminal.status === "COMPLETED" ? undefined : "FACTORY_ATTEMPT_FAILURE",
         errorSummary: failureReason,
         commandSummary: terminal.status === "COMPLETED" ? "Factory attempt completed with review-ready pull request" : undefined,
-        metadata: { leaseId: args.leaseId, executionManifestDigest: run.executionManifestDigest },
+        metadata: {
+          leaseId: args.leaseId,
+          executionManifestDigest: run.executionManifestDigest,
+          remoteFailureClass: remoteFailure?.class,
+          remoteFailureCode: remoteFailure?.code,
+          remoteFailureStage: remoteFailure?.stage,
+          remoteRetryable: remoteFailure?.retryable,
+        },
       });
       await finishAttemptTrace(ctx, run, {
         status: terminal.status,
@@ -1860,6 +1883,8 @@ async function schedulePolicyV2VerificationAttempt(ctx: any, workOrder: any, sou
       id: String(scope._id), slug: scope.slug, includePaths: scope.includePaths, excludePaths: scope.excludePaths,
     })),
     allowedTools: Array.isArray(workflow.metadata?.allowedTools) ? workflow.metadata.allowedTools : [],
+    maxAttempts: version.budget.maxAttempts,
+    maxCostUsd: version.budget.maxCostUsd,
     maxRuntimeMinutes: version.budget.maxRuntimeMinutes,
     initialContext: { verificationSubjectDigest: subject.digest, sourceAttemptId: String(sourceAttempt._id) },
   });
@@ -2094,7 +2119,21 @@ async function persistSandboxPacket(ctx: any, run: any, packet: any, leaseId: st
       });
       await ctx.db.patch(run._id, { sandboxTeardownVerifiedAt: receipt.confirmedAbsentAt });
     } else if (sandbox.operation === "FAILED") {
-      await ctx.db.patch(allocation._id, { state: "FAILED", failureReason: optionalText(sandbox.reason, 2_000), updatedAt: Date.now() });
+      const failureClass = ["RETRYABLE_INFRA", "RETRYABLE_EXECUTION", "NON_RETRYABLE_RESULT", "UNKNOWN"].includes(sandbox.failureClass)
+        ? sandbox.failureClass
+        : "UNKNOWN";
+      const retryable = failureClass === "RETRYABLE_INFRA" || failureClass === "RETRYABLE_EXECUTION";
+      if (sandbox.retryable !== undefined && sandbox.retryable !== retryable) {
+        throw new Error("Sandbox failure retry decision conflicts with its failure class.");
+      }
+      await ctx.db.patch(allocation._id, {
+        state: "FAILED",
+        failureReason: optionalText(sandbox.reason, 2_000),
+        failureClass,
+        failureCode: optionalText(sandbox.failureCode, 200) ?? "REMOTE_UNCLASSIFIED",
+        retryable,
+        updatedAt: Date.now(),
+      });
     } else {
       throw new Error("Sandbox lifecycle operation is unsupported.");
     }
@@ -2882,6 +2921,20 @@ async function resolveGovernancePolicy(ctx: any, workOrder: any) {
     if (projectPolicy) return projectPolicy;
   }
   return DEFAULT_GOVERNANCE_POLICY;
+}
+
+function normalizeRemoteFailure(value: any) {
+  if (!value || typeof value !== "object") return undefined;
+  const failureClass = ["RETRYABLE_INFRA", "RETRYABLE_EXECUTION", "NON_RETRYABLE_RESULT", "UNKNOWN"].includes(value.class)
+    ? value.class as "RETRYABLE_INFRA" | "RETRYABLE_EXECUTION" | "NON_RETRYABLE_RESULT" | "UNKNOWN"
+    : undefined;
+  const code = optionalText(value.code, 200);
+  const stage = optionalText(value.stage, 200);
+  const summary = optionalText(value.summary, 1_000);
+  if (!failureClass || !code || !stage || !summary || typeof value.retryable !== "boolean") return undefined;
+  const retryable = failureClass === "RETRYABLE_INFRA" || failureClass === "RETRYABLE_EXECUTION";
+  if (value.retryable !== retryable) throw new Error("Remote failure retryability conflicts with its class.");
+  return { class: failureClass, code, stage, retryable, summary };
 }
 
 function optionalText(value: unknown, max: number): string | undefined {

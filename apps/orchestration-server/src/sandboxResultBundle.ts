@@ -1,5 +1,7 @@
 import { canonicalDigest } from "@mission-control/shared";
 import { SANDBOX_RESULT_SCHEMA } from "./sandboxProvider.js";
+import type { RemoteFailure } from "./remoteExecutionPolicy.js";
+import { factoryResultContextIssues, type RemoteResultProvenance } from "./remoteStructuredResult.js";
 
 export const MAX_SANDBOX_RESULT_BYTES = 10 * 1024 * 1024;
 export const MAX_SANDBOX_PATCH_BYTES = 8 * 1024 * 1024;
@@ -15,6 +17,14 @@ export interface SandboxResultBundle {
   sourceSha: string;
   candidateSha?: string;
   supervisorVersion: string;
+  harness: {
+    adapter: string;
+    version: string;
+    harnessId: string;
+    harnessVersion: string;
+    provider: string;
+    model: string;
+  };
   environment: {
     provider: "EXE_DEV" | "FAKE";
     image: string;
@@ -22,6 +32,14 @@ export interface SandboxResultBundle {
   startedAt: number;
   finishedAt: number;
   status: "COMPLETED" | "FAILED" | "CANCELED" | "TIMED_OUT";
+  resultProvenance: RemoteResultProvenance & {
+    context: {
+      attemptId: string;
+      manifestDigest: string;
+      sourceSha: string;
+    };
+  };
+  failure?: RemoteFailure;
   structuredResult: {
     schema: "factory-result/v1";
     status: "COMPLETED" | "BLOCKED" | "FAILED";
@@ -61,12 +79,19 @@ export interface SandboxResultBundle {
     stderrDigest: string;
     stdoutTail: string;
     stderrTail: string;
+    resultOutput?: {
+      state: RemoteResultProvenance["outputFile"]["state"];
+      byteLength: number | null;
+      digest: string | null;
+      tail: string;
+      validationIssues: string[];
+    };
   };
   usage: {
-    providerCostUsd?: number;
-    inferenceCostUsd?: number;
-    inputTokens?: number;
-    outputTokens?: number;
+    providerCostUsd: number | null;
+    inferenceCostUsd: number | null;
+    inputTokens: number | null;
+    outputTokens: number | null;
     providerRuntimeMs: number;
     observedAt: number;
     enforcement: "PROVIDER_REPORTED" | "OBSERVATION_ONLY";
@@ -100,6 +125,8 @@ export function parseAndValidateSandboxResultBundle(
     profileDigest: string;
     sourceSha: string;
     supervisorVersion: string;
+    harness: SandboxResultBundle["harness"];
+    acceptanceCriterionIds: string[];
     environment: SandboxResultBundle["environment"];
     maxRuntimeMs: number;
   },
@@ -117,9 +144,23 @@ export function parseAndValidateSandboxResultBundle(
   if (bundle.manifestDigest !== expected.manifestDigest || bundle.profileDigest !== expected.profileDigest) throw new Error("Sandbox result is not bound to the frozen manifest and profile.");
   if (bundle.sourceSha !== expected.sourceSha) throw new Error("Sandbox result source SHA does not match the frozen source revision.");
   if (bundle.supervisorVersion !== expected.supervisorVersion
+    || bundle.harness.adapter !== expected.harness.adapter
+    || bundle.harness.version !== expected.harness.version
+    || bundle.harness.harnessId !== expected.harness.harnessId
+    || bundle.harness.harnessVersion !== expected.harness.harnessVersion
+    || bundle.harness.provider !== expected.harness.provider
+    || bundle.harness.model !== expected.harness.model
     || bundle.environment.provider !== expected.environment.provider
     || bundle.environment.image !== expected.environment.image) {
     throw new Error("Sandbox result environment does not match the frozen supervisor and profile.");
+  }
+  if (bundle.resultProvenance.context.attemptId !== expected.attemptId
+    || bundle.resultProvenance.context.manifestDigest !== expected.manifestDigest
+    || bundle.resultProvenance.context.sourceSha !== expected.sourceSha) {
+    throw new Error("Sandbox result reconstruction context does not match the frozen Attempt.");
+  }
+  if (factoryResultContextIssues(bundle.structuredResult, expected.acceptanceCriterionIds).length > 0) {
+    throw new Error("Sandbox result acceptance-criterion accounting does not match the frozen WorkOrder.");
   }
   if (bundle.finishedAt - bundle.startedAt > expected.maxRuntimeMs || bundle.usage.providerRuntimeMs > expected.maxRuntimeMs) {
     throw new Error("Sandbox result exceeds the frozen runtime boundary.");
@@ -167,9 +208,26 @@ function assertBundleShape(candidate: any): SandboxResultBundle {
     || ["attemptId", "workOrderId", "workflowRunId", "manifestDigest", "profileDigest", "sourceSha", "supervisorVersion"].some((field) => typeof candidate[field] !== "string" || !candidate[field])
     || !Number.isSafeInteger(candidate.workOrderRevisionNumber) || candidate.workOrderRevisionNumber < 1
     || (candidate.candidateSha !== undefined && (typeof candidate.candidateSha !== "string" || !/^[a-f0-9]{40,64}$/i.test(candidate.candidateSha)))
+    || ["adapter", "version", "harnessId", "harnessVersion", "provider", "model"].some((field) => typeof candidate.harness?.[field] !== "string" || !candidate.harness[field])
     || !["EXE_DEV", "FAKE"].includes(candidate.environment?.provider) || typeof candidate.environment?.image !== "string" || !candidate.environment.image
     || !Number.isFinite(candidate.startedAt) || !Number.isFinite(candidate.finishedAt) || candidate.finishedAt < candidate.startedAt
     || !["COMPLETED", "FAILED", "CANCELED", "TIMED_OUT"].includes(candidate.status)
+    || !["OUTPUT_FILE", "EXECUTOR_STDOUT", "CODEX_JSONL_RECONSTRUCTION", "NONE"].includes(candidate.resultProvenance?.source)
+    || !["NOT_REQUESTED", "ABSENT", "EMPTY", "TRUNCATED", "INVALID_JSON", "SCHEMA_INVALID", "TOO_LARGE", "READ_ERROR", "VALID"].includes(candidate.resultProvenance?.outputFile?.state)
+    || (candidate.resultProvenance?.outputFile?.byteLength !== null
+      && (!Number.isSafeInteger(candidate.resultProvenance?.outputFile?.byteLength) || candidate.resultProvenance.outputFile.byteLength < 0))
+    || ["byteLength", "lineCount", "malformedLineCount", "terminalCompletedCount", "terminalFailureCount", "validCandidateCount"]
+      .some((field) => !Number.isSafeInteger(candidate.resultProvenance?.jsonl?.[field]) || candidate.resultProvenance.jsonl[field] < 0)
+    || typeof candidate.resultProvenance?.context?.attemptId !== "string"
+    || typeof candidate.resultProvenance?.context?.manifestDigest !== "string"
+    || typeof candidate.resultProvenance?.context?.sourceSha !== "string"
+    || (candidate.failure !== undefined && (!candidate.failure
+      || !["RETRYABLE_INFRA", "RETRYABLE_EXECUTION", "NON_RETRYABLE_RESULT", "UNKNOWN"].includes(candidate.failure.class)
+      || typeof candidate.failure.code !== "string" || !candidate.failure.code
+      || typeof candidate.failure.stage !== "string" || !candidate.failure.stage
+      || typeof candidate.failure.retryable !== "boolean"
+      || typeof candidate.failure.summary !== "string" || candidate.failure.summary.length > 1_000
+      || candidate.failure.retryable !== ["RETRYABLE_INFRA", "RETRYABLE_EXECUTION"].includes(candidate.failure.class)))
     || structured?.schema !== "factory-result/v1"
     || !["COMPLETED", "BLOCKED", "FAILED"].includes(structured?.status)
     || typeof structured?.summary !== "string" || !structured.summary.trim()
@@ -186,11 +244,31 @@ function assertBundleShape(candidate: any): SandboxResultBundle {
     || typeof candidate.patch?.content !== "string" || typeof candidate.patch?.digest !== "string" || !Number.isSafeInteger(candidate.patch?.byteLength)
     || typeof candidate.executor?.stdoutDigest !== "string" || typeof candidate.executor?.stderrDigest !== "string"
     || typeof candidate.executor?.stdoutTail !== "string" || typeof candidate.executor?.stderrTail !== "string"
+    || (candidate.executor?.resultOutput !== undefined && (
+      !candidate.executor.resultOutput
+      || !["NOT_REQUESTED", "ABSENT", "EMPTY", "TRUNCATED", "INVALID_JSON", "SCHEMA_INVALID", "TOO_LARGE", "READ_ERROR", "VALID"].includes(candidate.executor.resultOutput.state)
+      || (candidate.executor.resultOutput.byteLength !== null && (!Number.isSafeInteger(candidate.executor.resultOutput.byteLength) || candidate.executor.resultOutput.byteLength < 0))
+      || (candidate.executor.resultOutput.digest !== null && (typeof candidate.executor.resultOutput.digest !== "string" || !candidate.executor.resultOutput.digest.startsWith("sha256:")))
+      || typeof candidate.executor.resultOutput.tail !== "string" || candidate.executor.resultOutput.tail.length > 4_000
+      || !Array.isArray(candidate.executor.resultOutput.validationIssues)
+      || candidate.executor.resultOutput.validationIssues.some((issue: unknown) => typeof issue !== "string" || issue.length > 500)
+    ))
     || !Number.isFinite(candidate.usage?.observedAt) || !Number.isFinite(candidate.usage?.providerRuntimeMs) || candidate.usage.providerRuntimeMs < 0
-    || [candidate.usage?.providerCostUsd, candidate.usage?.inferenceCostUsd].some((value) => value !== undefined && (!Number.isFinite(value) || value < 0))
-    || [candidate.usage?.inputTokens, candidate.usage?.outputTokens].some((value) => value !== undefined && (!Number.isSafeInteger(value) || value < 0))
+    || [candidate.usage?.providerCostUsd, candidate.usage?.inferenceCostUsd].some((value) => value !== null && (!Number.isFinite(value) || value < 0))
+    || [candidate.usage?.inputTokens, candidate.usage?.outputTokens].some((value) => value !== null && (!Number.isSafeInteger(value) || value < 0))
     || !["PROVIDER_REPORTED", "OBSERVATION_ONLY"].includes(candidate.usage?.enforcement)) {
     throw new Error("Sandbox result bundle failed schema validation.");
+  }
+  if (candidate.status === "COMPLETED") {
+    if (candidate.failure !== undefined
+      || candidate.resultProvenance.source === "NONE"
+      || structured.status !== "COMPLETED"
+      || candidate.executor?.exitCode !== 0
+      || candidate.commandResults.some((result: any) => result.timedOut)) {
+      throw new Error("Completed sandbox result does not have one accepted terminal factory-result/v1.");
+    }
+  } else if (!candidate.failure) {
+    throw new Error("Failed sandbox result is missing its typed failure decision.");
   }
   return candidate as SandboxResultBundle;
 }

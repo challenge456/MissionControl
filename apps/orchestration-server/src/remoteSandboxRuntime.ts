@@ -13,6 +13,12 @@ import type {
   SandboxCredentialRevocationReceipt,
 } from "./sandboxCredentials.js";
 import { parseAndValidateSandboxResultBundle, type SandboxResultBundle } from "./sandboxResultBundle.js";
+import {
+  classifyRemoteError,
+  remoteFailure,
+  type RemoteFailure,
+  type RemoteFailureStage,
+} from "./remoteExecutionPolicy.js";
 
 export type SandboxLifecycleEventType =
   | "SANDBOX_REQUESTED"
@@ -100,7 +106,14 @@ export class RemoteSandboxRuntime {
     options?: { deferCleanup?: boolean },
   ): Promise<RemoteSandboxExecutionResult | RemoteSandboxCandidateSession> {
     const profileValidation = await this.provider.validateProfile(request.profile);
-    if (!profileValidation.dispatchable) throw new Error(`Remote Sandbox Profile is not dispatchable: ${profileValidation.errors.join(" ")}`);
+    if (!profileValidation.dispatchable) {
+      throw new RemoteSandboxExecutionError(remoteFailure(
+        "NON_RETRYABLE_RESULT",
+        "PROFILE_NOT_DISPATCHABLE",
+        "PROFILE",
+        `Remote Sandbox Profile is not dispatchable: ${profileValidation.errors.join(" ")}`,
+      ));
+    }
     const profileDigest = sandboxProfileDigest(request.profile);
     const resourceName = stableSandboxResourceName(request);
     const lifecycleEvents: SandboxLifecycleEvent[] = [];
@@ -128,6 +141,7 @@ export class RemoteSandboxRuntime {
     let termination: SandboxTerminationReceipt | undefined;
     let primaryError: unknown;
     let bundle: SandboxResultBundle | undefined;
+    let failureStage: RemoteFailureStage = "ALLOCATION";
     let resourceObservedRunning = false;
     let cleanupPromise: Promise<{ credentialRevocation?: SandboxCredentialRevocationReceipt; termination: SandboxTerminationReceipt }> | undefined;
     const cleanup = async () => {
@@ -166,11 +180,14 @@ export class RemoteSandboxRuntime {
       // external provider mutation.
       await this.journal.recordAllocationRequested(allocationRequest);
       await emit("SANDBOX_REQUESTED", { provider: this.provider.kind, profileDigest, readiness: profileValidation.readiness });
+      failureStage = "ALLOCATION";
       allocation = await this.provider.allocate(allocationRequest);
       await this.journal.recordAllocation(allocation);
       await emit("SANDBOX_ALLOCATED", { providerResourceId: allocation.providerResourceId });
+      failureStage = "READINESS";
       allocation = await this.waitUntilReady(allocation, request, emit);
 
+      failureStage = "CREDENTIAL";
       grant = await this.credentialBroker.mint({
         projectId: request.projectId,
         workflowRunId: request.workflowRunId,
@@ -182,6 +199,7 @@ export class RemoteSandboxRuntime {
       });
       const { secret: _secret, ...persistableGrant } = grant;
       await this.journal.recordCredentialIssued(persistableGrant);
+      failureStage = "START";
       const start = await this.provider.start({
         allocation,
         executionManifest: request.executionManifest,
@@ -206,6 +224,7 @@ export class RemoteSandboxRuntime {
       resourceObservedRunning = Boolean(this.resourceObserver);
       await this.journal.recordAllocation(allocation);
       await emit("SANDBOX_STARTED", { processId: start.processId });
+      failureStage = "RESULT_READ";
       bundle = await this.waitForResult(allocation, request, profileDigest, emit);
       allocation = { ...allocation, state: "RESULT_READY", resultDigest: bundle.digest };
       await this.journal.recordAllocation(allocation);
@@ -217,12 +236,25 @@ export class RemoteSandboxRuntime {
         inferenceCostUsd: bundle.usage.inferenceCostUsd,
       });
     } catch (error) {
-      primaryError = error;
+      const typedError = error instanceof RemoteSandboxExecutionError
+        ? error
+        : new RemoteSandboxExecutionError(classifyRemoteError(error, failureStage), error);
+      primaryError = typedError;
       if (allocation && request.signal?.aborted) {
         await emit("SANDBOX_CANCELLATION_REQUESTED", { reason: "Attempt cancellation or lease loss" }).catch(() => undefined);
         await this.provider.cancel(allocation, "Attempt cancellation or lease loss").catch(() => undefined);
       }
-      await emit("SANDBOX_FAILED", { reason: safeMessage(error) }).catch(() => undefined);
+      const diagnostics = allocation && this.provider.fetchDiagnostics
+        ? await this.provider.fetchDiagnostics(allocation).then(sanitizeDiagnostics).catch(() => null)
+        : null;
+      await emit("SANDBOX_FAILED", {
+        reason: typedError.failure.summary,
+        failureClass: typedError.failure.class,
+        failureCode: typedError.failure.code,
+        failureStage: typedError.failure.stage,
+        retryable: typedError.failure.retryable,
+        diagnostics,
+      }).catch(() => undefined);
     } finally {
       if (!options?.deferCleanup || primaryError || !bundle) {
         try {
@@ -285,10 +317,8 @@ export class RemoteSandboxRuntime {
   ) {
     const deadline = this.now() + request.profile.runtime.maxRuntimeMs;
     let current = allocation;
-    while (this.now() < deadline) {
-      assertActive(request.signal);
-      const payload = await this.provider.fetchResult(current);
-      if (payload) {
+    const validatePayload = (payload: Buffer) => {
+      try {
         return parseAndValidateSandboxResultBundle(payload, {
           attemptId: request.attemptId,
           workOrderId: request.workOrderId,
@@ -298,17 +328,67 @@ export class RemoteSandboxRuntime {
           profileDigest,
           sourceSha: request.sourceSha,
           supervisorVersion: request.profile.supervisor.version,
+          harness: harnessIdentity(request.executionManifest),
+          acceptanceCriterionIds: manifestAcceptanceCriterionIds(request.executionManifest),
           environment: { provider: request.profile.provider, image: request.profile.machine.image },
           maxRuntimeMs: request.profile.runtime.maxRuntimeMs,
         });
+      } catch (error) {
+        throw new RemoteSandboxExecutionError(remoteFailure(
+          "NON_RETRYABLE_RESULT",
+          "RESULT_BUNDLE_INVALID",
+          "RESULT_VALIDATION",
+          safeMessage(error),
+        ), error);
+      }
+    };
+    while (this.now() < deadline) {
+      assertActive(request.signal);
+      const payload = await this.provider.fetchResult(current);
+      if (payload) return validatePayload(payload);
+      const diagnostics = this.provider.fetchDiagnostics
+        ? await this.provider.fetchDiagnostics(current)
+        : null;
+      if (diagnostics?.supervisorProcessRunning === false) {
+        // The supervisor atomically renames the bundle immediately before it
+        // exits. The first result read can race that rename while the following
+        // process-state read observes the exit. Re-read the final path once so
+        // a completed supervisor cannot be misclassified as a crash.
+        const terminalPayload = await this.provider.fetchResult(current);
+        if (terminalPayload) return validatePayload(terminalPayload);
+        throw new RemoteSandboxExecutionError(remoteFailure(
+          "UNKNOWN",
+          "SUPERVISOR_EXITED_BEFORE_RESULT",
+          "RESULT_READ",
+          "Sandbox supervisor exited before atomically publishing a result bundle.",
+        ));
       }
       await this.sleep(request.profile.runtime.resultPollIntervalMs);
       current = await this.provider.inspect(current);
       await this.journal.recordAllocation(current);
-      if (["FAILED", "TERMINATED", "ORPHANED"].includes(current.state)) throw new Error(`Sandbox became ${current.state} without a result bundle.`);
+      if (["FAILED", "TERMINATED", "ORPHANED"].includes(current.state)) {
+        throw new RemoteSandboxExecutionError(remoteFailure(
+          "RETRYABLE_INFRA",
+          "PROVIDER_TERMINAL_WITHOUT_RESULT",
+          "RESULT_READ",
+          `Sandbox became ${current.state} without a result bundle.`,
+        ));
+      }
     }
     await this.provider.cancel(current, "Sandbox runtime deadline exceeded.").catch(() => undefined);
-    throw new Error("Sandbox execution exceeded the frozen Attempt timeout.");
+    throw new RemoteSandboxExecutionError(remoteFailure(
+      "RETRYABLE_EXECUTION",
+      "EXECUTOR_TIMEOUT",
+      "EXECUTOR",
+      "Sandbox execution exceeded the frozen Attempt timeout.",
+    ));
+  }
+}
+
+export class RemoteSandboxExecutionError extends Error {
+  constructor(readonly failure: RemoteFailure, options?: unknown) {
+    super(failure.summary, options === undefined ? undefined : { cause: options });
+    this.name = "RemoteSandboxExecutionError";
   }
 }
 
@@ -330,7 +410,14 @@ export class InMemoryRemoteSandboxJournal implements RemoteSandboxJournal {
 }
 
 function assertActive(signal?: AbortSignal) {
-  if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new Error("Remote sandbox Attempt was canceled.");
+  if (signal?.aborted) {
+    throw new RemoteSandboxExecutionError(remoteFailure(
+      "UNKNOWN",
+      "ATTEMPT_CANCELED",
+      "EXECUTOR",
+      signal.reason instanceof Error ? signal.reason.message : "Remote sandbox Attempt was canceled.",
+    ), signal.reason);
+  }
 }
 
 function combineErrors(primary: unknown, cleanup: unknown, message: string) {
@@ -339,4 +426,32 @@ function combineErrors(primary: unknown, cleanup: unknown, message: string) {
 
 function safeMessage(error: unknown) {
   return (error instanceof Error ? error.message : String(error)).slice(0, 1_000);
+}
+
+function harnessIdentity(manifest: Record<string, unknown>): SandboxResultBundle["harness"] {
+  const harness = (manifest as any)?.harness;
+  return {
+    adapter: String(harness?.adapter ?? ""),
+    version: String(harness?.version ?? ""),
+    harnessId: String(harness?.harnessId ?? ""),
+    harnessVersion: String(harness?.harnessVersion ?? ""),
+    provider: String(harness?.provider ?? ""),
+    model: String(harness?.model ?? ""),
+  };
+}
+
+function manifestAcceptanceCriterionIds(manifest: Record<string, unknown>) {
+  const value = (manifest as any)?.intent?.acceptanceCriterionIds;
+  return Array.isArray(value) && value.every((id) => typeof id === "string" && id)
+    ? value as string[]
+    : [""];
+}
+
+function sanitizeDiagnostics(value: Record<string, unknown> | null) {
+  if (!value) return null;
+  return JSON.parse(JSON.stringify(value, (_key, item) => typeof item === "string"
+    ? item.replace(/\bsk-or-v1-[A-Za-z0-9_-]+/g, "[REDACTED_OPENROUTER_KEY]")
+      .replace(/\bgh[pousr]_[A-Za-z0-9_]+/g, "[REDACTED_PROVIDER_TOKEN]")
+      .slice(0, 16_000)
+    : item));
 }

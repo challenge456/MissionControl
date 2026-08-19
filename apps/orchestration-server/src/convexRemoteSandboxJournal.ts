@@ -44,6 +44,16 @@ export class ConvexRemoteSandboxJournal implements RemoteSandboxJournal {
 
   async recordEvent(event: SandboxLifecycleEvent) {
     await this.report({
+      ...(event.type === "SANDBOX_FAILED" ? {
+        sandbox: {
+          operation: "FAILED",
+          resourceName: event.resourceName,
+          reason: event.metadata?.reason,
+          failureClass: event.metadata?.failureClass,
+          failureCode: event.metadata?.failureCode,
+          retryable: event.metadata?.retryable,
+        },
+      } : {}),
       events: [{
         idempotencyKey: `factory:${this.runId}:sandbox:${event.type}:${event.occurredAt}`,
         eventType: event.type,

@@ -100,6 +100,12 @@ export class ExeDevSandboxProvider implements SandboxProvider {
     assertSafeSandboxResourceName(request.allocation.resourceName);
     if (request.allocation.provider !== this.kind) throw new Error("Sandbox allocation belongs to a different provider.");
     if (!/^[a-f0-9]{40,64}$/i.test(request.sourceSha)) throw new Error("Sandbox start requires an immutable source SHA.");
+    const outputSchemaPath = `${REMOTE_ROOT}/factory-result.schema.json`;
+    if (request.executor.outputSchemaPath !== undefined || request.executor.outputSchema !== undefined) {
+      if (request.executor.outputSchemaPath !== outputSchemaPath || !request.executor.outputSchema) {
+        throw new Error("Remote harness output schema must use the bounded Attempt schema path.");
+      }
+    }
     const config = {
       executionManifest: request.executionManifest,
       attemptId: request.attemptId,
@@ -112,6 +118,7 @@ export class ExeDevSandboxProvider implements SandboxProvider {
       environmentDescriptor: request.environmentDescriptor,
       repositoryRoot: `${REMOTE_ROOT}/repository`,
       outputPath: `${REMOTE_ROOT}/result.json`,
+      diagnosticsPath: `${REMOTE_ROOT}/diagnostics.json`,
       executor: {
         command: request.executor.command,
         args: request.executor.args,
@@ -122,6 +129,9 @@ export class ExeDevSandboxProvider implements SandboxProvider {
     };
     await this.upload(request.allocation.resourceName, `${REMOTE_ROOT}/repository.bundle`, request.repositoryArchive);
     await this.upload(request.allocation.resourceName, `${REMOTE_ROOT}/supervisor.mjs`, Buffer.from(request.supervisorSource, "utf8"));
+    if (request.executor.outputSchema) {
+      await this.upload(request.allocation.resourceName, outputSchemaPath, Buffer.from(JSON.stringify(request.executor.outputSchema), "utf8"));
+    }
     await this.upload(request.allocation.resourceName, `${REMOTE_ROOT}/config.json`, Buffer.from(JSON.stringify(config), "utf8"));
     await this.transport.vmText(request.allocation.resourceName, [
       "set -eu",
@@ -129,6 +139,7 @@ export class ExeDevSandboxProvider implements SandboxProvider {
       `git clone --quiet ${REMOTE_ROOT}/repository.bundle ${REMOTE_ROOT}/repository`,
       `git -C ${REMOTE_ROOT}/repository checkout --quiet ${request.sourceSha}`,
       `rm -f ${REMOTE_ROOT}/repository.bundle`,
+      `rm -f ${REMOTE_ROOT}/result.json ${REMOTE_ROOT}/result.json.tmp-* ${REMOTE_ROOT}/diagnostics.json ${REMOTE_ROOT}/diagnostics.json.tmp-* ${REMOTE_ROOT}/executor-result.json`,
       "command -v setsid >/dev/null",
       `nohup setsid node ${REMOTE_ROOT}/supervisor.mjs ${REMOTE_ROOT}/config.json >${REMOTE_ROOT}/supervisor.log 2>&1 &`,
       `printf '%s' \"$!\" >${REMOTE_ROOT}/pid`,
@@ -145,6 +156,35 @@ export class ExeDevSandboxProvider implements SandboxProvider {
     );
     const trimmed = encoded.trim();
     return trimmed ? Buffer.from(trimmed, "base64") : null;
+  }
+
+  async fetchDiagnostics(allocation: SandboxAllocation): Promise<Record<string, unknown> | null> {
+    assertSafeSandboxResourceName(allocation.resourceName);
+    const encoded = await this.transport.vmText(
+      allocation.resourceName,
+      [
+        `if test -f ${REMOTE_ROOT}/pid && kill -0 "$(cat ${REMOTE_ROOT}/pid)" 2>/dev/null; then printf '1\\n'; else printf '0\\n'; fi`,
+        `if test -f ${REMOTE_ROOT}/diagnostics.json; then`,
+        `head -c 65536 ${REMOTE_ROOT}/diagnostics.json | base64 | tr -d '\\n'`,
+        `elif test -f ${REMOTE_ROOT}/supervisor.log; then`,
+        `tail -c 16000 ${REMOTE_ROOT}/supervisor.log | base64 | tr -d '\\n'`,
+        "fi",
+      ].join("\n"),
+    );
+    const trimmed = encoded.trim();
+    if (!trimmed) return null;
+    const lines = trimmed.split(/\r?\n/);
+    const hasProcessState = lines[0] === "0" || lines[0] === "1";
+    const supervisorProcessRunning = hasProcessState ? lines.shift() === "1" : null;
+    const text = Buffer.from(lines.join(""), "base64").toString("utf8");
+    try {
+      const value = JSON.parse(text);
+      return value && typeof value === "object" && !Array.isArray(value)
+        ? { ...value as Record<string, unknown>, supervisorProcessRunning }
+        : { supervisorLogTail: redactSandboxText(text), supervisorProcessRunning };
+    } catch {
+      return { supervisorLogTail: redactSandboxText(text), supervisorProcessRunning };
+    }
   }
 
   async cancel(allocation: SandboxAllocation, _reason: string): Promise<void> {

@@ -613,6 +613,7 @@ function fixtureHarnessManifest(
 
 function completedFactoryResult() {
   return {
+    schema: "factory-result/v1",
     status: "COMPLETED",
     summary: "Implement the governed issue outcome",
     completedAcceptanceCriterionIds: ["ac-1"],

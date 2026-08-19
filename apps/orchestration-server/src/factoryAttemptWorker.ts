@@ -23,7 +23,8 @@ import {
 } from "./factoryWorkspaceOwnership.js";
 import { ConvexRemoteSandboxJournal } from "./convexRemoteSandboxJournal.js";
 import { ExeDevSandboxProvider } from "./exeDevSandboxProvider.js";
-import { RemoteSandboxRuntime, type RemoteSandboxCandidateSession } from "./remoteSandboxRuntime.js";
+import { RemoteSandboxExecutionError, RemoteSandboxRuntime, type RemoteSandboxCandidateSession } from "./remoteSandboxRuntime.js";
+import { remoteFailure, validateRemoteRetryBudget } from "./remoteExecutionPolicy.js";
 import { OpenRouterSandboxCredentialBroker, type SandboxCredentialBroker } from "./sandboxCredentials.js";
 import { sandboxProfileDigest, stableSandboxResourceName, type SandboxProvider, type SandboxProfileSnapshot } from "./sandboxProvider.js";
 import type { SandboxResultBundle } from "./sandboxResultBundle.js";
@@ -491,7 +492,11 @@ export class FactoryAttemptWorker {
           await cleanupRemote();
           await report({
             artifacts: [structuredResultArtifact(claim, structuredResult), ...executionArtifacts],
-            terminal: { status: remoteSession.bundle.status === "CANCELED" ? "CANCELED" : "FAILED", failureReason: `Remote sandbox supervisor reported ${remoteSession.bundle.status}.` },
+            terminal: {
+              status: remoteSession.bundle.status === "CANCELED" ? "CANCELED" : "FAILED",
+              failureReason: remoteSession.bundle.failure?.summary ?? `Remote sandbox supervisor reported ${remoteSession.bundle.status}.`,
+              remoteFailure: remoteSession.bundle.failure,
+            },
           });
           this.failedCount += 1;
           return;
@@ -503,7 +508,12 @@ export class FactoryAttemptWorker {
         });
         const materializedFiles = await this.dependencies.listChangedFiles(claim.worktree, manifest.repository.baseSha);
         if (!sameStringSet(materializedFiles, remoteSession.bundle.changedFiles)) {
-          throw new Error("Materialized candidate changed-file set does not match the content-addressed sandbox result bundle.");
+          throw new RemoteSandboxExecutionError(remoteFailure(
+            "NON_RETRYABLE_RESULT",
+            "CANDIDATE_CHANGED_FILES_MISMATCH",
+            "CANDIDATE",
+            "Materialized candidate changed-file set does not match the content-addressed sandbox result bundle.",
+          ));
         }
       } else {
         const executorEvents: ExecutorEvent[] = [];
@@ -559,12 +569,17 @@ export class FactoryAttemptWorker {
         structuredResult = parseFactoryResult(normalizedResult.output);
       }
       if (structuredResult.status !== "COMPLETED") {
+        const failureReason = `Execution harness reported ${structuredResult.status}: ${structuredResult.nextAction}`;
         await cleanupRemote();
         await report({
           events: mappedEvents,
           observations: traceObservations,
           artifacts: [structuredResultArtifact(claim, structuredResult), ...executionArtifacts],
-          terminal: { status: "FAILED", failureReason: `Execution harness reported ${structuredResult.status}: ${structuredResult.nextAction}` },
+          terminal: {
+            status: "FAILED",
+            failureReason,
+            remoteFailure: remoteTerminalFailure(remoteSession, "DETERMINISTIC_GATE_FAILURE", "RESULT_VALIDATION", failureReason),
+          },
         });
         this.failedCount += 1;
         return;
@@ -575,6 +590,7 @@ export class FactoryAttemptWorker {
         { allowedPaths: manifest.repository.allowedPaths, excludedPaths: manifest.repository.excludedPaths }
       );
       if (!scopeResult.ok) {
+        const failureReason = `Changed files outside approved code scopes: ${scopeResult.outsideScope.join(", ")}`;
         await cleanupRemote();
         await report({
           events: mappedEvents,
@@ -590,18 +606,27 @@ export class FactoryAttemptWorker {
               metadata: { changedFiles: scopeResult.changedFiles, outsideScope: scopeResult.outsideScope },
             },
           ],
-          terminal: { status: "FAILED", failureReason: `Changed files outside approved code scopes: ${scopeResult.outsideScope.join(", ")}` },
+          terminal: {
+            status: "FAILED",
+            failureReason,
+            remoteFailure: remoteTerminalFailure(remoteSession, "CANDIDATE_SCOPE_INVALID", "CANDIDATE", failureReason),
+          },
         });
         this.failedCount += 1;
         return;
       }
       if (scopeResult.changedFiles.length === 0) {
+        const failureReason = "Harness completed without producing a reviewable code change.";
         await cleanupRemote();
         await report({
           events: mappedEvents,
           observations: traceObservations,
           artifacts: [structuredResultArtifact(claim, structuredResult), ...executionArtifacts],
-          terminal: { status: "FAILED", failureReason: "Harness completed without producing a reviewable code change." },
+          terminal: {
+            status: "FAILED",
+            failureReason,
+            remoteFailure: remoteTerminalFailure(remoteSession, "CANDIDATE_EMPTY", "CANDIDATE", failureReason),
+          },
         });
         this.failedCount += 1;
         return;
@@ -613,7 +638,16 @@ export class FactoryAttemptWorker {
         title: String(manifest.intent?.title ?? structuredResult.summary ?? "Mission Control Work Order"),
       });
       const candidate = await this.dependencies.inspectCandidateChange(claim.worktree, manifest.repository.baseSha);
-      if (candidate.candidateRevision !== headSha) throw new Error("Committed candidate revision changed before verification.");
+      if (remoteSession) {
+        assertRemoteCandidateIdentity({
+          expectedSourceSha: manifest.repository.baseSha,
+          expectedCandidateSha: headSha,
+          observedSourceSha: candidate.sourceRevision,
+          observedCandidateSha: candidate.candidateRevision,
+        });
+      } else if (candidate.candidateRevision !== headSha) {
+        throw new Error("Committed candidate revision changed before verification.");
+      }
       const baseArtifacts = [
         structuredResultArtifact(claim, structuredResult),
         ...executionArtifacts,
@@ -658,7 +692,11 @@ export class FactoryAttemptWorker {
               ...baseArtifacts,
               verificationMismatchArtifact(claim, candidate, verificationResult, reason),
             ],
-            terminal: { status: "FAILED", failureReason: reason },
+            terminal: {
+              status: "FAILED",
+              failureReason: reason,
+              remoteFailure: remoteTerminalFailure(remoteSession, "CANDIDATE_MUTATED_DURING_VERIFICATION", "CANDIDATE", reason),
+            },
           });
           this.failedCount += 1;
           return;
@@ -679,7 +717,11 @@ export class FactoryAttemptWorker {
           }
           const reason = `Independent verification did not pass: ${verificationRecord?.verdict ?? "NOT_VERIFIED"} — ${(verificationRecord?.verdictReasons ?? ["No verified receipt was returned."]).join(" ")}`;
           await cleanupRemote();
-          await report({ terminal: { status: "FAILED", failureReason: reason } });
+          await report({ terminal: {
+            status: "FAILED",
+            failureReason: reason,
+            remoteFailure: remoteTerminalFailure(remoteSession, "INDEPENDENT_VERIFICATION_FAILED", "RESULT_VALIDATION", reason),
+          } });
           this.failedCount += 1;
           return;
         }
@@ -712,7 +754,16 @@ export class FactoryAttemptWorker {
         reason = `${reason}; remote cleanup failed (${safeError(cleanupError)})`;
       }
       if (leaseHealthy) {
-        await report({ terminal: { status: controller.signal.aborted ? "CANCELED" : "FAILED", failureReason: reason } })
+        const remoteFailureDecision = error instanceof RemoteSandboxExecutionError
+          ? error.failure
+          : claim?.executionManifest?.harness?.executionBackend === "remote-sandbox"
+            ? remoteFailure("UNKNOWN", "REMOTE_WORKER_UNCLASSIFIED", "UNKNOWN", reason)
+            : undefined;
+        await report({ terminal: {
+          status: controller.signal.aborted ? "CANCELED" : "FAILED",
+          failureReason: reason,
+          remoteFailure: remoteFailureDecision,
+        } })
           .catch((reportError) => {
             this.lastError = `Execution failed (${reason}); terminal report failed (${safeError(reportError)}).`;
           });
@@ -1050,7 +1101,10 @@ function validateClaimManifest(claim: any) {
       workflowRunId: String(claim.workflowRunId),
       attemptId: String(claim.runId),
     });
-    if (manifest?.sandbox?.resourceName !== expectedResourceName
+    if (!validateRemoteRetryBudget(manifest?.retryPolicy)
+      || !Array.isArray(manifest?.retryPolicy?.failClosedFailureClasses)
+      || manifest.retryPolicy.failClosedFailureClasses.join(",") !== "NON_RETRYABLE_RESULT,UNKNOWN"
+      || manifest?.sandbox?.resourceName !== expectedResourceName
       || manifest?.sandbox?.profileDigest !== sandboxProfileDigest(profile)
       || manifest?.sandbox?.resultContract?.schema !== "factory-sandbox-result/v1"
       || manifest?.sandbox?.resultContract?.independentHostValidationRequired !== true
@@ -1225,13 +1279,25 @@ function validateFactoryResult(result: any) {
     "completedAcceptanceCriterionIds", "incompleteAcceptanceCriterionIds",
     "unknownAcceptanceCriterionIds", "verificationCommands", "knownRisks",
   ];
-  if (!result || typeof result !== "object" || !statuses.includes(result.status)
+  const allowedFields = new Set(["schema", "status", "summary", ...arrayFields, "nextAction"]);
+  if (!result || typeof result !== "object" || Array.isArray(result)
+    || Object.keys(result).some((field) => !allowedFields.has(field))
+    || result.schema !== "factory-result/v1" || !statuses.includes(result.status)
     || typeof result.summary !== "string" || !result.summary.trim()
     || typeof result.nextAction !== "string"
     || arrayFields.some((field) => !Array.isArray(result[field]) || result[field].some((item: unknown) => typeof item !== "string"))) {
     throw new Error("Harness factory-result/v1 JSON failed schema validation.");
   }
+  const criterionIds = [
+    ...result.completedAcceptanceCriterionIds,
+    ...result.incompleteAcceptanceCriterionIds,
+    ...result.unknownAcceptanceCriterionIds,
+  ];
+  if (new Set(criterionIds).size !== criterionIds.length) {
+    throw new Error("Harness factory-result/v1 JSON assigned an acceptance criterion more than once.");
+  }
   return result as {
+    schema: "factory-result/v1";
     status: "COMPLETED" | "BLOCKED" | "FAILED";
     summary: string;
     completedAcceptanceCriterionIds: string[];
@@ -1279,6 +1345,41 @@ function sameStringSet(left: string[], right: string[]) {
   const sortedLeft = [...left].sort();
   const sortedRight = [...right].sort();
   return sortedLeft.length === sortedRight.length && sortedLeft.every((item, index) => item === sortedRight[index]);
+}
+
+export function assertRemoteCandidateIdentity(input: {
+  expectedSourceSha: string;
+  expectedCandidateSha: string;
+  observedSourceSha: string;
+  observedCandidateSha: string;
+}) {
+  if (input.observedSourceSha !== input.expectedSourceSha) {
+    throw new RemoteSandboxExecutionError(remoteFailure(
+      "NON_RETRYABLE_RESULT",
+      "CANDIDATE_SOURCE_SHA_MISMATCH",
+      "CANDIDATE",
+      "Remote candidate source SHA does not match the frozen Attempt source.",
+    ));
+  }
+  if (input.observedCandidateSha !== input.expectedCandidateSha) {
+    throw new RemoteSandboxExecutionError(remoteFailure(
+      "NON_RETRYABLE_RESULT",
+      "CANDIDATE_SHA_MISMATCH",
+      "CANDIDATE",
+      "Remote candidate SHA changed before independent verification.",
+    ));
+  }
+}
+
+function remoteTerminalFailure(
+  session: RemoteSandboxCandidateSession | undefined,
+  code: string,
+  stage: "RESULT_VALIDATION" | "CANDIDATE",
+  summary: string,
+) {
+  return session
+    ? remoteFailure("NON_RETRYABLE_RESULT", code, stage, summary)
+    : undefined;
 }
 
 function structuredResultArtifact(claim: any, result: ReturnType<typeof parseFactoryResult>) {
@@ -1389,12 +1490,18 @@ function sandboxResultArtifact(claim: any, bundle: SandboxResultBundle) {
       commandResults: bundle.commandResults,
       verificationInputs: bundle.verificationInputs,
       environment: bundle.environment,
+      harness: bundle.harness,
+      resultProvenance: bundle.resultProvenance,
+      failure: bundle.failure ?? null,
       patchDigest: bundle.patch.digest,
       patchByteLength: bundle.patch.byteLength,
       executor: {
         exitCode: bundle.executor.exitCode,
         stdoutDigest: bundle.executor.stdoutDigest,
         stderrDigest: bundle.executor.stderrDigest,
+        stdoutTail: bundle.executor.stdoutTail,
+        stderrTail: bundle.executor.stderrTail,
+        resultOutput: bundle.executor.resultOutput ?? null,
       },
       usage: bundle.usage,
       secretValuesIncluded: false,
