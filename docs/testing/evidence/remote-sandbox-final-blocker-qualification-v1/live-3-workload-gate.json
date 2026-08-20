@@ -1,0 +1,2745 @@
+{
+  "schema": "remote-sandbox-hardening-live-qualification/v1",
+  "target": "LIVE_EXE_DEV",
+  "mode": "STRICT_COHORT",
+  "decision": "PASS",
+  "startedAt": "2026-08-20T16:27:18.616Z",
+  "completedAt": "2026-08-20T16:35:43.363Z",
+  "qualificationRunId": "3c740d836f9f",
+  "baseline": {
+    "frozenOriginMainSha": "11a51cac1e446488cddf34781cc9663b922c7684",
+    "branchHeadBeforeQualification": "11a51cac1e446488cddf34781cc9663b922c7684",
+    "mergeBase": "11a51cac1e446488cddf34781cc9663b922c7684",
+    "providerReadiness": {
+      "checkedAt": "2026-08-20T16:27:18.612Z",
+      "authenticated": true,
+      "vmCount": 0,
+      "maxVms": 50,
+      "liveAllocationAllowed": true,
+      "automaticIntegrationCount": 0
+    },
+    "image": "ghcr.io/jaydubya818/mission-control-remote-sandbox@sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+    "providerCapabilityConclusion": "provider-enforced egress unavailable"
+  },
+  "constraints": {
+    "exactWorkloads": [
+      "bug-fix",
+      "security-policy",
+      "data-migration"
+    ],
+    "maximumConcurrentVms": 1,
+    "maximumAttemptsPerWorkload": 1,
+    "retriesAllowed": false,
+    "qualificationOnly": true,
+    "guardedAutoEnabled": false,
+    "publicationAuthority": "CONTROL_PLANE_ONLY",
+    "acceptanceAuthority": "workOrders.accept",
+    "providerEgressBoundary": "provider-enforced egress unavailable"
+  },
+  "registryProvenance": {
+    "schema": "mission-control-remote-image-registry-provenance/v1",
+    "publishedAt": "2026-08-20T16:19:44Z",
+    "sourceSha": "11a51cac1e446488cddf34781cc9663b922c7684",
+    "image": "ghcr.io/jaydubya818/mission-control-remote-sandbox@sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+    "digest": "sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+    "publishedTag": "ghcr.io/jaydubya818/mission-control-remote-sandbox:restricted-final-blocker-20260820-41a66f1d6f7b",
+    "platform": "linux/amd64",
+    "sizeBytes": 247551087,
+    "registryIndex": {
+      "mediaType": "application/vnd.oci.image.index.v1+json",
+      "sizeBytes": 856,
+      "rawSha256": "sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+      "linuxAmd64ManifestDigest": "sha256:bbba462e1363dc456415e9b6ac762cf0d1cb82307aa2f663760506df1c42c004",
+      "configDigest": "sha256:c317cbd8815aa54c6143d448ac5880c39ef9542d1690643be7e2c2a5f0383055",
+      "layerCount": 14
+    },
+    "contentMatch": {
+      "localQualifiedImageId": "sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+      "pulledRegistryImageId": "sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+      "localIdMatchesRegistryDigest": true,
+      "rawRegistryIndexMatchesDigest": true,
+      "rawLinuxAmd64ManifestMatchesDigest": true,
+      "pulledRootfsMatchesQualifiedRootfs": true,
+      "verified": true
+    },
+    "publicPull": {
+      "verified": true,
+      "checkedAt": "2026-08-20T16:19:44Z",
+      "httpStatus": 200,
+      "dockerContentDigest": "sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8"
+    },
+    "attestation": {
+      "verified": true,
+      "reference": "ghcr.io/jaydubya818/mission-control-remote-sandbox@sha256:908eb2ba554fdcb0fdd0af77b38bfc5fb77b16d3c1f134acac4c4fe99cc1ff34",
+      "manifestDigest": "sha256:908eb2ba554fdcb0fdd0af77b38bfc5fb77b16d3c1f134acac4c4fe99cc1ff34",
+      "blobDigest": "sha256:1966dde9b04d4e2ba69ce7d0749e827a587e427f6b4d588c63c4335965413b50",
+      "statementType": "https://in-toto.io/Statement/v0.1",
+      "predicateType": "https://slsa.dev/provenance/v0.2",
+      "buildType": "https://mobyproject.org/buildkit@v1",
+      "subjectDigest": "sha256:bbba462e1363dc456415e9b6ac762cf0d1cb82307aa2f663760506df1c42c004",
+      "baseImageDigest": "sha256:ce3cc39fe3b8b2602d3b1c4d63d301e46b48c550ecb627869853ddcdda418b63",
+      "revision": "11a51cac1e446488cddf34781cc9663b922c7684"
+    },
+    "sbom": {
+      "format": "SPDX-2.3",
+      "path": "image-sbom.spdx.json",
+      "sha256": "sha256:46b2708e56068a39c9e681416b847bf2af5c9899ec0e373be9446c573b85a9f2"
+    },
+    "vulnerabilityScan": {
+      "path": "vulnerability-scan-grype.json",
+      "sha256": "sha256:0b235e5dec3de975603ba84f3a140fcd10be9770e1134ea52771f195b2b63105",
+      "critical": 0,
+      "high": 0,
+      "medium": 2,
+      "suppressionCount": 0
+    },
+    "localQualification": {
+      "path": "local-3-workload-gate.json",
+      "sha256": "sha256:f83bf153300ec231f94f71628b7a2e6fb6812a0e08352d77134713140db5f0da",
+      "firstPass": "3/3",
+      "retries": 0
+    },
+    "toolchain": {
+      "nodeVersion": "v26.7.0",
+      "codexVersion": "codex-cli 0.146.0",
+      "codexBinarySha256": "sha256:2e863156ed35ecc5253b1e2f907a9143077b9f7cb51942070c61996471ff6e04",
+      "gitVersion": "git version 2.55.0",
+      "gitBinarySha256": "sha256:7127059b4ebea64f4a50fc3c64601b69a9694196f3ee0396efec6378a0b45078",
+      "busyboxVersion": "BusyBox v1.37.0",
+      "busyboxBinarySha256": "sha256:6a925a6f54ad5263762a91c25cc0a14b8093a86c2b9c1d5f8fae09ccaaeac222",
+      "toolchainInputsSha256": "sha256:76858cb0bebf67e0f9bac7ffed49e2bd83059095cf001466398b316b4b52b883"
+    },
+    "publication": {
+      "permissionBlockPreservedAt": "ghcr-publication-attempt.json",
+      "transportInterruptionsBeforeSuccess": 2,
+      "workloadRetries": 0,
+      "published": true
+    }
+  },
+  "profile": {
+    "schema": "factory-sandbox-profile/v1",
+    "profileKey": "exe-remote-sandbox-restricted-candidate-n1",
+    "version": 1,
+    "provider": "EXE_DEV",
+    "providerProfile": "individual-small",
+    "providerProfileVersion": "remote-sandbox-hardening-v1",
+    "machine": {
+      "image": "ghcr.io/jaydubya818/mission-control-remote-sandbox@sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+      "cpu": 2,
+      "memoryMb": 4096,
+      "diskGb": 20
+    },
+    "supervisor": {
+      "version": "mission-control-supervisor/v1",
+      "transport": "SSH"
+    },
+    "runtime": {
+      "maxRuntimeMs": 330000,
+      "resultPollIntervalMs": 500,
+      "resultRetentionMs": 86400000
+    },
+    "network": {
+      "egress": "RESTRICTED_ALLOWLIST",
+      "egressAllowlist": [
+        "openrouter.ai:443"
+      ],
+      "publicIngress": false,
+      "exposedPorts": []
+    },
+    "credentials": {
+      "inference": "ATTEMPT_SCOPED_OPENROUTER",
+      "repositoryAccess": "CONTROL_PLANE_SNAPSHOT",
+      "githubAuthority": "NONE",
+      "providerAuthority": "NONE"
+    },
+    "spend": {
+      "maxUsd": 0.05,
+      "enforcement": "PROVIDER_KEY_LIMIT"
+    },
+    "teardown": {
+      "terminateOnEveryTerminalState": true,
+      "verifyResourceAbsent": true,
+      "supportsResume": false
+    },
+    "preview": {
+      "mode": "DISABLED"
+    },
+    "readiness": {
+      "state": "DEGRADED",
+      "checkedAt": 1787243238613,
+      "reason": "Guest-kernel nftables enforcement is proven; provider-enforced egress unavailable.",
+      "egressEnforcementProven": true,
+      "liveCertified": true,
+      "evidenceReference": "docs/testing/evidence/remote-sandbox-final-blocker-qualification-v1/live-3-workload-gate.json"
+    },
+    "security": {
+      "schema": "factory-sandbox-security/v1",
+      "profile": "remote-sandbox/exe-dev/restricted-candidate-v1",
+      "qualificationOnly": true,
+      "image": {
+        "digest": "sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+        "provenanceReference": "ghcr.io/jaydubya818/mission-control-remote-sandbox@sha256:908eb2ba554fdcb0fdd0af77b38bfc5fb77b16d3c1f134acac4c4fe99cc1ff34",
+        "sbomDigest": "sha256:46b2708e56068a39c9e681416b847bf2af5c9899ec0e373be9446c573b85a9f2"
+      },
+      "toolchain": {
+        "nodeVersion": "v26.7.0",
+        "codexVersion": "codex-cli 0.146.0",
+        "codexBinarySha256": "sha256:2e863156ed35ecc5253b1e2f907a9143077b9f7cb51942070c61996471ff6e04",
+        "gitVersion": "git version 2.55.0",
+        "gitBinarySha256": "sha256:7127059b4ebea64f4a50fc3c64601b69a9694196f3ee0396efec6378a0b45078",
+        "busyboxVersion": "BusyBox v1.37.0",
+        "busyboxBinarySha256": "sha256:6a925a6f54ad5263762a91c25cc0a14b8093a86c2b9c1d5f8fae09ccaaeac222",
+        "toolchainInputsSha256": "sha256:76858cb0bebf67e0f9bac7ffed49e2bd83059095cf001466398b316b4b52b883"
+      },
+      "execution": {
+        "user": "mc-attempt",
+        "uid": 10001,
+        "gid": 10001,
+        "homePath": "/var/lib/mission-control/attempt/home",
+        "temporaryPath": "/var/lib/mission-control/attempt/tmp",
+        "noNewPrivileges": true,
+        "capabilityMode": "DROP_ALL"
+      },
+      "network": {
+        "enforcement": "GUEST_NFTABLES",
+        "providerEnforced": false,
+        "allowedHttpsHosts": [
+          "openrouter.ai"
+        ],
+        "dnsMode": "CONTROL_PLANE_RESOLVE_ETC_HOSTS",
+        "denyPrivateNetworks": true,
+        "denyLinkLocal": true,
+        "denyMetadata": true,
+        "denyUnexpectedDns": true
+      }
+    },
+    "digest": "sha256:1f60642a57bd11924f7ee84859f220206f49d39c73b120c4a13d58e91b92edc1",
+    "validation": {
+      "valid": true,
+      "dispatchable": true,
+      "readiness": "DEGRADED",
+      "errors": [],
+      "warnings": [
+        "exe.dev exposes no provider-level egress control; guest nftables enforcement is qualification-only defense in depth."
+      ],
+      "profileDigest": "sha256:1f60642a57bd11924f7ee84859f220206f49d39c73b120c4a13d58e91b92edc1"
+    }
+  },
+  "schedule": [
+    {
+      "executionId": "hardening-bug-fix-1",
+      "workloadKey": "bug-fix"
+    },
+    {
+      "executionId": "hardening-security-policy-1",
+      "workloadKey": "security-policy"
+    },
+    {
+      "executionId": "hardening-data-migration-1",
+      "workloadKey": "data-migration"
+    }
+  ],
+  "executions": [
+    {
+      "executionId": "hardening-bug-fix-1",
+      "workloadKey": "bug-fix",
+      "workloadClass": "BUG_FIX",
+      "workloadTitle": "Correct integer-cent listing fee behavior",
+      "risk": "LOW",
+      "attemptId": "attempt-3c740d836f9f-hardening-bug-fix-1",
+      "workflowRunId": "workflow-3c740d836f9f-hardening-bug-fix-1",
+      "leaseId": "lease-3c740d836f9f-hardening-bug-fix-1",
+      "attemptNumber": 1,
+      "retries": 0,
+      "sourceSha": "013d0be0851d2b7cc2f38835f7300e698db5087c",
+      "manifestDigest": "sha256:f205ef1868a63a1ce64208a7cbe27801e943fcb5a8c3cb454fa59d8b24786222",
+      "manifest": {
+        "version": "factory-execution-manifest/v1",
+        "causation": {
+          "missionId": "mission-3c740d836f9f-hardening-bug-fix-1",
+          "missionPlanId": "plan-3c740d836f9f-hardening-bug-fix-1",
+          "workOrderId": "work-order-3c740d836f9f-hardening-bug-fix-1",
+          "workOrderRevisionNumber": 1,
+          "workflowRunId": "workflow-3c740d836f9f-hardening-bug-fix-1",
+          "attemptId": "attempt-3c740d836f9f-hardening-bug-fix-1"
+        },
+        "factory": {
+          "definitionId": "factory-remote-sandbox-hardening",
+          "definitionVersionId": "factory-remote-sandbox-hardening-v1",
+          "version": 1,
+          "configurationDigest": "sha256:409d50666d74538a941428a021b53b469b674051480593393a0c63e6b0854e3b"
+        },
+        "repository": {
+          "repository": "sellerfi-hardening/bug-fix",
+          "baseSha": "013d0be0851d2b7cc2f38835f7300e698db5087c",
+          "allowedPaths": [
+            "src/**"
+          ],
+          "excludedPaths": [
+            "tests/**",
+            "package.json",
+            ".git/**"
+          ]
+        },
+        "intent": {
+          "title": "Correct integer-cent listing fee behavior",
+          "acceptanceCriterionIds": [
+            "BUG-001",
+            "BUG-002"
+          ]
+        },
+        "harness": {
+          "adapter": "codex",
+          "version": "v1",
+          "harnessId": "codex-cli",
+          "harnessVersion": "0.146.0",
+          "provider": "openrouter",
+          "model": "openai/gpt-5.1-codex-mini",
+          "executionBackend": "remote-sandbox",
+          "isolation": "WORKSPACE_WRITE",
+          "pullRequestAuthority": "CONTROL_PLANE_ONLY",
+          "timeoutMs": 300000
+        },
+        "sandbox": {
+          "profileDigest": "sha256:1f60642a57bd11924f7ee84859f220206f49d39c73b120c4a13d58e91b92edc1",
+          "supervisorVersion": "mission-control-supervisor/v1",
+          "credentialGrants": [
+            {
+              "kind": "INFERENCE",
+              "secretValueIncluded": false,
+              "githubAuthority": "NONE",
+              "providerAuthority": "NONE"
+            }
+          ]
+        },
+        "retryPolicy": {
+          "schema": "factory-remote-retry-policy/v1",
+          "maxAttempts": 1,
+          "maxTotalWallClockMs": 330000,
+          "maxModelSpendUsd": 0.05,
+          "maxProviderResources": 1,
+          "retryableFailureClasses": []
+        }
+      },
+      "resourceName": "mc-attempt-f74b8d31ebb3f4a6",
+      "invocation": {
+        "command": "codex",
+        "harnessVersion": "0.146.0",
+        "args": [
+          "-a",
+          "never",
+          "-c",
+          "model_provider=\"mission-control-openrouter\"",
+          "-c",
+          "model_providers.mission-control-openrouter.name=\"OpenRouter\"",
+          "-c",
+          "model_providers.mission-control-openrouter.base_url=\"https://openrouter.ai/api/v1\"",
+          "-c",
+          "model_providers.mission-control-openrouter.env_key=\"OPENAI_API_KEY\"",
+          "-c",
+          "model_providers.mission-control-openrouter.wire_api=\"responses\"",
+          "-c",
+          "model_providers.mission-control-openrouter.supports_websockets=false",
+          "exec",
+          "--json",
+          "--ephemeral",
+          "--ignore-user-config",
+          "--ignore-rules",
+          "--sandbox",
+          "danger-full-access",
+          "--color",
+          "never",
+          "-C",
+          "/var/lib/mission-control/attempt/repository",
+          "-o",
+          "/var/lib/mission-control/attempt/executor-result.json",
+          "--output-schema",
+          "/var/lib/mission-control/attempt/factory-result.schema.json",
+          "-m",
+          "openai/gpt-5.1-codex-mini",
+          "Fix the listing fee defect in src/listingFee.mjs. The fee is five percent of non-negative integer cents, rounded to the nearest cent. Preserve strict input validation. Do not modify tests or package.json. Run node --test.\n\nThis is the only Attempt. Do not assume artifacts or verification from another Attempt.\n\nReturn exactly one JSON object and no prose. Use the literal string factory-result/v1 for schema. Use exactly one uppercase status: COMPLETED, BLOCKED, or FAILED. completedAcceptanceCriterionIds, incompleteAcceptanceCriterionIds, unknownAcceptanceCriterionIds, verificationCommands, and knownRisks must always be JSON arrays of strings, including when empty. summary and nextAction must be JSON strings.\n\nWhen status is COMPLETED, completedAcceptanceCriterionIds must be exactly [\"BUG-001\",\"BUG-002\"] in this order. Do not omit an ID when one implementation or verification command covers multiple criteria. incompleteAcceptanceCriterionIds and unknownAcceptanceCriterionIds must both be empty.\n\n{\"schema\":\"factory-result/v1\",\"status\":\"COMPLETED\",\"summary\":\"Implemented and tested the bounded change.\",\"completedAcceptanceCriterionIds\":[\"BUG-001\",\"BUG-002\"],\"incompleteAcceptanceCriterionIds\":[],\"unknownAcceptanceCriterionIds\":[],\"verificationCommands\":[\"node --test\"],\"knownRisks\":[],\"nextAction\":\"Review the exact candidate.\"}\n\nUse only these acceptance criterion IDs: BUG-001, BUG-002.\n\nRepository mutation is limited to these approved repository-relative boundaries:\n- src/**\nDenied repository-relative boundaries:\n- tests/**\n- package.json\n- .git/**\nDo not expose credentials in output, artifacts, or logs."
+        ],
+        "outputSchemaPath": "/var/lib/mission-control/attempt/factory-result.schema.json",
+        "environmentKeys": [
+          "OPENAI_API_KEY",
+          "OPENAI_BASE_URL"
+        ],
+        "packageManagerUsed": false
+      },
+      "credentialScope": {
+        "manifestCredentialGrants": [
+          {
+            "kind": "INFERENCE",
+            "secretValueIncluded": false,
+            "githubAuthority": "NONE",
+            "providerAuthority": "NONE"
+          }
+        ],
+        "profileCredentials": {
+          "inference": "ATTEMPT_SCOPED_OPENROUTER",
+          "repositoryAccess": "CONTROL_PLANE_SNAPSHOT",
+          "githubAuthority": "NONE",
+          "providerAuthority": "NONE"
+        },
+        "workloadEnvironmentKeys": [
+          "HOME",
+          "OPENAI_API_KEY",
+          "OPENAI_BASE_URL",
+          "PATH",
+          "SHELL",
+          "TMPDIR"
+        ]
+      },
+      "inventoryBefore": {
+        "checkedAt": "2026-08-20T16:27:21.829Z",
+        "authenticated": true,
+        "vmCount": 0,
+        "maxVms": 50,
+        "liveAllocationAllowed": true,
+        "automaticIntegrationCount": 0
+      },
+      "inventoryAfter": {
+        "checkedAt": "2026-08-20T16:30:24.411Z",
+        "authenticated": true,
+        "vmCount": 0,
+        "maxVms": 50,
+        "liveAllocationAllowed": true,
+        "automaticIntegrationCount": 0
+      },
+      "lifecycleEvents": [
+        {
+          "type": "SANDBOX_REQUESTED",
+          "occurredAt": 1787243241851,
+          "resourceName": "mc-attempt-f74b8d31ebb3f4a6",
+          "attemptId": "attempt-3c740d836f9f-hardening-bug-fix-1",
+          "metadata": {
+            "provider": "EXE_DEV",
+            "profileDigest": "sha256:1f60642a57bd11924f7ee84859f220206f49d39c73b120c4a13d58e91b92edc1",
+            "readiness": "DEGRADED"
+          }
+        },
+        {
+          "type": "SANDBOX_ALLOCATED",
+          "occurredAt": 1787243245512,
+          "resourceName": "mc-attempt-f74b8d31ebb3f4a6",
+          "attemptId": "attempt-3c740d836f9f-hardening-bug-fix-1",
+          "metadata": {
+            "providerResourceId": "mc-attempt-f74b8d31ebb3f4a6"
+          }
+        },
+        {
+          "type": "SANDBOX_STARTED",
+          "occurredAt": 1787243257723,
+          "resourceName": "mc-attempt-f74b8d31ebb3f4a6",
+          "attemptId": "attempt-3c740d836f9f-hardening-bug-fix-1",
+          "metadata": {
+            "processId": "mc-attempt-f74b8d31ebb3f4a6:supervisor",
+            "securityProof": {
+              "schema": "factory-sandbox-security-proof/v1",
+              "profile": "remote-sandbox/exe-dev/restricted-candidate-v1",
+              "observedAt": 1787243256798,
+              "image": {
+                "requestedReference": "ghcr.io/jaydubya818/mission-control-remote-sandbox@sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+                "requestedDigest": "sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+                "providerReportedReference": "jaydubya818/mission-control-remote-sandbox@sha256:41a66f1d",
+                "providerReferenceMatched": false
+              },
+              "toolchain": {
+                "nodeVersion": "v26.7.0",
+                "codexVersion": "codex-cli 0.146.0",
+                "codexBinarySha256": "sha256:2e863156ed35ecc5253b1e2f907a9143077b9f7cb51942070c61996471ff6e04",
+                "gitVersion": "git version 2.55.0",
+                "gitBinarySha256": "sha256:7127059b4ebea64f4a50fc3c64601b69a9694196f3ee0396efec6378a0b45078",
+                "busyboxVersion": "BusyBox v1.37.0",
+                "busyboxBinarySha256": "sha256:6a925a6f54ad5263762a91c25cc0a14b8093a86c2b9c1d5f8fae09ccaaeac222",
+                "toolchainInputsSha256": "sha256:76858cb0bebf67e0f9bac7ffed49e2bd83059095cf001466398b316b4b52b883",
+                "executionUid": 10001,
+                "executionGid": 10001
+              },
+              "filesystem": {
+                "repositoryOwnerUid": 10001,
+                "repositoryOwnerGid": 10001,
+                "protectedPathsReadOnly": true,
+                "packageCachesAbsent": true
+              },
+              "privilege": {
+                "noNewPrivileges": true,
+                "capabilities": {
+                  "inheritable": "0000000000000000",
+                  "permitted": "0000000000000000",
+                  "effective": "0000000000000000",
+                  "bounding": "0000000000000000",
+                  "ambient": "0000000000000000"
+                },
+                "firewallMutationBlocked": true,
+                "packageManagerCommandsAbsent": [
+                  "apk",
+                  "apt",
+                  "apt-get",
+                  "dpkg",
+                  "npm",
+                  "npx",
+                  "corepack",
+                  "yarn",
+                  "yarnpkg",
+                  "pnpm",
+                  "pnpx"
+                ]
+              },
+              "network": {
+                "enforcement": "GUEST_NFTABLES",
+                "providerEnforced": false,
+                "policyDigest": "sha256:9786bfac28a3a6ab4803c6aea27172a97b38e43ae2290945226a4ae7174530e0",
+                "allowedHttpsHosts": [
+                  "openrouter.ai"
+                ],
+                "resolvedAddresses": [
+                  "104.18.2.115",
+                  "104.18.3.115",
+                  "2606:4700::6812:273",
+                  "2606:4700::6812:373"
+                ],
+                "controlExternalEndpointReachable": true,
+                "approvedEndpointReachable": true,
+                "arbitraryExternalBlocked": true,
+                "privateNetworkBlocked": true,
+                "linkLocalBlocked": true,
+                "metadataBlocked": true,
+                "unexpectedDnsBlocked": true
+              }
+            }
+          }
+        },
+        {
+          "type": "SANDBOX_RESULT_RECEIVED",
+          "occurredAt": 1787243417500,
+          "resourceName": "mc-attempt-f74b8d31ebb3f4a6",
+          "attemptId": "attempt-3c740d836f9f-hardening-bug-fix-1",
+          "metadata": {
+            "resultDigest": "sha256:67eb5ac80bfc3cb8d841720f23927c21e844dc9fd52ec92e9259c64958ee1a7d",
+            "status": "COMPLETED",
+            "providerCostUsd": null,
+            "inferenceCostUsd": null
+          }
+        },
+        {
+          "type": "SANDBOX_CREDENTIAL_REVOKED",
+          "occurredAt": 1787243418776,
+          "resourceName": "mc-attempt-f74b8d31ebb3f4a6",
+          "attemptId": "attempt-3c740d836f9f-hardening-bug-fix-1",
+          "metadata": {
+            "grantKey": "mc-attempt-ba7d9967fdc64f8ece3c",
+            "externalCredentialId": "843b972fcf231653717ff9b77188b0d26b911162ed89eb1468db30fb2af2e72d"
+          }
+        },
+        {
+          "type": "SANDBOX_TERMINATION_REQUESTED",
+          "occurredAt": 1787243418776,
+          "resourceName": "mc-attempt-f74b8d31ebb3f4a6",
+          "attemptId": "attempt-3c740d836f9f-hardening-bug-fix-1",
+          "metadata": {
+            "providerResourceId": "mc-attempt-f74b8d31ebb3f4a6"
+          }
+        },
+        {
+          "type": "SANDBOX_TERMINATED",
+          "occurredAt": 1787243421242,
+          "resourceName": "mc-attempt-f74b8d31ebb3f4a6",
+          "attemptId": "attempt-3c740d836f9f-hardening-bug-fix-1",
+          "metadata": {
+            "confirmedAbsentAt": 1787243421242
+          }
+        }
+      ],
+      "supervisorDiagnostics": {
+        "supervisorLogTail": "",
+        "supervisorProcessRunning": false,
+        "lifecycleTrace": [
+          {
+            "stage": "BOOTSTRAP_STARTED",
+            "occurredAt": 1787243250846,
+            "pid": 303,
+            "uid": 0,
+            "gid": 0
+          },
+          {
+            "stage": "BOOTSTRAP_CONFIG_VALIDATED",
+            "occurredAt": 1787243250846,
+            "profile": "remote-sandbox/exe-dev/restricted-candidate-v1"
+          },
+          {
+            "stage": "BOOTSTRAP_TOOLCHAIN_VALIDATED",
+            "occurredAt": 1787243251547,
+            "nodeVersion": "v26.7.0",
+            "codexVersion": "codex-cli 0.146.0",
+            "gitVersion": "git version 2.55.0",
+            "busyboxVersion": "BusyBox v1.37.0"
+          },
+          {
+            "stage": "BOOTSTRAP_FILESYSTEM_PREPARED",
+            "occurredAt": 1787243251548,
+            "repositoryOwnerUid": 10001,
+            "repositoryOwnerGid": 10001
+          },
+          {
+            "stage": "BOOTSTRAP_NETWORK_POLICY_APPLIED",
+            "occurredAt": 1787243251593,
+            "allowedHttpsHosts": [
+              "openrouter.ai"
+            ],
+            "resolvedAddresses": [
+              "104.18.2.115",
+              "104.18.3.115",
+              "2606:4700::6812:273",
+              "2606:4700::6812:373"
+            ],
+            "policyDigest": "sha256:9786bfac28a3a6ab4803c6aea27172a97b38e43ae2290945226a4ae7174530e0"
+          },
+          {
+            "stage": "BOOTSTRAP_NEGATIVE_PROBES_PASSED",
+            "occurredAt": 1787243256796,
+            "network": {
+              "approvedEndpointReachable": true,
+              "arbitraryExternalBlocked": true,
+              "privateNetworkBlocked": true,
+              "linkLocalBlocked": true,
+              "metadataBlocked": true,
+              "unexpectedDnsBlocked": true
+            },
+            "privilege": {
+              "noNewPrivileges": true,
+              "capabilities": {
+                "inheritable": "0000000000000000",
+                "permitted": "0000000000000000",
+                "effective": "0000000000000000",
+                "bounding": "0000000000000000",
+                "ambient": "0000000000000000"
+              },
+              "firewallMutationBlocked": true
+            }
+          },
+          {
+            "stage": "BOOTSTRAP_COMPLETED",
+            "occurredAt": 1787243256798,
+            "proofPath": "/var/lib/mission-control/attempt/security-proof.json",
+            "policyDigest": "sha256:9786bfac28a3a6ab4803c6aea27172a97b38e43ae2290945226a4ae7174530e0"
+          },
+          {
+            "stage": "SUPERVISOR_STARTED",
+            "occurredAt": 1787243257804,
+            "pid": 390,
+            "uid": 0,
+            "gid": 0
+          },
+          {
+            "stage": "CONFIG_LOADED",
+            "occurredAt": 1787243257804,
+            "attemptId": "attempt-3c740d836f9f-hardening-bug-fix-1",
+            "files": {
+              "repository": {
+                "state": "PRESENT",
+                "type": "DIRECTORY",
+                "mode": "755",
+                "uid": 10001,
+                "gid": 10001,
+                "byteLength": 4096
+              },
+              "home": {
+                "state": "PRESENT",
+                "type": "DIRECTORY",
+                "mode": "700",
+                "uid": 10001,
+                "gid": 10001,
+                "byteLength": 4096
+              },
+              "temporary": {
+                "state": "PRESENT",
+                "type": "DIRECTORY",
+                "mode": "700",
+                "uid": 10001,
+                "gid": 10001,
+                "byteLength": 4096
+              },
+              "outputSchema": {
+                "state": "PRESENT",
+                "type": "FILE",
+                "mode": "444",
+                "uid": 0,
+                "gid": 0,
+                "byteLength": 994
+              },
+              "executorResult": {
+                "state": "PRESENT",
+                "type": "FILE",
+                "mode": "600",
+                "uid": 10001,
+                "gid": 10001,
+                "byteLength": 0
+              },
+              "supervisorResult": {
+                "state": "ABSENT"
+              },
+              "diagnostics": {
+                "state": "ABSENT"
+              }
+            }
+          },
+          {
+            "stage": "MANIFEST_VALIDATED",
+            "occurredAt": 1787243257815,
+            "attemptId": "attempt-3c740d836f9f-hardening-bug-fix-1",
+            "sourceSha": "013d0be0851d2b7cc2f38835f7300e698db5087c"
+          },
+          {
+            "stage": "REPOSITORY_VALIDATION_STARTED",
+            "occurredAt": 1787243257815,
+            "repository": {
+              "state": "PRESENT",
+              "type": "DIRECTORY",
+              "mode": "755",
+              "uid": 10001,
+              "gid": 10001,
+              "byteLength": 4096
+            }
+          },
+          {
+            "stage": "REPOSITORY_VALIDATED",
+            "occurredAt": 1787243257818,
+            "sourceSha": "013d0be0851d2b7cc2f38835f7300e698db5087c"
+          },
+          {
+            "stage": "CODEX_SPAWN_STARTED",
+            "occurredAt": 1787243257818,
+            "command": "codex",
+            "uid": 10001,
+            "gid": 10001,
+            "environmentKeys": [
+              "HOME",
+              "OPENAI_API_KEY",
+              "OPENAI_BASE_URL",
+              "PATH",
+              "SHELL",
+              "TMPDIR"
+            ]
+          },
+          {
+            "stage": "CODEX_SPAWNED",
+            "occurredAt": 1787243257820,
+            "pid": 398,
+            "detached": true
+          },
+          {
+            "stage": "CODEX_FIRST_EVENT",
+            "occurredAt": 1787243257954,
+            "stream": "stderr",
+            "byteLength": 39
+          },
+          {
+            "stage": "CODEX_TERMINAL",
+            "occurredAt": 1787243416671,
+            "exitCode": 0,
+            "signal": null,
+            "timedOut": false,
+            "canceled": false
+          },
+          {
+            "stage": "EXECUTOR_OUTPUT_INSPECTED",
+            "occurredAt": 1787243416674,
+            "state": "VALID",
+            "byteLength": 445,
+            "file": {
+              "state": "PRESENT",
+              "type": "FILE",
+              "mode": "600",
+              "uid": 10001,
+              "gid": 10001,
+              "byteLength": 445
+            }
+          },
+          {
+            "stage": "DIAGNOSTICS_WRITE_STARTED",
+            "occurredAt": 1787243416679,
+            "path": "/var/lib/mission-control/attempt/diagnostics.json",
+            "networkPolicyState": "OBSERVED"
+          },
+          {
+            "stage": "DIAGNOSTICS_WRITTEN",
+            "occurredAt": 1787243416684,
+            "file": {
+              "state": "PRESENT",
+              "type": "FILE",
+              "mode": "600",
+              "uid": 0,
+              "gid": 0,
+              "byteLength": 12182
+            }
+          },
+          {
+            "stage": "RESULT_FINALIZATION_STARTED",
+            "occurredAt": 1787243416693,
+            "changedFileCount": 1
+          },
+          {
+            "stage": "RESULT_WRITTEN",
+            "occurredAt": 1787243416699,
+            "status": "COMPLETED",
+            "file": {
+              "state": "PRESENT",
+              "type": "FILE",
+              "mode": "600",
+              "uid": 0,
+              "gid": 0,
+              "byteLength": 12680
+            }
+          },
+          {
+            "stage": "SUPERVISOR_TERMINAL",
+            "occurredAt": 1787243416699,
+            "exitCode": 0,
+            "signal": null
+          }
+        ],
+        "supervisorExit": null
+      },
+      "securityProof": {
+        "schema": "factory-sandbox-security-proof/v1",
+        "profile": "remote-sandbox/exe-dev/restricted-candidate-v1",
+        "observedAt": 1787243256798,
+        "image": {
+          "requestedReference": "ghcr.io/jaydubya818/mission-control-remote-sandbox@sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+          "requestedDigest": "sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+          "providerReportedReference": "jaydubya818/mission-control-remote-sandbox@sha256:41a66f1d",
+          "providerReferenceMatched": false
+        },
+        "toolchain": {
+          "nodeVersion": "v26.7.0",
+          "codexVersion": "codex-cli 0.146.0",
+          "codexBinarySha256": "sha256:2e863156ed35ecc5253b1e2f907a9143077b9f7cb51942070c61996471ff6e04",
+          "gitVersion": "git version 2.55.0",
+          "gitBinarySha256": "sha256:7127059b4ebea64f4a50fc3c64601b69a9694196f3ee0396efec6378a0b45078",
+          "busyboxVersion": "BusyBox v1.37.0",
+          "busyboxBinarySha256": "sha256:6a925a6f54ad5263762a91c25cc0a14b8093a86c2b9c1d5f8fae09ccaaeac222",
+          "toolchainInputsSha256": "sha256:76858cb0bebf67e0f9bac7ffed49e2bd83059095cf001466398b316b4b52b883",
+          "executionUid": 10001,
+          "executionGid": 10001
+        },
+        "filesystem": {
+          "repositoryOwnerUid": 10001,
+          "repositoryOwnerGid": 10001,
+          "protectedPathsReadOnly": true,
+          "packageCachesAbsent": true
+        },
+        "privilege": {
+          "noNewPrivileges": true,
+          "capabilities": {
+            "inheritable": "0000000000000000",
+            "permitted": "0000000000000000",
+            "effective": "0000000000000000",
+            "bounding": "0000000000000000",
+            "ambient": "0000000000000000"
+          },
+          "firewallMutationBlocked": true,
+          "packageManagerCommandsAbsent": [
+            "apk",
+            "apt",
+            "apt-get",
+            "dpkg",
+            "npm",
+            "npx",
+            "corepack",
+            "yarn",
+            "yarnpkg",
+            "pnpm",
+            "pnpx"
+          ]
+        },
+        "network": {
+          "enforcement": "GUEST_NFTABLES",
+          "providerEnforced": false,
+          "policyDigest": "sha256:9786bfac28a3a6ab4803c6aea27172a97b38e43ae2290945226a4ae7174530e0",
+          "allowedHttpsHosts": [
+            "openrouter.ai"
+          ],
+          "resolvedAddresses": [
+            "104.18.2.115",
+            "104.18.3.115",
+            "2606:4700::6812:273",
+            "2606:4700::6812:373"
+          ],
+          "controlExternalEndpointReachable": true,
+          "approvedEndpointReachable": true,
+          "arbitraryExternalBlocked": true,
+          "privateNetworkBlocked": true,
+          "linkLocalBlocked": true,
+          "metadataBlocked": true,
+          "unexpectedDnsBlocked": true
+        }
+      },
+      "negativeMatrix": {
+        "checks": {
+          "immutableImageIdentity": true,
+          "denyByDefault": true,
+          "approvedOpenRouterHttpsReachable": true,
+          "arbitraryPublicEgressBlocked": true,
+          "rfc1918Blocked": true,
+          "linkLocalBlocked": true,
+          "metadataBlocked": true,
+          "unexpectedDnsBlocked": true,
+          "nonRootWorkload": true,
+          "noNewPrivileges": true,
+          "allCapabilitySetsEmpty": true,
+          "firewallMutationBlocked": true,
+          "packageManagersAbsent": true,
+          "packageCachesAbsent": true,
+          "protectedPathsReadOnly": true,
+          "attemptScopedInferenceCredentialOnly": true,
+          "workloadEnvironmentAllowlisted": true,
+          "openRouterManagementCredentialAbsent": true,
+          "exeDevAdminCredentialAbsent": true,
+          "githubCredentialAbsent": true,
+          "missionControlCredentialAbsent": true,
+          "forbiddenCredentialKeysAbsent": true,
+          "credentialDiscoveryBlocked": true,
+          "staleCredentialRejectedWithinQualifiedBound": true,
+          "providerAdminAuthorityAbsent": true,
+          "githubAuthorityAbsent": true,
+          "previousAttemptArtifactsAbsent": true,
+          "exactResourceDeleted": true
+        },
+        "passed": true
+      },
+      "cleanup": {
+        "credentialIssued": true,
+        "credentialRevoked": true,
+        "staleCredentialRejected": true,
+        "staleCredentialProbeStatuses": [
+          401
+        ],
+        "staleCredentialProbeOffsetsMs": [
+          0
+        ],
+        "credentialRejectedAtOffsetMs": 0,
+        "credentialInvalidWithinQualifiedBound": true,
+        "qualifiedConfirmationBoundMs": 30000,
+        "credentialSecretPersisted": false,
+        "resourceAbsent": true,
+        "finalVmCount": 0,
+        "passed": true
+      },
+      "performance": {
+        "allocationMs": 3661,
+        "readinessMs": 1088,
+        "startupMs": 11123,
+        "executionMs": 159777,
+        "teardownMs": 3742,
+        "totalCycleMs": 179391
+      },
+      "transportBundleSchema": "factory-sandbox-result/v1",
+      "transportBundleDigest": "sha256:67eb5ac80bfc3cb8d841720f23927c21e844dc9fd52ec92e9259c64958ee1a7d",
+      "transportStatus": "COMPLETED",
+      "structuredResult": {
+        "schema": "factory-result/v1",
+        "status": "COMPLETED",
+        "summary": "Adjusted `listingFee` to return five percent of non-negative integer cents with safe-integer guarding and rounding, confirmed by `node --test`.",
+        "completedAcceptanceCriterionIds": [
+          "BUG-001",
+          "BUG-002"
+        ],
+        "incompleteAcceptanceCriterionIds": [],
+        "unknownAcceptanceCriterionIds": [],
+        "verificationCommands": [
+          "node --test"
+        ],
+        "knownRisks": [],
+        "nextAction": "No further action needed at this time."
+      },
+      "resultProvenance": {
+        "source": "OUTPUT_FILE",
+        "outputFile": {
+          "state": "VALID",
+          "byteLength": 445
+        },
+        "jsonl": {
+          "byteLength": 6964,
+          "lineCount": 30,
+          "malformedLineCount": 0,
+          "terminalCompletedCount": 1,
+          "terminalFailureCount": 0,
+          "validCandidateCount": 1
+        },
+        "context": {
+          "attemptId": "attempt-3c740d836f9f-hardening-bug-fix-1",
+          "manifestDigest": "sha256:f205ef1868a63a1ce64208a7cbe27801e943fcb5a8c3cb454fa59d8b24786222",
+          "sourceSha": "013d0be0851d2b7cc2f38835f7300e698db5087c"
+        }
+      },
+      "changedFiles": [
+        "src/listingFee.mjs"
+      ],
+      "executor": {
+        "exitCode": 0,
+        "stdoutDigest": "sha256:0fa56435f6cbbc44243d7a4440123656c4769c1f46b4e4164c970f4360b83a1f",
+        "stderrDigest": "sha256:19d0454315cc00c7390a92be657e3a7edffe3e21d1e0822922eea74f27c5ccd7",
+        "stdoutTail": "{\"type\":\"thread.started\",\"thread_id\":\"01a01fff-e072-7511-8f39-5b109b823b63\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"error\",\"message\":\"Model metadata for `openai/gpt-5.1-codex-mini` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.\"}}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_1\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c pwd\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_1\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c pwd\",\"aggregated_output\":\"/var/lib/mission-control/attempt/repository\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_2\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c ls\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_2\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c ls\",\"aggregated_output\":\"tests\\nsrc\\npackage.json\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_3\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'find .. -name AGENTS.md -print'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_3\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'find .. -name AGENTS.md -print'\",\"aggregated_output\":\"find: ..: Permission denied\\n\",\"exit_code\":1,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_4\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'find . -name AGENTS.md -print'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_4\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'find . -name AGENTS.md -print'\",\"aggregated_output\":\"\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_5\",\"type\":\"todo_list\",\"items\":[{\"text\":\"Review src/listingFee.mjs implementation and tests\",\"completed\":false},{\"text\":\"Correct fee calculation and input validation\",\"completed\":false},{\"text\":\"Run targeted tests\",\"completed\":false}]}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_6\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'ls src'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_6\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'ls src'\",\"aggregated_output\":\"listingFee.mjs\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_7\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'cat src/listingFee.mjs'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_7\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'cat src/listingFee.mjs'\",\"aggregated_output\":\"export function listingFee(cents) {\\n  if (!Number.isSafeInteger(cents) || cents < 0) throw new TypeError(\\\"cents must be a non-negative integer\\\");\\n  return Math.round(cents * 0.03);\\n}\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_8\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'ls tests'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_8\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'ls tests'\",\"aggregated_output\":\"listingFee.test.mjs\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_9\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'cat tests/listingFee.test.mjs'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_9\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'cat tests/listingFee.test.mjs'\",\"aggregated_output\":\"import test from 'node:test';\\nimport assert from 'node:assert/strict';\\nimport { listingFee } from '../src/listingFee.mjs';\\ntest('charges five percent in integer cents', () => { assert.equal(listingFee(10_000), 500); assert.equal(listingFee(399), 20); assert.equal(listingFee(0), 0); });\\ntest('rejects invalid money', () => { assert.throws(() => listingFee(-1), TypeError); assert.throws(() => listingFee(1.5), TypeError); });\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.updated\",\"item\":{\"id\":\"item_5\",\"type\":\"todo_list\",\"items\":[{\"text\":\"Review src/listingFee.mjs implementation and tests\",\"completed\":true},{\"text\":\"Correct fee calculation and input validation\",\"completed\":false},{\"text\":\"Run targeted tests\",\"completed\":false}]}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_10\",\"type\":\"file_change\",\"changes\":[{\"path\":\"/var/lib/mission-control/attempt/repository/src/listingFee.mjs\",\"kind\":\"update\"}],\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_10\",\"type\":\"file_change\",\"changes\":[{\"path\":\"/var/lib/mission-control/attempt/repository/src/listingFee.mjs\",\"kind\":\"update\"}],\"status\":\"completed\"}}\n{\"type\":\"item.updated\",\"item\":{\"id\":\"item_5\",\"type\":\"todo_list\",\"items\":[{\"text\":\"Review src/listingFee.mjs implementation and tests\",\"completed\":true},{\"text\":\"Correct fee calculation and input validation\",\"completed\":true},{\"text\":\"Run targeted tests\",\"completed\":false}]}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_11\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'node --test'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_11\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'node --test'\",\"aggregated_output\":\"✔ charges five percent in integer cents (0.772039ms)\\n✔ rejects invalid money (0.433915ms)\\nℹ tests 2\\nℹ suites 0\\nℹ pass 2\\nℹ fail 0\\nℹ cancelled 0\\nℹ skipped 0\\nℹ todo 0\\nℹ duration_ms 73.2031\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.updated\",\"item\":{\"id\":\"item_5\",\"type\":\"todo_list\",\"items\":[{\"text\":\"Review src/listingFee.mjs implementation and tests\",\"completed\":true},{\"text\":\"Correct fee calculation and input validation\",\"completed\":true},{\"text\":\"Run targeted tests\",\"completed\":true}]}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_12\",\"type\":\"agent_message\",\"text\":\"{\\\"schema\\\":\\\"factory-result/v1\\\",\\\"status\\\":\\\"COMPLETED\\\",\\\"summary\\\":\\\"Adjusted `listingFee` to return five percent of non-negative integer cents with safe-integer guarding and rounding, confirmed by `node --test`.\\\",\\\"completedAcceptanceCriterionIds\\\":[\\\"BUG-001\\\",\\\"BUG-002\\\"],\\\"incompleteAcceptanceCriterionIds\\\":[],\\\"unknownAcceptanceCriterionIds\\\":[],\\\"verificationCommands\\\":[\\\"node --test\\\"],\\\"knownRisks\\\":[],\\\"nextAction\\\":\\\"No further action needed at this time.\\\"}\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_5\",\"type\":\"todo_list\",\"items\":[{\"text\":\"Review src/listingFee.mjs implementation and tests\",\"completed\":true},{\"text\":\"Correct fee calculation and input validation\",\"completed\":true},{\"text\":\"Run targeted tests\",\"completed\":true}]}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":141743,\"cached_input_tokens\":120576,\"cache_write_input_tokens\":0,\"output_tokens\":2553,\"reasoning_output_tokens\":960}}\n",
+        "stderrTail": "Reading additional input from stdin...\n",
+        "resultOutput": {
+          "state": "VALID",
+          "byteLength": 445,
+          "digest": "sha256:452af021f42855afa4b0f56ef873210c74c7d18c058f322fc109d16b11875caf",
+          "tail": "{\"schema\":\"factory-result/v1\",\"status\":\"COMPLETED\",\"summary\":\"Adjusted `listingFee` to return five percent of non-negative integer cents with safe-integer guarding and rounding, confirmed by `node --test`.\",\"completedAcceptanceCriterionIds\":[\"BUG-001\",\"BUG-002\"],\"incompleteAcceptanceCriterionIds\":[],\"unknownAcceptanceCriterionIds\":[],\"verificationCommands\":[\"node --test\"],\"knownRisks\":[],\"nextAction\":\"No further action needed at this time.\"}",
+          "validationIssues": []
+        }
+      },
+      "usage": {
+        "providerCostUsd": null,
+        "inferenceCostUsd": null,
+        "inputTokens": 141743,
+        "outputTokens": 2553,
+        "observedAt": 1787243416693,
+        "providerRuntimeMs": 158878,
+        "enforcement": "OBSERVATION_ONLY"
+      },
+      "firstPassSuccess": true,
+      "failure": null,
+      "candidate": {
+        "sourceSha": "013d0be0851d2b7cc2f38835f7300e698db5087c",
+        "candidateSha": "9a57bb990158c92640a063e080765160f6da414c",
+        "treeSha": "8650284949ae7cf3cb617fb757902bc0bcbc09ea",
+        "changedFiles": [
+          "src/listingFee.mjs"
+        ],
+        "linesAdded": 1,
+        "linesDeleted": 1
+      },
+      "verification": {
+        "independent": true,
+        "candidateSha": "9a57bb990158c92640a063e080765160f6da414c",
+        "treeSha": "8650284949ae7cf3cb617fb757902bc0bcbc09ea",
+        "verdict": "VERIFIED",
+        "reason": "Independent exact-candidate npm test passed.",
+        "command": "npm test",
+        "exitCode": 0,
+        "outputSha256": "53bca9b99a0bac65085f4f91a62d05c009a52a9cb80da57f5d8298402610025d",
+        "acceptanceCriterionIds": [
+          "BUG-001",
+          "BUG-002"
+        ],
+        "durationMs": 251,
+        "acceptanceAuthority": false
+      },
+      "acceptance": {
+        "approvalStatus": "NOT_REQUIRED",
+        "missingApprovalTypes": [],
+        "expiredApprovalTypes": [],
+        "revokedApprovalTypes": [],
+        "missingCriteriaIds": [],
+        "failedCriteriaIds": [],
+        "staleCriteriaIds": [],
+        "waivedCriteriaIds": [],
+        "waiverWithoutApprovalCriteriaIds": [],
+        "verificationVerdict": "VERIFIED",
+        "blockingReasons": [],
+        "eligible": true,
+        "authority": "workOrders.accept",
+        "authorityMode": "AUTHORIZED_OPERATOR_FIXTURE",
+        "candidateSha": "9a57bb990158c92640a063e080765160f6da414c",
+        "acceptedAt": "2026-08-20T16:30:24.744Z"
+      }
+    },
+    {
+      "executionId": "hardening-security-policy-1",
+      "workloadKey": "security-policy",
+      "workloadClass": "SECURITY_POLICY",
+      "workloadTitle": "Fail closed when authorization context is missing",
+      "risk": "HIGH",
+      "attemptId": "attempt-3c740d836f9f-hardening-security-policy-1",
+      "workflowRunId": "workflow-3c740d836f9f-hardening-security-policy-1",
+      "leaseId": "lease-3c740d836f9f-hardening-security-policy-1",
+      "attemptNumber": 1,
+      "retries": 0,
+      "sourceSha": "1b62234032e8b03a75f55a4bea513dff0f54880b",
+      "manifestDigest": "sha256:c74fdc041e915472c2eeb1161bbc921857c0e6b6feea814e261c468aa1cac952",
+      "manifest": {
+        "version": "factory-execution-manifest/v1",
+        "causation": {
+          "missionId": "mission-3c740d836f9f-hardening-security-policy-1",
+          "missionPlanId": "plan-3c740d836f9f-hardening-security-policy-1",
+          "workOrderId": "work-order-3c740d836f9f-hardening-security-policy-1",
+          "workOrderRevisionNumber": 1,
+          "workflowRunId": "workflow-3c740d836f9f-hardening-security-policy-1",
+          "attemptId": "attempt-3c740d836f9f-hardening-security-policy-1"
+        },
+        "factory": {
+          "definitionId": "factory-remote-sandbox-hardening",
+          "definitionVersionId": "factory-remote-sandbox-hardening-v1",
+          "version": 1,
+          "configurationDigest": "sha256:409d50666d74538a941428a021b53b469b674051480593393a0c63e6b0854e3b"
+        },
+        "repository": {
+          "repository": "sellerfi-hardening/security-policy",
+          "baseSha": "1b62234032e8b03a75f55a4bea513dff0f54880b",
+          "allowedPaths": [
+            "src/**"
+          ],
+          "excludedPaths": [
+            "tests/**",
+            "package.json",
+            ".git/**"
+          ]
+        },
+        "intent": {
+          "title": "Fail closed when authorization context is missing",
+          "acceptanceCriterionIds": [
+            "SECURITY-001",
+            "SECURITY-002"
+          ]
+        },
+        "harness": {
+          "adapter": "codex",
+          "version": "v1",
+          "harnessId": "codex-cli",
+          "harnessVersion": "0.146.0",
+          "provider": "openrouter",
+          "model": "openai/gpt-5.1-codex-mini",
+          "executionBackend": "remote-sandbox",
+          "isolation": "WORKSPACE_WRITE",
+          "pullRequestAuthority": "CONTROL_PLANE_ONLY",
+          "timeoutMs": 300000
+        },
+        "sandbox": {
+          "profileDigest": "sha256:1f60642a57bd11924f7ee84859f220206f49d39c73b120c4a13d58e91b92edc1",
+          "supervisorVersion": "mission-control-supervisor/v1",
+          "credentialGrants": [
+            {
+              "kind": "INFERENCE",
+              "secretValueIncluded": false,
+              "githubAuthority": "NONE",
+              "providerAuthority": "NONE"
+            }
+          ]
+        },
+        "retryPolicy": {
+          "schema": "factory-remote-retry-policy/v1",
+          "maxAttempts": 1,
+          "maxTotalWallClockMs": 330000,
+          "maxModelSpendUsd": 0.05,
+          "maxProviderResources": 1,
+          "retryableFailureClasses": []
+        }
+      },
+      "resourceName": "mc-attempt-76de01f643bc9dc5",
+      "invocation": {
+        "command": "codex",
+        "harnessVersion": "0.146.0",
+        "args": [
+          "-a",
+          "never",
+          "-c",
+          "model_provider=\"mission-control-openrouter\"",
+          "-c",
+          "model_providers.mission-control-openrouter.name=\"OpenRouter\"",
+          "-c",
+          "model_providers.mission-control-openrouter.base_url=\"https://openrouter.ai/api/v1\"",
+          "-c",
+          "model_providers.mission-control-openrouter.env_key=\"OPENAI_API_KEY\"",
+          "-c",
+          "model_providers.mission-control-openrouter.wire_api=\"responses\"",
+          "-c",
+          "model_providers.mission-control-openrouter.supports_websockets=false",
+          "exec",
+          "--json",
+          "--ephemeral",
+          "--ignore-user-config",
+          "--ignore-rules",
+          "--sandbox",
+          "danger-full-access",
+          "--color",
+          "never",
+          "-C",
+          "/var/lib/mission-control/attempt/repository",
+          "-o",
+          "/var/lib/mission-control/attempt/executor-result.json",
+          "--output-schema",
+          "/var/lib/mission-control/attempt/factory-result.schema.json",
+          "-m",
+          "openai/gpt-5.1-codex-mini",
+          "Fix src/authorization.mjs so canEditListing(context) fails closed. Return true only when context is an object whose role is exactly `owner` or `admin`; all missing, malformed, or other roles return false. Do not modify tests or package.json. Run node --test.\n\nThis is the only Attempt. Do not assume artifacts or verification from another Attempt.\n\nReturn exactly one JSON object and no prose. Use the literal string factory-result/v1 for schema. Use exactly one uppercase status: COMPLETED, BLOCKED, or FAILED. completedAcceptanceCriterionIds, incompleteAcceptanceCriterionIds, unknownAcceptanceCriterionIds, verificationCommands, and knownRisks must always be JSON arrays of strings, including when empty. summary and nextAction must be JSON strings.\n\nWhen status is COMPLETED, completedAcceptanceCriterionIds must be exactly [\"SECURITY-001\",\"SECURITY-002\"] in this order. Do not omit an ID when one implementation or verification command covers multiple criteria. incompleteAcceptanceCriterionIds and unknownAcceptanceCriterionIds must both be empty.\n\n{\"schema\":\"factory-result/v1\",\"status\":\"COMPLETED\",\"summary\":\"Implemented and tested the bounded change.\",\"completedAcceptanceCriterionIds\":[\"SECURITY-001\",\"SECURITY-002\"],\"incompleteAcceptanceCriterionIds\":[],\"unknownAcceptanceCriterionIds\":[],\"verificationCommands\":[\"node --test\"],\"knownRisks\":[],\"nextAction\":\"Review the exact candidate.\"}\n\nUse only these acceptance criterion IDs: SECURITY-001, SECURITY-002.\n\nRepository mutation is limited to these approved repository-relative boundaries:\n- src/**\nDenied repository-relative boundaries:\n- tests/**\n- package.json\n- .git/**\nDo not expose credentials in output, artifacts, or logs."
+        ],
+        "outputSchemaPath": "/var/lib/mission-control/attempt/factory-result.schema.json",
+        "environmentKeys": [
+          "OPENAI_API_KEY",
+          "OPENAI_BASE_URL"
+        ],
+        "packageManagerUsed": false
+      },
+      "credentialScope": {
+        "manifestCredentialGrants": [
+          {
+            "kind": "INFERENCE",
+            "secretValueIncluded": false,
+            "githubAuthority": "NONE",
+            "providerAuthority": "NONE"
+          }
+        ],
+        "profileCredentials": {
+          "inference": "ATTEMPT_SCOPED_OPENROUTER",
+          "repositoryAccess": "CONTROL_PLANE_SNAPSHOT",
+          "githubAuthority": "NONE",
+          "providerAuthority": "NONE"
+        },
+        "workloadEnvironmentKeys": [
+          "HOME",
+          "OPENAI_API_KEY",
+          "OPENAI_BASE_URL",
+          "PATH",
+          "SHELL",
+          "TMPDIR"
+        ]
+      },
+      "inventoryBefore": {
+        "checkedAt": "2026-08-20T16:30:27.800Z",
+        "authenticated": true,
+        "vmCount": 0,
+        "maxVms": 50,
+        "liveAllocationAllowed": true,
+        "automaticIntegrationCount": 0
+      },
+      "inventoryAfter": {
+        "checkedAt": "2026-08-20T16:32:17.406Z",
+        "authenticated": true,
+        "vmCount": 0,
+        "maxVms": 50,
+        "liveAllocationAllowed": true,
+        "automaticIntegrationCount": 0
+      },
+      "lifecycleEvents": [
+        {
+          "type": "SANDBOX_REQUESTED",
+          "occurredAt": 1787243427827,
+          "resourceName": "mc-attempt-76de01f643bc9dc5",
+          "attemptId": "attempt-3c740d836f9f-hardening-security-policy-1",
+          "metadata": {
+            "provider": "EXE_DEV",
+            "profileDigest": "sha256:1f60642a57bd11924f7ee84859f220206f49d39c73b120c4a13d58e91b92edc1",
+            "readiness": "DEGRADED"
+          }
+        },
+        {
+          "type": "SANDBOX_ALLOCATED",
+          "occurredAt": 1787243431298,
+          "resourceName": "mc-attempt-76de01f643bc9dc5",
+          "attemptId": "attempt-3c740d836f9f-hardening-security-policy-1",
+          "metadata": {
+            "providerResourceId": "mc-attempt-76de01f643bc9dc5"
+          }
+        },
+        {
+          "type": "SANDBOX_STARTED",
+          "occurredAt": 1787243443257,
+          "resourceName": "mc-attempt-76de01f643bc9dc5",
+          "attemptId": "attempt-3c740d836f9f-hardening-security-policy-1",
+          "metadata": {
+            "processId": "mc-attempt-76de01f643bc9dc5:supervisor",
+            "securityProof": {
+              "schema": "factory-sandbox-security-proof/v1",
+              "profile": "remote-sandbox/exe-dev/restricted-candidate-v1",
+              "observedAt": 1787243442361,
+              "image": {
+                "requestedReference": "ghcr.io/jaydubya818/mission-control-remote-sandbox@sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+                "requestedDigest": "sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+                "providerReportedReference": "jaydubya818/mission-control-remote-sandbox@sha256:41a66f1d",
+                "providerReferenceMatched": false
+              },
+              "toolchain": {
+                "nodeVersion": "v26.7.0",
+                "codexVersion": "codex-cli 0.146.0",
+                "codexBinarySha256": "sha256:2e863156ed35ecc5253b1e2f907a9143077b9f7cb51942070c61996471ff6e04",
+                "gitVersion": "git version 2.55.0",
+                "gitBinarySha256": "sha256:7127059b4ebea64f4a50fc3c64601b69a9694196f3ee0396efec6378a0b45078",
+                "busyboxVersion": "BusyBox v1.37.0",
+                "busyboxBinarySha256": "sha256:6a925a6f54ad5263762a91c25cc0a14b8093a86c2b9c1d5f8fae09ccaaeac222",
+                "toolchainInputsSha256": "sha256:76858cb0bebf67e0f9bac7ffed49e2bd83059095cf001466398b316b4b52b883",
+                "executionUid": 10001,
+                "executionGid": 10001
+              },
+              "filesystem": {
+                "repositoryOwnerUid": 10001,
+                "repositoryOwnerGid": 10001,
+                "protectedPathsReadOnly": true,
+                "packageCachesAbsent": true
+              },
+              "privilege": {
+                "noNewPrivileges": true,
+                "capabilities": {
+                  "inheritable": "0000000000000000",
+                  "permitted": "0000000000000000",
+                  "effective": "0000000000000000",
+                  "bounding": "0000000000000000",
+                  "ambient": "0000000000000000"
+                },
+                "firewallMutationBlocked": true,
+                "packageManagerCommandsAbsent": [
+                  "apk",
+                  "apt",
+                  "apt-get",
+                  "dpkg",
+                  "npm",
+                  "npx",
+                  "corepack",
+                  "yarn",
+                  "yarnpkg",
+                  "pnpm",
+                  "pnpx"
+                ]
+              },
+              "network": {
+                "enforcement": "GUEST_NFTABLES",
+                "providerEnforced": false,
+                "policyDigest": "sha256:9786bfac28a3a6ab4803c6aea27172a97b38e43ae2290945226a4ae7174530e0",
+                "allowedHttpsHosts": [
+                  "openrouter.ai"
+                ],
+                "resolvedAddresses": [
+                  "104.18.2.115",
+                  "104.18.3.115",
+                  "2606:4700::6812:273",
+                  "2606:4700::6812:373"
+                ],
+                "controlExternalEndpointReachable": true,
+                "approvedEndpointReachable": true,
+                "arbitraryExternalBlocked": true,
+                "privateNetworkBlocked": true,
+                "linkLocalBlocked": true,
+                "metadataBlocked": true,
+                "unexpectedDnsBlocked": true
+              }
+            }
+          }
+        },
+        {
+          "type": "SANDBOX_RESULT_RECEIVED",
+          "occurredAt": 1787243530965,
+          "resourceName": "mc-attempt-76de01f643bc9dc5",
+          "attemptId": "attempt-3c740d836f9f-hardening-security-policy-1",
+          "metadata": {
+            "resultDigest": "sha256:d626aaa7b0b1774ab956076ab9a5e98ccbbd7a2f2a91eef67b02a433a82c0b89",
+            "status": "COMPLETED",
+            "providerCostUsd": null,
+            "inferenceCostUsd": null
+          }
+        },
+        {
+          "type": "SANDBOX_CREDENTIAL_REVOKED",
+          "occurredAt": 1787243532017,
+          "resourceName": "mc-attempt-76de01f643bc9dc5",
+          "attemptId": "attempt-3c740d836f9f-hardening-security-policy-1",
+          "metadata": {
+            "grantKey": "mc-attempt-5cb32d6695f8b3f1212c",
+            "externalCredentialId": "6672e287fa24add6d7d898cd32fa40b671e853f3c325d762d3e0ebf48772fbb3"
+          }
+        },
+        {
+          "type": "SANDBOX_TERMINATION_REQUESTED",
+          "occurredAt": 1787243532017,
+          "resourceName": "mc-attempt-76de01f643bc9dc5",
+          "attemptId": "attempt-3c740d836f9f-hardening-security-policy-1",
+          "metadata": {
+            "providerResourceId": "mc-attempt-76de01f643bc9dc5"
+          }
+        },
+        {
+          "type": "SANDBOX_TERMINATED",
+          "occurredAt": 1787243534341,
+          "resourceName": "mc-attempt-76de01f643bc9dc5",
+          "attemptId": "attempt-3c740d836f9f-hardening-security-policy-1",
+          "metadata": {
+            "confirmedAbsentAt": 1787243534341
+          }
+        }
+      ],
+      "supervisorDiagnostics": {
+        "supervisorLogTail": "",
+        "supervisorProcessRunning": false,
+        "lifecycleTrace": [
+          {
+            "stage": "BOOTSTRAP_STARTED",
+            "occurredAt": 1787243436398,
+            "pid": 305,
+            "uid": 0,
+            "gid": 0
+          },
+          {
+            "stage": "BOOTSTRAP_CONFIG_VALIDATED",
+            "occurredAt": 1787243436398,
+            "profile": "remote-sandbox/exe-dev/restricted-candidate-v1"
+          },
+          {
+            "stage": "BOOTSTRAP_TOOLCHAIN_VALIDATED",
+            "occurredAt": 1787243437093,
+            "nodeVersion": "v26.7.0",
+            "codexVersion": "codex-cli 0.146.0",
+            "gitVersion": "git version 2.55.0",
+            "busyboxVersion": "BusyBox v1.37.0"
+          },
+          {
+            "stage": "BOOTSTRAP_FILESYSTEM_PREPARED",
+            "occurredAt": 1787243437094,
+            "repositoryOwnerUid": 10001,
+            "repositoryOwnerGid": 10001
+          },
+          {
+            "stage": "BOOTSTRAP_NETWORK_POLICY_APPLIED",
+            "occurredAt": 1787243437141,
+            "allowedHttpsHosts": [
+              "openrouter.ai"
+            ],
+            "resolvedAddresses": [
+              "104.18.2.115",
+              "104.18.3.115",
+              "2606:4700::6812:273",
+              "2606:4700::6812:373"
+            ],
+            "policyDigest": "sha256:9786bfac28a3a6ab4803c6aea27172a97b38e43ae2290945226a4ae7174530e0"
+          },
+          {
+            "stage": "BOOTSTRAP_NEGATIVE_PROBES_PASSED",
+            "occurredAt": 1787243442358,
+            "network": {
+              "approvedEndpointReachable": true,
+              "arbitraryExternalBlocked": true,
+              "privateNetworkBlocked": true,
+              "linkLocalBlocked": true,
+              "metadataBlocked": true,
+              "unexpectedDnsBlocked": true
+            },
+            "privilege": {
+              "noNewPrivileges": true,
+              "capabilities": {
+                "inheritable": "0000000000000000",
+                "permitted": "0000000000000000",
+                "effective": "0000000000000000",
+                "bounding": "0000000000000000",
+                "ambient": "0000000000000000"
+              },
+              "firewallMutationBlocked": true
+            }
+          },
+          {
+            "stage": "BOOTSTRAP_COMPLETED",
+            "occurredAt": 1787243442361,
+            "proofPath": "/var/lib/mission-control/attempt/security-proof.json",
+            "policyDigest": "sha256:9786bfac28a3a6ab4803c6aea27172a97b38e43ae2290945226a4ae7174530e0"
+          },
+          {
+            "stage": "SUPERVISOR_STARTED",
+            "occurredAt": 1787243443342,
+            "pid": 390,
+            "uid": 0,
+            "gid": 0
+          },
+          {
+            "stage": "CONFIG_LOADED",
+            "occurredAt": 1787243443342,
+            "attemptId": "attempt-3c740d836f9f-hardening-security-policy-1",
+            "files": {
+              "repository": {
+                "state": "PRESENT",
+                "type": "DIRECTORY",
+                "mode": "755",
+                "uid": 10001,
+                "gid": 10001,
+                "byteLength": 4096
+              },
+              "home": {
+                "state": "PRESENT",
+                "type": "DIRECTORY",
+                "mode": "700",
+                "uid": 10001,
+                "gid": 10001,
+                "byteLength": 4096
+              },
+              "temporary": {
+                "state": "PRESENT",
+                "type": "DIRECTORY",
+                "mode": "700",
+                "uid": 10001,
+                "gid": 10001,
+                "byteLength": 4096
+              },
+              "outputSchema": {
+                "state": "PRESENT",
+                "type": "FILE",
+                "mode": "444",
+                "uid": 0,
+                "gid": 0,
+                "byteLength": 994
+              },
+              "executorResult": {
+                "state": "PRESENT",
+                "type": "FILE",
+                "mode": "600",
+                "uid": 10001,
+                "gid": 10001,
+                "byteLength": 0
+              },
+              "supervisorResult": {
+                "state": "ABSENT"
+              },
+              "diagnostics": {
+                "state": "ABSENT"
+              }
+            }
+          },
+          {
+            "stage": "MANIFEST_VALIDATED",
+            "occurredAt": 1787243443356,
+            "attemptId": "attempt-3c740d836f9f-hardening-security-policy-1",
+            "sourceSha": "1b62234032e8b03a75f55a4bea513dff0f54880b"
+          },
+          {
+            "stage": "REPOSITORY_VALIDATION_STARTED",
+            "occurredAt": 1787243443356,
+            "repository": {
+              "state": "PRESENT",
+              "type": "DIRECTORY",
+              "mode": "755",
+              "uid": 10001,
+              "gid": 10001,
+              "byteLength": 4096
+            }
+          },
+          {
+            "stage": "REPOSITORY_VALIDATED",
+            "occurredAt": 1787243443360,
+            "sourceSha": "1b62234032e8b03a75f55a4bea513dff0f54880b"
+          },
+          {
+            "stage": "CODEX_SPAWN_STARTED",
+            "occurredAt": 1787243443360,
+            "command": "codex",
+            "uid": 10001,
+            "gid": 10001,
+            "environmentKeys": [
+              "HOME",
+              "OPENAI_API_KEY",
+              "OPENAI_BASE_URL",
+              "PATH",
+              "SHELL",
+              "TMPDIR"
+            ]
+          },
+          {
+            "stage": "CODEX_SPAWNED",
+            "occurredAt": 1787243443364,
+            "pid": 398,
+            "detached": true
+          },
+          {
+            "stage": "CODEX_FIRST_EVENT",
+            "occurredAt": 1787243443498,
+            "stream": "stderr",
+            "byteLength": 39
+          },
+          {
+            "stage": "CODEX_TERMINAL",
+            "occurredAt": 1787243530356,
+            "exitCode": 0,
+            "signal": null,
+            "timedOut": false,
+            "canceled": false
+          },
+          {
+            "stage": "EXECUTOR_OUTPUT_INSPECTED",
+            "occurredAt": 1787243530359,
+            "state": "VALID",
+            "byteLength": 490,
+            "file": {
+              "state": "PRESENT",
+              "type": "FILE",
+              "mode": "600",
+              "uid": 10001,
+              "gid": 10001,
+              "byteLength": 490
+            }
+          },
+          {
+            "stage": "DIAGNOSTICS_WRITE_STARTED",
+            "occurredAt": 1787243530365,
+            "path": "/var/lib/mission-control/attempt/diagnostics.json",
+            "networkPolicyState": "OBSERVED"
+          },
+          {
+            "stage": "DIAGNOSTICS_WRITTEN",
+            "occurredAt": 1787243530372,
+            "file": {
+              "state": "PRESENT",
+              "type": "FILE",
+              "mode": "600",
+              "uid": 0,
+              "gid": 0,
+              "byteLength": 9215
+            }
+          },
+          {
+            "stage": "RESULT_FINALIZATION_STARTED",
+            "occurredAt": 1787243530385,
+            "changedFileCount": 1
+          },
+          {
+            "stage": "RESULT_WRITTEN",
+            "occurredAt": 1787243530390,
+            "status": "COMPLETED",
+            "file": {
+              "state": "PRESENT",
+              "type": "FILE",
+              "mode": "600",
+              "uid": 0,
+              "gid": 0,
+              "byteLength": 9742
+            }
+          },
+          {
+            "stage": "SUPERVISOR_TERMINAL",
+            "occurredAt": 1787243530390,
+            "exitCode": 0,
+            "signal": null
+          }
+        ],
+        "supervisorExit": null
+      },
+      "securityProof": {
+        "schema": "factory-sandbox-security-proof/v1",
+        "profile": "remote-sandbox/exe-dev/restricted-candidate-v1",
+        "observedAt": 1787243442361,
+        "image": {
+          "requestedReference": "ghcr.io/jaydubya818/mission-control-remote-sandbox@sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+          "requestedDigest": "sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+          "providerReportedReference": "jaydubya818/mission-control-remote-sandbox@sha256:41a66f1d",
+          "providerReferenceMatched": false
+        },
+        "toolchain": {
+          "nodeVersion": "v26.7.0",
+          "codexVersion": "codex-cli 0.146.0",
+          "codexBinarySha256": "sha256:2e863156ed35ecc5253b1e2f907a9143077b9f7cb51942070c61996471ff6e04",
+          "gitVersion": "git version 2.55.0",
+          "gitBinarySha256": "sha256:7127059b4ebea64f4a50fc3c64601b69a9694196f3ee0396efec6378a0b45078",
+          "busyboxVersion": "BusyBox v1.37.0",
+          "busyboxBinarySha256": "sha256:6a925a6f54ad5263762a91c25cc0a14b8093a86c2b9c1d5f8fae09ccaaeac222",
+          "toolchainInputsSha256": "sha256:76858cb0bebf67e0f9bac7ffed49e2bd83059095cf001466398b316b4b52b883",
+          "executionUid": 10001,
+          "executionGid": 10001
+        },
+        "filesystem": {
+          "repositoryOwnerUid": 10001,
+          "repositoryOwnerGid": 10001,
+          "protectedPathsReadOnly": true,
+          "packageCachesAbsent": true
+        },
+        "privilege": {
+          "noNewPrivileges": true,
+          "capabilities": {
+            "inheritable": "0000000000000000",
+            "permitted": "0000000000000000",
+            "effective": "0000000000000000",
+            "bounding": "0000000000000000",
+            "ambient": "0000000000000000"
+          },
+          "firewallMutationBlocked": true,
+          "packageManagerCommandsAbsent": [
+            "apk",
+            "apt",
+            "apt-get",
+            "dpkg",
+            "npm",
+            "npx",
+            "corepack",
+            "yarn",
+            "yarnpkg",
+            "pnpm",
+            "pnpx"
+          ]
+        },
+        "network": {
+          "enforcement": "GUEST_NFTABLES",
+          "providerEnforced": false,
+          "policyDigest": "sha256:9786bfac28a3a6ab4803c6aea27172a97b38e43ae2290945226a4ae7174530e0",
+          "allowedHttpsHosts": [
+            "openrouter.ai"
+          ],
+          "resolvedAddresses": [
+            "104.18.2.115",
+            "104.18.3.115",
+            "2606:4700::6812:273",
+            "2606:4700::6812:373"
+          ],
+          "controlExternalEndpointReachable": true,
+          "approvedEndpointReachable": true,
+          "arbitraryExternalBlocked": true,
+          "privateNetworkBlocked": true,
+          "linkLocalBlocked": true,
+          "metadataBlocked": true,
+          "unexpectedDnsBlocked": true
+        }
+      },
+      "negativeMatrix": {
+        "checks": {
+          "immutableImageIdentity": true,
+          "denyByDefault": true,
+          "approvedOpenRouterHttpsReachable": true,
+          "arbitraryPublicEgressBlocked": true,
+          "rfc1918Blocked": true,
+          "linkLocalBlocked": true,
+          "metadataBlocked": true,
+          "unexpectedDnsBlocked": true,
+          "nonRootWorkload": true,
+          "noNewPrivileges": true,
+          "allCapabilitySetsEmpty": true,
+          "firewallMutationBlocked": true,
+          "packageManagersAbsent": true,
+          "packageCachesAbsent": true,
+          "protectedPathsReadOnly": true,
+          "attemptScopedInferenceCredentialOnly": true,
+          "workloadEnvironmentAllowlisted": true,
+          "openRouterManagementCredentialAbsent": true,
+          "exeDevAdminCredentialAbsent": true,
+          "githubCredentialAbsent": true,
+          "missionControlCredentialAbsent": true,
+          "forbiddenCredentialKeysAbsent": true,
+          "credentialDiscoveryBlocked": true,
+          "staleCredentialRejectedWithinQualifiedBound": true,
+          "providerAdminAuthorityAbsent": true,
+          "githubAuthorityAbsent": true,
+          "previousAttemptArtifactsAbsent": true,
+          "exactResourceDeleted": true
+        },
+        "passed": true
+      },
+      "cleanup": {
+        "credentialIssued": true,
+        "credentialRevoked": true,
+        "staleCredentialRejected": true,
+        "staleCredentialProbeStatuses": [
+          401
+        ],
+        "staleCredentialProbeOffsetsMs": [
+          0
+        ],
+        "credentialRejectedAtOffsetMs": 0,
+        "credentialInvalidWithinQualifiedBound": true,
+        "qualifiedConfirmationBoundMs": 30000,
+        "credentialSecretPersisted": false,
+        "resourceAbsent": true,
+        "finalVmCount": 0,
+        "passed": true
+      },
+      "performance": {
+        "allocationMs": 3471,
+        "readinessMs": 1085,
+        "startupMs": 10874,
+        "executionMs": 87708,
+        "teardownMs": 3376,
+        "totalCycleMs": 106514
+      },
+      "transportBundleSchema": "factory-sandbox-result/v1",
+      "transportBundleDigest": "sha256:d626aaa7b0b1774ab956076ab9a5e98ccbbd7a2f2a91eef67b02a433a82c0b89",
+      "transportStatus": "COMPLETED",
+      "structuredResult": {
+        "schema": "factory-result/v1",
+        "status": "COMPLETED",
+        "summary": "Updated `src/authorization.mjs` to require an object context and return true only when `role` is exactly `owner` or `admin`, ensuring edits fail closed.",
+        "completedAcceptanceCriterionIds": [
+          "SECURITY-001",
+          "SECURITY-002"
+        ],
+        "incompleteAcceptanceCriterionIds": [],
+        "unknownAcceptanceCriterionIds": [],
+        "verificationCommands": [
+          "node --test"
+        ],
+        "knownRisks": [],
+        "nextAction": "None — change is limited to the specified authorization guard."
+      },
+      "resultProvenance": {
+        "source": "OUTPUT_FILE",
+        "outputFile": {
+          "state": "VALID",
+          "byteLength": 490
+        },
+        "jsonl": {
+          "byteLength": 4297,
+          "lineCount": 19,
+          "malformedLineCount": 0,
+          "terminalCompletedCount": 1,
+          "terminalFailureCount": 0,
+          "validCandidateCount": 1
+        },
+        "context": {
+          "attemptId": "attempt-3c740d836f9f-hardening-security-policy-1",
+          "manifestDigest": "sha256:c74fdc041e915472c2eeb1161bbc921857c0e6b6feea814e261c468aa1cac952",
+          "sourceSha": "1b62234032e8b03a75f55a4bea513dff0f54880b"
+        }
+      },
+      "changedFiles": [
+        "src/authorization.mjs"
+      ],
+      "executor": {
+        "exitCode": 0,
+        "stdoutDigest": "sha256:9771059f8fa39cc25cac62102b4db44cb1e85681d611ed93c1c5d809f6580e5a",
+        "stderrDigest": "sha256:19d0454315cc00c7390a92be657e3a7edffe3e21d1e0822922eea74f27c5ccd7",
+        "stdoutTail": "{\"type\":\"thread.started\",\"thread_id\":\"01a02002-b540-78c2-8dce-cc11ec37f5a0\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"error\",\"message\":\"Model metadata for `openai/gpt-5.1-codex-mini` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.\"}}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_1\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'pwd && ls'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_1\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'pwd && ls'\",\"aggregated_output\":\"/var/lib/mission-control/attempt/repository\\ntests\\nsrc\\npackage.json\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_2\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'find .. -name AGENTS.md -print'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_2\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'find .. -name AGENTS.md -print'\",\"aggregated_output\":\"find: ..: Permission denied\\n\",\"exit_code\":1,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_3\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'cd /var/lib/mission-control/attempt/repository && ls src'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_3\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'cd /var/lib/mission-control/attempt/repository && ls src'\",\"aggregated_output\":\"authorization.mjs\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_4\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'cd /var/lib/mission-control/attempt/repository && find . -name AGENTS.md -print'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_4\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'cd /var/lib/mission-control/attempt/repository && find . -name AGENTS.md -print'\",\"aggregated_output\":\"\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_5\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'cd /var/lib/mission-control/attempt/repository && cat src/authorization.mjs'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_5\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'cd /var/lib/mission-control/attempt/repository && cat src/authorization.mjs'\",\"aggregated_output\":\"export function canEditListing(context) {\\n  if (!context?.role) return true;\\n  return ['owner', 'admin'].includes(context.role);\\n}\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_6\",\"type\":\"file_change\",\"changes\":[{\"path\":\"/var/lib/mission-control/attempt/repository/src/authorization.mjs\",\"kind\":\"update\"}],\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_6\",\"type\":\"file_change\",\"changes\":[{\"path\":\"/var/lib/mission-control/attempt/repository/src/authorization.mjs\",\"kind\":\"update\"}],\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_7\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'cd /var/lib/mission-control/attempt/repository && node --test'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_7\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'cd /var/lib/mission-control/attempt/repository && node --test'\",\"aggregated_output\":\"\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_8\",\"type\":\"agent_message\",\"text\":\"{\\\"schema\\\":\\\"factory-result/v1\\\",\\\"status\\\":\\\"COMPLETED\\\",\\\"summary\\\":\\\"Updated `src/authorization.mjs` to require an object context and return true only when `role` is exactly `owner` or `admin`, ensuring edits fail closed.\\\",\\\"completedAcceptanceCriterionIds\\\":[\\\"SECURITY-001\\\",\\\"SECURITY-002\\\"],\\\"incompleteAcceptanceCriterionIds\\\":[],\\\"unknownAcceptanceCriterionIds\\\":[],\\\"verificationCommands\\\":[\\\"node --test\\\"],\\\"knownRisks\\\":[],\\\"nextAction\\\":\\\"None — change is limited to the specified authorization guard.\\\"}\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":72646,\"cached_input_tokens\":61312,\"cache_write_input_tokens\":0,\"output_tokens\":2044,\"reasoning_output_tokens\":960}}\n",
+        "stderrTail": "Reading additional input from stdin...\n",
+        "resultOutput": {
+          "state": "VALID",
+          "byteLength": 490,
+          "digest": "sha256:93195d5e67feed61dfdb4be823f92c65b77d1817bb4f70823d62d3b07a643507",
+          "tail": "{\"schema\":\"factory-result/v1\",\"status\":\"COMPLETED\",\"summary\":\"Updated `src/authorization.mjs` to require an object context and return true only when `role` is exactly `owner` or `admin`, ensuring edits fail closed.\",\"completedAcceptanceCriterionIds\":[\"SECURITY-001\",\"SECURITY-002\"],\"incompleteAcceptanceCriterionIds\":[],\"unknownAcceptanceCriterionIds\":[],\"verificationCommands\":[\"node --test\"],\"knownRisks\":[],\"nextAction\":\"None — change is limited to the specified authorization guard.\"}",
+          "validationIssues": []
+        }
+      },
+      "usage": {
+        "providerCostUsd": null,
+        "inferenceCostUsd": null,
+        "inputTokens": 72646,
+        "outputTokens": 2044,
+        "observedAt": 1787243530385,
+        "providerRuntimeMs": 87029,
+        "enforcement": "OBSERVATION_ONLY"
+      },
+      "firstPassSuccess": true,
+      "failure": null,
+      "candidate": {
+        "sourceSha": "1b62234032e8b03a75f55a4bea513dff0f54880b",
+        "candidateSha": "bb08c9b313e2a70c223b08821b79f79452301ad6",
+        "treeSha": "a6861481be9233b1c84f85a094c5bc8869263d25",
+        "changedFiles": [
+          "src/authorization.mjs"
+        ],
+        "linesAdded": 1,
+        "linesDeleted": 1
+      },
+      "verification": {
+        "independent": true,
+        "candidateSha": "bb08c9b313e2a70c223b08821b79f79452301ad6",
+        "treeSha": "a6861481be9233b1c84f85a094c5bc8869263d25",
+        "verdict": "VERIFIED",
+        "reason": "Independent exact-candidate npm test passed.",
+        "command": "npm test",
+        "exitCode": 0,
+        "outputSha256": "06d4b82a922960ae93798a8a30c37df353e5d98c027cdd0cb5556096214f2b92",
+        "acceptanceCriterionIds": [
+          "SECURITY-001",
+          "SECURITY-002"
+        ],
+        "durationMs": 295,
+        "acceptanceAuthority": false
+      },
+      "acceptance": {
+        "approvalStatus": "APPROVED",
+        "missingApprovalTypes": [],
+        "expiredApprovalTypes": [],
+        "revokedApprovalTypes": [],
+        "missingCriteriaIds": [],
+        "failedCriteriaIds": [],
+        "staleCriteriaIds": [],
+        "waivedCriteriaIds": [],
+        "waiverWithoutApprovalCriteriaIds": [],
+        "verificationVerdict": "VERIFIED",
+        "blockingReasons": [],
+        "eligible": true,
+        "authority": "workOrders.accept",
+        "authorityMode": "AUTHORIZED_OPERATOR_FIXTURE",
+        "candidateSha": "bb08c9b313e2a70c223b08821b79f79452301ad6",
+        "acceptedAt": "2026-08-20T16:32:17.777Z"
+      }
+    },
+    {
+      "executionId": "hardening-data-migration-1",
+      "workloadKey": "data-migration",
+      "workloadClass": "DATA_SCHEMA_MIGRATION",
+      "workloadTitle": "Migrate listing ownership with compatibility and rollback",
+      "risk": "HIGH",
+      "attemptId": "attempt-3c740d836f9f-hardening-data-migration-1",
+      "workflowRunId": "workflow-3c740d836f9f-hardening-data-migration-1",
+      "leaseId": "lease-3c740d836f9f-hardening-data-migration-1",
+      "attemptNumber": 1,
+      "retries": 0,
+      "sourceSha": "a09426f1f06ba22b2799b4f0eef12a1c70dd5429",
+      "manifestDigest": "sha256:9005d9d7d6124f543ebdf720cb4bdef85e13f12ec8112706795d86372ca93361",
+      "manifest": {
+        "version": "factory-execution-manifest/v1",
+        "causation": {
+          "missionId": "mission-3c740d836f9f-hardening-data-migration-1",
+          "missionPlanId": "plan-3c740d836f9f-hardening-data-migration-1",
+          "workOrderId": "work-order-3c740d836f9f-hardening-data-migration-1",
+          "workOrderRevisionNumber": 1,
+          "workflowRunId": "workflow-3c740d836f9f-hardening-data-migration-1",
+          "attemptId": "attempt-3c740d836f9f-hardening-data-migration-1"
+        },
+        "factory": {
+          "definitionId": "factory-remote-sandbox-hardening",
+          "definitionVersionId": "factory-remote-sandbox-hardening-v1",
+          "version": 1,
+          "configurationDigest": "sha256:409d50666d74538a941428a021b53b469b674051480593393a0c63e6b0854e3b"
+        },
+        "repository": {
+          "repository": "sellerfi-hardening/data-migration",
+          "baseSha": "a09426f1f06ba22b2799b4f0eef12a1c70dd5429",
+          "allowedPaths": [
+            "src/**",
+            "migrations/**"
+          ],
+          "excludedPaths": [
+            "tests/**",
+            "package.json",
+            ".git/**"
+          ]
+        },
+        "intent": {
+          "title": "Migrate listing ownership with compatibility and rollback",
+          "acceptanceCriterionIds": [
+            "MIGRATION-001",
+            "MIGRATION-002",
+            "MIGRATION-003"
+          ]
+        },
+        "harness": {
+          "adapter": "codex",
+          "version": "v1",
+          "harnessId": "codex-cli",
+          "harnessVersion": "0.146.0",
+          "provider": "openrouter",
+          "model": "openai/gpt-5.1-codex-mini",
+          "executionBackend": "remote-sandbox",
+          "isolation": "WORKSPACE_WRITE",
+          "pullRequestAuthority": "CONTROL_PLANE_ONLY",
+          "timeoutMs": 300000
+        },
+        "sandbox": {
+          "profileDigest": "sha256:1f60642a57bd11924f7ee84859f220206f49d39c73b120c4a13d58e91b92edc1",
+          "supervisorVersion": "mission-control-supervisor/v1",
+          "credentialGrants": [
+            {
+              "kind": "INFERENCE",
+              "secretValueIncluded": false,
+              "githubAuthority": "NONE",
+              "providerAuthority": "NONE"
+            }
+          ]
+        },
+        "retryPolicy": {
+          "schema": "factory-remote-retry-policy/v1",
+          "maxAttempts": 1,
+          "maxTotalWallClockMs": 330000,
+          "maxModelSpendUsd": 0.05,
+          "maxProviderResources": 1,
+          "retryableFailureClasses": []
+        }
+      },
+      "resourceName": "mc-attempt-ad39f3d8af7200dd",
+      "invocation": {
+        "command": "codex",
+        "harnessVersion": "0.146.0",
+        "args": [
+          "-a",
+          "never",
+          "-c",
+          "model_provider=\"mission-control-openrouter\"",
+          "-c",
+          "model_providers.mission-control-openrouter.name=\"OpenRouter\"",
+          "-c",
+          "model_providers.mission-control-openrouter.base_url=\"https://openrouter.ai/api/v1\"",
+          "-c",
+          "model_providers.mission-control-openrouter.env_key=\"OPENAI_API_KEY\"",
+          "-c",
+          "model_providers.mission-control-openrouter.wire_api=\"responses\"",
+          "-c",
+          "model_providers.mission-control-openrouter.supports_websockets=false",
+          "exec",
+          "--json",
+          "--ephemeral",
+          "--ignore-user-config",
+          "--ignore-rules",
+          "--sandbox",
+          "danger-full-access",
+          "--color",
+          "never",
+          "-C",
+          "/var/lib/mission-control/attempt/repository",
+          "-o",
+          "/var/lib/mission-control/attempt/executor-result.json",
+          "--output-schema",
+          "/var/lib/mission-control/attempt/factory-result.schema.json",
+          "-m",
+          "openai/gpt-5.1-codex-mini",
+          "Implement the approved ownership schema migration. In src/orderOwnership.mjs implement readOwnerId(record) that prefers ownerId and falls back to legacy owner. Add migrations/001-owner-id.mjs exporting migrateOwner(record) and rollbackOwner(record); each must preserve unrelated fields, move the ownership value, remove only the superseded key, and be idempotent. Do not modify tests or package.json. Run node --test.\n\nThis is the only Attempt. Do not assume artifacts or verification from another Attempt.\n\nReturn exactly one JSON object and no prose. Use the literal string factory-result/v1 for schema. Use exactly one uppercase status: COMPLETED, BLOCKED, or FAILED. completedAcceptanceCriterionIds, incompleteAcceptanceCriterionIds, unknownAcceptanceCriterionIds, verificationCommands, and knownRisks must always be JSON arrays of strings, including when empty. summary and nextAction must be JSON strings.\n\nWhen status is COMPLETED, completedAcceptanceCriterionIds must be exactly [\"MIGRATION-001\",\"MIGRATION-002\",\"MIGRATION-003\"] in this order. Do not omit an ID when one implementation or verification command covers multiple criteria. incompleteAcceptanceCriterionIds and unknownAcceptanceCriterionIds must both be empty.\n\n{\"schema\":\"factory-result/v1\",\"status\":\"COMPLETED\",\"summary\":\"Implemented and tested the bounded change.\",\"completedAcceptanceCriterionIds\":[\"MIGRATION-001\",\"MIGRATION-002\",\"MIGRATION-003\"],\"incompleteAcceptanceCriterionIds\":[],\"unknownAcceptanceCriterionIds\":[],\"verificationCommands\":[\"node --test\"],\"knownRisks\":[],\"nextAction\":\"Review the exact candidate.\"}\n\nUse only these acceptance criterion IDs: MIGRATION-001, MIGRATION-002, MIGRATION-003.\n\nRepository mutation is limited to these approved repository-relative boundaries:\n- src/**\n- migrations/**\nDenied repository-relative boundaries:\n- tests/**\n- package.json\n- .git/**\nDo not expose credentials in output, artifacts, or logs."
+        ],
+        "outputSchemaPath": "/var/lib/mission-control/attempt/factory-result.schema.json",
+        "environmentKeys": [
+          "OPENAI_API_KEY",
+          "OPENAI_BASE_URL"
+        ],
+        "packageManagerUsed": false
+      },
+      "credentialScope": {
+        "manifestCredentialGrants": [
+          {
+            "kind": "INFERENCE",
+            "secretValueIncluded": false,
+            "githubAuthority": "NONE",
+            "providerAuthority": "NONE"
+          }
+        ],
+        "profileCredentials": {
+          "inference": "ATTEMPT_SCOPED_OPENROUTER",
+          "repositoryAccess": "CONTROL_PLANE_SNAPSHOT",
+          "githubAuthority": "NONE",
+          "providerAuthority": "NONE"
+        },
+        "workloadEnvironmentKeys": [
+          "HOME",
+          "OPENAI_API_KEY",
+          "OPENAI_BASE_URL",
+          "PATH",
+          "SHELL",
+          "TMPDIR"
+        ]
+      },
+      "inventoryBefore": {
+        "checkedAt": "2026-08-20T16:32:21.694Z",
+        "authenticated": true,
+        "vmCount": 0,
+        "maxVms": 50,
+        "liveAllocationAllowed": true,
+        "automaticIntegrationCount": 0
+      },
+      "inventoryAfter": {
+        "checkedAt": "2026-08-20T16:35:39.926Z",
+        "authenticated": true,
+        "vmCount": 0,
+        "maxVms": 50,
+        "liveAllocationAllowed": true,
+        "automaticIntegrationCount": 0
+      },
+      "lifecycleEvents": [
+        {
+          "type": "SANDBOX_REQUESTED",
+          "occurredAt": 1787243541711,
+          "resourceName": "mc-attempt-ad39f3d8af7200dd",
+          "attemptId": "attempt-3c740d836f9f-hardening-data-migration-1",
+          "metadata": {
+            "provider": "EXE_DEV",
+            "profileDigest": "sha256:1f60642a57bd11924f7ee84859f220206f49d39c73b120c4a13d58e91b92edc1",
+            "readiness": "DEGRADED"
+          }
+        },
+        {
+          "type": "SANDBOX_ALLOCATED",
+          "occurredAt": 1787243545276,
+          "resourceName": "mc-attempt-ad39f3d8af7200dd",
+          "attemptId": "attempt-3c740d836f9f-hardening-data-migration-1",
+          "metadata": {
+            "providerResourceId": "mc-attempt-ad39f3d8af7200dd"
+          }
+        },
+        {
+          "type": "SANDBOX_STARTED",
+          "occurredAt": 1787243557385,
+          "resourceName": "mc-attempt-ad39f3d8af7200dd",
+          "attemptId": "attempt-3c740d836f9f-hardening-data-migration-1",
+          "metadata": {
+            "processId": "mc-attempt-ad39f3d8af7200dd:supervisor",
+            "securityProof": {
+              "schema": "factory-sandbox-security-proof/v1",
+              "profile": "remote-sandbox/exe-dev/restricted-candidate-v1",
+              "observedAt": 1787243556487,
+              "image": {
+                "requestedReference": "ghcr.io/jaydubya818/mission-control-remote-sandbox@sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+                "requestedDigest": "sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+                "providerReportedReference": "jaydubya818/mission-control-remote-sandbox@sha256:41a66f1d",
+                "providerReferenceMatched": false
+              },
+              "toolchain": {
+                "nodeVersion": "v26.7.0",
+                "codexVersion": "codex-cli 0.146.0",
+                "codexBinarySha256": "sha256:2e863156ed35ecc5253b1e2f907a9143077b9f7cb51942070c61996471ff6e04",
+                "gitVersion": "git version 2.55.0",
+                "gitBinarySha256": "sha256:7127059b4ebea64f4a50fc3c64601b69a9694196f3ee0396efec6378a0b45078",
+                "busyboxVersion": "BusyBox v1.37.0",
+                "busyboxBinarySha256": "sha256:6a925a6f54ad5263762a91c25cc0a14b8093a86c2b9c1d5f8fae09ccaaeac222",
+                "toolchainInputsSha256": "sha256:76858cb0bebf67e0f9bac7ffed49e2bd83059095cf001466398b316b4b52b883",
+                "executionUid": 10001,
+                "executionGid": 10001
+              },
+              "filesystem": {
+                "repositoryOwnerUid": 10001,
+                "repositoryOwnerGid": 10001,
+                "protectedPathsReadOnly": true,
+                "packageCachesAbsent": true
+              },
+              "privilege": {
+                "noNewPrivileges": true,
+                "capabilities": {
+                  "inheritable": "0000000000000000",
+                  "permitted": "0000000000000000",
+                  "effective": "0000000000000000",
+                  "bounding": "0000000000000000",
+                  "ambient": "0000000000000000"
+                },
+                "firewallMutationBlocked": true,
+                "packageManagerCommandsAbsent": [
+                  "apk",
+                  "apt",
+                  "apt-get",
+                  "dpkg",
+                  "npm",
+                  "npx",
+                  "corepack",
+                  "yarn",
+                  "yarnpkg",
+                  "pnpm",
+                  "pnpx"
+                ]
+              },
+              "network": {
+                "enforcement": "GUEST_NFTABLES",
+                "providerEnforced": false,
+                "policyDigest": "sha256:9786bfac28a3a6ab4803c6aea27172a97b38e43ae2290945226a4ae7174530e0",
+                "allowedHttpsHosts": [
+                  "openrouter.ai"
+                ],
+                "resolvedAddresses": [
+                  "104.18.2.115",
+                  "104.18.3.115",
+                  "2606:4700::6812:273",
+                  "2606:4700::6812:373"
+                ],
+                "controlExternalEndpointReachable": true,
+                "approvedEndpointReachable": true,
+                "arbitraryExternalBlocked": true,
+                "privateNetworkBlocked": true,
+                "linkLocalBlocked": true,
+                "metadataBlocked": true,
+                "unexpectedDnsBlocked": true
+              }
+            }
+          }
+        },
+        {
+          "type": "SANDBOX_RESULT_RECEIVED",
+          "occurredAt": 1787243733551,
+          "resourceName": "mc-attempt-ad39f3d8af7200dd",
+          "attemptId": "attempt-3c740d836f9f-hardening-data-migration-1",
+          "metadata": {
+            "resultDigest": "sha256:c93bec2894aed4be9e47e8e4cf1afea4ea4962a3707903bdd7e7b6d8da84e3f4",
+            "status": "COMPLETED",
+            "providerCostUsd": null,
+            "inferenceCostUsd": null
+          }
+        },
+        {
+          "type": "SANDBOX_CREDENTIAL_REVOKED",
+          "occurredAt": 1787243734585,
+          "resourceName": "mc-attempt-ad39f3d8af7200dd",
+          "attemptId": "attempt-3c740d836f9f-hardening-data-migration-1",
+          "metadata": {
+            "grantKey": "mc-attempt-ca47ab1ac21dd892d2ed",
+            "externalCredentialId": "1b591f7c9404aeb45e332c660cf11b8a8613fdf0c296879d71e6b2f0480ada8e"
+          }
+        },
+        {
+          "type": "SANDBOX_TERMINATION_REQUESTED",
+          "occurredAt": 1787243734585,
+          "resourceName": "mc-attempt-ad39f3d8af7200dd",
+          "attemptId": "attempt-3c740d836f9f-hardening-data-migration-1",
+          "metadata": {
+            "providerResourceId": "mc-attempt-ad39f3d8af7200dd"
+          }
+        },
+        {
+          "type": "SANDBOX_TERMINATED",
+          "occurredAt": 1787243736762,
+          "resourceName": "mc-attempt-ad39f3d8af7200dd",
+          "attemptId": "attempt-3c740d836f9f-hardening-data-migration-1",
+          "metadata": {
+            "confirmedAbsentAt": 1787243736762
+          }
+        }
+      ],
+      "supervisorDiagnostics": {
+        "supervisorLogTail": "",
+        "supervisorProcessRunning": false,
+        "lifecycleTrace": [
+          {
+            "stage": "BOOTSTRAP_STARTED",
+            "occurredAt": 1787243550597,
+            "pid": 300,
+            "uid": 0,
+            "gid": 0
+          },
+          {
+            "stage": "BOOTSTRAP_CONFIG_VALIDATED",
+            "occurredAt": 1787243550597,
+            "profile": "remote-sandbox/exe-dev/restricted-candidate-v1"
+          },
+          {
+            "stage": "BOOTSTRAP_TOOLCHAIN_VALIDATED",
+            "occurredAt": 1787243551229,
+            "nodeVersion": "v26.7.0",
+            "codexVersion": "codex-cli 0.146.0",
+            "gitVersion": "git version 2.55.0",
+            "busyboxVersion": "BusyBox v1.37.0"
+          },
+          {
+            "stage": "BOOTSTRAP_FILESYSTEM_PREPARED",
+            "occurredAt": 1787243551230,
+            "repositoryOwnerUid": 10001,
+            "repositoryOwnerGid": 10001
+          },
+          {
+            "stage": "BOOTSTRAP_NETWORK_POLICY_APPLIED",
+            "occurredAt": 1787243551276,
+            "allowedHttpsHosts": [
+              "openrouter.ai"
+            ],
+            "resolvedAddresses": [
+              "104.18.2.115",
+              "104.18.3.115",
+              "2606:4700::6812:273",
+              "2606:4700::6812:373"
+            ],
+            "policyDigest": "sha256:9786bfac28a3a6ab4803c6aea27172a97b38e43ae2290945226a4ae7174530e0"
+          },
+          {
+            "stage": "BOOTSTRAP_NEGATIVE_PROBES_PASSED",
+            "occurredAt": 1787243556483,
+            "network": {
+              "approvedEndpointReachable": true,
+              "arbitraryExternalBlocked": true,
+              "privateNetworkBlocked": true,
+              "linkLocalBlocked": true,
+              "metadataBlocked": true,
+              "unexpectedDnsBlocked": true
+            },
+            "privilege": {
+              "noNewPrivileges": true,
+              "capabilities": {
+                "inheritable": "0000000000000000",
+                "permitted": "0000000000000000",
+                "effective": "0000000000000000",
+                "bounding": "0000000000000000",
+                "ambient": "0000000000000000"
+              },
+              "firewallMutationBlocked": true
+            }
+          },
+          {
+            "stage": "BOOTSTRAP_COMPLETED",
+            "occurredAt": 1787243556488,
+            "proofPath": "/var/lib/mission-control/attempt/security-proof.json",
+            "policyDigest": "sha256:9786bfac28a3a6ab4803c6aea27172a97b38e43ae2290945226a4ae7174530e0"
+          },
+          {
+            "stage": "SUPERVISOR_STARTED",
+            "occurredAt": 1787243557467,
+            "pid": 392,
+            "uid": 0,
+            "gid": 0
+          },
+          {
+            "stage": "CONFIG_LOADED",
+            "occurredAt": 1787243557468,
+            "attemptId": "attempt-3c740d836f9f-hardening-data-migration-1",
+            "files": {
+              "repository": {
+                "state": "PRESENT",
+                "type": "DIRECTORY",
+                "mode": "755",
+                "uid": 10001,
+                "gid": 10001,
+                "byteLength": 4096
+              },
+              "home": {
+                "state": "PRESENT",
+                "type": "DIRECTORY",
+                "mode": "700",
+                "uid": 10001,
+                "gid": 10001,
+                "byteLength": 4096
+              },
+              "temporary": {
+                "state": "PRESENT",
+                "type": "DIRECTORY",
+                "mode": "700",
+                "uid": 10001,
+                "gid": 10001,
+                "byteLength": 4096
+              },
+              "outputSchema": {
+                "state": "PRESENT",
+                "type": "FILE",
+                "mode": "444",
+                "uid": 0,
+                "gid": 0,
+                "byteLength": 994
+              },
+              "executorResult": {
+                "state": "PRESENT",
+                "type": "FILE",
+                "mode": "600",
+                "uid": 10001,
+                "gid": 10001,
+                "byteLength": 0
+              },
+              "supervisorResult": {
+                "state": "ABSENT"
+              },
+              "diagnostics": {
+                "state": "ABSENT"
+              }
+            }
+          },
+          {
+            "stage": "MANIFEST_VALIDATED",
+            "occurredAt": 1787243557480,
+            "attemptId": "attempt-3c740d836f9f-hardening-data-migration-1",
+            "sourceSha": "a09426f1f06ba22b2799b4f0eef12a1c70dd5429"
+          },
+          {
+            "stage": "REPOSITORY_VALIDATION_STARTED",
+            "occurredAt": 1787243557481,
+            "repository": {
+              "state": "PRESENT",
+              "type": "DIRECTORY",
+              "mode": "755",
+              "uid": 10001,
+              "gid": 10001,
+              "byteLength": 4096
+            }
+          },
+          {
+            "stage": "REPOSITORY_VALIDATED",
+            "occurredAt": 1787243557485,
+            "sourceSha": "a09426f1f06ba22b2799b4f0eef12a1c70dd5429"
+          },
+          {
+            "stage": "CODEX_SPAWN_STARTED",
+            "occurredAt": 1787243557485,
+            "command": "codex",
+            "uid": 10001,
+            "gid": 10001,
+            "environmentKeys": [
+              "HOME",
+              "OPENAI_API_KEY",
+              "OPENAI_BASE_URL",
+              "PATH",
+              "SHELL",
+              "TMPDIR"
+            ]
+          },
+          {
+            "stage": "CODEX_SPAWNED",
+            "occurredAt": 1787243557488,
+            "pid": 400,
+            "detached": true
+          },
+          {
+            "stage": "CODEX_FIRST_EVENT",
+            "occurredAt": 1787243557639,
+            "stream": "stderr",
+            "byteLength": 39
+          },
+          {
+            "stage": "CODEX_TERMINAL",
+            "occurredAt": 1787243732569,
+            "exitCode": 0,
+            "signal": null,
+            "timedOut": false,
+            "canceled": false
+          },
+          {
+            "stage": "EXECUTOR_OUTPUT_INSPECTED",
+            "occurredAt": 1787243732571,
+            "state": "VALID",
+            "byteLength": 537,
+            "file": {
+              "state": "PRESENT",
+              "type": "FILE",
+              "mode": "600",
+              "uid": 10001,
+              "gid": 10001,
+              "byteLength": 537
+            }
+          },
+          {
+            "stage": "DIAGNOSTICS_WRITE_STARTED",
+            "occurredAt": 1787243732576,
+            "path": "/var/lib/mission-control/attempt/diagnostics.json",
+            "networkPolicyState": "OBSERVED"
+          },
+          {
+            "stage": "DIAGNOSTICS_WRITTEN",
+            "occurredAt": 1787243732581,
+            "file": {
+              "state": "PRESENT",
+              "type": "FILE",
+              "mode": "600",
+              "uid": 0,
+              "gid": 0,
+              "byteLength": 11827
+            }
+          },
+          {
+            "stage": "RESULT_FINALIZATION_STARTED",
+            "occurredAt": 1787243732588,
+            "changedFileCount": 2
+          },
+          {
+            "stage": "RESULT_WRITTEN",
+            "occurredAt": 1787243732593,
+            "status": "COMPLETED",
+            "file": {
+              "state": "PRESENT",
+              "type": "FILE",
+              "mode": "600",
+              "uid": 0,
+              "gid": 0,
+              "byteLength": 13915
+            }
+          },
+          {
+            "stage": "SUPERVISOR_TERMINAL",
+            "occurredAt": 1787243732593,
+            "exitCode": 0,
+            "signal": null
+          }
+        ],
+        "supervisorExit": null
+      },
+      "securityProof": {
+        "schema": "factory-sandbox-security-proof/v1",
+        "profile": "remote-sandbox/exe-dev/restricted-candidate-v1",
+        "observedAt": 1787243556487,
+        "image": {
+          "requestedReference": "ghcr.io/jaydubya818/mission-control-remote-sandbox@sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+          "requestedDigest": "sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+          "providerReportedReference": "jaydubya818/mission-control-remote-sandbox@sha256:41a66f1d",
+          "providerReferenceMatched": false
+        },
+        "toolchain": {
+          "nodeVersion": "v26.7.0",
+          "codexVersion": "codex-cli 0.146.0",
+          "codexBinarySha256": "sha256:2e863156ed35ecc5253b1e2f907a9143077b9f7cb51942070c61996471ff6e04",
+          "gitVersion": "git version 2.55.0",
+          "gitBinarySha256": "sha256:7127059b4ebea64f4a50fc3c64601b69a9694196f3ee0396efec6378a0b45078",
+          "busyboxVersion": "BusyBox v1.37.0",
+          "busyboxBinarySha256": "sha256:6a925a6f54ad5263762a91c25cc0a14b8093a86c2b9c1d5f8fae09ccaaeac222",
+          "toolchainInputsSha256": "sha256:76858cb0bebf67e0f9bac7ffed49e2bd83059095cf001466398b316b4b52b883",
+          "executionUid": 10001,
+          "executionGid": 10001
+        },
+        "filesystem": {
+          "repositoryOwnerUid": 10001,
+          "repositoryOwnerGid": 10001,
+          "protectedPathsReadOnly": true,
+          "packageCachesAbsent": true
+        },
+        "privilege": {
+          "noNewPrivileges": true,
+          "capabilities": {
+            "inheritable": "0000000000000000",
+            "permitted": "0000000000000000",
+            "effective": "0000000000000000",
+            "bounding": "0000000000000000",
+            "ambient": "0000000000000000"
+          },
+          "firewallMutationBlocked": true,
+          "packageManagerCommandsAbsent": [
+            "apk",
+            "apt",
+            "apt-get",
+            "dpkg",
+            "npm",
+            "npx",
+            "corepack",
+            "yarn",
+            "yarnpkg",
+            "pnpm",
+            "pnpx"
+          ]
+        },
+        "network": {
+          "enforcement": "GUEST_NFTABLES",
+          "providerEnforced": false,
+          "policyDigest": "sha256:9786bfac28a3a6ab4803c6aea27172a97b38e43ae2290945226a4ae7174530e0",
+          "allowedHttpsHosts": [
+            "openrouter.ai"
+          ],
+          "resolvedAddresses": [
+            "104.18.2.115",
+            "104.18.3.115",
+            "2606:4700::6812:273",
+            "2606:4700::6812:373"
+          ],
+          "controlExternalEndpointReachable": true,
+          "approvedEndpointReachable": true,
+          "arbitraryExternalBlocked": true,
+          "privateNetworkBlocked": true,
+          "linkLocalBlocked": true,
+          "metadataBlocked": true,
+          "unexpectedDnsBlocked": true
+        }
+      },
+      "negativeMatrix": {
+        "checks": {
+          "immutableImageIdentity": true,
+          "denyByDefault": true,
+          "approvedOpenRouterHttpsReachable": true,
+          "arbitraryPublicEgressBlocked": true,
+          "rfc1918Blocked": true,
+          "linkLocalBlocked": true,
+          "metadataBlocked": true,
+          "unexpectedDnsBlocked": true,
+          "nonRootWorkload": true,
+          "noNewPrivileges": true,
+          "allCapabilitySetsEmpty": true,
+          "firewallMutationBlocked": true,
+          "packageManagersAbsent": true,
+          "packageCachesAbsent": true,
+          "protectedPathsReadOnly": true,
+          "attemptScopedInferenceCredentialOnly": true,
+          "workloadEnvironmentAllowlisted": true,
+          "openRouterManagementCredentialAbsent": true,
+          "exeDevAdminCredentialAbsent": true,
+          "githubCredentialAbsent": true,
+          "missionControlCredentialAbsent": true,
+          "forbiddenCredentialKeysAbsent": true,
+          "credentialDiscoveryBlocked": true,
+          "staleCredentialRejectedWithinQualifiedBound": true,
+          "providerAdminAuthorityAbsent": true,
+          "githubAuthorityAbsent": true,
+          "previousAttemptArtifactsAbsent": true,
+          "exactResourceDeleted": true
+        },
+        "passed": true
+      },
+      "cleanup": {
+        "credentialIssued": true,
+        "credentialRevoked": true,
+        "staleCredentialRejected": true,
+        "staleCredentialProbeStatuses": [
+          401
+        ],
+        "staleCredentialProbeOffsetsMs": [
+          0
+        ],
+        "credentialRejectedAtOffsetMs": 0,
+        "credentialInvalidWithinQualifiedBound": true,
+        "qualifiedConfirmationBoundMs": 30000,
+        "credentialSecretPersisted": false,
+        "resourceAbsent": true,
+        "finalVmCount": 0,
+        "passed": true
+      },
+      "performance": {
+        "allocationMs": 3565,
+        "readinessMs": 1170,
+        "startupMs": 10939,
+        "executionMs": 176166,
+        "teardownMs": 3211,
+        "totalCycleMs": 195051
+      },
+      "transportBundleSchema": "factory-sandbox-result/v1",
+      "transportBundleDigest": "sha256:c93bec2894aed4be9e47e8e4cf1afea4ea4962a3707903bdd7e7b6d8da84e3f4",
+      "transportStatus": "COMPLETED",
+      "structuredResult": {
+        "schema": "factory-result/v1",
+        "status": "COMPLETED",
+        "summary": "Updated `readOwnerId` to prefer `ownerId` with a legacy fallback, and added idempotent owner migration/rollback that move ownership values while keeping unrelated fields.",
+        "completedAcceptanceCriterionIds": [
+          "MIGRATION-001",
+          "MIGRATION-002",
+          "MIGRATION-003"
+        ],
+        "incompleteAcceptanceCriterionIds": [],
+        "unknownAcceptanceCriterionIds": [],
+        "verificationCommands": [
+          "node --test"
+        ],
+        "knownRisks": [],
+        "nextAction": "Let me know if you’d like additional migrations or documentation updates."
+      },
+      "resultProvenance": {
+        "source": "OUTPUT_FILE",
+        "outputFile": {
+          "state": "VALID",
+          "byteLength": 537
+        },
+        "jsonl": {
+          "byteLength": 6533,
+          "lineCount": 29,
+          "malformedLineCount": 0,
+          "terminalCompletedCount": 1,
+          "terminalFailureCount": 0,
+          "validCandidateCount": 1
+        },
+        "context": {
+          "attemptId": "attempt-3c740d836f9f-hardening-data-migration-1",
+          "manifestDigest": "sha256:9005d9d7d6124f543ebdf720cb4bdef85e13f12ec8112706795d86372ca93361",
+          "sourceSha": "a09426f1f06ba22b2799b4f0eef12a1c70dd5429"
+        }
+      },
+      "changedFiles": [
+        "migrations/001-owner-id.mjs",
+        "src/orderOwnership.mjs"
+      ],
+      "executor": {
+        "exitCode": 0,
+        "stdoutDigest": "sha256:125440e29453f118e3f79a5926ad13909260abd8d4a3fb6b735b7c6b1b3f0b58",
+        "stderrDigest": "sha256:19d0454315cc00c7390a92be657e3a7edffe3e21d1e0822922eea74f27c5ccd7",
+        "stdoutTail": "{\"type\":\"thread.started\",\"thread_id\":\"01a02004-731a-71c1-93e9-b7d182f5f2b8\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"error\",\"message\":\"Model metadata for `openai/gpt-5.1-codex-mini` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.\"}}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_1\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'pwd && ls'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_1\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'pwd && ls'\",\"aggregated_output\":\"/var/lib/mission-control/attempt/repository\\nmigrations\\ntests\\nsrc\\npackage.json\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_2\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'find .. -name AGENTS.md -print'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_2\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'find .. -name AGENTS.md -print'\",\"aggregated_output\":\"find: ..: Permission denied\\n\",\"exit_code\":1,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_3\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'find . -name AGENTS.md -print'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_3\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'find . -name AGENTS.md -print'\",\"aggregated_output\":\"\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_4\",\"type\":\"todo_list\",\"items\":[{\"text\":\"Inspect current ownership handling\",\"completed\":false},{\"text\":\"Implement ownership helper and migration script\",\"completed\":false},{\"text\":\"Run node --test to verify changes\",\"completed\":false}]}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_5\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'ls src'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_5\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'ls src'\",\"aggregated_output\":\"orderOwnership.mjs\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_6\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'ls migrations'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_6\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'ls migrations'\",\"aggregated_output\":\"001-owner-id.mjs\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_7\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'cat src/orderOwnership.mjs'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_7\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'cat src/orderOwnership.mjs'\",\"aggregated_output\":\"export function readOwnerId(record) { return record.ownerId ?? null; }\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_8\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'cat migrations/001-owner-id.mjs'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_8\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'cat migrations/001-owner-id.mjs'\",\"aggregated_output\":\"export function migrateOwner(record) { return record; }\\nexport function rollbackOwner(record) { return record; }\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.updated\",\"item\":{\"id\":\"item_4\",\"type\":\"todo_list\",\"items\":[{\"text\":\"Inspect current ownership handling\",\"completed\":true},{\"text\":\"Implement ownership helper and migration script\",\"completed\":false},{\"text\":\"Run node --test to verify changes\",\"completed\":false}]}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_9\",\"type\":\"file_change\",\"changes\":[{\"path\":\"/var/lib/mission-control/attempt/repository/src/orderOwnership.mjs\",\"kind\":\"update\"}],\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_9\",\"type\":\"file_change\",\"changes\":[{\"path\":\"/var/lib/mission-control/attempt/repository/src/orderOwnership.mjs\",\"kind\":\"update\"}],\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_10\",\"type\":\"file_change\",\"changes\":[{\"path\":\"/var/lib/mission-control/attempt/repository/migrations/001-owner-id.mjs\",\"kind\":\"update\"}],\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_10\",\"type\":\"file_change\",\"changes\":[{\"path\":\"/var/lib/mission-control/attempt/repository/migrations/001-owner-id.mjs\",\"kind\":\"update\"}],\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_11\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'node --test'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_11\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'node --test'\",\"aggregated_output\":\"✔ reads mixed versions (0.777969ms)\\n✔ migrates forward idempotently (0.710608ms)\\n✔ rolls back idempotently (0.170442ms)\\nℹ tests 3\\nℹ suites 0\\nℹ pass 3\\nℹ fail 0\\nℹ cancelled 0\\nℹ skipped 0\\nℹ todo 0\\nℹ duration_ms 83.693422\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.updated\",\"item\":{\"id\":\"item_4\",\"type\":\"todo_list\",\"items\":[{\"text\":\"Inspect current ownership handling\",\"completed\":true},{\"text\":\"Implement ownership helper and migration script\",\"completed\":true},{\"text\":\"Run node --test to verify changes\",\"completed\":true}]}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_12\",\"type\":\"agent_message\",\"text\":\"{\\\"schema\\\":\\\"factory-result/v1\\\",\\\"status\\\":\\\"COMPLETED\\\",\\\"summary\\\":\\\"Updated `readOwnerId` to prefer `ownerId` with a legacy fallback, and added idempotent owner migration/rollback that move ownership values while keeping unrelated fields.\\\",\\\"completedAcceptanceCriterionIds\\\":[\\\"MIGRATION-001\\\",\\\"MIGRATION-002\\\",\\\"MIGRATION-003\\\"],\\\"incompleteAcceptanceCriterionIds\\\":[],\\\"unknownAcceptanceCriterionIds\\\":[],\\\"verificationCommands\\\":[\\\"node --test\\\"],\\\"knownRisks\\\":[],\\\"nextAction\\\":\\\"Let me know if you’d like additional migrations or documentation updates.\\\"}\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_4\",\"type\":\"todo_list\",\"items\":[{\"text\":\"Inspect current ownership handling\",\"completed\":true},{\"text\":\"Implement ownership helper and migration script\",\"completed\":true},{\"text\":\"Run node --test to verify changes\",\"completed\":true}]}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":133222,\"cached_input_tokens\":127232,\"cache_write_input_tokens\":0,\"output_tokens\":8686,\"reasoning_output_tokens\":6784}}\n",
+        "stderrTail": "Reading additional input from stdin...\n",
+        "resultOutput": {
+          "state": "VALID",
+          "byteLength": 537,
+          "digest": "sha256:fd08ddff3a1a37b8000eb378da5d92524c8f04f07d2558bc049879149769f834",
+          "tail": "{\"schema\":\"factory-result/v1\",\"status\":\"COMPLETED\",\"summary\":\"Updated `readOwnerId` to prefer `ownerId` with a legacy fallback, and added idempotent owner migration/rollback that move ownership values while keeping unrelated fields.\",\"completedAcceptanceCriterionIds\":[\"MIGRATION-001\",\"MIGRATION-002\",\"MIGRATION-003\"],\"incompleteAcceptanceCriterionIds\":[],\"unknownAcceptanceCriterionIds\":[],\"verificationCommands\":[\"node --test\"],\"knownRisks\":[],\"nextAction\":\"Let me know if you’d like additional migrations or documentation updates.\"}",
+          "validationIssues": []
+        }
+      },
+      "usage": {
+        "providerCostUsd": null,
+        "inferenceCostUsd": null,
+        "inputTokens": 133222,
+        "outputTokens": 8686,
+        "observedAt": 1787243732588,
+        "providerRuntimeMs": 175107,
+        "enforcement": "OBSERVATION_ONLY"
+      },
+      "firstPassSuccess": true,
+      "failure": null,
+      "candidate": {
+        "sourceSha": "a09426f1f06ba22b2799b4f0eef12a1c70dd5429",
+        "candidateSha": "04a692fc032cd4d4b01cc4191dbc3f7dc165ea74",
+        "treeSha": "d8326e289f0d7c7cb9effb2c9ba359c44b59f5cb",
+        "changedFiles": [
+          "migrations/001-owner-id.mjs",
+          "src/orderOwnership.mjs"
+        ],
+        "linesAdded": 36,
+        "linesDeleted": 3
+      },
+      "verification": {
+        "independent": true,
+        "candidateSha": "04a692fc032cd4d4b01cc4191dbc3f7dc165ea74",
+        "treeSha": "d8326e289f0d7c7cb9effb2c9ba359c44b59f5cb",
+        "verdict": "VERIFIED",
+        "reason": "Independent exact-candidate npm test passed.",
+        "command": "npm test",
+        "exitCode": 0,
+        "outputSha256": "941dbbe140313c116113029a534c8b792988bce5ae425b2f72f949a302c39830",
+        "acceptanceCriterionIds": [
+          "MIGRATION-001",
+          "MIGRATION-002",
+          "MIGRATION-003"
+        ],
+        "durationMs": 266,
+        "acceptanceAuthority": false
+      },
+      "acceptance": {
+        "approvalStatus": "APPROVED",
+        "missingApprovalTypes": [],
+        "expiredApprovalTypes": [],
+        "revokedApprovalTypes": [],
+        "missingCriteriaIds": [],
+        "failedCriteriaIds": [],
+        "staleCriteriaIds": [],
+        "waivedCriteriaIds": [],
+        "waiverWithoutApprovalCriteriaIds": [],
+        "verificationVerdict": "VERIFIED",
+        "blockingReasons": [],
+        "eligible": true,
+        "authority": "workOrders.accept",
+        "authorityMode": "AUTHORIZED_OPERATOR_FIXTURE",
+        "candidateSha": "04a692fc032cd4d4b01cc4191dbc3f7dc165ea74",
+        "acceptedAt": "2026-08-20T16:35:40.264Z"
+      }
+    }
+  ],
+  "aggregateNegativeMatrix": {
+    "checks": {
+      "plannedWorkloadsExecuted": true,
+      "oneAttemptEach": true,
+      "sequentialEmptyInventory": true,
+      "uniqueAttemptResources": true,
+      "allAttackChecksPassed": true,
+      "allExactResourcesDeleted": true,
+      "allCredentialsRevokedAndRejected": true
+    },
+    "passed": true
+  },
+  "finalInventory": {
+    "checkedAt": "2026-08-20T16:35:43.363Z",
+    "authenticated": true,
+    "vmCount": 0,
+    "maxVms": 50,
+    "liveAllocationAllowed": true,
+    "automaticIntegrationCount": 0
+  },
+  "performance": {
+    "current": {
+      "bug-fix": {
+        "allocationMs": 3661,
+        "readinessMs": 1088,
+        "startupMs": 11123,
+        "executionMs": 159777,
+        "teardownMs": 3742,
+        "totalCycleMs": 179391
+      },
+      "security-policy": {
+        "allocationMs": 3471,
+        "readinessMs": 1085,
+        "startupMs": 10874,
+        "executionMs": 87708,
+        "teardownMs": 3376,
+        "totalCycleMs": 106514
+      },
+      "data-migration": {
+        "allocationMs": 3565,
+        "readinessMs": 1170,
+        "startupMs": 10939,
+        "executionMs": 176166,
+        "teardownMs": 3211,
+        "totalCycleMs": 195051
+      }
+    },
+    "priorProductionFactoryPilotV3Preview": {
+      "bugFix": {
+        "allocationMs": 3613,
+        "readinessMs": 4385,
+        "startupMs": null,
+        "executionMs": 68629,
+        "teardownMs": 3434,
+        "totalCycleMs": 88900
+      },
+      "securityPolicy": {
+        "allocationMs": 3656,
+        "readinessMs": 4419,
+        "startupMs": null,
+        "executionMs": 68886,
+        "teardownMs": 3603,
+        "totalCycleMs": 89437
+      },
+      "dataMigration": {
+        "allocationMs": 3441,
+        "readinessMs": 4269,
+        "startupMs": null,
+        "executionMs": 210716,
+        "teardownMs": 3856,
+        "totalCycleMs": 230971
+      }
+    },
+    "note": "The prior preview did not separately expose startup time; its readiness and execution values are retained without inventing a split."
+  },
+  "totalAttempts": 3,
+  "totalRetries": 0
+}

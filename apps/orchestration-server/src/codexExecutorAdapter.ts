@@ -420,7 +420,10 @@ export class CodexV1ExecutorAdapter implements HarnessExecutorAdapter<CodexPrepa
     const outputSchemaPath = path.posix.join(path.posix.dirname(context.resultPath), "factory-result.schema.json");
     return {
       command: this.executable,
-      args: commandArguments(remoteRequest, context.resultPath, outputSchemaPath, REMOTE_OPENROUTER_CONFIG_OVERRIDES),
+      // Remote execution is already confined by the disposable non-root
+      // sandbox profile. Asking Codex to create a nested bubblewrap namespace
+      // is incompatible with the intentionally empty capability boundary.
+      args: commandArguments(remoteRequest, context.resultPath, outputSchemaPath, REMOTE_OPENROUTER_CONFIG_OVERRIDES, "danger-full-access"),
       resultPath: context.resultPath,
       outputSchemaPath,
       outputSchema: structuredClone(FACTORY_RESULT_SCHEMA),
@@ -457,6 +460,7 @@ function commandArguments(
   outputPath: string,
   outputSchemaPath?: string,
   configOverrides: readonly string[] = [],
+  sandboxMode?: "read-only" | "workspace-write" | "danger-full-access",
 ): string[] {
   return [
     "-a",
@@ -468,7 +472,7 @@ function commandArguments(
     "--ignore-user-config",
     "--ignore-rules",
     "--sandbox",
-    request.isolation === "READ_ONLY" ? "read-only" : "workspace-write",
+    sandboxMode ?? (request.isolation === "READ_ONLY" ? "read-only" : "workspace-write"),
     "--color",
     "never",
     "-C",

@@ -8,7 +8,7 @@ export function standaloneRestrictedSandboxBootstrapSource() {
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { lookup } from "node:dns/promises";
-import { mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, lstatSync, lchownSync, unlinkSync, writeFileSync, chmodSync, chownSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, lstatSync, lchownSync, unlinkSync, writeFileSync, chmodSync, chownSync } from "node:fs";
 import { isIP } from "node:net";
 import https from "node:https";
 import net from "node:net";
@@ -26,6 +26,14 @@ const atomicWrite = (file, content) => {
   } finally {
     try { unlinkSync(temporary); } catch {}
   }
+};
+const lifecyclePath = "/var/lib/mission-control/attempt/lifecycle.jsonl";
+const trace = (stage, details = {}) => {
+  try {
+    let byteLength = 0;
+    try { byteLength = lstatSync(lifecyclePath).size; } catch {}
+    if (byteLength < 65536) appendFileSync(lifecyclePath, JSON.stringify({ stage, occurredAt: Date.now(), ...details }) + "\n", { encoding: "utf8", mode: 0o600 });
+  } catch {}
 };
 
 const connectBlocked = (host, port) => new Promise((resolve) => {
@@ -153,6 +161,7 @@ const assertPublicAddress = (address) => {
   }
 };
 
+trace("BOOTSTRAP_STARTED", { pid: process.pid, uid: process.getuid?.() ?? null, gid: process.getgid?.() ?? null });
 const config = JSON.parse(readFileSync(process.argv[2], "utf8"));
 const security = config.security;
 if (process.getuid?.() !== 0 || security?.schema !== "factory-sandbox-security/v1"
@@ -162,7 +171,11 @@ if (process.getuid?.() !== 0 || security?.schema !== "factory-sandbox-security/v
   || security.execution?.noNewPrivileges !== true || security.execution?.capabilityMode !== "DROP_ALL") {
   throw new Error("Restricted sandbox bootstrap configuration is invalid.");
 }
-if (config.expectedImage !== config.observedProviderImage) throw new Error("Provider image identity does not match the frozen digest reference.");
+trace("BOOTSTRAP_CONFIG_VALIDATED", { profile: security.profile });
+const requestedImageDigest = config.requestedImage?.match(/@(sha256:[a-f0-9]{64})$/i)?.[1]?.toLowerCase();
+if (!requestedImageDigest || requestedImageDigest !== security.image?.digest?.toLowerCase()) {
+  throw new Error("Requested image identity does not match the frozen digest reference.");
+}
 
 const nativeCodex = "/opt/mission-control/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex";
 const observedToolchain = {
@@ -186,6 +199,7 @@ if (observedToolchain.executionUid !== security.execution.uid || observedToolcha
 }
 command("nft", ["--version"]);
 command("setpriv", ["--version"]);
+trace("BOOTSTRAP_TOOLCHAIN_VALIDATED", { nodeVersion: observedToolchain.nodeVersion, codexVersion: observedToolchain.codexVersion, gitVersion: observedToolchain.gitVersion, busyboxVersion: observedToolchain.busyboxVersion });
 
 const remoteRoot = realpathSync(config.remoteRoot);
 const repositoryRoot = realpathSync(config.repositoryRoot);
@@ -218,6 +232,7 @@ if (config.executorResultPath) {
   chownSync(config.executorResultPath, security.execution.uid, security.execution.gid);
 }
 if (config.outputSchemaPath) chmodSync(config.outputSchemaPath, 0o444);
+trace("BOOTSTRAP_FILESYSTEM_PREPARED", { repositoryOwnerUid: security.execution.uid, repositoryOwnerGid: security.execution.gid });
 
 const addresses = [];
 for (const host of security.network.allowedHttpsHosts) {
@@ -256,6 +271,7 @@ const rules = [
 ].join("\n");
 execFileSync("nft", ["-f", "-"], { input: rules, timeout: 15000 });
 command("nft", ["list", "table", "inet", "mission_control_egress"]);
+trace("BOOTSTRAP_NETWORK_POLICY_APPLIED", { allowedHttpsHosts: security.network.allowedHttpsHosts, resolvedAddresses: uniqueAddresses.map((entry) => entry.address), policyDigest: sha256(rules) });
 
 const probeEnvironment = {
   PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
@@ -284,6 +300,7 @@ const privilege = JSON.parse(execFileSync("setpriv", [
   process.argv[1],
   "--privilege-probe",
 ], { encoding: "utf8", env: probeEnvironment, timeout: 20000 }));
+trace("BOOTSTRAP_NEGATIVE_PROBES_PASSED", { network: probe, privilege: { noNewPrivileges: privilege.noNewPrivileges, capabilities: privilege.capabilities, firewallMutationBlocked: privilege.firewallMutationBlocked } });
 
 const protectedPathsReadOnly = execFileSync("setpriv", [
   ...setprivConfinementArgs,
@@ -314,6 +331,12 @@ const proof = {
   schema: "factory-sandbox-security-proof/v1",
   profile: security.profile,
   observedAt: Date.now(),
+  image: {
+    requestedReference: config.requestedImage,
+    requestedDigest: requestedImageDigest,
+    providerReportedReference: config.providerReportedImage ?? null,
+    providerReferenceMatched: config.providerReportedImage == null ? null : config.providerReportedImage === config.requestedImage,
+  },
   toolchain: observedToolchain,
   filesystem: {
     repositoryOwnerUid: repositoryStat.uid,
@@ -340,6 +363,7 @@ if (proof.filesystem.repositoryOwnerUid !== security.execution.uid
   throw new Error("Restricted sandbox bootstrap proof did not pass every fail-closed check.");
 }
 atomicWrite(config.proofPath, JSON.stringify(proof));
+trace("BOOTSTRAP_COMPLETED", { proofPath: config.proofPath, policyDigest: proof.network.policyDigest });
 process.stdout.write(JSON.stringify(proof));
 `.trim();
 }

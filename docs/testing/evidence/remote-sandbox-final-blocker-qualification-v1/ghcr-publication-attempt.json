@@ -1,0 +1,25 @@
+{
+  "schema": "mission-control-ghcr-publication-attempt/v1",
+  "attemptedAt": "2026-08-20T16:11:40Z",
+  "repository": "ghcr.io/jaydubya818/mission-control-remote-sandbox",
+  "tag": "restricted-final-blocker-20260820-41a66f1d6f7b",
+  "expectedLocalDigest": "sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+  "localImagePresent": true,
+  "localImageSizeBytes": 247551087,
+  "githubAccount": "jaydubya818",
+  "observedOauthScopes": [
+    "gist",
+    "read:org",
+    "repo",
+    "workflow"
+  ],
+  "requiredOauthScopeObserved": false,
+  "dockerLoginSucceeded": true,
+  "pushSucceeded": false,
+  "registryError": "permission_denied: The token provided does not match expected scopes.",
+  "publishedImmutableDigest": null,
+  "liveCanaryStarted": false,
+  "finalExeDevVmInventory": 0,
+  "decision": "BLOCKED",
+  "blocker": "The active GitHub credential does not have write:packages permission, so the exact locally qualified image cannot be published to GHCR."
+}

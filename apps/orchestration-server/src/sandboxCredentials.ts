@@ -27,8 +27,15 @@ export interface SandboxCredentialRevocationReceipt {
   grantKey: string;
   externalCredentialId: string;
   requestedAt: number;
+  deletionAcceptedAt?: number;
   revokedAt: number;
   revoked: true;
+  confirmation?: {
+    method: "STALE_SECRET_REJECTION" | "FAKE_IMMEDIATE";
+    endpoint?: string;
+    offsetsMs: number[];
+    statuses: Array<number | null>;
+  };
 }
 
 export type SandboxCredentialReference = Omit<SandboxCredentialGrant, "secret">;
@@ -39,10 +46,14 @@ export interface SandboxCredentialBroker {
 }
 
 export class OpenRouterSandboxCredentialBroker implements SandboxCredentialBroker {
+  private readonly activeSecrets = new Map<string, string>();
+
   constructor(
     private readonly managementKey = process.env.OPENROUTER_MANAGEMENT_API_KEY?.trim(),
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly now: () => number = Date.now,
+    private readonly sleep: (durationMs: number) => Promise<void> = (durationMs) => new Promise((resolve) => setTimeout(resolve, durationMs)),
+    private readonly revocationConfirmationOffsetsMs = [0, 1_000, 5_000, 15_000, 30_000, 60_000],
   ) {}
 
   async mint(request: SandboxCredentialRequest): Promise<SandboxCredentialGrant> {
@@ -66,7 +77,7 @@ export class OpenRouterSandboxCredentialBroker implements SandboxCredentialBroke
     const secret = String(payload?.data?.key ?? payload?.key ?? "");
     const externalCredentialId = String(payload?.data?.hash ?? payload?.hash ?? "");
     if (!secret || !externalCredentialId) throw new Error("OpenRouter did not return the one-time key and revocable key hash.");
-    return {
+    const grant: SandboxCredentialGrant = {
       grantKey,
       provider: "OPENROUTER",
       externalCredentialId,
@@ -77,6 +88,8 @@ export class OpenRouterSandboxCredentialBroker implements SandboxCredentialBroke
       maxCostUsd: request.maxCostUsd,
       secretFingerprint: secretFingerprint(secret),
     };
+    this.activeSecrets.set(grantKey, secret);
+    return grant;
   }
 
   async revoke(grant: SandboxCredentialReference): Promise<SandboxCredentialRevocationReceipt> {
@@ -92,13 +105,53 @@ export class OpenRouterSandboxCredentialBroker implements SandboxCredentialBroke
       const detail = redactSandboxText(await response.text());
       throw new Error(`OpenRouter could not revoke the Attempt key (${response.status}): ${detail}`);
     }
-    return {
-      grantKey: grant.grantKey,
-      externalCredentialId: grant.externalCredentialId,
-      requestedAt,
-      revokedAt: this.now(),
-      revoked: true,
-    };
+    const deletionAcceptedAt = this.now();
+    const secret = this.activeSecrets.get(grant.grantKey);
+    if (!secret) {
+      throw new Error("OpenRouter accepted Attempt key deletion, but the one-time secret is unavailable for exact rejection confirmation.");
+    }
+    const statuses: Array<number | null> = [];
+    const attemptedOffsets: number[] = [];
+    let previousOffset = 0;
+    try {
+      for (const offsetMs of this.revocationConfirmationOffsetsMs) {
+        const delayMs = Math.max(0, offsetMs - previousOffset);
+        previousOffset = offsetMs;
+        if (delayMs > 0) await this.sleep(delayMs);
+        let status: number | null = null;
+        try {
+          const confirmation = await this.fetchImpl("https://openrouter.ai/api/v1/key", {
+            headers: { Authorization: `Bearer ${secret}` },
+            signal: AbortSignal.timeout(15_000),
+          });
+          status = confirmation.status;
+          await confirmation.body?.cancel().catch(() => undefined);
+        } catch {
+          status = null;
+        }
+        attemptedOffsets.push(offsetMs);
+        statuses.push(status);
+        if (status === 401 || status === 403) {
+          return {
+            grantKey: grant.grantKey,
+            externalCredentialId: grant.externalCredentialId,
+            requestedAt,
+            deletionAcceptedAt,
+            revokedAt: this.now(),
+            revoked: true,
+            confirmation: {
+              method: "STALE_SECRET_REJECTION",
+              endpoint: "GET https://openrouter.ai/api/v1/key",
+              offsetsMs: attemptedOffsets,
+              statuses,
+            },
+          };
+        }
+      }
+      throw new Error(`OpenRouter accepted Attempt key deletion, but exact stale-key rejection was not confirmed within 60 seconds (statuses ${statuses.map((status) => status ?? "network-error").join(",")}).`);
+    } finally {
+      this.activeSecrets.delete(grant.grantKey);
+    }
   }
 }
 
@@ -139,6 +192,7 @@ export class FakeSandboxCredentialBroker implements SandboxCredentialBroker {
       requestedAt,
       revokedAt: this.now(),
       revoked: true,
+      confirmation: { method: "FAKE_IMMEDIATE", offsetsMs: [0], statuses: [] },
     };
   }
 }

@@ -79,8 +79,8 @@ Execute Option 1 only while every result is evidence-backed. Fall back to Option
 - [x] Prove the Codex workload is non-root, lacks `CAP_NET_ADMIN`, cannot modify nftables, cannot install packages, and cannot access host/provider administration.
 - [x] Prove only the Attempt inference credential is present; all management, GitHub, Mission Control, verification, acceptance, and publication credentials are absent.
 - [x] Prove protected system paths, dedicated workspace writes, no package-cache leakage, and no prior-Attempt persistence across two fresh instances.
-- [ ] Run the live bug-fix, security/policy, and schema-migration gate serially at maximum one VM only if every pre-live criterion passes; require 3/3 first-pass with no retries.
-- [ ] Run the bounded live negative matrix only after admission and require every forbidden action to fail safely.
+- [x] Run the live bug-fix, security/policy, and schema-migration gate serially at maximum one VM only if every pre-live criterion passes; require 3/3 first-pass with no retries.
+- [x] Run the bounded live negative matrix only after admission and require every forbidden action to fail safely.
 - [x] Compare allocation, readiness, startup, execution, teardown, and total-cycle performance with unknowns preserved as `null`.
 - [x] Run the complete requested repository, runtime, routing, security, build, smoke, lint, and qualification matrix.
 - [ ] Preserve final provider VM inventory zero and obtain fresh GitHub CI and Vercel evidence for durable changes.
@@ -114,6 +114,22 @@ Execute Option 1 only while every result is evidence-backed. Fall back to Option
 - Image vulnerability remediation and local guest-boundary proof are complete, but they cannot substitute for live proof.
 - The current blocking condition is the exe.dev image-identity reporting boundary, not a waived security finding. A future gate must first reconcile the provider's normalized image identity with the immutable digest without weakening the fail-closed check, then run a new 3/3 first-pass qualification.
 - PR #126 supersedes PR #125 as the remediation draft, but remains `HOLD` and non-mergeable. PR #125 remains unchanged with its evidence preserved.
+
+### 2026-08-20 - Immutable publication and final live qualification
+
+**Actions:**
+- Reverified GitHub `write:packages`, GHCR authentication, the preserved worktree, exact local image ID, 0 Critical / 0 High gate, local 3/3 first-pass result, bounded OpenRouter revocation timing, and the draft/unmerged state of PRs #125 and #126.
+- Published the exact locally qualified OCI index to `ghcr.io/jaydubya818/mission-control-remote-sandbox@sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8`. Proved the registry index, linux/amd64 manifest, config, layers, digest-pulled image ID, and RootFS match the local qualified artifact; recorded its public-pull result and BuildKit SLSA provenance.
+- Ran a one-Attempt live canary through hardened image, supervisor, Codex, canonical structured result, candidate, independent verification, and acceptance eligibility. The canary passed first-pass with zero retries, exact credential rejection inside the 30-second bound, exact VM absence, and inventory zero.
+- Ran the strict bug-fix, security/policy, and data/schema-migration cohort serially. All three passed first-pass with zero retries; each produced a canonical result and exact candidate, passed independent verification and acceptance eligibility, rejected its exact credential at the first post-revocation probe, and proved its exact VM absent.
+- Re-ran the network, privilege, credential, filesystem, and cross-Attempt matrix against the immutable published image. UID/GID 10001, `no_new_privs`, empty capability sets, guest nftables enforcement, firewall-mutation denial, forbidden-destination denial, credential absence, and previous-Attempt isolation all passed.
+- Rebuilt the published-artifact SPDX SBOM and Grype scan. The gate remains 0 Critical / 0 High with no suppression. The two Medium BusyBox metadata records remain bounded by independent proof that the affected `wget` applet and binary are absent.
+- Ran `pnpm run qualify:factory`; all 17 composed gates passed, including the full repository suites, TypeScript, lint, skill lint, runtime guard, production build, orchestration smoke, release security/secret scans, and whitespace validation.
+
+**Learnings:**
+- The provider-reported image label is truncated metadata, but allocation is requested with the full immutable digest and the guest toolchain matches the exact qualified identity. A different requested digest still fails closed.
+- exe.dev still offers no provider-level egress primitive. The honest boundary is guest nftables defense in depth plus a non-root, capability-empty workload that cannot mutate the policy.
+- Live qualification is now complete. The remaining external gate is fresh GitHub CI/Vercel on this durable PR update; neither PR is merge-authorized by this work.
 
 ## Notes
 

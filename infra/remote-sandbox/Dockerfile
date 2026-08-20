@@ -48,6 +48,7 @@ RUN patch -d /tmp/busybox -p1 --fuzz=0 </tmp/patches/busybox-CVE-2026-38754.patc
   && while IFS= read -r option; do grep -qx "$option" /tmp/busybox/.config; done </tmp/busybox-minimal.config \
   && KCONFIG_NOTIMESTAMP=1 make -C /tmp/busybox -j6 \
   && test "$(/tmp/busybox/busybox | head -n 1 | cut -d' ' -f1-2)" = "BusyBox v1.37.0" \
+  && /tmp/busybox/busybox --list | grep -qx kill \
   && ! /tmp/busybox/busybox --list | grep -qx awk \
   && ! /tmp/busybox/busybox --list | grep -qx wget
 
@@ -92,6 +93,11 @@ RUN addgroup -S -g 10001 mc-attempt \
 
 COPY --from=busybox-builder /tmp/busybox/busybox /bin/busybox
 RUN test "$(busybox | head -n 1 | cut -d' ' -f1-2)" = "BusyBox v1.37.0" \
+  && busybox --list | grep -qx kill \
+  && busybox --list | grep -qx find \
+  && busybox --list | grep -qx ls \
+  && busybox --list | grep -qx sed \
+  && kill -0 "$$" \
   && ! busybox --list | grep -qx awk \
   && ! busybox --list | grep -qx wget \
   && rm -f /usr/bin/awk /usr/bin/wget

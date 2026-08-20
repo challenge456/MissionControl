@@ -15,6 +15,13 @@ describe("ExeDevSandboxProvider", () => {
     }
     expect(standaloneRestrictedSandboxBootstrapSource()).toContain('"--privilege-probe"');
     expect(standaloneRestrictedSandboxBootstrapSource()).toContain("firewallMutationBlocked");
+    const supervisor = standaloneRemoteSupervisorSource();
+    expect(supervisor).toContain('executionSecurity ? "setpriv" : "git"');
+    expect(supervisor).toContain('executionSecurity ? [...confinementArgs, "--", "git", ...args] : args');
+    expect(supervisor).toContain('SHELL: "/bin/sh"');
+    expect(supervisor).toContain('trace("CODEX_SPAWNED"');
+    expect(supervisor).toContain('trace("SUPERVISOR_TERMINAL"');
+    expect(supervisor).not.toContain("safe.directory");
   });
 
   it("keeps production dispatch blocked until live lifecycle certification is recorded", async () => {
@@ -119,7 +126,8 @@ describe("ExeDevSandboxProvider", () => {
     expect(preparation).toContain("rm -f /var/lib/mission-control/attempt/result.json");
     const supervisorLaunch = vmText.mock.calls[6][1];
     expect(supervisorLaunch).toContain("command -v setsid");
-    expect(supervisorLaunch).toContain("nohup setsid node");
+    expect(supervisorLaunch).toContain("nohup setsid sh -c");
+    expect(supervisorLaunch).toContain("supervisor-exit.json");
     expect(supervisorLaunch).toContain("2>&1 &\nprintf '%s'");
     expect(supervisorLaunch).not.toContain("&;");
     expect(supervisorLaunch).not.toContain("attempt-only");
@@ -127,6 +135,8 @@ describe("ExeDevSandboxProvider", () => {
     const cancellation = vmText.mock.calls[7][1];
     expect(cancellation).toContain('kill -TERM -- "-$pid"');
     expect(cancellation).toContain('kill -KILL -- "-$pid"');
+    expect(cancellation).toContain('while test "$attempt" -lt 50');
+    expect(cancellation).not.toContain("seq ");
     const receipt = await provider.terminate(allocation);
     expect(receipt.resourceAbsent).toBe(true);
     expect(lobbyJson.mock.calls[1][0]).toEqual(["rm", allocation.resourceName, "--json"]);
@@ -150,7 +160,7 @@ describe("ExeDevSandboxProvider", () => {
     const selectedProfile = restrictedProfile();
     const proof = restrictedProof();
     const vmText = vi.fn().mockImplementation(async (_resourceName: string, command: string) =>
-      command.startsWith("node /var/lib/mission-control/attempt/restricted-bootstrap.mjs")
+      command.includes("node /var/lib/mission-control/attempt/restricted-bootstrap.mjs")
         ? JSON.stringify(proof)
         : "321");
     const provider = new ExeDevSandboxProvider({ lobbyJson: vi.fn(), vmText } as ExeDevTransport);
@@ -183,11 +193,45 @@ describe("ExeDevSandboxProvider", () => {
 
     expect(receipt.securityProof).toEqual(proof);
     const commands = vmText.mock.calls.map((call) => String(call[1]));
-    expect(commands.some((command) => command.includes("restricted-bootstrap.mjs"))).toBe(true);
+    expect(commands.some((command) => command.includes("chmod 0444 /var/lib/mission-control/attempt/restricted-bootstrap.mjs && node"))).toBe(true);
     expect(commands.join("\n")).not.toContain("attempt-only");
     const configUpload = vmText.mock.calls.find((call) => String(call[1]).endsWith(">/var/lib/mission-control/attempt/config.json"));
     const uploadedConfig = JSON.parse(Buffer.from(String(configUpload?.[2]), "base64").toString("utf8"));
     expect(uploadedConfig.executionSecurity).toEqual(selectedProfile.security?.execution);
+  });
+
+  it("treats normalized provider image metadata as diagnostic after proving the exact requested digest", async () => {
+    const selectedProfile = restrictedProfile();
+    const proof = restrictedProof("mission-control-remote-sandbox");
+    const vmText = vi.fn().mockImplementation(async (_resourceName: string, command: string) =>
+      command.includes("node /var/lib/mission-control/attempt/restricted-bootstrap.mjs")
+        ? JSON.stringify(proof)
+        : "321");
+    const provider = new ExeDevSandboxProvider({ lobbyJson: vi.fn(), vmText } as ExeDevTransport);
+
+    await expect(provider.start(restrictedStartRequest(selectedProfile, {
+      providerMetadata: { image: "mission-control-remote-sandbox" },
+    }))).resolves.toMatchObject({
+      securityProof: {
+        image: {
+          requestedReference: selectedProfile.machine.image,
+          requestedDigest: selectedProfile.security?.image.digest,
+          providerReportedReference: "mission-control-remote-sandbox",
+          providerReferenceMatched: false,
+        },
+      },
+    });
+  });
+
+  it("fails closed before upload when the requested digest is outside the frozen security profile", async () => {
+    const selectedProfile = restrictedProfile();
+    const vmText = vi.fn();
+    const provider = new ExeDevSandboxProvider({ lobbyJson: vi.fn(), vmText } as ExeDevTransport);
+    const startRequest = restrictedStartRequest(selectedProfile);
+    startRequest.environmentDescriptor.image = `ghcr.io/jaydubya818/mission-control-remote-sandbox@sha256:${"e".repeat(64)}`;
+
+    await expect(provider.start(startRequest)).rejects.toThrow(/exact digest-qualified image/);
+    expect(vmText).not.toHaveBeenCalled();
   });
 
   it("fails closed when the restricted bootstrap omits a negative network proof", async () => {
@@ -195,7 +239,7 @@ describe("ExeDevSandboxProvider", () => {
     const proof = restrictedProof();
     proof.network.metadataBlocked = false;
     const vmText = vi.fn().mockImplementation(async (_resourceName: string, command: string) =>
-      command.startsWith("node /var/lib/mission-control/attempt/restricted-bootstrap.mjs")
+      command.includes("node /var/lib/mission-control/attempt/restricted-bootstrap.mjs")
         ? JSON.stringify(proof)
         : "321");
     const provider = new ExeDevSandboxProvider({ lobbyJson: vi.fn(), vmText } as ExeDevTransport);
@@ -223,11 +267,25 @@ describe("ExeDevSandboxProvider", () => {
 
   it("retrieves bounded supervisor diagnostics before teardown", async () => {
     const diagnostics = { phase: "EXECUTOR_FINISHED", failure: { class: "NON_RETRYABLE_RESULT", code: "RESULT_FILE_MISSING" } };
-    const vmText = vi.fn().mockResolvedValue(`0\n${Buffer.from(JSON.stringify(diagnostics)).toString("base64")}`);
+    const lifecycle = [{ stage: "SUPERVISOR_STARTED", occurredAt: 1 }];
+    const supervisorExit = { exitStatus: 1 };
+    const vmText = vi.fn().mockResolvedValue([
+      "PROCESS\t0",
+      `DIAGNOSTICS\t${Buffer.from(JSON.stringify(diagnostics)).toString("base64")}`,
+      `LIFECYCLE\t${Buffer.from(`${JSON.stringify(lifecycle[0])}\n`).toString("base64")}`,
+      `EXIT\t${Buffer.from(JSON.stringify(supervisorExit)).toString("base64")}`,
+      `LOG\t${Buffer.from("bounded log").toString("base64")}`,
+    ].join("\n"));
     const provider = new ExeDevSandboxProvider({ lobbyJson: vi.fn(), vmText } as ExeDevTransport);
     const allocation = { provider: "EXE_DEV" as const, providerResourceId: "vm-1", resourceName: "mc-attempt-0123456789abcdef", state: "RUNNING" as const, createdAt: 1 };
 
-    await expect(provider.fetchDiagnostics(allocation)).resolves.toEqual({ ...diagnostics, supervisorProcessRunning: false });
+    await expect(provider.fetchDiagnostics(allocation)).resolves.toEqual({
+      ...diagnostics,
+      supervisorProcessRunning: false,
+      lifecycleTrace: lifecycle,
+      supervisorExit,
+      supervisorLogTail: "bounded log",
+    });
     expect(vmText.mock.calls[0][1]).toContain("diagnostics.json");
     expect(vmText.mock.calls[0][1]).toContain("head -c 65536");
   });
@@ -287,11 +345,18 @@ function restrictedProfile(): SandboxProfileSnapshot {
   };
 }
 
-function restrictedProof(): SandboxSecurityProof {
+function restrictedProof(providerReportedReference: string | null = restrictedProfile().machine.image): SandboxSecurityProof {
+  const selectedProfile = restrictedProfile();
   return {
     schema: "factory-sandbox-security-proof/v1",
     profile: "remote-sandbox/exe-dev/restricted-candidate-v1",
     observedAt: 1,
+    image: {
+      requestedReference: selectedProfile.machine.image,
+      requestedDigest: selectedProfile.security!.image.digest,
+      providerReportedReference,
+      providerReferenceMatched: providerReportedReference === null ? null : providerReportedReference === selectedProfile.machine.image,
+    },
     toolchain: {
       nodeVersion: "v26.7.0", codexVersion: "codex-cli 0.146.0",
       codexBinarySha256: `sha256:${"c".repeat(64)}`, gitVersion: "git version 2.55.0",
@@ -319,6 +384,44 @@ function restrictedProof(): SandboxSecurityProof {
       approvedEndpointReachable: true, arbitraryExternalBlocked: true, privateNetworkBlocked: true, linkLocalBlocked: true,
       metadataBlocked: true, unexpectedDnsBlocked: true,
     },
+  };
+}
+
+function restrictedStartRequest(selectedProfile: SandboxProfileSnapshot, allocationOverrides: Record<string, unknown> = {}) {
+  const executionManifest = manifest();
+  return {
+    allocation: {
+      provider: "EXE_DEV" as const,
+      providerResourceId: "vm-1",
+      resourceName: "mc-attempt-0123456789abcdef",
+      state: "READY" as const,
+      createdAt: 1,
+      providerMetadata: { image: selectedProfile.machine.image },
+      ...allocationOverrides,
+    },
+    executionManifest,
+    workOrderId: "w1",
+    workOrderRevisionNumber: 1,
+    workflowRunId: "r1",
+    attemptId: "a1",
+    manifestDigest: `sha256:${canonicalHash(executionManifest)}`,
+    sourceSha: "a".repeat(40),
+    profileDigest: "sha256:profile",
+    security: selectedProfile.security,
+    environmentDescriptor: { provider: "EXE_DEV" as const, image: selectedProfile.machine.image },
+    repositoryArchive: Buffer.from("bundle"),
+    supervisorSource: "// supervisor",
+    executor: {
+      command: "codex",
+      args: ["exec", "--output-schema", "/var/lib/mission-control/attempt/factory-result.schema.json"],
+      resultPath: "/var/lib/mission-control/attempt/executor-result.json",
+      outputSchemaPath: "/var/lib/mission-control/attempt/factory-result.schema.json",
+      outputSchema: { type: "object", required: ["status"] },
+      prompt: "p",
+      allowedPaths: ["src/**"],
+      timeoutMs: 60_000,
+    },
+    environment: { OPENAI_API_KEY: "attempt-only", OPENAI_BASE_URL: "https://openrouter.ai/api/v1" },
   };
 }
 

@@ -7,11 +7,13 @@ export function standaloneRemoteSupervisorSource() {
   return String.raw`
 import { createHash } from "node:crypto";
 import { execFileSync, spawn } from "node:child_process";
-import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, closeSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 const MAX_BYTES = 1048576;
 const MAX_LINES = 10000;
+const LIFECYCLE_PATH = "/var/lib/mission-control/attempt/lifecycle.jsonl";
+const lifecycleEvents = [];
 const arrayFields = ["completedAcceptanceCriterionIds", "incompleteAcceptanceCriterionIds", "unknownAcceptanceCriterionIds", "verificationCommands", "knownRisks"];
 const canonical = (value) => value === null || typeof value !== "object"
   ? (JSON.stringify(value) ?? "undefined")
@@ -40,6 +42,39 @@ const atomicWrite = (file, content) => {
   } finally {
     if (descriptor !== undefined) closeSync(descriptor);
     try { unlinkSync(temporary); } catch {}
+  }
+};
+const fileObservation = (file) => {
+  if (!file) return { state: "NOT_REQUESTED" };
+  try {
+    const entry = lstatSync(file);
+    return {
+      state: "PRESENT",
+      type: entry.isDirectory() ? "DIRECTORY" : entry.isFile() ? "FILE" : entry.isSymbolicLink() ? "SYMLINK" : "OTHER",
+      mode: (entry.mode & 0o777).toString(8).padStart(3, "0"),
+      uid: entry.uid,
+      gid: entry.gid,
+      byteLength: entry.size,
+    };
+  } catch (error) {
+    return { state: error?.code === "ENOENT" ? "ABSENT" : "STAT_ERROR" };
+  }
+};
+const trace = (stage, details = {}) => {
+  const event = { stage, occurredAt: Date.now(), ...details };
+  lifecycleEvents.push(event);
+  try {
+    const currentSize = fileObservation(LIFECYCLE_PATH).byteLength ?? 0;
+    if (currentSize < 65536) appendFileSync(LIFECYCLE_PATH, JSON.stringify(event) + "\n", { encoding: "utf8", mode: 0o600 });
+  } catch {}
+  return event;
+};
+const observeNetworkPolicy = () => {
+  try {
+    const ruleset = execFileSync("nft", ["list", "chain", "inet", "mission_control_egress", "output"], { encoding: "utf8", timeout: 5000 });
+    return { state: "OBSERVED", rulesetDigest: digest("factory-sandbox-network-counters/v1", ruleset), rulesetTail: redact(ruleset).slice(-16000) };
+  } catch (error) {
+    return { state: "UNAVAILABLE", reason: redact(error?.message ?? error).slice(0, 1000) };
   }
 };
 const resultValidationIssues = (candidate) => {
@@ -165,7 +200,23 @@ const chooseFailure = (file, jsonl) => {
   return makeFailure("NON_RETRYABLE_RESULT", codes[file.state], "RESULT_RECONSTRUCTION", "No accepted factory-result/v1 was available; output-file state was " + file.state + ".");
 };
 
+let fatalDiagnosticsPath = "/var/lib/mission-control/attempt/diagnostics.json";
+trace("SUPERVISOR_STARTED", { pid: process.pid, uid: process.getuid?.() ?? null, gid: process.getgid?.() ?? null });
+try {
 const config = JSON.parse(readFileSync(process.argv[2], "utf8"));
+fatalDiagnosticsPath = config.diagnosticsPath ?? config.outputPath + ".diagnostics.json";
+trace("CONFIG_LOADED", {
+  attemptId: config.attemptId,
+  files: {
+    repository: fileObservation(config.repositoryRoot),
+    home: fileObservation(config.executionSecurity?.homePath),
+    temporary: fileObservation(config.executionSecurity?.temporaryPath),
+    outputSchema: fileObservation(config.outputSchemaPath),
+    executorResult: fileObservation(config.executor?.resultPath),
+    supervisorResult: fileObservation(config.outputPath),
+    diagnostics: fileObservation(fatalDiagnosticsPath),
+  },
+});
 const manifest = config.executionManifest;
 const manifestDigest = "sha256:" + createHash("sha256").update(canonical(manifest)).digest("hex");
 const harnessFields = ["adapter", "version", "harnessId", "harnessVersion", "provider", "model"];
@@ -181,9 +232,7 @@ if (!manifest || manifest.version !== "factory-execution-manifest/v1" || manifes
   || manifest.sandbox.credentialGrants.some((grant) => grant.secretValueIncluded !== false || grant.githubAuthority !== "NONE" || grant.providerAuthority !== "NONE")) {
   throw new Error("Frozen execution manifest is invalid or exceeds sandbox authority.");
 }
-const startedAt = Date.now();
-const source = execFileSync("git", ["rev-parse", "HEAD"], { cwd: config.repositoryRoot, encoding: "utf8" }).trim();
-if (source !== config.sourceSha) throw new Error("Frozen source SHA mismatch.");
+trace("MANIFEST_VALIDATED", { attemptId: config.attemptId, sourceSha: config.sourceSha });
 const executionSecurity = config.executionSecurity;
 if (executionSecurity && (executionSecurity.user !== "mc-attempt" || executionSecurity.uid !== 10001 || executionSecurity.gid !== 10001
   || executionSecurity.homePath !== "/var/lib/mission-control/attempt/home"
@@ -191,8 +240,7 @@ if (executionSecurity && (executionSecurity.user !== "mc-attempt" || executionSe
   || executionSecurity.capabilityMode !== "DROP_ALL")) {
   throw new Error("Frozen non-root execution identity is invalid.");
 }
-const childCommand = executionSecurity ? "setpriv" : config.executor.command;
-const childArgs = executionSecurity ? [
+const confinementArgs = executionSecurity ? [
   "--no-new-privs",
   "--bounding-set=-all",
   "--inh-caps=-all",
@@ -200,14 +248,38 @@ const childArgs = executionSecurity ? [
   "--reuid=" + executionSecurity.uid,
   "--regid=" + executionSecurity.gid,
   "--clear-groups",
+] : [];
+const confinedEnvironment = executionSecurity
+  ? { PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", HOME: executionSecurity.homePath, TMPDIR: executionSecurity.temporaryPath, SHELL: "/bin/sh" }
+  : { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "" };
+const repositoryGit = (args, options = {}) => execFileSync(
+  executionSecurity ? "setpriv" : "git",
+  executionSecurity ? [...confinementArgs, "--", "git", ...args] : args,
+  { cwd: config.repositoryRoot, env: confinedEnvironment, ...options },
+);
+const startedAt = Date.now();
+trace("REPOSITORY_VALIDATION_STARTED", { repository: fileObservation(config.repositoryRoot) });
+const source = repositoryGit(["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+if (source !== config.sourceSha) throw new Error("Frozen source SHA mismatch.");
+trace("REPOSITORY_VALIDATED", { sourceSha: source });
+const childCommand = executionSecurity ? "setpriv" : config.executor.command;
+const childArgs = executionSecurity ? [
+  ...confinementArgs,
   "--",
   config.executor.command,
   ...config.executor.args,
 ] : config.executor.args;
 const childEnvironment = executionSecurity
-  ? { PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", HOME: executionSecurity.homePath, TMPDIR: executionSecurity.temporaryPath, ...config.environment }
+  ? { ...confinedEnvironment, ...config.environment }
   : { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", ...config.environment };
+trace("CODEX_SPAWN_STARTED", {
+  command: config.executor.command,
+  uid: executionSecurity?.uid ?? process.getuid?.() ?? null,
+  gid: executionSecurity?.gid ?? process.getgid?.() ?? null,
+  environmentKeys: Object.keys(childEnvironment).sort(),
+});
 const child = spawn(childCommand, childArgs, { cwd: config.repositoryRoot, env: childEnvironment, stdio: ["ignore", "pipe", "pipe"], detached: true });
+trace("CODEX_SPAWNED", { pid: child.pid ?? null, detached: true });
 const boundedCapture = (namespace) => {
   const hash = createHash("sha256").update(namespace + "\0");
   let byteLength = 0;
@@ -229,8 +301,16 @@ const stdoutCapture = boundedCapture("factory-sandbox-stdout/v1");
 const stderrCapture = boundedCapture("factory-sandbox-stderr/v1");
 let timedOut = false;
 let canceled = false;
-child.stdout.on("data", (chunk) => stdoutCapture.push(chunk));
-child.stderr.on("data", (chunk) => stderrCapture.push(chunk));
+let firstExecutorOutputObserved = false;
+const captureExecutorOutput = (stream, capture, chunk) => {
+  capture.push(chunk);
+  if (!firstExecutorOutputObserved) {
+    firstExecutorOutputObserved = true;
+    trace("CODEX_FIRST_EVENT", { stream, byteLength: Buffer.byteLength(chunk) });
+  }
+};
+child.stdout.on("data", (chunk) => captureExecutorOutput("stdout", stdoutCapture, chunk));
+child.stderr.on("data", (chunk) => captureExecutorOutput("stderr", stderrCapture, chunk));
 const terminateChild = (signal) => {
   try { process.kill(-child.pid, signal); } catch { try { child.kill(signal); } catch {} }
 };
@@ -250,6 +330,7 @@ const childExit = await new Promise((resolve, reject) => {
   child.once("error", reject);
   child.once("close", (code, signal) => resolve({ code, signal }));
 });
+trace("CODEX_TERMINAL", { exitCode: childExit.code, signal: childExit.signal, timedOut, canceled });
 clearTimeout(timer);
 if (forceKillTimer) clearTimeout(forceKillTimer);
 process.removeListener("SIGTERM", cancel);
@@ -261,6 +342,7 @@ const stdout = stdoutEvidence.tail;
 const stderr = stderrEvidence.tail;
 
 const file = inspectFile(config.executor.resultPath);
+trace("EXECUTOR_OUTPUT_INSPECTED", { state: file.state, byteLength: file.byteLength, file: fileObservation(config.executor.resultPath) });
 const jsonl = inspectJsonl(stdout, stdoutEvidence.byteLength);
 let structured = file.result;
 let resultSource = structured ? "OUTPUT_FILE" : "NONE";
@@ -288,6 +370,8 @@ if (!structured) structured = failedResult(decision);
 const accepted = !decision && structured.status === "COMPLETED";
 const resultProvenance = { source: resultSource, outputFile: { state: file.state, byteLength: file.byteLength }, jsonl: jsonl.provenance };
 const diagnosticsPath = config.diagnosticsPath ?? config.outputPath + ".diagnostics.json";
+const networkPolicy = observeNetworkPolicy();
+trace("DIAGNOSTICS_WRITE_STARTED", { path: diagnosticsPath, networkPolicyState: networkPolicy.state });
 atomicWrite(diagnosticsPath, JSON.stringify({
   attemptId: config.attemptId,
   manifestDigest: config.manifestDigest,
@@ -308,14 +392,18 @@ atomicWrite(diagnosticsPath, JSON.stringify({
   },
   resultProvenance,
   resultOutput: { state: file.state, byteLength: file.byteLength, digest: file.digest, tail: file.tail, validationIssues: file.validationIssues },
+  networkPolicy,
+  lifecycleTrace: lifecycleEvents,
   failure: decision ?? null,
 }));
+trace("DIAGNOSTICS_WRITTEN", { file: fileObservation(diagnosticsPath) });
 if (config.faultInjection?.crashAfterDiagnostics) throw new Error("Injected supervisor crash after executor diagnostics persistence.");
 
-const patch = execFileSync("git", ["diff", "--binary", "--full-index", config.sourceSha, "--"], { cwd: config.repositoryRoot, maxBuffer: 8388608 });
+const patch = repositoryGit(["diff", "--binary", "--full-index", config.sourceSha, "--"], { maxBuffer: 8388608 });
 const patchContent = patch.toString("base64");
-const changedFiles = execFileSync("git", ["diff", "--name-only", config.sourceSha, "--"], { cwd: config.repositoryRoot, encoding: "utf8" }).split("\n").map((item) => item.trim()).filter(Boolean).sort();
+const changedFiles = repositoryGit(["diff", "--name-only", config.sourceSha, "--"], { encoding: "utf8" }).split("\n").map((item) => item.trim()).filter(Boolean).sort();
 const finishedAt = Date.now();
+trace("RESULT_FINALIZATION_STARTED", { changedFileCount: changedFiles.length });
 const bundle = {
   schema: "factory-sandbox-result/v1",
   attemptId: config.attemptId,
@@ -339,12 +427,35 @@ const bundle = {
   commandResults: [{ commandClass: "EXECUTOR", exitCode, durationMs: finishedAt - startedAt, timedOut }],
   verificationInputs: { reportedCommands: structured.verificationCommands },
   artifacts: [],
-  events: [{ type: "SUPERVISOR_STARTED", occurredAt: startedAt }, { type: "EXECUTOR_FINISHED", occurredAt: finishedAt }, { type: "DIAGNOSTICS_WRITTEN", occurredAt: finishedAt }, { type: "RESULT_WRITTEN", occurredAt: finishedAt }],
+  events: lifecycleEvents.map((event) => ({ type: event.stage, occurredAt: event.occurredAt })),
   patch: { format: "GIT_BINARY_DIFF", encoding: "BASE64", byteLength: patch.length, digest: digest("factory-sandbox-patch/v1", patchContent), content: patchContent },
   executor: { exitCode, stdoutDigest: stdoutEvidence.digest, stderrDigest: stderrEvidence.digest, stdoutTail: redact(stdout).slice(-16000), stderrTail: redact(stderr).slice(-16000), resultOutput: { state: file.state, byteLength: file.byteLength, digest: file.digest, tail: file.tail, validationIssues: file.validationIssues } },
   usage: { providerCostUsd: null, inferenceCostUsd: null, inputTokens: jsonl.inputTokens, outputTokens: jsonl.outputTokens, observedAt: finishedAt, providerRuntimeMs: finishedAt - startedAt, enforcement: "OBSERVATION_ONLY" },
 };
 bundle.digest = digest("factory-sandbox-result/v1", bundle);
 atomicWrite(config.outputPath, JSON.stringify(bundle));
+trace("RESULT_WRITTEN", { status: bundle.status, file: fileObservation(config.outputPath) });
+trace("SUPERVISOR_TERMINAL", { exitCode: 0, signal: null });
+} catch (error) {
+  const fatal = {
+    name: String(error?.name ?? "Error"),
+    code: error?.code == null ? null : String(error.code),
+    message: redact(error?.message ?? error).slice(0, 4000),
+    stack: redact(error?.stack ?? "").slice(-16000),
+  };
+  trace("SUPERVISOR_TERMINAL", { exitCode: 1, signal: null, fatal: { name: fatal.name, code: fatal.code, message: fatal.message } });
+  try {
+    if (fileObservation(fatalDiagnosticsPath).state !== "PRESENT") {
+      atomicWrite(fatalDiagnosticsPath, JSON.stringify({
+        phase: "SUPERVISOR_FATAL",
+        fatal,
+        networkPolicy: observeNetworkPolicy(),
+        lifecycleTrace: lifecycleEvents,
+      }));
+    }
+  } catch {}
+  process.stderr.write(fatal.message + "\n");
+  process.exitCode = 1;
+}
 `.trim();
 }

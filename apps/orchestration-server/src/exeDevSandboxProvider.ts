@@ -27,6 +27,8 @@ const REMOTE_ROOT = "/var/lib/mission-control/attempt";
 const RESTRICTED_BOOTSTRAP_PATH = `${REMOTE_ROOT}/restricted-bootstrap.mjs`;
 const RESTRICTED_BOOTSTRAP_CONFIG_PATH = `${REMOTE_ROOT}/restricted-bootstrap.json`;
 const RESTRICTED_SECURITY_PROOF_PATH = `${REMOTE_ROOT}/security-proof.json`;
+const SUPERVISOR_LIFECYCLE_PATH = `${REMOTE_ROOT}/lifecycle.jsonl`;
+const SUPERVISOR_EXIT_PATH = `${REMOTE_ROOT}/supervisor-exit.json`;
 
 export interface ExeDevTransport {
   lobbyJson(command: string[]): Promise<any>;
@@ -122,6 +124,14 @@ export class ExeDevSandboxProvider implements SandboxProvider {
         throw new Error("Restricted sandbox environment exceeds Attempt-scoped inference authority.");
       }
     }
+    const requestedImage = request.environmentDescriptor.image;
+    const providerReportedImage = normalizedProviderImageDiagnostic(request.allocation.providerMetadata?.image);
+    if (request.security) {
+      const requestedDigest = requestedImage.match(/@(sha256:[a-f0-9]{64})$/i)?.[1]?.toLowerCase();
+      if (!requestedDigest || requestedDigest !== request.security.image.digest.toLowerCase()) {
+        throw new Error("Restricted sandbox start requires the exact digest-qualified image from its frozen security profile.");
+      }
+    }
     const config = {
       executionManifest: request.executionManifest,
       attemptId: request.attemptId,
@@ -135,6 +145,7 @@ export class ExeDevSandboxProvider implements SandboxProvider {
       repositoryRoot: `${REMOTE_ROOT}/repository`,
       outputPath: `${REMOTE_ROOT}/result.json`,
       diagnosticsPath: `${REMOTE_ROOT}/diagnostics.json`,
+      outputSchemaPath: request.executor.outputSchemaPath,
       executor: {
         command: request.executor.command,
         args: request.executor.args,
@@ -155,17 +166,15 @@ export class ExeDevSandboxProvider implements SandboxProvider {
       `git clone --quiet ${REMOTE_ROOT}/repository.bundle ${REMOTE_ROOT}/repository`,
       `git -C ${REMOTE_ROOT}/repository checkout --quiet ${request.sourceSha}`,
       `rm -f ${REMOTE_ROOT}/repository.bundle`,
-      `rm -f ${REMOTE_ROOT}/result.json ${REMOTE_ROOT}/result.json.tmp-* ${REMOTE_ROOT}/diagnostics.json ${REMOTE_ROOT}/diagnostics.json.tmp-* ${REMOTE_ROOT}/executor-result.json ${RESTRICTED_SECURITY_PROOF_PATH}`,
+      `rm -f ${REMOTE_ROOT}/result.json ${REMOTE_ROOT}/result.json.tmp-* ${REMOTE_ROOT}/diagnostics.json ${REMOTE_ROOT}/diagnostics.json.tmp-* ${REMOTE_ROOT}/executor-result.json ${RESTRICTED_SECURITY_PROOF_PATH} ${SUPERVISOR_LIFECYCLE_PATH} ${SUPERVISOR_EXIT_PATH}`,
     ].join("\n"));
     let securityProof: SandboxSecurityProof | undefined;
     if (request.security) {
-      const observedProviderImage = String(request.allocation.providerMetadata?.image ?? "");
-      if (!observedProviderImage) throw new Error("exe.dev did not report the allocated image identity.");
       await this.upload(request.allocation.resourceName, RESTRICTED_BOOTSTRAP_PATH, Buffer.from(standaloneRestrictedSandboxBootstrapSource(), "utf8"));
       await this.upload(request.allocation.resourceName, RESTRICTED_BOOTSTRAP_CONFIG_PATH, Buffer.from(JSON.stringify({
         security: request.security,
-        expectedImage: request.environmentDescriptor.image,
-        observedProviderImage,
+        requestedImage,
+        providerReportedImage,
         remoteRoot: REMOTE_ROOT,
         repositoryRoot: `${REMOTE_ROOT}/repository`,
         executorResultPath: request.executor.resultPath,
@@ -174,15 +183,15 @@ export class ExeDevSandboxProvider implements SandboxProvider {
       }), "utf8"));
       const proofOutput = await this.transport.vmText(
         request.allocation.resourceName,
-        `node ${RESTRICTED_BOOTSTRAP_PATH} ${RESTRICTED_BOOTSTRAP_CONFIG_PATH}`,
+        `chmod 0444 ${RESTRICTED_BOOTSTRAP_PATH} && node ${RESTRICTED_BOOTSTRAP_PATH} ${RESTRICTED_BOOTSTRAP_CONFIG_PATH}`,
       );
-      securityProof = assertRestrictedSecurityProof(JSON.parse(proofOutput), request.security);
+      securityProof = assertRestrictedSecurityProof(JSON.parse(proofOutput), request.security, requestedImage, providerReportedImage);
     }
     await this.upload(request.allocation.resourceName, `${REMOTE_ROOT}/config.json`, Buffer.from(JSON.stringify(config), "utf8"));
     await this.transport.vmText(request.allocation.resourceName, [
       "set -eu",
       "command -v setsid >/dev/null",
-      `nohup setsid node ${REMOTE_ROOT}/supervisor.mjs ${REMOTE_ROOT}/config.json >${REMOTE_ROOT}/supervisor.log 2>&1 &`,
+      `nohup setsid sh -c 'node "$1" "$2"; status=$?; printf "{\\"exitStatus\\":%s}\\n" "$status" >"$3"; exit "$status"' sh ${REMOTE_ROOT}/supervisor.mjs ${REMOTE_ROOT}/config.json ${SUPERVISOR_EXIT_PATH} >${REMOTE_ROOT}/supervisor.log 2>&1 &`,
       `printf '%s' \"$!\" >${REMOTE_ROOT}/pid`,
       `cat ${REMOTE_ROOT}/pid`,
     ].join("\n"));
@@ -209,27 +218,37 @@ export class ExeDevSandboxProvider implements SandboxProvider {
     const encoded = await this.transport.vmText(
       allocation.resourceName,
       [
-        `if test -f ${REMOTE_ROOT}/pid && kill -0 "$(cat ${REMOTE_ROOT}/pid)" 2>/dev/null; then printf '1\\n'; else printf '0\\n'; fi`,
-        `if test -f ${REMOTE_ROOT}/diagnostics.json; then`,
-        `head -c 65536 ${REMOTE_ROOT}/diagnostics.json | base64 | tr -d '\\n'`,
-        `elif test -f ${REMOTE_ROOT}/supervisor.log; then`,
-        `tail -c 16000 ${REMOTE_ROOT}/supervisor.log | base64 | tr -d '\\n'`,
-        "fi",
+        `if test -f ${REMOTE_ROOT}/pid && kill -0 "$(cat ${REMOTE_ROOT}/pid)" 2>/dev/null; then printf 'PROCESS\\t1\\n'; else printf 'PROCESS\\t0\\n'; fi`,
+        `printf 'DIAGNOSTICS\\t'; if test -f ${REMOTE_ROOT}/diagnostics.json; then head -c 65536 ${REMOTE_ROOT}/diagnostics.json | base64 | tr -d '\\n'; fi; printf '\\n'`,
+        `printf 'LIFECYCLE\\t'; if test -f ${SUPERVISOR_LIFECYCLE_PATH}; then tail -c 65536 ${SUPERVISOR_LIFECYCLE_PATH} | base64 | tr -d '\\n'; fi; printf '\\n'`,
+        `printf 'EXIT\\t'; if test -f ${SUPERVISOR_EXIT_PATH}; then head -c 4096 ${SUPERVISOR_EXIT_PATH} | base64 | tr -d '\\n'; fi; printf '\\n'`,
+        `printf 'LOG\\t'; if test -f ${REMOTE_ROOT}/supervisor.log; then tail -c 16000 ${REMOTE_ROOT}/supervisor.log | base64 | tr -d '\\n'; fi; printf '\\n'`,
       ].join("\n"),
     );
     const trimmed = encoded.trim();
     if (!trimmed) return null;
-    const lines = trimmed.split(/\r?\n/);
-    const hasProcessState = lines[0] === "0" || lines[0] === "1";
-    const supervisorProcessRunning = hasProcessState ? lines.shift() === "1" : null;
-    const text = Buffer.from(lines.join(""), "base64").toString("utf8");
+    const fields = Object.fromEntries(trimmed.split(/\r?\n/).map((line) => {
+      const separator = line.indexOf("\t");
+      return separator < 0 ? [line, ""] : [line.slice(0, separator), line.slice(separator + 1)];
+    }));
+    const supervisorProcessRunning = fields.PROCESS === "1" ? true : fields.PROCESS === "0" ? false : null;
+    const decode = (value: string | undefined) => value ? Buffer.from(value, "base64").toString("utf8") : "";
+    const diagnosticsText = decode(fields.DIAGNOSTICS);
+    const lifecycleText = decode(fields.LIFECYCLE);
+    const exitText = decode(fields.EXIT);
+    const logText = decode(fields.LOG);
+    const lifecycleTrace = lifecycleText.split(/\r?\n/).filter(Boolean).map((line) => {
+      try { return JSON.parse(line); } catch { return { stage: "TRACE_PARSE_ERROR" }; }
+    });
+    let supervisorExit: Record<string, unknown> | null = null;
+    try { supervisorExit = exitText ? JSON.parse(exitText) : null; } catch { supervisorExit = { parseError: true }; }
     try {
-      const value = JSON.parse(text);
+      const value = JSON.parse(diagnosticsText);
       return value && typeof value === "object" && !Array.isArray(value)
-        ? { ...value as Record<string, unknown>, supervisorProcessRunning }
-        : { supervisorLogTail: redactSandboxText(text), supervisorProcessRunning };
+        ? { ...value as Record<string, unknown>, supervisorProcessRunning, lifecycleTrace, supervisorExit, supervisorLogTail: redactSandboxText(logText) }
+        : { supervisorLogTail: redactSandboxText(logText || diagnosticsText), supervisorProcessRunning, lifecycleTrace, supervisorExit };
     } catch {
-      return { supervisorLogTail: redactSandboxText(text), supervisorProcessRunning };
+      return { supervisorLogTail: redactSandboxText(logText || diagnosticsText), supervisorProcessRunning, lifecycleTrace, supervisorExit };
     }
   }
 
@@ -241,9 +260,11 @@ export class ExeDevSandboxProvider implements SandboxProvider {
         `if test -f ${REMOTE_ROOT}/pid; then`,
         `pid="$(cat ${REMOTE_ROOT}/pid)"`,
         'kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true',
-        "for attempt in $(seq 1 50); do",
+        "attempt=0",
+        'while test "$attempt" -lt 50; do',
         'if ! kill -0 -- "-$pid" 2>/dev/null; then exit 0; fi',
         "sleep 0.1",
+        'attempt=$((attempt + 1))',
         "done",
         'kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true',
         "fi",
@@ -292,11 +313,17 @@ export class ExeDevSandboxProvider implements SandboxProvider {
 function assertRestrictedSecurityProof(
   value: unknown,
   expected: NonNullable<SandboxProfileSnapshot["security"]>,
+  requestedImage: string,
+  providerReportedImage: string | null,
 ): SandboxSecurityProof {
   const proof = value as SandboxSecurityProof;
   if (!proof || proof.schema !== "factory-sandbox-security-proof/v1"
     || proof.profile !== expected.profile
     || !Number.isFinite(proof.observedAt)
+    || proof.image?.requestedReference !== requestedImage
+    || proof.image?.requestedDigest !== expected.image.digest
+    || proof.image?.providerReportedReference !== providerReportedImage
+    || proof.image?.providerReferenceMatched !== (providerReportedImage === null ? null : providerReportedImage === requestedImage)
     || proof.toolchain?.nodeVersion !== expected.toolchain.nodeVersion
     || proof.toolchain?.codexVersion !== expected.toolchain.codexVersion
     || proof.toolchain?.codexBinarySha256 !== expected.toolchain.codexBinarySha256
@@ -430,6 +457,11 @@ function sanitizedProviderMetadata(record: any) {
     memoryMb: numberOrUndefined(record?.memory_mb),
     diskGb: numberOrUndefined(record?.disk_gb),
   };
+}
+
+function normalizedProviderImageDiagnostic(value: unknown): string | null {
+  const normalized = String(value ?? "").trim();
+  return normalized && normalized.toLowerCase() !== "unknown" ? normalized : null;
 }
 
 function parseTime(value: unknown) {

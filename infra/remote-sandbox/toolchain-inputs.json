@@ -24,7 +24,7 @@
     "version": "1.37.0",
     "source": "https://busybox.net/downloads/busybox-1.37.0.tar.bz2",
     "sourceSha256": "sha256:3311dff32e746499f4df0d5df04d7eb396382d7e108bb9250e7b519b837043a4",
-    "configSha256": "sha256:dda67cd9598360c6de2863d1e4b78e72d0850323bdc0f1db306bd209b6589744",
+    "configSha256": "sha256:e227e219c7de957d7dfbc21f5b7170790e88dd80d8ac587fba75a61f5c4e67c9",
     "patches": [
       {
         "cve": "CVE-2026-38754",

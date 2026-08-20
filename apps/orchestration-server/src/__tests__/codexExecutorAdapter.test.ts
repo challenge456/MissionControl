@@ -168,6 +168,10 @@ describe("CodexV1ExecutorAdapter", () => {
       timeoutMs: request.timeoutMs,
     });
     expect(invocation.args).toEqual(expect.arrayContaining([
+      "-a",
+      "never",
+      "--sandbox",
+      "danger-full-access",
       "-C",
       "/var/lib/mission-control/attempt/repository",
       "-o",
@@ -175,6 +179,7 @@ describe("CodexV1ExecutorAdapter", () => {
       "--output-schema",
       "/var/lib/mission-control/attempt/factory-result.schema.json",
     ]));
+    expect(invocation.args).not.toContain("--dangerously-bypass-approvals-and-sandbox");
     expect(invocation.args.flatMap((argument, index, args) => argument === "-c" ? [args[index + 1]] : []))
       .toEqual([
         'model_provider="mission-control-openrouter"',

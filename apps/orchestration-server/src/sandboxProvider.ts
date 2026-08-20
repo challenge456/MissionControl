@@ -195,6 +195,12 @@ export interface SandboxSecurityProof {
   schema: "factory-sandbox-security-proof/v1";
   profile: typeof RESTRICTED_CANDIDATE_PROFILE;
   observedAt: number;
+  image: {
+    requestedReference: string;
+    requestedDigest: string;
+    providerReportedReference: string | null;
+    providerReferenceMatched: boolean | null;
+  };
   toolchain: {
     nodeVersion: string;
     codexVersion: string;
