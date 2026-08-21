@@ -1,0 +1,84 @@
+{
+  "schema": "mission-control-openrouter-revocation-timing/v1",
+  "startedAt": "2026-08-20T06:29:16.686Z",
+  "endpoint": "GET https://openrouter.ai/api/v1/key",
+  "offsetsMs": [
+    0,
+    1000,
+    5000,
+    15000,
+    30000,
+    60000
+  ],
+  "probeSemantics": "200 means the deleted Attempt key still authenticates; 401/403 proves rejection; any other status is inconclusive.",
+  "managementCredentialExposedToWorkload": false,
+  "probes": [
+    {
+      "requestedAt": "2026-08-20T06:29:19.659Z",
+      "elapsedMs": 0,
+      "status": 200,
+      "authenticated": true,
+      "rejected": false,
+      "conclusive": true
+    },
+    {
+      "requestedAt": "2026-08-20T06:29:20.661Z",
+      "elapsedMs": 1002,
+      "status": 200,
+      "authenticated": true,
+      "rejected": false,
+      "conclusive": true
+    },
+    {
+      "requestedAt": "2026-08-20T06:29:24.661Z",
+      "elapsedMs": 5002,
+      "status": 200,
+      "authenticated": true,
+      "rejected": false,
+      "conclusive": true
+    },
+    {
+      "requestedAt": "2026-08-20T06:29:34.661Z",
+      "elapsedMs": 15002,
+      "status": 200,
+      "authenticated": true,
+      "rejected": false,
+      "conclusive": true
+    },
+    {
+      "requestedAt": "2026-08-20T06:29:49.661Z",
+      "elapsedMs": 30002,
+      "status": 401,
+      "authenticated": false,
+      "rejected": true,
+      "conclusive": true
+    }
+  ],
+  "issuedCredential": {
+    "grantKey": "mc-attempt-c1f3d445f7a970dbc926",
+    "provider": "OPENROUTER",
+    "externalCredentialId": "13207f34379d23a7c44b40c4fa45efb13180b3ff950484437c0d86996d2c1301",
+    "environmentVariable": "OPENAI_API_KEY",
+    "issuedAt": 1787207357302,
+    "expiresAt": 1787207656687,
+    "maxCostUsd": 0.01,
+    "secretFingerprint": "sha256:13207f34379d23a7c44b40c4fa45efb13180b3ff950484437c0d86996d2c1301"
+  },
+  "preDeleteProbe": {
+    "requestedAt": "2026-08-20T06:29:17.302Z",
+    "elapsedMs": -1,
+    "status": 200,
+    "authenticated": true,
+    "rejected": false,
+    "conclusive": true
+  },
+  "deletionReceipt": {
+    "grantKey": "mc-attempt-c1f3d445f7a970dbc926",
+    "externalCredentialId": "13207f34379d23a7c44b40c4fa45efb13180b3ff950484437c0d86996d2c1301",
+    "requestedAt": 1787207357481,
+    "revokedAt": 1787207359658,
+    "revoked": true
+  },
+  "rejectedWithinBound": true,
+  "completedAt": "2026-08-20T06:29:49.749Z"
+}

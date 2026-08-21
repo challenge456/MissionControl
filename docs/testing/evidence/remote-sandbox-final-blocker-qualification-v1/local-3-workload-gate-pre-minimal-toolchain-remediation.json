@@ -1,0 +1,2549 @@
+{
+  "schema": "remote-sandbox-hardening-live-qualification/v1",
+  "target": "LOCAL_EXACT_IMAGE",
+  "decision": "HOLD",
+  "startedAt": "2026-08-20T06:41:02.279Z",
+  "completedAt": "2026-08-20T06:53:36.926Z",
+  "qualificationRunId": "b9431c8886a0",
+  "baseline": {
+    "frozenOriginMainSha": "11a51cac1e446488cddf34781cc9663b922c7684",
+    "branchHeadBeforeQualification": "11a51cac1e446488cddf34781cc9663b922c7684",
+    "mergeBase": "11a51cac1e446488cddf34781cc9663b922c7684",
+    "providerReadiness": {
+      "checkedAt": "2026-08-20T06:41:02.277Z",
+      "authenticated": true,
+      "vmCount": 0,
+      "maxVms": 1,
+      "liveAllocationAllowed": true,
+      "automaticIntegrationCount": 0
+    },
+    "image": "mc-remote-final-blocker@sha256:88e1dda3be0324fcb2c156000491a10a0003315e4ca4f46c8a3d9bb2e3af82b3",
+    "providerCapabilityConclusion": "provider-enforced egress unavailable"
+  },
+  "constraints": {
+    "exactWorkloads": [
+      "bug-fix",
+      "security-policy",
+      "data-migration"
+    ],
+    "maximumConcurrentVms": 1,
+    "maximumAttemptsPerWorkload": 1,
+    "retriesAllowed": false,
+    "qualificationOnly": true,
+    "guardedAutoEnabled": false,
+    "publicationAuthority": "CONTROL_PLANE_ONLY",
+    "acceptanceAuthority": "workOrders.accept",
+    "providerEgressBoundary": "provider-enforced egress unavailable"
+  },
+  "registryProvenance": {
+    "schema": "mission-control-remote-image-local-provenance/v1",
+    "sourceSha": "11a51cac1e446488cddf34781cc9663b922c7684",
+    "image": "mc-remote-final-blocker@sha256:88e1dda3be0324fcb2c156000491a10a0003315e4ca4f46c8a3d9bb2e3af82b3",
+    "digest": "sha256:88e1dda3be0324fcb2c156000491a10a0003315e4ca4f46c8a3d9bb2e3af82b3",
+    "localImageId": "sha256:88e1dda3be0324fcb2c156000491a10a0003315e4ca4f46c8a3d9bb2e3af82b3",
+    "publicPull": {
+      "verified": false
+    },
+    "attestation": {
+      "verified": false,
+      "reference": "local-exact-image-qualification"
+    },
+    "sbom": {
+      "format": "SPDX-2.3",
+      "sha256": "sha256:539e77d1ec66d23dc7d2c040a9da5a4ac9ff489ac90bae00631f530070610e3d"
+    },
+    "vulnerabilityScan": {
+      "grypeVersion": "0.117.0",
+      "critical": 0,
+      "high": 0,
+      "suppressionCount": 0,
+      "artifactSha256": "sha256:fe973e78b93b1ae1ce87a04ee146f41ea2f40f8a5f536cfb652a9e9d8ced0d34"
+    },
+    "toolchain": {
+      "nodeVersion": "v26.7.0",
+      "codexVersion": "codex-cli 0.146.0",
+      "codexBinarySha256": "sha256:2e863156ed35ecc5253b1e2f907a9143077b9f7cb51942070c61996471ff6e04",
+      "gitVersion": "git version 2.55.0",
+      "gitBinarySha256": "sha256:7127059b4ebea64f4a50fc3c64601b69a9694196f3ee0396efec6378a0b45078",
+      "busyboxVersion": "BusyBox v1.37.0",
+      "busyboxBinarySha256": "sha256:61e4d179a46e1024327f5080c02fe01108752a2c9e6ea06d4968575d1bec28eb",
+      "toolchainInputsSha256": "sha256:c98a7def4211fbc4b68b2588212eb461d7ad924aaa415cc4c3eb296b62648923"
+    }
+  },
+  "profile": {
+    "schema": "factory-sandbox-profile/v1",
+    "profileKey": "exe-remote-sandbox-restricted-candidate-n1",
+    "version": 1,
+    "provider": "EXE_DEV",
+    "providerProfile": "individual-small",
+    "providerProfileVersion": "remote-sandbox-hardening-v1",
+    "machine": {
+      "image": "mc-remote-final-blocker@sha256:88e1dda3be0324fcb2c156000491a10a0003315e4ca4f46c8a3d9bb2e3af82b3",
+      "cpu": 2,
+      "memoryMb": 4096,
+      "diskGb": 20
+    },
+    "supervisor": {
+      "version": "mission-control-supervisor/v1",
+      "transport": "SSH"
+    },
+    "runtime": {
+      "maxRuntimeMs": 330000,
+      "resultPollIntervalMs": 500,
+      "resultRetentionMs": 86400000
+    },
+    "network": {
+      "egress": "RESTRICTED_ALLOWLIST",
+      "egressAllowlist": [
+        "openrouter.ai:443"
+      ],
+      "publicIngress": false,
+      "exposedPorts": []
+    },
+    "credentials": {
+      "inference": "ATTEMPT_SCOPED_OPENROUTER",
+      "repositoryAccess": "CONTROL_PLANE_SNAPSHOT",
+      "githubAuthority": "NONE",
+      "providerAuthority": "NONE"
+    },
+    "spend": {
+      "maxUsd": 0.05,
+      "enforcement": "PROVIDER_KEY_LIMIT"
+    },
+    "teardown": {
+      "terminateOnEveryTerminalState": true,
+      "verifyResourceAbsent": true,
+      "supportsResume": false
+    },
+    "preview": {
+      "mode": "DISABLED"
+    },
+    "readiness": {
+      "state": "DEGRADED",
+      "checkedAt": 1787208062278,
+      "reason": "Guest-kernel nftables enforcement is proven; provider-enforced egress unavailable.",
+      "egressEnforcementProven": true,
+      "liveCertified": true,
+      "evidenceReference": "docs/testing/evidence/remote-sandbox-final-blocker-qualification-v1/local-3-workload-gate.json"
+    },
+    "security": {
+      "schema": "factory-sandbox-security/v1",
+      "profile": "remote-sandbox/exe-dev/restricted-candidate-v1",
+      "qualificationOnly": true,
+      "image": {
+        "digest": "sha256:88e1dda3be0324fcb2c156000491a10a0003315e4ca4f46c8a3d9bb2e3af82b3",
+        "provenanceReference": "local-exact-image-qualification",
+        "sbomDigest": "sha256:539e77d1ec66d23dc7d2c040a9da5a4ac9ff489ac90bae00631f530070610e3d"
+      },
+      "toolchain": {
+        "nodeVersion": "v26.7.0",
+        "codexVersion": "codex-cli 0.146.0",
+        "codexBinarySha256": "sha256:2e863156ed35ecc5253b1e2f907a9143077b9f7cb51942070c61996471ff6e04",
+        "gitVersion": "git version 2.55.0",
+        "gitBinarySha256": "sha256:7127059b4ebea64f4a50fc3c64601b69a9694196f3ee0396efec6378a0b45078",
+        "busyboxVersion": "BusyBox v1.37.0",
+        "busyboxBinarySha256": "sha256:61e4d179a46e1024327f5080c02fe01108752a2c9e6ea06d4968575d1bec28eb",
+        "toolchainInputsSha256": "sha256:c98a7def4211fbc4b68b2588212eb461d7ad924aaa415cc4c3eb296b62648923"
+      },
+      "execution": {
+        "user": "mc-attempt",
+        "uid": 10001,
+        "gid": 10001,
+        "homePath": "/var/lib/mission-control/attempt/home",
+        "temporaryPath": "/var/lib/mission-control/attempt/tmp",
+        "noNewPrivileges": true,
+        "capabilityMode": "DROP_ALL"
+      },
+      "network": {
+        "enforcement": "GUEST_NFTABLES",
+        "providerEnforced": false,
+        "allowedHttpsHosts": [
+          "openrouter.ai"
+        ],
+        "dnsMode": "CONTROL_PLANE_RESOLVE_ETC_HOSTS",
+        "denyPrivateNetworks": true,
+        "denyLinkLocal": true,
+        "denyMetadata": true,
+        "denyUnexpectedDns": true
+      }
+    },
+    "digest": "sha256:a72aa0ed43bfb9c6323a2575205de4195bc461514d049aa98386a540b0d2204c",
+    "validation": {
+      "valid": true,
+      "dispatchable": true,
+      "readiness": "DEGRADED",
+      "errors": [],
+      "warnings": [
+        "exe.dev exposes no provider-level egress control; guest nftables enforcement is qualification-only defense in depth."
+      ],
+      "profileDigest": "sha256:a72aa0ed43bfb9c6323a2575205de4195bc461514d049aa98386a540b0d2204c"
+    }
+  },
+  "schedule": [
+    {
+      "executionId": "hardening-bug-fix-1",
+      "workloadKey": "bug-fix"
+    },
+    {
+      "executionId": "hardening-security-policy-1",
+      "workloadKey": "security-policy"
+    },
+    {
+      "executionId": "hardening-data-migration-1",
+      "workloadKey": "data-migration"
+    }
+  ],
+  "executions": [
+    {
+      "executionId": "hardening-bug-fix-1",
+      "workloadKey": "bug-fix",
+      "workloadClass": "BUG_FIX",
+      "workloadTitle": "Correct integer-cent listing fee behavior",
+      "risk": "LOW",
+      "attemptId": "attempt-b9431c8886a0-hardening-bug-fix-1",
+      "workflowRunId": "workflow-b9431c8886a0-hardening-bug-fix-1",
+      "leaseId": "lease-b9431c8886a0-hardening-bug-fix-1",
+      "attemptNumber": 1,
+      "retries": 0,
+      "sourceSha": "013d0be0851d2b7cc2f38835f7300e698db5087c",
+      "manifestDigest": "sha256:c9fbb28aaa5dcd4d537ab1d6d1002deae7ead5a3dbd1d1c5e9bdabd990004229",
+      "manifest": {
+        "version": "factory-execution-manifest/v1",
+        "causation": {
+          "missionId": "mission-b9431c8886a0-hardening-bug-fix-1",
+          "missionPlanId": "plan-b9431c8886a0-hardening-bug-fix-1",
+          "workOrderId": "work-order-b9431c8886a0-hardening-bug-fix-1",
+          "workOrderRevisionNumber": 1,
+          "workflowRunId": "workflow-b9431c8886a0-hardening-bug-fix-1",
+          "attemptId": "attempt-b9431c8886a0-hardening-bug-fix-1"
+        },
+        "factory": {
+          "definitionId": "factory-remote-sandbox-hardening",
+          "definitionVersionId": "factory-remote-sandbox-hardening-v1",
+          "version": 1,
+          "configurationDigest": "sha256:409d50666d74538a941428a021b53b469b674051480593393a0c63e6b0854e3b"
+        },
+        "repository": {
+          "repository": "sellerfi-hardening/bug-fix",
+          "baseSha": "013d0be0851d2b7cc2f38835f7300e698db5087c",
+          "allowedPaths": [
+            "src/**"
+          ],
+          "excludedPaths": [
+            "tests/**",
+            "package.json",
+            ".git/**"
+          ]
+        },
+        "intent": {
+          "title": "Correct integer-cent listing fee behavior",
+          "acceptanceCriterionIds": [
+            "BUG-001",
+            "BUG-002"
+          ]
+        },
+        "harness": {
+          "adapter": "codex",
+          "version": "v1",
+          "harnessId": "codex-cli",
+          "harnessVersion": "0.146.0",
+          "provider": "openrouter",
+          "model": "openai/gpt-5.1-codex-mini",
+          "executionBackend": "remote-sandbox",
+          "isolation": "WORKSPACE_WRITE",
+          "pullRequestAuthority": "CONTROL_PLANE_ONLY",
+          "timeoutMs": 300000
+        },
+        "sandbox": {
+          "profileDigest": "sha256:a72aa0ed43bfb9c6323a2575205de4195bc461514d049aa98386a540b0d2204c",
+          "supervisorVersion": "mission-control-supervisor/v1",
+          "credentialGrants": [
+            {
+              "kind": "INFERENCE",
+              "secretValueIncluded": false,
+              "githubAuthority": "NONE",
+              "providerAuthority": "NONE"
+            }
+          ]
+        },
+        "retryPolicy": {
+          "schema": "factory-remote-retry-policy/v1",
+          "maxAttempts": 1,
+          "maxTotalWallClockMs": 330000,
+          "maxModelSpendUsd": 0.05,
+          "maxProviderResources": 1,
+          "retryableFailureClasses": []
+        }
+      },
+      "resourceName": "mc-attempt-122eb727fa22d7ee",
+      "invocation": {
+        "command": "codex",
+        "harnessVersion": "0.146.0",
+        "args": [
+          "-a",
+          "never",
+          "-c",
+          "model_provider=\"mission-control-openrouter\"",
+          "-c",
+          "model_providers.mission-control-openrouter.name=\"OpenRouter\"",
+          "-c",
+          "model_providers.mission-control-openrouter.base_url=\"https://openrouter.ai/api/v1\"",
+          "-c",
+          "model_providers.mission-control-openrouter.env_key=\"OPENAI_API_KEY\"",
+          "-c",
+          "model_providers.mission-control-openrouter.wire_api=\"responses\"",
+          "-c",
+          "model_providers.mission-control-openrouter.supports_websockets=false",
+          "exec",
+          "--json",
+          "--ephemeral",
+          "--ignore-user-config",
+          "--ignore-rules",
+          "--sandbox",
+          "danger-full-access",
+          "--color",
+          "never",
+          "-C",
+          "/var/lib/mission-control/attempt/repository",
+          "-o",
+          "/var/lib/mission-control/attempt/executor-result.json",
+          "--output-schema",
+          "/var/lib/mission-control/attempt/factory-result.schema.json",
+          "-m",
+          "openai/gpt-5.1-codex-mini",
+          "Fix the listing fee defect in src/listingFee.mjs. The fee is five percent of non-negative integer cents, rounded to the nearest cent. Preserve strict input validation. Do not modify tests or package.json. Run node --test.\n\nThis is the only Attempt. Do not assume artifacts or verification from another Attempt.\n\nReturn exactly one JSON object and no prose. Use the literal string factory-result/v1 for schema. Use exactly one uppercase status: COMPLETED, BLOCKED, or FAILED. completedAcceptanceCriterionIds, incompleteAcceptanceCriterionIds, unknownAcceptanceCriterionIds, verificationCommands, and knownRisks must always be JSON arrays of strings, including when empty. summary and nextAction must be JSON strings.\n\nWhen status is COMPLETED, every listed acceptance criterion ID must appear exactly once in completedAcceptanceCriterionIds, and incompleteAcceptanceCriterionIds and unknownAcceptanceCriterionIds must both be empty.\n\n{\"schema\":\"factory-result/v1\",\"status\":\"COMPLETED\",\"summary\":\"Implemented and tested the bounded change.\",\"completedAcceptanceCriterionIds\":[\"criterion-id\"],\"incompleteAcceptanceCriterionIds\":[],\"unknownAcceptanceCriterionIds\":[],\"verificationCommands\":[\"node --test\"],\"knownRisks\":[],\"nextAction\":\"Review the exact candidate.\"}\n\nUse only these acceptance criterion IDs: BUG-001, BUG-002.\n\nRepository mutation is limited to these approved repository-relative boundaries:\n- src/**\nDenied repository-relative boundaries:\n- tests/**\n- package.json\n- .git/**\nDo not expose credentials in output, artifacts, or logs."
+        ],
+        "outputSchemaPath": "/var/lib/mission-control/attempt/factory-result.schema.json",
+        "environmentKeys": [
+          "OPENAI_API_KEY",
+          "OPENAI_BASE_URL"
+        ],
+        "packageManagerUsed": false
+      },
+      "inventoryBefore": {
+        "checkedAt": "2026-08-20T06:41:02.400Z",
+        "authenticated": true,
+        "vmCount": 0,
+        "maxVms": 1,
+        "liveAllocationAllowed": true,
+        "automaticIntegrationCount": 0
+      },
+      "inventoryAfter": {
+        "checkedAt": "2026-08-20T06:44:49.527Z",
+        "authenticated": true,
+        "vmCount": 0,
+        "maxVms": 1,
+        "liveAllocationAllowed": true,
+        "automaticIntegrationCount": 0
+      },
+      "lifecycleEvents": [
+        {
+          "type": "SANDBOX_REQUESTED",
+          "occurredAt": 1787208062418,
+          "resourceName": "mc-attempt-122eb727fa22d7ee",
+          "attemptId": "attempt-b9431c8886a0-hardening-bug-fix-1",
+          "metadata": {
+            "provider": "EXE_DEV",
+            "profileDigest": "sha256:a72aa0ed43bfb9c6323a2575205de4195bc461514d049aa98386a540b0d2204c",
+            "readiness": "DEGRADED"
+          }
+        },
+        {
+          "type": "SANDBOX_ALLOCATED",
+          "occurredAt": 1787208062521,
+          "resourceName": "mc-attempt-122eb727fa22d7ee",
+          "attemptId": "attempt-b9431c8886a0-hardening-bug-fix-1",
+          "metadata": {
+            "providerResourceId": "7fb453f5cb359b264f2e272051f8fd11699c81b77efc4e4001ab2d5a44c2408a"
+          }
+        },
+        {
+          "type": "SANDBOX_STARTED",
+          "occurredAt": 1787208071405,
+          "resourceName": "mc-attempt-122eb727fa22d7ee",
+          "attemptId": "attempt-b9431c8886a0-hardening-bug-fix-1",
+          "metadata": {
+            "processId": "7fb453f5cb359b264f2e272051f8fd11699c81b77efc4e4001ab2d5a44c2408a:supervisor",
+            "securityProof": {
+              "schema": "factory-sandbox-security-proof/v1",
+              "profile": "remote-sandbox/exe-dev/restricted-candidate-v1",
+              "observedAt": 1787208071252,
+              "image": {
+                "requestedReference": "mc-remote-final-blocker@sha256:88e1dda3be0324fcb2c156000491a10a0003315e4ca4f46c8a3d9bb2e3af82b3",
+                "requestedDigest": "sha256:88e1dda3be0324fcb2c156000491a10a0003315e4ca4f46c8a3d9bb2e3af82b3",
+                "providerReportedReference": "mc-remote-final-blocker@sha256:88e1dda3be0324fcb2c156000491a10a0003315e4ca4f46c8a3d9bb2e3af82b3",
+                "providerReferenceMatched": true
+              },
+              "toolchain": {
+                "nodeVersion": "v26.7.0",
+                "codexVersion": "codex-cli 0.146.0",
+                "codexBinarySha256": "sha256:2e863156ed35ecc5253b1e2f907a9143077b9f7cb51942070c61996471ff6e04",
+                "gitVersion": "git version 2.55.0",
+                "gitBinarySha256": "sha256:7127059b4ebea64f4a50fc3c64601b69a9694196f3ee0396efec6378a0b45078",
+                "busyboxVersion": "BusyBox v1.37.0",
+                "busyboxBinarySha256": "sha256:61e4d179a46e1024327f5080c02fe01108752a2c9e6ea06d4968575d1bec28eb",
+                "toolchainInputsSha256": "sha256:c98a7def4211fbc4b68b2588212eb461d7ad924aaa415cc4c3eb296b62648923",
+                "executionUid": 10001,
+                "executionGid": 10001
+              },
+              "filesystem": {
+                "repositoryOwnerUid": 10001,
+                "repositoryOwnerGid": 10001,
+                "protectedPathsReadOnly": true,
+                "packageCachesAbsent": true
+              },
+              "privilege": {
+                "noNewPrivileges": true,
+                "capabilities": {
+                  "inheritable": "0000000000000000",
+                  "permitted": "0000000000000000",
+                  "effective": "0000000000000000",
+                  "bounding": "0000000000000000",
+                  "ambient": "0000000000000000"
+                },
+                "firewallMutationBlocked": true,
+                "packageManagerCommandsAbsent": [
+                  "apk",
+                  "apt",
+                  "apt-get",
+                  "dpkg",
+                  "npm",
+                  "npx",
+                  "corepack",
+                  "yarn",
+                  "yarnpkg",
+                  "pnpm",
+                  "pnpx"
+                ]
+              },
+              "network": {
+                "enforcement": "GUEST_NFTABLES",
+                "providerEnforced": false,
+                "policyDigest": "sha256:9786bfac28a3a6ab4803c6aea27172a97b38e43ae2290945226a4ae7174530e0",
+                "allowedHttpsHosts": [
+                  "openrouter.ai"
+                ],
+                "resolvedAddresses": [
+                  "104.18.2.115",
+                  "104.18.3.115",
+                  "2606:4700::6812:273",
+                  "2606:4700::6812:373"
+                ],
+                "controlExternalEndpointReachable": true,
+                "approvedEndpointReachable": true,
+                "arbitraryExternalBlocked": true,
+                "privateNetworkBlocked": true,
+                "linkLocalBlocked": true,
+                "metadataBlocked": true,
+                "unexpectedDnsBlocked": true
+              }
+            }
+          }
+        },
+        {
+          "type": "SANDBOX_RESULT_RECEIVED",
+          "occurredAt": 1787208287512,
+          "resourceName": "mc-attempt-122eb727fa22d7ee",
+          "attemptId": "attempt-b9431c8886a0-hardening-bug-fix-1",
+          "metadata": {
+            "resultDigest": "sha256:d50209df77d45fd9e05752941c33a4e0bf4a9731d1099392e1cfd2f364de6000",
+            "status": "COMPLETED",
+            "providerCostUsd": null,
+            "inferenceCostUsd": null
+          }
+        },
+        {
+          "type": "SANDBOX_CREDENTIAL_REVOKED",
+          "occurredAt": 1787208289352,
+          "resourceName": "mc-attempt-122eb727fa22d7ee",
+          "attemptId": "attempt-b9431c8886a0-hardening-bug-fix-1",
+          "metadata": {
+            "grantKey": "mc-attempt-1c0ea958ecd35f4ed3d8",
+            "externalCredentialId": "16aa937a111c4c8999ad75ffd73185631c253617090d29dc3d4c4e4510394b7a"
+          }
+        },
+        {
+          "type": "SANDBOX_TERMINATION_REQUESTED",
+          "occurredAt": 1787208289352,
+          "resourceName": "mc-attempt-122eb727fa22d7ee",
+          "attemptId": "attempt-b9431c8886a0-hardening-bug-fix-1",
+          "metadata": {
+            "providerResourceId": "7fb453f5cb359b264f2e272051f8fd11699c81b77efc4e4001ab2d5a44c2408a"
+          }
+        },
+        {
+          "type": "SANDBOX_TERMINATED",
+          "occurredAt": 1787208289510,
+          "resourceName": "mc-attempt-122eb727fa22d7ee",
+          "attemptId": "attempt-b9431c8886a0-hardening-bug-fix-1",
+          "metadata": {
+            "confirmedAbsentAt": 1787208289510
+          }
+        }
+      ],
+      "supervisorDiagnostics": {
+        "supervisorLogTail": "",
+        "supervisorProcessRunning": true,
+        "lifecycleTrace": [
+          {
+            "stage": "BOOTSTRAP_STARTED",
+            "occurredAt": 1787208063956,
+            "pid": 52,
+            "uid": 0,
+            "gid": 0
+          },
+          {
+            "stage": "BOOTSTRAP_CONFIG_VALIDATED",
+            "occurredAt": 1787208063961,
+            "profile": "remote-sandbox/exe-dev/restricted-candidate-v1"
+          },
+          {
+            "stage": "BOOTSTRAP_TOOLCHAIN_VALIDATED",
+            "occurredAt": 1787208065019,
+            "nodeVersion": "v26.7.0",
+            "codexVersion": "codex-cli 0.146.0",
+            "gitVersion": "git version 2.55.0",
+            "busyboxVersion": "BusyBox v1.37.0"
+          },
+          {
+            "stage": "BOOTSTRAP_FILESYSTEM_PREPARED",
+            "occurredAt": 1787208065025,
+            "repositoryOwnerUid": 10001,
+            "repositoryOwnerGid": 10001
+          },
+          {
+            "stage": "BOOTSTRAP_NETWORK_POLICY_APPLIED",
+            "occurredAt": 1787208065141,
+            "allowedHttpsHosts": [
+              "openrouter.ai"
+            ],
+            "resolvedAddresses": [
+              "104.18.2.115",
+              "104.18.3.115",
+              "2606:4700::6812:273",
+              "2606:4700::6812:373"
+            ],
+            "policyDigest": "sha256:9786bfac28a3a6ab4803c6aea27172a97b38e43ae2290945226a4ae7174530e0"
+          },
+          {
+            "stage": "BOOTSTRAP_NEGATIVE_PROBES_PASSED",
+            "occurredAt": 1787208071242,
+            "network": {
+              "approvedEndpointReachable": true,
+              "arbitraryExternalBlocked": true,
+              "privateNetworkBlocked": true,
+              "linkLocalBlocked": true,
+              "metadataBlocked": true,
+              "unexpectedDnsBlocked": true
+            },
+            "privilege": {
+              "noNewPrivileges": true,
+              "capabilities": {
+                "inheritable": "0000000000000000",
+                "permitted": "0000000000000000",
+                "effective": "0000000000000000",
+                "bounding": "0000000000000000",
+                "ambient": "0000000000000000"
+              },
+              "firewallMutationBlocked": true
+            }
+          },
+          {
+            "stage": "BOOTSTRAP_COMPLETED",
+            "occurredAt": 1787208071253,
+            "proofPath": "/var/lib/mission-control/attempt/security-proof.json",
+            "policyDigest": "sha256:9786bfac28a3a6ab4803c6aea27172a97b38e43ae2290945226a4ae7174530e0"
+          },
+          {
+            "stage": "SUPERVISOR_STARTED",
+            "occurredAt": 1787208071742,
+            "pid": 152,
+            "uid": 0,
+            "gid": 0
+          },
+          {
+            "stage": "CONFIG_LOADED",
+            "occurredAt": 1787208071749,
+            "attemptId": "attempt-b9431c8886a0-hardening-bug-fix-1",
+            "files": {
+              "repository": {
+                "state": "PRESENT",
+                "type": "DIRECTORY",
+                "mode": "755",
+                "uid": 10001,
+                "gid": 10001,
+                "byteLength": 4096
+              },
+              "home": {
+                "state": "PRESENT",
+                "type": "DIRECTORY",
+                "mode": "700",
+                "uid": 10001,
+                "gid": 10001,
+                "byteLength": 4096
+              },
+              "temporary": {
+                "state": "PRESENT",
+                "type": "DIRECTORY",
+                "mode": "700",
+                "uid": 10001,
+                "gid": 10001,
+                "byteLength": 4096
+              },
+              "outputSchema": {
+                "state": "PRESENT",
+                "type": "FILE",
+                "mode": "444",
+                "uid": 0,
+                "gid": 0,
+                "byteLength": 994
+              },
+              "executorResult": {
+                "state": "PRESENT",
+                "type": "FILE",
+                "mode": "600",
+                "uid": 10001,
+                "gid": 10001,
+                "byteLength": 0
+              },
+              "supervisorResult": {
+                "state": "ABSENT"
+              },
+              "diagnostics": {
+                "state": "ABSENT"
+              }
+            }
+          },
+          {
+            "stage": "MANIFEST_VALIDATED",
+            "occurredAt": 1787208071768,
+            "attemptId": "attempt-b9431c8886a0-hardening-bug-fix-1",
+            "sourceSha": "013d0be0851d2b7cc2f38835f7300e698db5087c"
+          },
+          {
+            "stage": "REPOSITORY_VALIDATION_STARTED",
+            "occurredAt": 1787208071769,
+            "repository": {
+              "state": "PRESENT",
+              "type": "DIRECTORY",
+              "mode": "755",
+              "uid": 10001,
+              "gid": 10001,
+              "byteLength": 4096
+            }
+          },
+          {
+            "stage": "REPOSITORY_VALIDATED",
+            "occurredAt": 1787208071793,
+            "sourceSha": "013d0be0851d2b7cc2f38835f7300e698db5087c"
+          },
+          {
+            "stage": "CODEX_SPAWN_STARTED",
+            "occurredAt": 1787208071794,
+            "command": "codex",
+            "uid": 10001,
+            "gid": 10001,
+            "environmentKeys": [
+              "HOME",
+              "OPENAI_API_KEY",
+              "OPENAI_BASE_URL",
+              "PATH",
+              "SHELL",
+              "TMPDIR"
+            ]
+          },
+          {
+            "stage": "CODEX_SPAWNED",
+            "occurredAt": 1787208071800,
+            "pid": 180,
+            "detached": true
+          },
+          {
+            "stage": "CODEX_FIRST_EVENT",
+            "occurredAt": 1787208072432,
+            "stream": "stderr",
+            "byteLength": 39
+          },
+          {
+            "stage": "CODEX_TERMINAL",
+            "occurredAt": 1787208286671,
+            "exitCode": 0,
+            "signal": null,
+            "timedOut": false,
+            "canceled": false
+          },
+          {
+            "stage": "EXECUTOR_OUTPUT_INSPECTED",
+            "occurredAt": 1787208286685,
+            "state": "VALID",
+            "byteLength": 458,
+            "file": {
+              "state": "PRESENT",
+              "type": "FILE",
+              "mode": "600",
+              "uid": 10001,
+              "gid": 10001,
+              "byteLength": 458
+            }
+          },
+          {
+            "stage": "DIAGNOSTICS_WRITE_STARTED",
+            "occurredAt": 1787208286707,
+            "path": "/var/lib/mission-control/attempt/diagnostics.json",
+            "networkPolicyState": "OBSERVED"
+          },
+          {
+            "stage": "DIAGNOSTICS_WRITTEN",
+            "occurredAt": 1787208286714,
+            "file": {
+              "state": "PRESENT",
+              "type": "FILE",
+              "mode": "600",
+              "uid": 0,
+              "gid": 0,
+              "byteLength": 17342
+            }
+          },
+          {
+            "stage": "RESULT_FINALIZATION_STARTED",
+            "occurredAt": 1787208286793,
+            "changedFileCount": 1
+          },
+          {
+            "stage": "RESULT_WRITTEN",
+            "occurredAt": 1787208286797,
+            "status": "COMPLETED",
+            "file": {
+              "state": "PRESENT",
+              "type": "FILE",
+              "mode": "600",
+              "uid": 0,
+              "gid": 0,
+              "byteLength": 17817
+            }
+          },
+          {
+            "stage": "SUPERVISOR_TERMINAL",
+            "occurredAt": 1787208286797,
+            "exitCode": 0,
+            "signal": null
+          }
+        ],
+        "supervisorExit": null
+      },
+      "securityProof": {
+        "schema": "factory-sandbox-security-proof/v1",
+        "profile": "remote-sandbox/exe-dev/restricted-candidate-v1",
+        "observedAt": 1787208071252,
+        "image": {
+          "requestedReference": "mc-remote-final-blocker@sha256:88e1dda3be0324fcb2c156000491a10a0003315e4ca4f46c8a3d9bb2e3af82b3",
+          "requestedDigest": "sha256:88e1dda3be0324fcb2c156000491a10a0003315e4ca4f46c8a3d9bb2e3af82b3",
+          "providerReportedReference": "mc-remote-final-blocker@sha256:88e1dda3be0324fcb2c156000491a10a0003315e4ca4f46c8a3d9bb2e3af82b3",
+          "providerReferenceMatched": true
+        },
+        "toolchain": {
+          "nodeVersion": "v26.7.0",
+          "codexVersion": "codex-cli 0.146.0",
+          "codexBinarySha256": "sha256:2e863156ed35ecc5253b1e2f907a9143077b9f7cb51942070c61996471ff6e04",
+          "gitVersion": "git version 2.55.0",
+          "gitBinarySha256": "sha256:7127059b4ebea64f4a50fc3c64601b69a9694196f3ee0396efec6378a0b45078",
+          "busyboxVersion": "BusyBox v1.37.0",
+          "busyboxBinarySha256": "sha256:61e4d179a46e1024327f5080c02fe01108752a2c9e6ea06d4968575d1bec28eb",
+          "toolchainInputsSha256": "sha256:c98a7def4211fbc4b68b2588212eb461d7ad924aaa415cc4c3eb296b62648923",
+          "executionUid": 10001,
+          "executionGid": 10001
+        },
+        "filesystem": {
+          "repositoryOwnerUid": 10001,
+          "repositoryOwnerGid": 10001,
+          "protectedPathsReadOnly": true,
+          "packageCachesAbsent": true
+        },
+        "privilege": {
+          "noNewPrivileges": true,
+          "capabilities": {
+            "inheritable": "0000000000000000",
+            "permitted": "0000000000000000",
+            "effective": "0000000000000000",
+            "bounding": "0000000000000000",
+            "ambient": "0000000000000000"
+          },
+          "firewallMutationBlocked": true,
+          "packageManagerCommandsAbsent": [
+            "apk",
+            "apt",
+            "apt-get",
+            "dpkg",
+            "npm",
+            "npx",
+            "corepack",
+            "yarn",
+            "yarnpkg",
+            "pnpm",
+            "pnpx"
+          ]
+        },
+        "network": {
+          "enforcement": "GUEST_NFTABLES",
+          "providerEnforced": false,
+          "policyDigest": "sha256:9786bfac28a3a6ab4803c6aea27172a97b38e43ae2290945226a4ae7174530e0",
+          "allowedHttpsHosts": [
+            "openrouter.ai"
+          ],
+          "resolvedAddresses": [
+            "104.18.2.115",
+            "104.18.3.115",
+            "2606:4700::6812:273",
+            "2606:4700::6812:373"
+          ],
+          "controlExternalEndpointReachable": true,
+          "approvedEndpointReachable": true,
+          "arbitraryExternalBlocked": true,
+          "privateNetworkBlocked": true,
+          "linkLocalBlocked": true,
+          "metadataBlocked": true,
+          "unexpectedDnsBlocked": true
+        }
+      },
+      "negativeMatrix": {
+        "checks": {
+          "immutableImageIdentity": true,
+          "denyByDefault": true,
+          "approvedOpenRouterHttpsReachable": true,
+          "arbitraryPublicEgressBlocked": true,
+          "rfc1918Blocked": true,
+          "linkLocalBlocked": true,
+          "metadataBlocked": true,
+          "unexpectedDnsBlocked": true,
+          "nonRootWorkload": true,
+          "noNewPrivileges": true,
+          "allCapabilitySetsEmpty": true,
+          "firewallMutationBlocked": true,
+          "packageManagersAbsent": true,
+          "packageCachesAbsent": true,
+          "protectedPathsReadOnly": true,
+          "credentialDiscoveryBlocked": true,
+          "staleCredentialRejected": true,
+          "providerAdminAuthorityAbsent": true,
+          "githubAuthorityAbsent": true,
+          "previousAttemptArtifactsAbsent": true,
+          "exactResourceDeleted": true
+        },
+        "passed": true
+      },
+      "cleanup": {
+        "credentialIssued": true,
+        "credentialRevoked": true,
+        "staleCredentialRejected": true,
+        "staleCredentialProbeStatuses": [
+          200,
+          401
+        ],
+        "credentialSecretPersisted": false,
+        "resourceAbsent": true,
+        "finalVmCount": 0,
+        "passed": true
+      },
+      "performance": {
+        "allocationMs": 103,
+        "readinessMs": 0,
+        "startupMs": 8884,
+        "executionMs": 216107,
+        "teardownMs": 1998,
+        "totalCycleMs": 227092
+      },
+      "transportBundleSchema": "factory-sandbox-result/v1",
+      "transportBundleDigest": "sha256:d50209df77d45fd9e05752941c33a4e0bf4a9731d1099392e1cfd2f364de6000",
+      "transportStatus": "COMPLETED",
+      "structuredResult": {
+        "schema": "factory-result/v1",
+        "status": "COMPLETED",
+        "summary": "Updated `src/listingFee.mjs` so the validated cent input now gets a 5% fee before rounding, then ran `node --test` successfully.",
+        "completedAcceptanceCriterionIds": [
+          "BUG-001",
+          "BUG-002"
+        ],
+        "incompleteAcceptanceCriterionIds": [],
+        "unknownAcceptanceCriterionIds": [],
+        "verificationCommands": [
+          "node --test"
+        ],
+        "knownRisks": [],
+        "nextAction": "Await further instructions on additional verification or features."
+      },
+      "resultProvenance": {
+        "source": "OUTPUT_FILE",
+        "outputFile": {
+          "state": "VALID",
+          "byteLength": 458
+        },
+        "jsonl": {
+          "byteLength": 12389,
+          "lineCount": 43,
+          "malformedLineCount": 0,
+          "terminalCompletedCount": 1,
+          "terminalFailureCount": 0,
+          "validCandidateCount": 1
+        },
+        "context": {
+          "attemptId": "attempt-b9431c8886a0-hardening-bug-fix-1",
+          "manifestDigest": "sha256:c9fbb28aaa5dcd4d537ab1d6d1002deae7ead5a3dbd1d1c5e9bdabd990004229",
+          "sourceSha": "013d0be0851d2b7cc2f38835f7300e698db5087c"
+        }
+      },
+      "changedFiles": [
+        "src/listingFee.mjs"
+      ],
+      "executor": {
+        "exitCode": 0,
+        "stdoutDigest": "sha256:3f73ffd25c1f94beaf23002baac0b85d6bdf359f86e740a38a9b055044552e16",
+        "stderrDigest": "sha256:19d0454315cc00c7390a92be657e3a7edffe3e21d1e0822922eea74f27c5ccd7",
+        "stdoutTail": "{\"type\":\"thread.started\",\"thread_id\":\"01a01de6-fd45-7460-b334-ba7975f89935\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"error\",\"message\":\"Model metadata for `openai/gpt-5.1-codex-mini` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.\"}}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_1\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'pwd && ls'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_1\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'pwd && ls'\",\"aggregated_output\":\"/var/lib/mission-control/attempt/repository\\nls: applet not found\\n\",\"exit_code\":127,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_2\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'pwd && /bin/ls'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_2\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'pwd && /bin/ls'\",\"aggregated_output\":\"/var/lib/mission-control/attempt/repository\\nls: applet not found\\n\",\"exit_code\":127,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_3\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc \\\"pwd && echo contents: && /bin/sh -c 'ls'\\\"\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_3\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc \\\"pwd && echo contents: && /bin/sh -c 'ls'\\\"\",\"aggregated_output\":\"/var/lib/mission-control/attempt/repository\\ncontents:\\nls: applet not found\\n\",\"exit_code\":127,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_4\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc \\\"python - <<'PY'\\nimport os\\nprint(os.getcwd())\\nprint(os.listdir('.'))\\nPY\\\"\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_4\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc \\\"python - <<'PY'\\nimport os\\nprint(os.getcwd())\\nprint(os.listdir('.'))\\nPY\\\"\",\"aggregated_output\":\"/bin/sh: python: not found\\n\",\"exit_code\":127,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_5\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc \\\"python3 - <<'PY'\\nimport os\\nprint(os.getcwd())\\nprint(os.listdir('.'))\\nPY\\\"\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_5\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc \\\"python3 - <<'PY'\\nimport os\\nprint(os.getcwd())\\nprint(os.listdir('.'))\\nPY\\\"\",\"aggregated_output\":\"/bin/sh: python3: not found\\n\",\"exit_code\":127,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_6\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc env\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_6\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc env\",\"aggregated_output\":\"CODEX_CI=1\\nHOME=/var/lib/mission-control/attempt/home\\nOPENAI_BASE_URL=https://openrouter.ai/api/v1\\nOPENAI_API_KEY=[REDACTED],\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_7\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'pwd && find . -maxdepth 1 -print'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_7\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'pwd && find . -maxdepth 1 -print'\",\"aggregated_output\":\"/var/lib/mission-control/attempt/repository\\nfind: applet not found\\n\",\"exit_code\":127,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_8\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'pwd && /bin/busybox ls'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_8\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'pwd && /bin/busybox ls'\",\"aggregated_output\":\"/var/lib/mission-control/attempt/repository\\nls: applet not found\\n\",\"exit_code\":127,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_9\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'pwd && for f in /bin/*; do echo \\\"$f\\\"; done'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_9\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'pwd && for f in /bin/*; do echo \\\"$f\\\"; done'\",\"aggregated_output\":\"/var/lib/mission-control/attempt/repository\\n/bin/arch\\n/bin/ash\\n/bin/base64\\n/bin/bbconfig\\n/bin/busybox\\n/bin/cat\\n/bin/chattr\\n/bin/chgrp\\n/bin/chmod\\n/bin/chown\\n/bin/cp\\n/bin/date\\n/bin/dd\\n/bin/df\\n/bin/dmesg\\n/bin/dnsdomainname\\n/bin/dumpkmap\\n/bin/echo\\n/bin/egrep\\n/bin/false\\n/bin/fatattr\\n/bin/fdflush\\n/bin/fgrep\\n/bin/fsync\\n/bin/getopt\\n/bin/grep\\n/bin/gunzip\\n/bin/gzip\\n/bin/hostname\\n/bin/ionice\\n/bin/iostat\\n/bin/ipcalc\\n/bin/kbd_mode\\n/bin/kill\\n/bin/link\\n/bin/linux32\\n/bin/linux64\\n/bin/ln\\n/bin/login\\n/bin/ls\\n/bin/lsattr\\n/bin/lzop\\n/bin/makemime\\n/bin/mkdir\\n/bin/mknod\\n/bin/mktemp\\n/bin/more\\n/bin/mount\\n/bin/mountpoint\\n/bin/mpstat\\n/bin/mv\\n/bin/netstat\\n/bin/nice\\n/bin/pidof\\n/bin/ping\\n/bin/ping6\\n/bin/pipe_progress\\n/bin/printenv\\n/bin/ps\\n/bin/pwd\\n/bin/reformime\\n/bin/rev\\n/bin/rm\\n/bin/rmdir\\n/bin/run-parts\\n/bin/sed\\n/bin/setpriv\\n/bin/setserial\\n/bin/sh\\n/bin/sleep\\n/bin/stat\\n/bin/stty\\n/bin/su\\n/bin/sync\\n/bin/tar\\n/bin/touch\\n/bin/true\\n/bin/umount\\n/bin/uname\\n/bin/usleep\\n/bin/watch\\n/bin/zcat\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_10\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'pwd && /bin/busybox ls'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_10\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'pwd && /bin/busybox ls'\",\"aggregated_output\":\"/var/lib/mission-control/attempt/repository\\nls: applet not found\\n\",\"exit_code\":127,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_11\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'cat README.md'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_11\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'cat README.md'\",\"aggregated_output\":\"cat: can't open 'README.md': No such file or directory\\n\",\"exit_code\":1,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_12\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc \\\"node -e \\\\\\\"const fs=require('fs'); console.log(process.cwd()); console.log(fs.readdirSync('.'))\\\\\\\"\\\"\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_12\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc \\\"node -e \\\\\\\"const fs=require('fs'); console.log(process.cwd()); console.log(fs.readdirSync('.'))\\\\\\\"\\\"\",\"aggregated_output\":\"/var/lib/mission-control/attempt/repository\\n[ '.git', 'package.json', 'src', 'tests' ]\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_13\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'find .. -name AGENTS.md -print'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_13\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'find .. -name AGENTS.md -print'\",\"aggregated_output\":\"find: applet not found\\n\",\"exit_code\":127,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_14\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc '/bin/find .. -name AGENTS.md -print'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_14\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc '/bin/find .. -name AGENTS.md -print'\",\"aggregated_output\":\"/bin/sh: /bin/find: not found\\n\",\"exit_code\":127,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_15\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc '/usr/bin/find .. -name AGENTS.md -print'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_15\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc '/usr/bin/find .. -name AGENTS.md -print'\",\"aggregated_output\":\"find: applet not found\\n\",\"exit_code\":127,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_16\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc \\\"node - <<'NODE'\\nconst fs = require('fs');\\nconst path = require('path');\\nfunction find(dir) {\\n  for (const name of fs.readdirSync(dir)) {\\n    const full = path.join(dir, name);\\n    const stat = fs.statSync(full);\\n    if (stat.isDirectory()) {\\n      find(full);\\n    } else if (stat.isFile() && name === 'AGENTS.md') {\\n      console.log(full);\\n    }\\n  }\\n}\\nfind(process.cwd());\\nNODE\\\"\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_16\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc \\\"node - <<'NODE'\\nconst fs = require('fs');\\nconst path = require('path');\\nfunction find(dir) {\\n  for (const name of fs.readdirSync(dir)) {\\n    const full = path.join(dir, name);\\n    const stat = fs.statSync(full);\\n    if (stat.isDirectory()) {\\n      find(full);\\n    } else if (stat.isFile() && name === 'AGENTS.md') {\\n      console.log(full);\\n    }\\n  }\\n}\\nfind(process.cwd());\\nNODE\\\"\",\"aggregated_output\":\"\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_17\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc '/bin/cat src/listingFee.mjs'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_17\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc '/bin/cat src/listingFee.mjs'\",\"aggregated_output\":\"export function listingFee(cents) {\\n  if (!Number.isSafeInteger(cents) || cents < 0) throw new TypeError(\\\"cents must be a non-negative integer\\\");\\n  return Math.round(cents * 0.03);\\n}\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_18\",\"type\":\"file_change\",\"changes\":[{\"path\":\"/var/lib/mission-control/attempt/repository/src/listingFee.mjs\",\"kind\":\"update\"}],\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_18\",\"type\":\"file_change\",\"changes\":[{\"path\":\"/var/lib/mission-control/attempt/repository/src/listingFee.mjs\",\"kind\":\"update\"}],\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_19\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'node --test'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_19\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'node --test'\",\"aggregated_output\":\"✔ charges five percent in integer cents (3.534709ms)\\n✔ rejects invalid money (1.529125ms)\\nℹ tests 2\\nℹ suites 0\\nℹ pass 2\\nℹ fail 0\\nℹ cancelled 0\\nℹ skipped 0\\nℹ todo 0\\nℹ duration_ms 622.331792\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_20\",\"type\":\"agent_message\",\"text\":\"{\\\"schema\\\":\\\"factory-result/v1\\\",\\\"status\\\":\\\"COMPLETED\\\",\\\"summary\\\":\\\"Updated `src/listingFee.mjs` so the validated cent input now gets a 5% fee before rounding, then ran `node --test` successfully.\\\",\\\"completedAcceptanceCriterionIds\\\":[\\\"BUG-001\\\",\\\"BUG-002\\\"],\\\"incompleteAcceptanceCriterionIds\\\":[],\\\"unknownAcceptanceCriterionIds\\\":[],\\\"verificationCommands\\\":[\\\"node --test\\\"],\\\"knownRisks\\\":[],\\\"nextAction\\\":\\\"Await further instructions on additional verification or features.\\\"}\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":207936,\"cached_input_tokens\":195840,\"cache_write_input_tokens\":0,\"output_tokens\":5979,\"reasoning_output_tokens\":3328}}\n",
+        "stderrTail": "Reading additional input from stdin...\n",
+        "resultOutput": {
+          "state": "VALID",
+          "byteLength": 458,
+          "digest": "sha256:ced035d0ecdc50f520a032b344f397ce494349a74be2caf93ac9730c123b6e3e",
+          "tail": "{\"schema\":\"factory-result/v1\",\"status\":\"COMPLETED\",\"summary\":\"Updated `src/listingFee.mjs` so the validated cent input now gets a 5% fee before rounding, then ran `node --test` successfully.\",\"completedAcceptanceCriterionIds\":[\"BUG-001\",\"BUG-002\"],\"incompleteAcceptanceCriterionIds\":[],\"unknownAcceptanceCriterionIds\":[],\"verificationCommands\":[\"node --test\"],\"knownRisks\":[],\"nextAction\":\"Await further instructions on additional verification or features.\"}",
+          "validationIssues": []
+        }
+      },
+      "usage": {
+        "providerCostUsd": null,
+        "inferenceCostUsd": null,
+        "inputTokens": 207936,
+        "outputTokens": 5979,
+        "observedAt": 1787208286793,
+        "providerRuntimeMs": 215024,
+        "enforcement": "OBSERVATION_ONLY"
+      },
+      "firstPassSuccess": true,
+      "failure": null,
+      "candidate": {
+        "sourceSha": "013d0be0851d2b7cc2f38835f7300e698db5087c",
+        "candidateSha": "f8b370d448e1f350806791cae5a74cf15011dc3e",
+        "treeSha": "6f9dcf962b9362aa4c8be8814c87ad12f6dd79a3",
+        "changedFiles": [
+          "src/listingFee.mjs"
+        ],
+        "linesAdded": 1,
+        "linesDeleted": 1
+      },
+      "verification": {
+        "independent": true,
+        "candidateSha": "f8b370d448e1f350806791cae5a74cf15011dc3e",
+        "treeSha": "6f9dcf962b9362aa4c8be8814c87ad12f6dd79a3",
+        "verdict": "VERIFIED",
+        "reason": "Independent exact-candidate npm test passed.",
+        "command": "npm test",
+        "exitCode": 0,
+        "outputSha256": "8dabb619a646a34e1e6b32efabb19d0620f37672b3233abfd62a63fdd5fb74d7",
+        "acceptanceCriterionIds": [
+          "BUG-001",
+          "BUG-002"
+        ],
+        "durationMs": 291,
+        "acceptanceAuthority": false
+      },
+      "acceptance": {
+        "approvalStatus": "NOT_REQUIRED",
+        "missingApprovalTypes": [],
+        "expiredApprovalTypes": [],
+        "revokedApprovalTypes": [],
+        "missingCriteriaIds": [],
+        "failedCriteriaIds": [],
+        "staleCriteriaIds": [],
+        "waivedCriteriaIds": [],
+        "waiverWithoutApprovalCriteriaIds": [],
+        "verificationVerdict": "VERIFIED",
+        "blockingReasons": [],
+        "eligible": true,
+        "authority": "workOrders.accept",
+        "authorityMode": "AUTHORIZED_OPERATOR_FIXTURE",
+        "candidateSha": "f8b370d448e1f350806791cae5a74cf15011dc3e",
+        "acceptedAt": "2026-08-20T06:44:49.902Z"
+      }
+    },
+    {
+      "executionId": "hardening-security-policy-1",
+      "workloadKey": "security-policy",
+      "workloadClass": "SECURITY_POLICY",
+      "workloadTitle": "Fail closed when authorization context is missing",
+      "risk": "HIGH",
+      "attemptId": "attempt-b9431c8886a0-hardening-security-policy-1",
+      "workflowRunId": "workflow-b9431c8886a0-hardening-security-policy-1",
+      "leaseId": "lease-b9431c8886a0-hardening-security-policy-1",
+      "attemptNumber": 1,
+      "retries": 0,
+      "sourceSha": "1b62234032e8b03a75f55a4bea513dff0f54880b",
+      "manifestDigest": "sha256:78cd8d77d6f8929f2681a6097c490545ee90eb500505ec26bb31096ba23e6dcf",
+      "manifest": {
+        "version": "factory-execution-manifest/v1",
+        "causation": {
+          "missionId": "mission-b9431c8886a0-hardening-security-policy-1",
+          "missionPlanId": "plan-b9431c8886a0-hardening-security-policy-1",
+          "workOrderId": "work-order-b9431c8886a0-hardening-security-policy-1",
+          "workOrderRevisionNumber": 1,
+          "workflowRunId": "workflow-b9431c8886a0-hardening-security-policy-1",
+          "attemptId": "attempt-b9431c8886a0-hardening-security-policy-1"
+        },
+        "factory": {
+          "definitionId": "factory-remote-sandbox-hardening",
+          "definitionVersionId": "factory-remote-sandbox-hardening-v1",
+          "version": 1,
+          "configurationDigest": "sha256:409d50666d74538a941428a021b53b469b674051480593393a0c63e6b0854e3b"
+        },
+        "repository": {
+          "repository": "sellerfi-hardening/security-policy",
+          "baseSha": "1b62234032e8b03a75f55a4bea513dff0f54880b",
+          "allowedPaths": [
+            "src/**"
+          ],
+          "excludedPaths": [
+            "tests/**",
+            "package.json",
+            ".git/**"
+          ]
+        },
+        "intent": {
+          "title": "Fail closed when authorization context is missing",
+          "acceptanceCriterionIds": [
+            "SECURITY-001",
+            "SECURITY-002"
+          ]
+        },
+        "harness": {
+          "adapter": "codex",
+          "version": "v1",
+          "harnessId": "codex-cli",
+          "harnessVersion": "0.146.0",
+          "provider": "openrouter",
+          "model": "openai/gpt-5.1-codex-mini",
+          "executionBackend": "remote-sandbox",
+          "isolation": "WORKSPACE_WRITE",
+          "pullRequestAuthority": "CONTROL_PLANE_ONLY",
+          "timeoutMs": 300000
+        },
+        "sandbox": {
+          "profileDigest": "sha256:a72aa0ed43bfb9c6323a2575205de4195bc461514d049aa98386a540b0d2204c",
+          "supervisorVersion": "mission-control-supervisor/v1",
+          "credentialGrants": [
+            {
+              "kind": "INFERENCE",
+              "secretValueIncluded": false,
+              "githubAuthority": "NONE",
+              "providerAuthority": "NONE"
+            }
+          ]
+        },
+        "retryPolicy": {
+          "schema": "factory-remote-retry-policy/v1",
+          "maxAttempts": 1,
+          "maxTotalWallClockMs": 330000,
+          "maxModelSpendUsd": 0.05,
+          "maxProviderResources": 1,
+          "retryableFailureClasses": []
+        }
+      },
+      "resourceName": "mc-attempt-a1380c754753947e",
+      "invocation": {
+        "command": "codex",
+        "harnessVersion": "0.146.0",
+        "args": [
+          "-a",
+          "never",
+          "-c",
+          "model_provider=\"mission-control-openrouter\"",
+          "-c",
+          "model_providers.mission-control-openrouter.name=\"OpenRouter\"",
+          "-c",
+          "model_providers.mission-control-openrouter.base_url=\"https://openrouter.ai/api/v1\"",
+          "-c",
+          "model_providers.mission-control-openrouter.env_key=\"OPENAI_API_KEY\"",
+          "-c",
+          "model_providers.mission-control-openrouter.wire_api=\"responses\"",
+          "-c",
+          "model_providers.mission-control-openrouter.supports_websockets=false",
+          "exec",
+          "--json",
+          "--ephemeral",
+          "--ignore-user-config",
+          "--ignore-rules",
+          "--sandbox",
+          "danger-full-access",
+          "--color",
+          "never",
+          "-C",
+          "/var/lib/mission-control/attempt/repository",
+          "-o",
+          "/var/lib/mission-control/attempt/executor-result.json",
+          "--output-schema",
+          "/var/lib/mission-control/attempt/factory-result.schema.json",
+          "-m",
+          "openai/gpt-5.1-codex-mini",
+          "Fix src/authorization.mjs so canEditListing(context) fails closed. Return true only when context is an object whose role is exactly `owner` or `admin`; all missing, malformed, or other roles return false. Do not modify tests or package.json. Run node --test.\n\nThis is the only Attempt. Do not assume artifacts or verification from another Attempt.\n\nReturn exactly one JSON object and no prose. Use the literal string factory-result/v1 for schema. Use exactly one uppercase status: COMPLETED, BLOCKED, or FAILED. completedAcceptanceCriterionIds, incompleteAcceptanceCriterionIds, unknownAcceptanceCriterionIds, verificationCommands, and knownRisks must always be JSON arrays of strings, including when empty. summary and nextAction must be JSON strings.\n\nWhen status is COMPLETED, every listed acceptance criterion ID must appear exactly once in completedAcceptanceCriterionIds, and incompleteAcceptanceCriterionIds and unknownAcceptanceCriterionIds must both be empty.\n\n{\"schema\":\"factory-result/v1\",\"status\":\"COMPLETED\",\"summary\":\"Implemented and tested the bounded change.\",\"completedAcceptanceCriterionIds\":[\"criterion-id\"],\"incompleteAcceptanceCriterionIds\":[],\"unknownAcceptanceCriterionIds\":[],\"verificationCommands\":[\"node --test\"],\"knownRisks\":[],\"nextAction\":\"Review the exact candidate.\"}\n\nUse only these acceptance criterion IDs: SECURITY-001, SECURITY-002.\n\nRepository mutation is limited to these approved repository-relative boundaries:\n- src/**\nDenied repository-relative boundaries:\n- tests/**\n- package.json\n- .git/**\nDo not expose credentials in output, artifacts, or logs."
+        ],
+        "outputSchemaPath": "/var/lib/mission-control/attempt/factory-result.schema.json",
+        "environmentKeys": [
+          "OPENAI_API_KEY",
+          "OPENAI_BASE_URL"
+        ],
+        "packageManagerUsed": false
+      },
+      "inventoryBefore": {
+        "checkedAt": "2026-08-20T06:44:49.988Z",
+        "authenticated": true,
+        "vmCount": 0,
+        "maxVms": 1,
+        "liveAllocationAllowed": true,
+        "automaticIntegrationCount": 0
+      },
+      "inventoryAfter": {
+        "checkedAt": "2026-08-20T06:47:55.063Z",
+        "authenticated": true,
+        "vmCount": 0,
+        "maxVms": 1,
+        "liveAllocationAllowed": true,
+        "automaticIntegrationCount": 0
+      },
+      "lifecycleEvents": [
+        {
+          "type": "SANDBOX_REQUESTED",
+          "occurredAt": 1787208290005,
+          "resourceName": "mc-attempt-a1380c754753947e",
+          "attemptId": "attempt-b9431c8886a0-hardening-security-policy-1",
+          "metadata": {
+            "provider": "EXE_DEV",
+            "profileDigest": "sha256:a72aa0ed43bfb9c6323a2575205de4195bc461514d049aa98386a540b0d2204c",
+            "readiness": "DEGRADED"
+          }
+        },
+        {
+          "type": "SANDBOX_ALLOCATED",
+          "occurredAt": 1787208290118,
+          "resourceName": "mc-attempt-a1380c754753947e",
+          "attemptId": "attempt-b9431c8886a0-hardening-security-policy-1",
+          "metadata": {
+            "providerResourceId": "cf10b60de8db474f10e236199c63fca221547b089d59fa8452c7718781c6d8b6"
+          }
+        },
+        {
+          "type": "SANDBOX_STARTED",
+          "occurredAt": 1787208298947,
+          "resourceName": "mc-attempt-a1380c754753947e",
+          "attemptId": "attempt-b9431c8886a0-hardening-security-policy-1",
+          "metadata": {
+            "processId": "cf10b60de8db474f10e236199c63fca221547b089d59fa8452c7718781c6d8b6:supervisor",
+            "securityProof": {
+              "schema": "factory-sandbox-security-proof/v1",
+              "profile": "remote-sandbox/exe-dev/restricted-candidate-v1",
+              "observedAt": 1787208298785,
+              "image": {
+                "requestedReference": "mc-remote-final-blocker@sha256:88e1dda3be0324fcb2c156000491a10a0003315e4ca4f46c8a3d9bb2e3af82b3",
+                "requestedDigest": "sha256:88e1dda3be0324fcb2c156000491a10a0003315e4ca4f46c8a3d9bb2e3af82b3",
+                "providerReportedReference": "mc-remote-final-blocker@sha256:88e1dda3be0324fcb2c156000491a10a0003315e4ca4f46c8a3d9bb2e3af82b3",
+                "providerReferenceMatched": true
+              },
+              "toolchain": {
+                "nodeVersion": "v26.7.0",
+                "codexVersion": "codex-cli 0.146.0",
+                "codexBinarySha256": "sha256:2e863156ed35ecc5253b1e2f907a9143077b9f7cb51942070c61996471ff6e04",
+                "gitVersion": "git version 2.55.0",
+                "gitBinarySha256": "sha256:7127059b4ebea64f4a50fc3c64601b69a9694196f3ee0396efec6378a0b45078",
+                "busyboxVersion": "BusyBox v1.37.0",
+                "busyboxBinarySha256": "sha256:61e4d179a46e1024327f5080c02fe01108752a2c9e6ea06d4968575d1bec28eb",
+                "toolchainInputsSha256": "sha256:c98a7def4211fbc4b68b2588212eb461d7ad924aaa415cc4c3eb296b62648923",
+                "executionUid": 10001,
+                "executionGid": 10001
+              },
+              "filesystem": {
+                "repositoryOwnerUid": 10001,
+                "repositoryOwnerGid": 10001,
+                "protectedPathsReadOnly": true,
+                "packageCachesAbsent": true
+              },
+              "privilege": {
+                "noNewPrivileges": true,
+                "capabilities": {
+                  "inheritable": "0000000000000000",
+                  "permitted": "0000000000000000",
+                  "effective": "0000000000000000",
+                  "bounding": "0000000000000000",
+                  "ambient": "0000000000000000"
+                },
+                "firewallMutationBlocked": true,
+                "packageManagerCommandsAbsent": [
+                  "apk",
+                  "apt",
+                  "apt-get",
+                  "dpkg",
+                  "npm",
+                  "npx",
+                  "corepack",
+                  "yarn",
+                  "yarnpkg",
+                  "pnpm",
+                  "pnpx"
+                ]
+              },
+              "network": {
+                "enforcement": "GUEST_NFTABLES",
+                "providerEnforced": false,
+                "policyDigest": "sha256:9786bfac28a3a6ab4803c6aea27172a97b38e43ae2290945226a4ae7174530e0",
+                "allowedHttpsHosts": [
+                  "openrouter.ai"
+                ],
+                "resolvedAddresses": [
+                  "104.18.2.115",
+                  "104.18.3.115",
+                  "2606:4700::6812:273",
+                  "2606:4700::6812:373"
+                ],
+                "controlExternalEndpointReachable": true,
+                "approvedEndpointReachable": true,
+                "arbitraryExternalBlocked": true,
+                "privateNetworkBlocked": true,
+                "linkLocalBlocked": true,
+                "metadataBlocked": true,
+                "unexpectedDnsBlocked": true
+              }
+            }
+          }
+        },
+        {
+          "type": "SANDBOX_RESULT_RECEIVED",
+          "occurredAt": 1787208473129,
+          "resourceName": "mc-attempt-a1380c754753947e",
+          "attemptId": "attempt-b9431c8886a0-hardening-security-policy-1",
+          "metadata": {
+            "resultDigest": "sha256:c6c731c45759ed4c7c3dbe2aee16cfc778eea17fdba3d84cd68c23d32cb22b80",
+            "status": "COMPLETED",
+            "providerCostUsd": null,
+            "inferenceCostUsd": null
+          }
+        },
+        {
+          "type": "SANDBOX_CREDENTIAL_REVOKED",
+          "occurredAt": 1787208474896,
+          "resourceName": "mc-attempt-a1380c754753947e",
+          "attemptId": "attempt-b9431c8886a0-hardening-security-policy-1",
+          "metadata": {
+            "grantKey": "mc-attempt-5506ec16fc665ad361bb",
+            "externalCredentialId": "991e91848b428f1c2e3086ae3194b49d5e47e7569d0ba13a64a1980f144fde6c"
+          }
+        },
+        {
+          "type": "SANDBOX_TERMINATION_REQUESTED",
+          "occurredAt": 1787208474896,
+          "resourceName": "mc-attempt-a1380c754753947e",
+          "attemptId": "attempt-b9431c8886a0-hardening-security-policy-1",
+          "metadata": {
+            "providerResourceId": "cf10b60de8db474f10e236199c63fca221547b089d59fa8452c7718781c6d8b6"
+          }
+        },
+        {
+          "type": "SANDBOX_TERMINATED",
+          "occurredAt": 1787208475046,
+          "resourceName": "mc-attempt-a1380c754753947e",
+          "attemptId": "attempt-b9431c8886a0-hardening-security-policy-1",
+          "metadata": {
+            "confirmedAbsentAt": 1787208475046
+          }
+        }
+      ],
+      "supervisorDiagnostics": {
+        "supervisorLogTail": "",
+        "supervisorProcessRunning": true,
+        "lifecycleTrace": [
+          {
+            "stage": "BOOTSTRAP_STARTED",
+            "occurredAt": 1787208291427,
+            "pid": 53,
+            "uid": 0,
+            "gid": 0
+          },
+          {
+            "stage": "BOOTSTRAP_CONFIG_VALIDATED",
+            "occurredAt": 1787208291433,
+            "profile": "remote-sandbox/exe-dev/restricted-candidate-v1"
+          },
+          {
+            "stage": "BOOTSTRAP_TOOLCHAIN_VALIDATED",
+            "occurredAt": 1787208292546,
+            "nodeVersion": "v26.7.0",
+            "codexVersion": "codex-cli 0.146.0",
+            "gitVersion": "git version 2.55.0",
+            "busyboxVersion": "BusyBox v1.37.0"
+          },
+          {
+            "stage": "BOOTSTRAP_FILESYSTEM_PREPARED",
+            "occurredAt": 1787208292550,
+            "repositoryOwnerUid": 10001,
+            "repositoryOwnerGid": 10001
+          },
+          {
+            "stage": "BOOTSTRAP_NETWORK_POLICY_APPLIED",
+            "occurredAt": 1787208292670,
+            "allowedHttpsHosts": [
+              "openrouter.ai"
+            ],
+            "resolvedAddresses": [
+              "104.18.2.115",
+              "104.18.3.115",
+              "2606:4700::6812:273",
+              "2606:4700::6812:373"
+            ],
+            "policyDigest": "sha256:9786bfac28a3a6ab4803c6aea27172a97b38e43ae2290945226a4ae7174530e0"
+          },
+          {
+            "stage": "BOOTSTRAP_NEGATIVE_PROBES_PASSED",
+            "occurredAt": 1787208298774,
+            "network": {
+              "approvedEndpointReachable": true,
+              "arbitraryExternalBlocked": true,
+              "privateNetworkBlocked": true,
+              "linkLocalBlocked": true,
+              "metadataBlocked": true,
+              "unexpectedDnsBlocked": true
+            },
+            "privilege": {
+              "noNewPrivileges": true,
+              "capabilities": {
+                "inheritable": "0000000000000000",
+                "permitted": "0000000000000000",
+                "effective": "0000000000000000",
+                "bounding": "0000000000000000",
+                "ambient": "0000000000000000"
+              },
+              "firewallMutationBlocked": true
+            }
+          },
+          {
+            "stage": "BOOTSTRAP_COMPLETED",
+            "occurredAt": 1787208298786,
+            "proofPath": "/var/lib/mission-control/attempt/security-proof.json",
+            "policyDigest": "sha256:9786bfac28a3a6ab4803c6aea27172a97b38e43ae2290945226a4ae7174530e0"
+          },
+          {
+            "stage": "SUPERVISOR_STARTED",
+            "occurredAt": 1787208299287,
+            "pid": 153,
+            "uid": 0,
+            "gid": 0
+          },
+          {
+            "stage": "CONFIG_LOADED",
+            "occurredAt": 1787208299294,
+            "attemptId": "attempt-b9431c8886a0-hardening-security-policy-1",
+            "files": {
+              "repository": {
+                "state": "PRESENT",
+                "type": "DIRECTORY",
+                "mode": "755",
+                "uid": 10001,
+                "gid": 10001,
+                "byteLength": 4096
+              },
+              "home": {
+                "state": "PRESENT",
+                "type": "DIRECTORY",
+                "mode": "700",
+                "uid": 10001,
+                "gid": 10001,
+                "byteLength": 4096
+              },
+              "temporary": {
+                "state": "PRESENT",
+                "type": "DIRECTORY",
+                "mode": "700",
+                "uid": 10001,
+                "gid": 10001,
+                "byteLength": 4096
+              },
+              "outputSchema": {
+                "state": "PRESENT",
+                "type": "FILE",
+                "mode": "444",
+                "uid": 0,
+                "gid": 0,
+                "byteLength": 994
+              },
+              "executorResult": {
+                "state": "PRESENT",
+                "type": "FILE",
+                "mode": "600",
+                "uid": 10001,
+                "gid": 10001,
+                "byteLength": 0
+              },
+              "supervisorResult": {
+                "state": "ABSENT"
+              },
+              "diagnostics": {
+                "state": "ABSENT"
+              }
+            }
+          },
+          {
+            "stage": "MANIFEST_VALIDATED",
+            "occurredAt": 1787208299314,
+            "attemptId": "attempt-b9431c8886a0-hardening-security-policy-1",
+            "sourceSha": "1b62234032e8b03a75f55a4bea513dff0f54880b"
+          },
+          {
+            "stage": "REPOSITORY_VALIDATION_STARTED",
+            "occurredAt": 1787208299315,
+            "repository": {
+              "state": "PRESENT",
+              "type": "DIRECTORY",
+              "mode": "755",
+              "uid": 10001,
+              "gid": 10001,
+              "byteLength": 4096
+            }
+          },
+          {
+            "stage": "REPOSITORY_VALIDATED",
+            "occurredAt": 1787208299340,
+            "sourceSha": "1b62234032e8b03a75f55a4bea513dff0f54880b"
+          },
+          {
+            "stage": "CODEX_SPAWN_STARTED",
+            "occurredAt": 1787208299342,
+            "command": "codex",
+            "uid": 10001,
+            "gid": 10001,
+            "environmentKeys": [
+              "HOME",
+              "OPENAI_API_KEY",
+              "OPENAI_BASE_URL",
+              "PATH",
+              "SHELL",
+              "TMPDIR"
+            ]
+          },
+          {
+            "stage": "CODEX_SPAWNED",
+            "occurredAt": 1787208299348,
+            "pid": 181,
+            "detached": true
+          },
+          {
+            "stage": "CODEX_FIRST_EVENT",
+            "occurredAt": 1787208300006,
+            "stream": "stderr",
+            "byteLength": 39
+          },
+          {
+            "stage": "CODEX_TERMINAL",
+            "occurredAt": 1787208472503,
+            "exitCode": 0,
+            "signal": null,
+            "timedOut": false,
+            "canceled": false
+          },
+          {
+            "stage": "EXECUTOR_OUTPUT_INSPECTED",
+            "occurredAt": 1787208472514,
+            "state": "VALID",
+            "byteLength": 474,
+            "file": {
+              "state": "PRESENT",
+              "type": "FILE",
+              "mode": "600",
+              "uid": 10001,
+              "gid": 10001,
+              "byteLength": 474
+            }
+          },
+          {
+            "stage": "DIAGNOSTICS_WRITE_STARTED",
+            "occurredAt": 1787208472531,
+            "path": "/var/lib/mission-control/attempt/diagnostics.json",
+            "networkPolicyState": "OBSERVED"
+          },
+          {
+            "stage": "DIAGNOSTICS_WRITTEN",
+            "occurredAt": 1787208472536,
+            "file": {
+              "state": "PRESENT",
+              "type": "FILE",
+              "mode": "600",
+              "uid": 0,
+              "gid": 0,
+              "byteLength": 13599
+            }
+          },
+          {
+            "stage": "RESULT_FINALIZATION_STARTED",
+            "occurredAt": 1787208472601,
+            "changedFileCount": 1
+          },
+          {
+            "stage": "RESULT_WRITTEN",
+            "occurredAt": 1787208472608,
+            "status": "COMPLETED",
+            "file": {
+              "state": "PRESENT",
+              "type": "FILE",
+              "mode": "600",
+              "uid": 0,
+              "gid": 0,
+              "byteLength": 14094
+            }
+          },
+          {
+            "stage": "SUPERVISOR_TERMINAL",
+            "occurredAt": 1787208472608,
+            "exitCode": 0,
+            "signal": null
+          }
+        ],
+        "supervisorExit": null
+      },
+      "securityProof": {
+        "schema": "factory-sandbox-security-proof/v1",
+        "profile": "remote-sandbox/exe-dev/restricted-candidate-v1",
+        "observedAt": 1787208298785,
+        "image": {
+          "requestedReference": "mc-remote-final-blocker@sha256:88e1dda3be0324fcb2c156000491a10a0003315e4ca4f46c8a3d9bb2e3af82b3",
+          "requestedDigest": "sha256:88e1dda3be0324fcb2c156000491a10a0003315e4ca4f46c8a3d9bb2e3af82b3",
+          "providerReportedReference": "mc-remote-final-blocker@sha256:88e1dda3be0324fcb2c156000491a10a0003315e4ca4f46c8a3d9bb2e3af82b3",
+          "providerReferenceMatched": true
+        },
+        "toolchain": {
+          "nodeVersion": "v26.7.0",
+          "codexVersion": "codex-cli 0.146.0",
+          "codexBinarySha256": "sha256:2e863156ed35ecc5253b1e2f907a9143077b9f7cb51942070c61996471ff6e04",
+          "gitVersion": "git version 2.55.0",
+          "gitBinarySha256": "sha256:7127059b4ebea64f4a50fc3c64601b69a9694196f3ee0396efec6378a0b45078",
+          "busyboxVersion": "BusyBox v1.37.0",
+          "busyboxBinarySha256": "sha256:61e4d179a46e1024327f5080c02fe01108752a2c9e6ea06d4968575d1bec28eb",
+          "toolchainInputsSha256": "sha256:c98a7def4211fbc4b68b2588212eb461d7ad924aaa415cc4c3eb296b62648923",
+          "executionUid": 10001,
+          "executionGid": 10001
+        },
+        "filesystem": {
+          "repositoryOwnerUid": 10001,
+          "repositoryOwnerGid": 10001,
+          "protectedPathsReadOnly": true,
+          "packageCachesAbsent": true
+        },
+        "privilege": {
+          "noNewPrivileges": true,
+          "capabilities": {
+            "inheritable": "0000000000000000",
+            "permitted": "0000000000000000",
+            "effective": "0000000000000000",
+            "bounding": "0000000000000000",
+            "ambient": "0000000000000000"
+          },
+          "firewallMutationBlocked": true,
+          "packageManagerCommandsAbsent": [
+            "apk",
+            "apt",
+            "apt-get",
+            "dpkg",
+            "npm",
+            "npx",
+            "corepack",
+            "yarn",
+            "yarnpkg",
+            "pnpm",
+            "pnpx"
+          ]
+        },
+        "network": {
+          "enforcement": "GUEST_NFTABLES",
+          "providerEnforced": false,
+          "policyDigest": "sha256:9786bfac28a3a6ab4803c6aea27172a97b38e43ae2290945226a4ae7174530e0",
+          "allowedHttpsHosts": [
+            "openrouter.ai"
+          ],
+          "resolvedAddresses": [
+            "104.18.2.115",
+            "104.18.3.115",
+            "2606:4700::6812:273",
+            "2606:4700::6812:373"
+          ],
+          "controlExternalEndpointReachable": true,
+          "approvedEndpointReachable": true,
+          "arbitraryExternalBlocked": true,
+          "privateNetworkBlocked": true,
+          "linkLocalBlocked": true,
+          "metadataBlocked": true,
+          "unexpectedDnsBlocked": true
+        }
+      },
+      "negativeMatrix": {
+        "checks": {
+          "immutableImageIdentity": true,
+          "denyByDefault": true,
+          "approvedOpenRouterHttpsReachable": true,
+          "arbitraryPublicEgressBlocked": true,
+          "rfc1918Blocked": true,
+          "linkLocalBlocked": true,
+          "metadataBlocked": true,
+          "unexpectedDnsBlocked": true,
+          "nonRootWorkload": true,
+          "noNewPrivileges": true,
+          "allCapabilitySetsEmpty": true,
+          "firewallMutationBlocked": true,
+          "packageManagersAbsent": true,
+          "packageCachesAbsent": true,
+          "protectedPathsReadOnly": true,
+          "credentialDiscoveryBlocked": true,
+          "staleCredentialRejected": true,
+          "providerAdminAuthorityAbsent": true,
+          "githubAuthorityAbsent": true,
+          "previousAttemptArtifactsAbsent": true,
+          "exactResourceDeleted": true
+        },
+        "passed": true
+      },
+      "cleanup": {
+        "credentialIssued": true,
+        "credentialRevoked": true,
+        "staleCredentialRejected": true,
+        "staleCredentialProbeStatuses": [
+          200,
+          401
+        ],
+        "credentialSecretPersisted": false,
+        "resourceAbsent": true,
+        "finalVmCount": 0,
+        "passed": true
+      },
+      "performance": {
+        "allocationMs": 113,
+        "readinessMs": 0,
+        "startupMs": 8829,
+        "executionMs": 174182,
+        "teardownMs": 1917,
+        "totalCycleMs": 185041
+      },
+      "transportBundleSchema": "factory-sandbox-result/v1",
+      "transportBundleDigest": "sha256:c6c731c45759ed4c7c3dbe2aee16cfc778eea17fdba3d84cd68c23d32cb22b80",
+      "transportStatus": "COMPLETED",
+      "structuredResult": {
+        "schema": "factory-result/v1",
+        "status": "COMPLETED",
+        "summary": "Updated `src/authorization.mjs` so `canEditListing` now rejects missing or malformed contexts and only allows `owner` and `admin` roles before rerunning `node --test`.",
+        "completedAcceptanceCriterionIds": [
+          "SECURITY-001",
+          "SECURITY-002"
+        ],
+        "incompleteAcceptanceCriterionIds": [],
+        "unknownAcceptanceCriterionIds": [],
+        "verificationCommands": [
+          "node --test"
+        ],
+        "knownRisks": [],
+        "nextAction": "None; change is ready for review."
+      },
+      "resultProvenance": {
+        "source": "OUTPUT_FILE",
+        "outputFile": {
+          "state": "VALID",
+          "byteLength": 474
+        },
+        "jsonl": {
+          "byteLength": 8102,
+          "lineCount": 35,
+          "malformedLineCount": 0,
+          "terminalCompletedCount": 1,
+          "terminalFailureCount": 0,
+          "validCandidateCount": 1
+        },
+        "context": {
+          "attemptId": "attempt-b9431c8886a0-hardening-security-policy-1",
+          "manifestDigest": "sha256:78cd8d77d6f8929f2681a6097c490545ee90eb500505ec26bb31096ba23e6dcf",
+          "sourceSha": "1b62234032e8b03a75f55a4bea513dff0f54880b"
+        }
+      },
+      "changedFiles": [
+        "src/authorization.mjs"
+      ],
+      "executor": {
+        "exitCode": 0,
+        "stdoutDigest": "sha256:96d5ed5d18a2a8cb5733c508fdab0ec3f1c669a313c416e45222b103376c0e1e",
+        "stderrDigest": "sha256:19d0454315cc00c7390a92be657e3a7edffe3e21d1e0822922eea74f27c5ccd7",
+        "stdoutTail": "{\"type\":\"thread.started\",\"thread_id\":\"01a01dea-763a-71e2-b696-a2f0c9873045\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"error\",\"message\":\"Model metadata for `openai/gpt-5.1-codex-mini` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.\"}}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_1\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c ls\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_1\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c ls\",\"aggregated_output\":\"ls: applet not found\\n\",\"exit_code\":127,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_2\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c pwd\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_2\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c pwd\",\"aggregated_output\":\"/var/lib/mission-control/attempt/repository\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_3\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c ls\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_3\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c ls\",\"aggregated_output\":\"ls: applet not found\\n\",\"exit_code\":127,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_4\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c /bin/ls\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_4\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c /bin/ls\",\"aggregated_output\":\"ls: applet not found\\n\",\"exit_code\":127,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_5\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c \\\"python - <<'PY'\\nimport os\\nprint('\\\\\\\\n'.join(os.listdir('.')))\\nPY\\\"\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_5\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c \\\"python - <<'PY'\\nimport os\\nprint('\\\\\\\\n'.join(os.listdir('.')))\\nPY\\\"\",\"aggregated_output\":\"/bin/sh: python: not found\\n\",\"exit_code\":127,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_6\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c \\\"python3 - <<'PY'\\nimport os\\nprint('\\\\\\\\n'.join(os.listdir('.')))\\nPY\\\"\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_6\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c \\\"python3 - <<'PY'\\nimport os\\nprint('\\\\\\\\n'.join(os.listdir('.')))\\nPY\\\"\",\"aggregated_output\":\"/bin/sh: python3: not found\\n\",\"exit_code\":127,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_7\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'busybox ls'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_7\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'busybox ls'\",\"aggregated_output\":\"ls: applet not found\\n\",\"exit_code\":127,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_8\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c \\\"printf '%s\\n' *\\\"\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_8\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c \\\"printf '%s\\n' *\\\"\",\"aggregated_output\":\"package.json\\nsrc\\ntests\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_9\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'find .. -name AGENTS.md -print'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_9\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'find .. -name AGENTS.md -print'\",\"aggregated_output\":\"find: applet not found\\n\",\"exit_code\":127,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_10\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c '/bin/find .. -name AGENTS.md -print'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_10\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c '/bin/find .. -name AGENTS.md -print'\",\"aggregated_output\":\"/bin/sh: /bin/find: not found\\n\",\"exit_code\":127,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_11\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c \\\"node -e \\\\\\\"const fs=require('fs');fs.readdirSync('.').forEach(p=>console.log(p));\\\\\\\"\\\"\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_11\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c \\\"node -e \\\\\\\"const fs=require('fs');fs.readdirSync('.').forEach(p=>console.log(p));\\\\\\\"\\\"\",\"aggregated_output\":\".git\\npackage.json\\nsrc\\ntests\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_12\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c \\\"node -e \\\\\\\"const fs=require('fs');const path=require('path');const roots=['.'];const res=[];function traverse(dir){const entries=fs.readdirSync(dir);for(const entry of entries){const full=path.join(dir,entry);if(entry==='AGENTS.md'){res.push(full);}try{if(fs.statSync(full).isDirectory()){traverse(full);}}catch(e){}}}traverse(process.cwd());console.log(res.join('\\\\\\\\n'))\\\\\\\"\\\"\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_12\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c \\\"node -e \\\\\\\"const fs=require('fs');const path=require('path');const roots=['.'];const res=[];function traverse(dir){const entries=fs.readdirSync(dir);for(const entry of entries){const full=path.join(dir,entry);if(entry==='AGENTS.md'){res.push(full);}try{if(fs.statSync(full).isDirectory()){traverse(full);}}catch(e){}}}traverse(process.cwd());console.log(res.join('\\\\\\\\n'))\\\\\\\"\\\"\",\"aggregated_output\":\"\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_13\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'cat src/authorization.mjs'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_13\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'cat src/authorization.mjs'\",\"aggregated_output\":\"export function canEditListing(context) {\\n  if (!context?.role) return true;\\n  return ['owner', 'admin'].includes(context.role);\\n}\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_14\",\"type\":\"file_change\",\"changes\":[{\"path\":\"/var/lib/mission-control/attempt/repository/src/authorization.mjs\",\"kind\":\"update\"}],\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_14\",\"type\":\"file_change\",\"changes\":[{\"path\":\"/var/lib/mission-control/attempt/repository/src/authorization.mjs\",\"kind\":\"update\"}],\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_15\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'node --test'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_15\",\"type\":\"command_execution\",\"command\":\"/bin/sh -c 'node --test'\",\"aggregated_output\":\"✔ fails closed (3.436875ms)\\n✔ uses exact roles (0.72525ms)\\nℹ tests 2\\nℹ suites 0\\nℹ pass 2\\nℹ fail 0\\nℹ cancelled 0\\nℹ skipped 0\\nℹ todo 0\\nℹ duration_ms 614.272958\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_16\",\"type\":\"agent_message\",\"text\":\"{\\\"schema\\\":\\\"factory-result/v1\\\",\\\"status\\\":\\\"COMPLETED\\\",\\\"summary\\\":\\\"Updated `src/authorization.mjs` so `canEditListing` now rejects missing or malformed contexts and only allows `owner` and `admin` roles before rerunning `node --test`.\\\",\\\"completedAcceptanceCriterionIds\\\":[\\\"SECURITY-001\\\",\\\"SECURITY-002\\\"],\\\"incompleteAcceptanceCriterionIds\\\":[],\\\"unknownAcceptanceCriterionIds\\\":[],\\\"verificationCommands\\\":[\\\"node --test\\\"],\\\"knownRisks\\\":[],\\\"nextAction\\\":\\\"None; change is ready for review.\\\"}\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":153268,\"cached_input_tokens\":135424,\"cache_write_input_tokens\":0,\"output_tokens\":3409,\"reasoning_output_tokens\":1344}}\n",
+        "stderrTail": "Reading additional input from stdin...\n",
+        "resultOutput": {
+          "state": "VALID",
+          "byteLength": 474,
+          "digest": "sha256:b165ac4c17691b14196f2e1ff471aa8da6d18c7c718f272565905508055ab9fc",
+          "tail": "{\"schema\":\"factory-result/v1\",\"status\":\"COMPLETED\",\"summary\":\"Updated `src/authorization.mjs` so `canEditListing` now rejects missing or malformed contexts and only allows `owner` and `admin` roles before rerunning `node --test`.\",\"completedAcceptanceCriterionIds\":[\"SECURITY-001\",\"SECURITY-002\"],\"incompleteAcceptanceCriterionIds\":[],\"unknownAcceptanceCriterionIds\":[],\"verificationCommands\":[\"node --test\"],\"knownRisks\":[],\"nextAction\":\"None; change is ready for review.\"}",
+          "validationIssues": []
+        }
+      },
+      "usage": {
+        "providerCostUsd": null,
+        "inferenceCostUsd": null,
+        "inputTokens": 153268,
+        "outputTokens": 3409,
+        "observedAt": 1787208472601,
+        "providerRuntimeMs": 173286,
+        "enforcement": "OBSERVATION_ONLY"
+      },
+      "firstPassSuccess": true,
+      "failure": null,
+      "candidate": {
+        "sourceSha": "1b62234032e8b03a75f55a4bea513dff0f54880b",
+        "candidateSha": "93a3cb49aa85d35f91c272908a1ec2b904b76db3",
+        "treeSha": "9b7a8021621a1cd9cea02d0460203d3e067f4702",
+        "changedFiles": [
+          "src/authorization.mjs"
+        ],
+        "linesAdded": 1,
+        "linesDeleted": 1
+      },
+      "verification": {
+        "independent": true,
+        "candidateSha": "93a3cb49aa85d35f91c272908a1ec2b904b76db3",
+        "treeSha": "9b7a8021621a1cd9cea02d0460203d3e067f4702",
+        "verdict": "VERIFIED",
+        "reason": "Independent exact-candidate npm test passed.",
+        "command": "npm test",
+        "exitCode": 0,
+        "outputSha256": "1e9561883b9598b11c97289202c41b4beb74c037d42103cb03cd045ddbd13ac8",
+        "acceptanceCriterionIds": [
+          "SECURITY-001",
+          "SECURITY-002"
+        ],
+        "durationMs": 306,
+        "acceptanceAuthority": false
+      },
+      "acceptance": {
+        "approvalStatus": "APPROVED",
+        "missingApprovalTypes": [],
+        "expiredApprovalTypes": [],
+        "revokedApprovalTypes": [],
+        "missingCriteriaIds": [],
+        "failedCriteriaIds": [],
+        "staleCriteriaIds": [],
+        "waivedCriteriaIds": [],
+        "waiverWithoutApprovalCriteriaIds": [],
+        "verificationVerdict": "VERIFIED",
+        "blockingReasons": [],
+        "eligible": true,
+        "authority": "workOrders.accept",
+        "authorityMode": "AUTHORIZED_OPERATOR_FIXTURE",
+        "candidateSha": "93a3cb49aa85d35f91c272908a1ec2b904b76db3",
+        "acceptedAt": "2026-08-20T06:47:55.451Z"
+      }
+    },
+    {
+      "executionId": "hardening-data-migration-1",
+      "workloadKey": "data-migration",
+      "workloadClass": "DATA_SCHEMA_MIGRATION",
+      "workloadTitle": "Migrate listing ownership with compatibility and rollback",
+      "risk": "HIGH",
+      "attemptId": "attempt-b9431c8886a0-hardening-data-migration-1",
+      "workflowRunId": "workflow-b9431c8886a0-hardening-data-migration-1",
+      "leaseId": "lease-b9431c8886a0-hardening-data-migration-1",
+      "attemptNumber": 1,
+      "retries": 0,
+      "sourceSha": "a09426f1f06ba22b2799b4f0eef12a1c70dd5429",
+      "manifestDigest": "sha256:6e92704d316bdcb5b8aff2d2ee30bd28aa64b4ae6afee3e494d569d85274a850",
+      "manifest": {
+        "version": "factory-execution-manifest/v1",
+        "causation": {
+          "missionId": "mission-b9431c8886a0-hardening-data-migration-1",
+          "missionPlanId": "plan-b9431c8886a0-hardening-data-migration-1",
+          "workOrderId": "work-order-b9431c8886a0-hardening-data-migration-1",
+          "workOrderRevisionNumber": 1,
+          "workflowRunId": "workflow-b9431c8886a0-hardening-data-migration-1",
+          "attemptId": "attempt-b9431c8886a0-hardening-data-migration-1"
+        },
+        "factory": {
+          "definitionId": "factory-remote-sandbox-hardening",
+          "definitionVersionId": "factory-remote-sandbox-hardening-v1",
+          "version": 1,
+          "configurationDigest": "sha256:409d50666d74538a941428a021b53b469b674051480593393a0c63e6b0854e3b"
+        },
+        "repository": {
+          "repository": "sellerfi-hardening/data-migration",
+          "baseSha": "a09426f1f06ba22b2799b4f0eef12a1c70dd5429",
+          "allowedPaths": [
+            "src/**",
+            "migrations/**"
+          ],
+          "excludedPaths": [
+            "tests/**",
+            "package.json",
+            ".git/**"
+          ]
+        },
+        "intent": {
+          "title": "Migrate listing ownership with compatibility and rollback",
+          "acceptanceCriterionIds": [
+            "MIGRATION-001",
+            "MIGRATION-002",
+            "MIGRATION-003"
+          ]
+        },
+        "harness": {
+          "adapter": "codex",
+          "version": "v1",
+          "harnessId": "codex-cli",
+          "harnessVersion": "0.146.0",
+          "provider": "openrouter",
+          "model": "openai/gpt-5.1-codex-mini",
+          "executionBackend": "remote-sandbox",
+          "isolation": "WORKSPACE_WRITE",
+          "pullRequestAuthority": "CONTROL_PLANE_ONLY",
+          "timeoutMs": 300000
+        },
+        "sandbox": {
+          "profileDigest": "sha256:a72aa0ed43bfb9c6323a2575205de4195bc461514d049aa98386a540b0d2204c",
+          "supervisorVersion": "mission-control-supervisor/v1",
+          "credentialGrants": [
+            {
+              "kind": "INFERENCE",
+              "secretValueIncluded": false,
+              "githubAuthority": "NONE",
+              "providerAuthority": "NONE"
+            }
+          ]
+        },
+        "retryPolicy": {
+          "schema": "factory-remote-retry-policy/v1",
+          "maxAttempts": 1,
+          "maxTotalWallClockMs": 330000,
+          "maxModelSpendUsd": 0.05,
+          "maxProviderResources": 1,
+          "retryableFailureClasses": []
+        }
+      },
+      "resourceName": "mc-attempt-bd190449663f3821",
+      "invocation": {
+        "command": "codex",
+        "harnessVersion": "0.146.0",
+        "args": [
+          "-a",
+          "never",
+          "-c",
+          "model_provider=\"mission-control-openrouter\"",
+          "-c",
+          "model_providers.mission-control-openrouter.name=\"OpenRouter\"",
+          "-c",
+          "model_providers.mission-control-openrouter.base_url=\"https://openrouter.ai/api/v1\"",
+          "-c",
+          "model_providers.mission-control-openrouter.env_key=\"OPENAI_API_KEY\"",
+          "-c",
+          "model_providers.mission-control-openrouter.wire_api=\"responses\"",
+          "-c",
+          "model_providers.mission-control-openrouter.supports_websockets=false",
+          "exec",
+          "--json",
+          "--ephemeral",
+          "--ignore-user-config",
+          "--ignore-rules",
+          "--sandbox",
+          "danger-full-access",
+          "--color",
+          "never",
+          "-C",
+          "/var/lib/mission-control/attempt/repository",
+          "-o",
+          "/var/lib/mission-control/attempt/executor-result.json",
+          "--output-schema",
+          "/var/lib/mission-control/attempt/factory-result.schema.json",
+          "-m",
+          "openai/gpt-5.1-codex-mini",
+          "Implement the approved ownership schema migration. In src/orderOwnership.mjs implement readOwnerId(record) that prefers ownerId and falls back to legacy owner. Add migrations/001-owner-id.mjs exporting migrateOwner(record) and rollbackOwner(record); each must preserve unrelated fields, move the ownership value, remove only the superseded key, and be idempotent. Do not modify tests or package.json. Run node --test.\n\nThis is the only Attempt. Do not assume artifacts or verification from another Attempt.\n\nReturn exactly one JSON object and no prose. Use the literal string factory-result/v1 for schema. Use exactly one uppercase status: COMPLETED, BLOCKED, or FAILED. completedAcceptanceCriterionIds, incompleteAcceptanceCriterionIds, unknownAcceptanceCriterionIds, verificationCommands, and knownRisks must always be JSON arrays of strings, including when empty. summary and nextAction must be JSON strings.\n\nWhen status is COMPLETED, every listed acceptance criterion ID must appear exactly once in completedAcceptanceCriterionIds, and incompleteAcceptanceCriterionIds and unknownAcceptanceCriterionIds must both be empty.\n\n{\"schema\":\"factory-result/v1\",\"status\":\"COMPLETED\",\"summary\":\"Implemented and tested the bounded change.\",\"completedAcceptanceCriterionIds\":[\"criterion-id\"],\"incompleteAcceptanceCriterionIds\":[],\"unknownAcceptanceCriterionIds\":[],\"verificationCommands\":[\"node --test\"],\"knownRisks\":[],\"nextAction\":\"Review the exact candidate.\"}\n\nUse only these acceptance criterion IDs: MIGRATION-001, MIGRATION-002, MIGRATION-003.\n\nRepository mutation is limited to these approved repository-relative boundaries:\n- src/**\n- migrations/**\nDenied repository-relative boundaries:\n- tests/**\n- package.json\n- .git/**\nDo not expose credentials in output, artifacts, or logs."
+        ],
+        "outputSchemaPath": "/var/lib/mission-control/attempt/factory-result.schema.json",
+        "environmentKeys": [
+          "OPENAI_API_KEY",
+          "OPENAI_BASE_URL"
+        ],
+        "packageManagerUsed": false
+      },
+      "inventoryBefore": {
+        "checkedAt": "2026-08-20T06:47:55.540Z",
+        "authenticated": true,
+        "vmCount": 0,
+        "maxVms": 1,
+        "liveAllocationAllowed": true,
+        "automaticIntegrationCount": 0
+      },
+      "inventoryAfter": {
+        "checkedAt": "2026-08-20T06:53:36.909Z",
+        "authenticated": true,
+        "vmCount": 0,
+        "maxVms": 1,
+        "liveAllocationAllowed": true,
+        "automaticIntegrationCount": 0
+      },
+      "lifecycleEvents": [
+        {
+          "type": "SANDBOX_REQUESTED",
+          "occurredAt": 1787208475559,
+          "resourceName": "mc-attempt-bd190449663f3821",
+          "attemptId": "attempt-b9431c8886a0-hardening-data-migration-1",
+          "metadata": {
+            "provider": "EXE_DEV",
+            "profileDigest": "sha256:a72aa0ed43bfb9c6323a2575205de4195bc461514d049aa98386a540b0d2204c",
+            "readiness": "DEGRADED"
+          }
+        },
+        {
+          "type": "SANDBOX_ALLOCATED",
+          "occurredAt": 1787208475680,
+          "resourceName": "mc-attempt-bd190449663f3821",
+          "attemptId": "attempt-b9431c8886a0-hardening-data-migration-1",
+          "metadata": {
+            "providerResourceId": "f8087db86a643541fe396ee20eada47ef6a0e09b89b95c788712bea4107cf87e"
+          }
+        },
+        {
+          "type": "SANDBOX_STARTED",
+          "occurredAt": 1787208484361,
+          "resourceName": "mc-attempt-bd190449663f3821",
+          "attemptId": "attempt-b9431c8886a0-hardening-data-migration-1",
+          "metadata": {
+            "processId": "f8087db86a643541fe396ee20eada47ef6a0e09b89b95c788712bea4107cf87e:supervisor",
+            "securityProof": {
+              "schema": "factory-sandbox-security-proof/v1",
+              "profile": "remote-sandbox/exe-dev/restricted-candidate-v1",
+              "observedAt": 1787208484196,
+              "image": {
+                "requestedReference": "mc-remote-final-blocker@sha256:88e1dda3be0324fcb2c156000491a10a0003315e4ca4f46c8a3d9bb2e3af82b3",
+                "requestedDigest": "sha256:88e1dda3be0324fcb2c156000491a10a0003315e4ca4f46c8a3d9bb2e3af82b3",
+                "providerReportedReference": "mc-remote-final-blocker@sha256:88e1dda3be0324fcb2c156000491a10a0003315e4ca4f46c8a3d9bb2e3af82b3",
+                "providerReferenceMatched": true
+              },
+              "toolchain": {
+                "nodeVersion": "v26.7.0",
+                "codexVersion": "codex-cli 0.146.0",
+                "codexBinarySha256": "sha256:2e863156ed35ecc5253b1e2f907a9143077b9f7cb51942070c61996471ff6e04",
+                "gitVersion": "git version 2.55.0",
+                "gitBinarySha256": "sha256:7127059b4ebea64f4a50fc3c64601b69a9694196f3ee0396efec6378a0b45078",
+                "busyboxVersion": "BusyBox v1.37.0",
+                "busyboxBinarySha256": "sha256:61e4d179a46e1024327f5080c02fe01108752a2c9e6ea06d4968575d1bec28eb",
+                "toolchainInputsSha256": "sha256:c98a7def4211fbc4b68b2588212eb461d7ad924aaa415cc4c3eb296b62648923",
+                "executionUid": 10001,
+                "executionGid": 10001
+              },
+              "filesystem": {
+                "repositoryOwnerUid": 10001,
+                "repositoryOwnerGid": 10001,
+                "protectedPathsReadOnly": true,
+                "packageCachesAbsent": true
+              },
+              "privilege": {
+                "noNewPrivileges": true,
+                "capabilities": {
+                  "inheritable": "0000000000000000",
+                  "permitted": "0000000000000000",
+                  "effective": "0000000000000000",
+                  "bounding": "0000000000000000",
+                  "ambient": "0000000000000000"
+                },
+                "firewallMutationBlocked": true,
+                "packageManagerCommandsAbsent": [
+                  "apk",
+                  "apt",
+                  "apt-get",
+                  "dpkg",
+                  "npm",
+                  "npx",
+                  "corepack",
+                  "yarn",
+                  "yarnpkg",
+                  "pnpm",
+                  "pnpx"
+                ]
+              },
+              "network": {
+                "enforcement": "GUEST_NFTABLES",
+                "providerEnforced": false,
+                "policyDigest": "sha256:9786bfac28a3a6ab4803c6aea27172a97b38e43ae2290945226a4ae7174530e0",
+                "allowedHttpsHosts": [
+                  "openrouter.ai"
+                ],
+                "resolvedAddresses": [
+                  "104.18.2.115",
+                  "104.18.3.115",
+                  "2606:4700::6812:273",
+                  "2606:4700::6812:373"
+                ],
+                "controlExternalEndpointReachable": true,
+                "approvedEndpointReachable": true,
+                "arbitraryExternalBlocked": true,
+                "privateNetworkBlocked": true,
+                "linkLocalBlocked": true,
+                "metadataBlocked": true,
+                "unexpectedDnsBlocked": true
+              }
+            }
+          }
+        },
+        {
+          "type": "SANDBOX_RESULT_RECEIVED",
+          "occurredAt": 1787208785571,
+          "resourceName": "mc-attempt-bd190449663f3821",
+          "attemptId": "attempt-b9431c8886a0-hardening-data-migration-1",
+          "metadata": {
+            "resultDigest": "sha256:40564e42c329263076c32846b45a92306f536e6ea5f517f0bb27c4d3b6b705bb",
+            "status": "TIMED_OUT",
+            "providerCostUsd": null,
+            "inferenceCostUsd": null
+          }
+        },
+        {
+          "type": "SANDBOX_CREDENTIAL_REVOKED",
+          "occurredAt": 1787208816723,
+          "resourceName": "mc-attempt-bd190449663f3821",
+          "attemptId": "attempt-b9431c8886a0-hardening-data-migration-1",
+          "metadata": {
+            "grantKey": "mc-attempt-e96271bad1abae15ea77",
+            "externalCredentialId": "82842c18a8bb7a123f618686b60b999e9c74fe16ea1be0862b1ac52275b70542"
+          }
+        },
+        {
+          "type": "SANDBOX_TERMINATION_REQUESTED",
+          "occurredAt": 1787208816723,
+          "resourceName": "mc-attempt-bd190449663f3821",
+          "attemptId": "attempt-b9431c8886a0-hardening-data-migration-1",
+          "metadata": {
+            "providerResourceId": "f8087db86a643541fe396ee20eada47ef6a0e09b89b95c788712bea4107cf87e"
+          }
+        },
+        {
+          "type": "SANDBOX_TERMINATED",
+          "occurredAt": 1787208816891,
+          "resourceName": "mc-attempt-bd190449663f3821",
+          "attemptId": "attempt-b9431c8886a0-hardening-data-migration-1",
+          "metadata": {
+            "confirmedAbsentAt": 1787208816891
+          }
+        }
+      ],
+      "supervisorDiagnostics": {
+        "supervisorLogTail": "",
+        "supervisorProcessRunning": true,
+        "lifecycleTrace": [
+          {
+            "stage": "BOOTSTRAP_STARTED",
+            "occurredAt": 1787208476945,
+            "pid": 53,
+            "uid": 0,
+            "gid": 0
+          },
+          {
+            "stage": "BOOTSTRAP_CONFIG_VALIDATED",
+            "occurredAt": 1787208476950,
+            "profile": "remote-sandbox/exe-dev/restricted-candidate-v1"
+          },
+          {
+            "stage": "BOOTSTRAP_TOOLCHAIN_VALIDATED",
+            "occurredAt": 1787208478001,
+            "nodeVersion": "v26.7.0",
+            "codexVersion": "codex-cli 0.146.0",
+            "gitVersion": "git version 2.55.0",
+            "busyboxVersion": "BusyBox v1.37.0"
+          },
+          {
+            "stage": "BOOTSTRAP_FILESYSTEM_PREPARED",
+            "occurredAt": 1787208478006,
+            "repositoryOwnerUid": 10001,
+            "repositoryOwnerGid": 10001
+          },
+          {
+            "stage": "BOOTSTRAP_NETWORK_POLICY_APPLIED",
+            "occurredAt": 1787208478116,
+            "allowedHttpsHosts": [
+              "openrouter.ai"
+            ],
+            "resolvedAddresses": [
+              "104.18.2.115",
+              "104.18.3.115",
+              "2606:4700::6812:273",
+              "2606:4700::6812:373"
+            ],
+            "policyDigest": "sha256:9786bfac28a3a6ab4803c6aea27172a97b38e43ae2290945226a4ae7174530e0"
+          },
+          {
+            "stage": "BOOTSTRAP_NEGATIVE_PROBES_PASSED",
+            "occurredAt": 1787208484186,
+            "network": {
+              "approvedEndpointReachable": true,
+              "arbitraryExternalBlocked": true,
+              "privateNetworkBlocked": true,
+              "linkLocalBlocked": true,
+              "metadataBlocked": true,
+              "unexpectedDnsBlocked": true
+            },
+            "privilege": {
+              "noNewPrivileges": true,
+              "capabilities": {
+                "inheritable": "0000000000000000",
+                "permitted": "0000000000000000",
+                "effective": "0000000000000000",
+                "bounding": "0000000000000000",
+                "ambient": "0000000000000000"
+              },
+              "firewallMutationBlocked": true
+            }
+          },
+          {
+            "stage": "BOOTSTRAP_COMPLETED",
+            "occurredAt": 1787208484198,
+            "proofPath": "/var/lib/mission-control/attempt/security-proof.json",
+            "policyDigest": "sha256:9786bfac28a3a6ab4803c6aea27172a97b38e43ae2290945226a4ae7174530e0"
+          },
+          {
+            "stage": "SUPERVISOR_STARTED",
+            "occurredAt": 1787208484689,
+            "pid": 153,
+            "uid": 0,
+            "gid": 0
+          },
+          {
+            "stage": "CONFIG_LOADED",
+            "occurredAt": 1787208484695,
+            "attemptId": "attempt-b9431c8886a0-hardening-data-migration-1",
+            "files": {
+              "repository": {
+                "state": "PRESENT",
+                "type": "DIRECTORY",
+                "mode": "755",
+                "uid": 10001,
+                "gid": 10001,
+                "byteLength": 4096
+              },
+              "home": {
+                "state": "PRESENT",
+                "type": "DIRECTORY",
+                "mode": "700",
+                "uid": 10001,
+                "gid": 10001,
+                "byteLength": 4096
+              },
+              "temporary": {
+                "state": "PRESENT",
+                "type": "DIRECTORY",
+                "mode": "700",
+                "uid": 10001,
+                "gid": 10001,
+                "byteLength": 4096
+              },
+              "outputSchema": {
+                "state": "PRESENT",
+                "type": "FILE",
+                "mode": "444",
+                "uid": 0,
+                "gid": 0,
+                "byteLength": 994
+              },
+              "executorResult": {
+                "state": "PRESENT",
+                "type": "FILE",
+                "mode": "600",
+                "uid": 10001,
+                "gid": 10001,
+                "byteLength": 0
+              },
+              "supervisorResult": {
+                "state": "ABSENT"
+              },
+              "diagnostics": {
+                "state": "ABSENT"
+              }
+            }
+          },
+          {
+            "stage": "MANIFEST_VALIDATED",
+            "occurredAt": 1787208484714,
+            "attemptId": "attempt-b9431c8886a0-hardening-data-migration-1",
+            "sourceSha": "a09426f1f06ba22b2799b4f0eef12a1c70dd5429"
+          },
+          {
+            "stage": "REPOSITORY_VALIDATION_STARTED",
+            "occurredAt": 1787208484715,
+            "repository": {
+              "state": "PRESENT",
+              "type": "DIRECTORY",
+              "mode": "755",
+              "uid": 10001,
+              "gid": 10001,
+              "byteLength": 4096
+            }
+          },
+          {
+            "stage": "REPOSITORY_VALIDATED",
+            "occurredAt": 1787208484739,
+            "sourceSha": "a09426f1f06ba22b2799b4f0eef12a1c70dd5429"
+          },
+          {
+            "stage": "CODEX_SPAWN_STARTED",
+            "occurredAt": 1787208484740,
+            "command": "codex",
+            "uid": 10001,
+            "gid": 10001,
+            "environmentKeys": [
+              "HOME",
+              "OPENAI_API_KEY",
+              "OPENAI_BASE_URL",
+              "PATH",
+              "SHELL",
+              "TMPDIR"
+            ]
+          },
+          {
+            "stage": "CODEX_SPAWNED",
+            "occurredAt": 1787208484745,
+            "pid": 181,
+            "detached": true
+          },
+          {
+            "stage": "CODEX_FIRST_EVENT",
+            "occurredAt": 1787208485363,
+            "stream": "stderr",
+            "byteLength": 39
+          },
+          {
+            "stage": "CODEX_TERMINAL",
+            "occurredAt": 1787208784799,
+            "exitCode": 0,
+            "signal": null,
+            "timedOut": true,
+            "canceled": false
+          },
+          {
+            "stage": "EXECUTOR_OUTPUT_INSPECTED",
+            "occurredAt": 1787208784808,
+            "state": "EMPTY",
+            "byteLength": 0,
+            "file": {
+              "state": "PRESENT",
+              "type": "FILE",
+              "mode": "600",
+              "uid": 10001,
+              "gid": 10001,
+              "byteLength": 0
+            }
+          },
+          {
+            "stage": "DIAGNOSTICS_WRITE_STARTED",
+            "occurredAt": 1787208784825,
+            "path": "/var/lib/mission-control/attempt/diagnostics.json",
+            "networkPolicyState": "OBSERVED"
+          },
+          {
+            "stage": "DIAGNOSTICS_WRITTEN",
+            "occurredAt": 1787208784831,
+            "file": {
+              "state": "PRESENT",
+              "type": "FILE",
+              "mode": "600",
+              "uid": 0,
+              "gid": 0,
+              "byteLength": 19409
+            }
+          },
+          {
+            "stage": "RESULT_FINALIZATION_STARTED",
+            "occurredAt": 1787208784896,
+            "changedFileCount": 0
+          },
+          {
+            "stage": "RESULT_WRITTEN",
+            "occurredAt": 1787208784899,
+            "status": "TIMED_OUT",
+            "file": {
+              "state": "PRESENT",
+              "type": "FILE",
+              "mode": "600",
+              "uid": 0,
+              "gid": 0,
+              "byteLength": 19230
+            }
+          },
+          {
+            "stage": "SUPERVISOR_TERMINAL",
+            "occurredAt": 1787208784899,
+            "exitCode": 0,
+            "signal": null
+          }
+        ],
+        "supervisorExit": null
+      },
+      "securityProof": {
+        "schema": "factory-sandbox-security-proof/v1",
+        "profile": "remote-sandbox/exe-dev/restricted-candidate-v1",
+        "observedAt": 1787208484196,
+        "image": {
+          "requestedReference": "mc-remote-final-blocker@sha256:88e1dda3be0324fcb2c156000491a10a0003315e4ca4f46c8a3d9bb2e3af82b3",
+          "requestedDigest": "sha256:88e1dda3be0324fcb2c156000491a10a0003315e4ca4f46c8a3d9bb2e3af82b3",
+          "providerReportedReference": "mc-remote-final-blocker@sha256:88e1dda3be0324fcb2c156000491a10a0003315e4ca4f46c8a3d9bb2e3af82b3",
+          "providerReferenceMatched": true
+        },
+        "toolchain": {
+          "nodeVersion": "v26.7.0",
+          "codexVersion": "codex-cli 0.146.0",
+          "codexBinarySha256": "sha256:2e863156ed35ecc5253b1e2f907a9143077b9f7cb51942070c61996471ff6e04",
+          "gitVersion": "git version 2.55.0",
+          "gitBinarySha256": "sha256:7127059b4ebea64f4a50fc3c64601b69a9694196f3ee0396efec6378a0b45078",
+          "busyboxVersion": "BusyBox v1.37.0",
+          "busyboxBinarySha256": "sha256:61e4d179a46e1024327f5080c02fe01108752a2c9e6ea06d4968575d1bec28eb",
+          "toolchainInputsSha256": "sha256:c98a7def4211fbc4b68b2588212eb461d7ad924aaa415cc4c3eb296b62648923",
+          "executionUid": 10001,
+          "executionGid": 10001
+        },
+        "filesystem": {
+          "repositoryOwnerUid": 10001,
+          "repositoryOwnerGid": 10001,
+          "protectedPathsReadOnly": true,
+          "packageCachesAbsent": true
+        },
+        "privilege": {
+          "noNewPrivileges": true,
+          "capabilities": {
+            "inheritable": "0000000000000000",
+            "permitted": "0000000000000000",
+            "effective": "0000000000000000",
+            "bounding": "0000000000000000",
+            "ambient": "0000000000000000"
+          },
+          "firewallMutationBlocked": true,
+          "packageManagerCommandsAbsent": [
+            "apk",
+            "apt",
+            "apt-get",
+            "dpkg",
+            "npm",
+            "npx",
+            "corepack",
+            "yarn",
+            "yarnpkg",
+            "pnpm",
+            "pnpx"
+          ]
+        },
+        "network": {
+          "enforcement": "GUEST_NFTABLES",
+          "providerEnforced": false,
+          "policyDigest": "sha256:9786bfac28a3a6ab4803c6aea27172a97b38e43ae2290945226a4ae7174530e0",
+          "allowedHttpsHosts": [
+            "openrouter.ai"
+          ],
+          "resolvedAddresses": [
+            "104.18.2.115",
+            "104.18.3.115",
+            "2606:4700::6812:273",
+            "2606:4700::6812:373"
+          ],
+          "controlExternalEndpointReachable": true,
+          "approvedEndpointReachable": true,
+          "arbitraryExternalBlocked": true,
+          "privateNetworkBlocked": true,
+          "linkLocalBlocked": true,
+          "metadataBlocked": true,
+          "unexpectedDnsBlocked": true
+        }
+      },
+      "negativeMatrix": {
+        "checks": {
+          "immutableImageIdentity": true,
+          "denyByDefault": true,
+          "approvedOpenRouterHttpsReachable": true,
+          "arbitraryPublicEgressBlocked": true,
+          "rfc1918Blocked": true,
+          "linkLocalBlocked": true,
+          "metadataBlocked": true,
+          "unexpectedDnsBlocked": true,
+          "nonRootWorkload": true,
+          "noNewPrivileges": true,
+          "allCapabilitySetsEmpty": true,
+          "firewallMutationBlocked": true,
+          "packageManagersAbsent": true,
+          "packageCachesAbsent": true,
+          "protectedPathsReadOnly": true,
+          "credentialDiscoveryBlocked": true,
+          "staleCredentialRejected": true,
+          "providerAdminAuthorityAbsent": true,
+          "githubAuthorityAbsent": true,
+          "previousAttemptArtifactsAbsent": true,
+          "exactResourceDeleted": true
+        },
+        "passed": true
+      },
+      "cleanup": {
+        "credentialIssued": true,
+        "credentialRevoked": true,
+        "staleCredentialRejected": true,
+        "staleCredentialProbeStatuses": [
+          200,
+          200,
+          200,
+          200,
+          401
+        ],
+        "credentialSecretPersisted": false,
+        "resourceAbsent": true,
+        "finalVmCount": 0,
+        "passed": true
+      },
+      "performance": {
+        "allocationMs": 121,
+        "readinessMs": 0,
+        "startupMs": 8681,
+        "executionMs": 301210,
+        "teardownMs": 31320,
+        "totalCycleMs": 341332
+      },
+      "transportBundleSchema": "factory-sandbox-result/v1",
+      "transportBundleDigest": "sha256:40564e42c329263076c32846b45a92306f536e6ea5f517f0bb27c4d3b6b705bb",
+      "transportStatus": "TIMED_OUT",
+      "structuredResult": {
+        "schema": "factory-result/v1",
+        "status": "FAILED",
+        "summary": "Remote executor exceeded the frozen Attempt timeout.",
+        "completedAcceptanceCriterionIds": [],
+        "incompleteAcceptanceCriterionIds": [],
+        "unknownAcceptanceCriterionIds": [],
+        "verificationCommands": [],
+        "knownRisks": [
+          "RETRYABLE_EXECUTION:EXECUTOR_TIMEOUT"
+        ],
+        "nextAction": "Inspect the bounded remote execution evidence before deciding whether to retry."
+      },
+      "resultProvenance": {
+        "source": "NONE",
+        "outputFile": {
+          "state": "EMPTY",
+          "byteLength": 0
+        },
+        "jsonl": {
+          "byteLength": 14455,
+          "lineCount": 56,
+          "malformedLineCount": 0,
+          "terminalCompletedCount": 0,
+          "terminalFailureCount": 0,
+          "validCandidateCount": 0
+        },
+        "context": {
+          "attemptId": "attempt-b9431c8886a0-hardening-data-migration-1",
+          "manifestDigest": "sha256:6e92704d316bdcb5b8aff2d2ee30bd28aa64b4ae6afee3e494d569d85274a850",
+          "sourceSha": "a09426f1f06ba22b2799b4f0eef12a1c70dd5429"
+        }
+      },
+      "changedFiles": [],
+      "executor": {
+        "exitCode": 0,
+        "stdoutDigest": "sha256:d803dbcaa3b87df75f9640ad3855b56ed8bd022b7b3920c95dbd0bccb0615e34",
+        "stderrDigest": "sha256:19d0454315cc00c7390a92be657e3a7edffe3e21d1e0822922eea74f27c5ccd7",
+        "stdoutTail": "{\"type\":\"thread.started\",\"thread_id\":\"01a01ded-4a48-7120-a93a-19c02ed7a905\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"error\",\"message\":\"Model metadata for `openai/gpt-5.1-codex-mini` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.\"}}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_1\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc pwd\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_1\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc pwd\",\"aggregated_output\":\"/var/lib/mission-control/attempt/repository\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_2\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc ls\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_2\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc ls\",\"aggregated_output\":\"ls: applet not found\\n\",\"exit_code\":127,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_3\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc /bin/ls\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_3\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc /bin/ls\",\"aggregated_output\":\"ls: applet not found\\n\",\"exit_code\":127,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_4\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc /usr/bin/ls\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_4\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc /usr/bin/ls\",\"aggregated_output\":\"/bin/sh: /usr/bin/ls: not found\\n\",\"exit_code\":127,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_5\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'command -v ls'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_5\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'command -v ls'\",\"aggregated_output\":\"/bin/ls\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_6\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc /bin/ls\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_6\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc /bin/ls\",\"aggregated_output\":\"ls: applet not found\\n\",\"exit_code\":127,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_7\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'command -v busybox'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_7\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'command -v busybox'\",\"aggregated_output\":\"/bin/busybox\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_8\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc '/bin/busybox ls'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_8\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc '/bin/busybox ls'\",\"aggregated_output\":\"ls: applet not found\\n\",\"exit_code\":127,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_9\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc \\\"printf '%s\\n' *\\\"\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_9\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc \\\"printf '%s\\n' *\\\"\",\"aggregated_output\":\"migrations\\npackage.json\\nsrc\\ntests\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_10\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'find . -name AGENTS.md -print'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_10\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'find . -name AGENTS.md -print'\",\"aggregated_output\":\"find: applet not found\\n\",\"exit_code\":127,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_11\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc '/bin/busybox find . -name AGENTS.md -print'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_11\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc '/bin/busybox find . -name AGENTS.md -print'\",\"aggregated_output\":\"find: applet not found\\n\",\"exit_code\":127,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_12\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc \\\"python - <<'PY'\\nimport os\\nfor root, dirs, files in os.walk('.'):\\n    if 'AGENTS.md' in files:\\n        print(os.path.join(root, 'AGENTS.md'))\\nPY\\\"\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_12\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc \\\"python - <<'PY'\\nimport os\\nfor root, dirs, files in os.walk('.'):\\n    if 'AGENTS.md' in files:\\n        print(os.path.join(root, 'AGENTS.md'))\\nPY\\\"\",\"aggregated_output\":\"/bin/sh: python: not found\\n\",\"exit_code\":127,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_13\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'command -v python3'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_13\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'command -v python3'\",\"aggregated_output\":\"\",\"exit_code\":127,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_14\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc env\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_14\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc env\",\"aggregated_output\":\"CODEX_CI=1\\nHOME=/var/lib/mission-control/attempt/home\\nOPENAI_BASE_URL=https://openrouter.ai/api/v1\\nOPENAI_API_KEY=[REDACTED],\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_15\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'cat package.json'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_15\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'cat package.json'\",\"aggregated_output\":\"{\\\"name\\\":\\\"pilot-migration\\\",\\\"private\\\":true,\\\"type\\\":\\\"module\\\",\\\"scripts\\\":{\\\"test\\\":\\\"node --test\\\"}}\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_16\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc \\\"node -e \\\\\\\"const fs=require('fs');console.log(fs.readdirSync('.').join('\\\\\\\\n'))\\\\\\\"\\\"\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_16\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc \\\"node -e \\\\\\\"const fs=require('fs');console.log(fs.readdirSync('.').join('\\\\\\\\n'))\\\\\\\"\\\"\",\"aggregated_output\":\".git\\nmigrations\\npackage.json\\nsrc\\ntests\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_17\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc \\\"node -e \\\\\\\"const fs=require('fs'),path=require('path');function walk(dir){for(const f of fs.readdirSync(dir)){const child=path.join(dir,f);if(fs.statSync(child).isDirectory()){walk(child);}if(f==='AGENTS.md'){console.log(child);}}}walk('.')\\\\\\\"\\\"\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_17\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc \\\"node -e \\\\\\\"const fs=require('fs'),path=require('path');function walk(dir){for(const f of fs.readdirSync(dir)){const child=path.join(dir,f);if(fs.statSync(child).isDirectory()){walk(child);}if(f==='AGENTS.md'){console.log(child);}}}walk('.')\\\\\\\"\\\"\",\"aggregated_output\":\"\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_18\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'ls src'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_18\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'ls src'\",\"aggregated_output\":\"ls: applet not found\\n\",\"exit_code\":127,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_19\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'cd src && /bin/busybox ls'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_19\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'cd src && /bin/busybox ls'\",\"aggregated_output\":\"ls: applet not found\\n\",\"exit_code\":127,\"status\":\"failed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_20\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc \\\"printf '%s\\n' src/*\\\"\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_20\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc \\\"printf '%s\\n' src/*\\\"\",\"aggregated_output\":\"src/orderOwnership.mjs\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_21\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'cat src/orderOwnership.mjs'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_21\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'cat src/orderOwnership.mjs'\",\"aggregated_output\":\"export function readOwnerId(record) { return record.ownerId ?? null; }\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_22\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc \\\"printf '%s\\n' migrations/*\\\"\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_22\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc \\\"printf '%s\\n' migrations/*\\\"\",\"aggregated_output\":\"migrations/001-owner-id.mjs\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_23\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'cat migrations/001-owner-id.mjs'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_23\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'cat migrations/001-owner-id.mjs'\",\"aggregated_output\":\"export function migrateOwner(record) { return record; }\\nexport function rollbackOwner(record) { return record; }\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_24\",\"type\":\"todo_list\",\"items\":[{\"text\":\"Update ownership helper to prefer new field with fallback\",\"completed\":false},{\"text\":\"Implement owner-id migration and rollback\",\"completed\":false},{\"text\":\"Run unit tests\",\"completed\":false}]}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_25\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'rg -n \\\"ownerId\\\" -n tests src'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_25\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'rg -n \\\"ownerId\\\" -n tests src'\",\"aggregated_output\":\"src/orderOwnership.mjs:1:export function readOwnerId(record) { return record.ownerId ?? null; }\\ntests/orderOwnership.test.mjs:5:test('reads mixed versions', () => { assert.equal(readOwnerId({ ownerId: 'new', owner: 'old' }), 'new'); assert.equal(readOwnerId({ owner: 'legacy' }), 'legacy'); assert.equal(readOwnerId({}), null); });\\ntests/orderOwnership.test.mjs:6:test('migrates forward idempotently', () => { const value = migrateOwner({ id: 'o1', owner: 'u1', amount: 20 }); assert.deepEqual(value, { id: 'o1', ownerId: 'u1', amount: 20 }); assert.deepEqual(migrateOwner(value), value); });\\ntests/orderOwnership.test.mjs:7:test('rolls back idempotently', () => { const value = rollbackOwner({ id: 'o1', ownerId: 'u1', amount: 20 }); assert.deepEqual(value, { id: 'o1', owner: 'u1', amount: 20 }); assert.deepEqual(rollbackOwner(value), value); });\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_26\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'cat tests/orderOwnership.test.mjs'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_26\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc 'cat tests/orderOwnership.test.mjs'\",\"aggregated_output\":\"import test from 'node:test';\\nimport assert from 'node:assert/strict';\\nimport { readOwnerId } from '../src/orderOwnership.mjs';\\nimport { migrateOwner, rollbackOwner } from '../migrations/001-owner-id.mjs';\\ntest('reads mixed versions', () => { assert.equal(readOwnerId({ ownerId: 'new', owner: 'old' }), 'new'); assert.equal(readOwnerId({ owner: 'legacy' }), 'legacy'); assert.equal(readOwnerId({}), null); });\\ntest('migrates forward idempotently', () => { const value = migrateOwner({ id: 'o1', owner: 'u1', amount: 20 }); assert.deepEqual(value, { id: 'o1', ownerId: 'u1', amount: 20 }); assert.deepEqual(migrateOwner(value), value); });\\ntest('rolls back idempotently', () => { const value = rollbackOwner({ id: 'o1', ownerId: 'u1', amount: 20 }); assert.deepEqual(value, { id: 'o1', owner: 'u1', amount: 20 }); assert.deepEqual(rollbackOwner(value), value); });\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item_27\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc \\\"printf '%s\\n' \\\\\\\"Preparing to update ownership helper and migration logic.\\\\\\\"\\\"\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_27\",\"type\":\"command_execution\",\"command\":\"/bin/sh -lc \\\"printf '%s\\n' \\\\\\\"Preparing to update ownership helper and migration logic.\\\\\\\"\\\"\",\"aggregated_output\":\"Preparing to update ownership helper and migration logic.\\n\",\"exit_code\":0,\"status\":\"completed\"}}\n",
+        "stderrTail": "Reading additional input from stdin...\n",
+        "resultOutput": {
+          "state": "EMPTY",
+          "byteLength": 0,
+          "digest": "sha256:29004d9f60cf8a53dcb0764f3f044e49324e86492236903cd03e4fffb4a35f55",
+          "tail": "",
+          "validationIssues": [
+            "RESULT_EMPTY"
+          ]
+        }
+      },
+      "usage": {
+        "providerCostUsd": null,
+        "inferenceCostUsd": null,
+        "inputTokens": null,
+        "outputTokens": null,
+        "observedAt": 1787208784896,
+        "providerRuntimeMs": 300181,
+        "enforcement": "OBSERVATION_ONLY"
+      },
+      "firstPassSuccess": false,
+      "failure": {
+        "class": "RETRYABLE_EXECUTION",
+        "code": "EXECUTOR_TIMEOUT",
+        "stage": "EXECUTOR",
+        "retryable": true,
+        "summary": "Remote executor exceeded the frozen Attempt timeout."
+      }
+    }
+  ],
+  "aggregateNegativeMatrix": {
+    "checks": {
+      "threeWorkloadsExecuted": true,
+      "oneAttemptEach": true,
+      "sequentialEmptyInventory": true,
+      "uniqueAttemptResources": true,
+      "allAttackChecksPassed": true,
+      "allExactResourcesDeleted": true,
+      "allCredentialsRevokedAndRejected": true
+    },
+    "passed": true
+  },
+  "finalInventory": {
+    "checkedAt": "2026-08-20T06:53:36.926Z",
+    "authenticated": true,
+    "vmCount": 0,
+    "maxVms": 1,
+    "liveAllocationAllowed": true,
+    "automaticIntegrationCount": 0
+  },
+  "performance": {
+    "current": {
+      "bug-fix": {
+        "allocationMs": 103,
+        "readinessMs": 0,
+        "startupMs": 8884,
+        "executionMs": 216107,
+        "teardownMs": 1998,
+        "totalCycleMs": 227092
+      },
+      "security-policy": {
+        "allocationMs": 113,
+        "readinessMs": 0,
+        "startupMs": 8829,
+        "executionMs": 174182,
+        "teardownMs": 1917,
+        "totalCycleMs": 185041
+      },
+      "data-migration": {
+        "allocationMs": 121,
+        "readinessMs": 0,
+        "startupMs": 8681,
+        "executionMs": 301210,
+        "teardownMs": 31320,
+        "totalCycleMs": 341332
+      }
+    },
+    "priorProductionFactoryPilotV3Preview": {
+      "bugFix": {
+        "allocationMs": 3613,
+        "readinessMs": 4385,
+        "startupMs": null,
+        "executionMs": 68629,
+        "teardownMs": 3434,
+        "totalCycleMs": 88900
+      },
+      "securityPolicy": {
+        "allocationMs": 3656,
+        "readinessMs": 4419,
+        "startupMs": null,
+        "executionMs": 68886,
+        "teardownMs": 3603,
+        "totalCycleMs": 89437
+      },
+      "dataMigration": {
+        "allocationMs": 3441,
+        "readinessMs": 4269,
+        "startupMs": null,
+        "executionMs": 210716,
+        "teardownMs": 3856,
+        "totalCycleMs": 230971
+      }
+    },
+    "note": "The prior preview did not separately expose startup time; its readiness and execution values are retained without inventing a split."
+  },
+  "totalAttempts": 3,
+  "totalRetries": 0
+}

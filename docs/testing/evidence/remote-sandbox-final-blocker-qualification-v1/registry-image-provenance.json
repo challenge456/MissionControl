@@ -1,0 +1,80 @@
+{
+  "schema": "mission-control-remote-image-registry-provenance/v1",
+  "publishedAt": "2026-08-20T16:19:44Z",
+  "sourceSha": "11a51cac1e446488cddf34781cc9663b922c7684",
+  "image": "ghcr.io/jaydubya818/mission-control-remote-sandbox@sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+  "digest": "sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+  "publishedTag": "ghcr.io/jaydubya818/mission-control-remote-sandbox:restricted-final-blocker-20260820-41a66f1d6f7b",
+  "platform": "linux/amd64",
+  "sizeBytes": 247551087,
+  "registryIndex": {
+    "mediaType": "application/vnd.oci.image.index.v1+json",
+    "sizeBytes": 856,
+    "rawSha256": "sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+    "linuxAmd64ManifestDigest": "sha256:bbba462e1363dc456415e9b6ac762cf0d1cb82307aa2f663760506df1c42c004",
+    "configDigest": "sha256:c317cbd8815aa54c6143d448ac5880c39ef9542d1690643be7e2c2a5f0383055",
+    "layerCount": 14
+  },
+  "contentMatch": {
+    "localQualifiedImageId": "sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+    "pulledRegistryImageId": "sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+    "localIdMatchesRegistryDigest": true,
+    "rawRegistryIndexMatchesDigest": true,
+    "rawLinuxAmd64ManifestMatchesDigest": true,
+    "pulledRootfsMatchesQualifiedRootfs": true,
+    "verified": true
+  },
+  "publicPull": {
+    "verified": true,
+    "checkedAt": "2026-08-20T16:19:44Z",
+    "httpStatus": 200,
+    "dockerContentDigest": "sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8"
+  },
+  "attestation": {
+    "verified": true,
+    "reference": "ghcr.io/jaydubya818/mission-control-remote-sandbox@sha256:908eb2ba554fdcb0fdd0af77b38bfc5fb77b16d3c1f134acac4c4fe99cc1ff34",
+    "manifestDigest": "sha256:908eb2ba554fdcb0fdd0af77b38bfc5fb77b16d3c1f134acac4c4fe99cc1ff34",
+    "blobDigest": "sha256:1966dde9b04d4e2ba69ce7d0749e827a587e427f6b4d588c63c4335965413b50",
+    "statementType": "https://in-toto.io/Statement/v0.1",
+    "predicateType": "https://slsa.dev/provenance/v0.2",
+    "buildType": "https://mobyproject.org/buildkit@v1",
+    "subjectDigest": "sha256:bbba462e1363dc456415e9b6ac762cf0d1cb82307aa2f663760506df1c42c004",
+    "baseImageDigest": "sha256:ce3cc39fe3b8b2602d3b1c4d63d301e46b48c550ecb627869853ddcdda418b63",
+    "revision": "11a51cac1e446488cddf34781cc9663b922c7684"
+  },
+  "sbom": {
+    "format": "SPDX-2.3",
+    "path": "image-sbom.spdx.json",
+    "sha256": "sha256:46b2708e56068a39c9e681416b847bf2af5c9899ec0e373be9446c573b85a9f2"
+  },
+  "vulnerabilityScan": {
+    "path": "vulnerability-scan-grype.json",
+    "sha256": "sha256:0b235e5dec3de975603ba84f3a140fcd10be9770e1134ea52771f195b2b63105",
+    "critical": 0,
+    "high": 0,
+    "medium": 2,
+    "suppressionCount": 0
+  },
+  "localQualification": {
+    "path": "local-3-workload-gate.json",
+    "sha256": "sha256:f83bf153300ec231f94f71628b7a2e6fb6812a0e08352d77134713140db5f0da",
+    "firstPass": "3/3",
+    "retries": 0
+  },
+  "toolchain": {
+    "nodeVersion": "v26.7.0",
+    "codexVersion": "codex-cli 0.146.0",
+    "codexBinarySha256": "sha256:2e863156ed35ecc5253b1e2f907a9143077b9f7cb51942070c61996471ff6e04",
+    "gitVersion": "git version 2.55.0",
+    "gitBinarySha256": "sha256:7127059b4ebea64f4a50fc3c64601b69a9694196f3ee0396efec6378a0b45078",
+    "busyboxVersion": "BusyBox v1.37.0",
+    "busyboxBinarySha256": "sha256:6a925a6f54ad5263762a91c25cc0a14b8093a86c2b9c1d5f8fae09ccaaeac222",
+    "toolchainInputsSha256": "sha256:76858cb0bebf67e0f9bac7ffed49e2bd83059095cf001466398b316b4b52b883"
+  },
+  "publication": {
+    "permissionBlockPreservedAt": "ghcr-publication-attempt.json",
+    "transportInterruptionsBeforeSuccess": 2,
+    "workloadRetries": 0,
+    "published": true
+  }
+}

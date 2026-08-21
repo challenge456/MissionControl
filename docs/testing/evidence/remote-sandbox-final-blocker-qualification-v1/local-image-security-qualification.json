@@ -1,0 +1,232 @@
+{
+  "schema": "mission-control-remote-sandbox-local-qualification/v1",
+  "observedAt": 1787209086021,
+  "image": "mc-remote-final-blocker:local",
+  "localImageId": "sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+  "platform": "linux/amd64",
+  "toolchain": {
+    "nodeVersion": "v26.7.0",
+    "codexVersion": "codex-cli 0.146.0",
+    "codexBinarySha256": "2e863156ed35ecc5253b1e2f907a9143077b9f7cb51942070c61996471ff6e04",
+    "gitVersion": "git version 2.55.0",
+    "gitBinarySha256": "7127059b4ebea64f4a50fc3c64601b69a9694196f3ee0396efec6378a0b45078",
+    "busyboxVersion": "BusyBox v1.37.0",
+    "busyboxBinarySha256": "6a925a6f54ad5263762a91c25cc0a14b8093a86c2b9c1d5f8fae09ccaaeac222",
+    "toolchainInputsSha256": "76858cb0bebf67e0f9bac7ffed49e2bd83059095cf001466398b316b4b52b883",
+    "uid": 10001,
+    "gid": 10001,
+    "setprivVersion": "setpriv from util-linux 2.41.4",
+    "nftVersion": "nftables v1.1.5 (Commodore Bullmoose #6)",
+    "killApplet": "kill-present",
+    "killProbe": "kill-probe-passed"
+  },
+  "supplyChainCertified": false,
+  "providerEgressEnforced": false,
+  "credentialEnvironment": {
+    "present": [
+      "OPENAI_API_KEY",
+      "OPENAI_BASE_URL"
+    ],
+    "absent": [
+      "OPENROUTER_MANAGEMENT_API_KEY",
+      "GITHUB_TOKEN",
+      "GH_TOKEN",
+      "GITHUB_APP_ID",
+      "GITHUB_APP_PRIVATE_KEY",
+      "GITHUB_APP_PRIVATE_KEY_FILE",
+      "GITHUB_APP_CLIENT_SECRET",
+      "GITHUB_WEBHOOK_SECRET",
+      "CONVEX_DEPLOY_KEY",
+      "EXEDEV_IDENTITY_FILE",
+      "EXE_TOKEN",
+      "EXE_DEV_TOKEN",
+      "ORCHESTRATION_API_TOKEN",
+      "MC_API_TOKEN",
+      "MISSION_CONTROL_SERVICE_TOKEN",
+      "MISSION_CONTROL_ACCEPTANCE_TOKEN",
+      "MISSION_CONTROL_VERIFICATION_TOKEN"
+    ]
+  },
+  "failClosedMismatchChecks": {
+    "imageDigest": {
+      "blocked": true,
+      "expectedError": "Requested image identity does not match the frozen digest reference."
+    },
+    "codexBinary": {
+      "blocked": true,
+      "expectedError": "Observed codexBinarySha256 does not match the frozen toolchain."
+    }
+  },
+  "sequentialFreshContainers": [
+    {
+      "label": "first",
+      "durationMs": 8067,
+      "previousAttemptArtifactAbsent": true,
+      "credentialNegativeChecksPassed": true,
+      "workspaceWriteAllowed": true,
+      "protectedPathsReadOnly": true,
+      "packageInstallBlocked": true,
+      "processSignalControlPassed": true,
+      "packageCachesAbsent": true,
+      "proof": {
+        "schema": "factory-sandbox-security-proof/v1",
+        "profile": "remote-sandbox/exe-dev/restricted-candidate-v1",
+        "observedAt": 1787209077830,
+        "image": {
+          "requestedReference": "mc-remote-candidate@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "requestedDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "providerReportedReference": "mc-remote-final-blocker:local",
+          "providerReferenceMatched": false
+        },
+        "toolchain": {
+          "nodeVersion": "v26.7.0",
+          "codexVersion": "codex-cli 0.146.0",
+          "codexBinarySha256": "sha256:2e863156ed35ecc5253b1e2f907a9143077b9f7cb51942070c61996471ff6e04",
+          "gitVersion": "git version 2.55.0",
+          "gitBinarySha256": "sha256:7127059b4ebea64f4a50fc3c64601b69a9694196f3ee0396efec6378a0b45078",
+          "busyboxVersion": "BusyBox v1.37.0",
+          "busyboxBinarySha256": "sha256:6a925a6f54ad5263762a91c25cc0a14b8093a86c2b9c1d5f8fae09ccaaeac222",
+          "toolchainInputsSha256": "sha256:76858cb0bebf67e0f9bac7ffed49e2bd83059095cf001466398b316b4b52b883",
+          "executionUid": 10001,
+          "executionGid": 10001
+        },
+        "filesystem": {
+          "repositoryOwnerUid": 10001,
+          "repositoryOwnerGid": 10001,
+          "protectedPathsReadOnly": true,
+          "packageCachesAbsent": true
+        },
+        "privilege": {
+          "noNewPrivileges": true,
+          "capabilities": {
+            "inheritable": "0000000000000000",
+            "permitted": "0000000000000000",
+            "effective": "0000000000000000",
+            "bounding": "0000000000000000",
+            "ambient": "0000000000000000"
+          },
+          "firewallMutationBlocked": true,
+          "packageManagerCommandsAbsent": [
+            "apk",
+            "apt",
+            "apt-get",
+            "dpkg",
+            "npm",
+            "npx",
+            "corepack",
+            "yarn",
+            "yarnpkg",
+            "pnpm",
+            "pnpx"
+          ]
+        },
+        "network": {
+          "enforcement": "GUEST_NFTABLES",
+          "providerEnforced": false,
+          "policyDigest": "sha256:9786bfac28a3a6ab4803c6aea27172a97b38e43ae2290945226a4ae7174530e0",
+          "allowedHttpsHosts": [
+            "openrouter.ai"
+          ],
+          "resolvedAddresses": [
+            "104.18.2.115",
+            "104.18.3.115",
+            "2606:4700::6812:273",
+            "2606:4700::6812:373"
+          ],
+          "controlExternalEndpointReachable": true,
+          "approvedEndpointReachable": true,
+          "arbitraryExternalBlocked": true,
+          "privateNetworkBlocked": true,
+          "linkLocalBlocked": true,
+          "metadataBlocked": true,
+          "unexpectedDnsBlocked": true
+        }
+      }
+    },
+    {
+      "label": "second",
+      "durationMs": 8020,
+      "previousAttemptArtifactAbsent": true,
+      "credentialNegativeChecksPassed": true,
+      "workspaceWriteAllowed": true,
+      "protectedPathsReadOnly": true,
+      "packageInstallBlocked": true,
+      "processSignalControlPassed": true,
+      "packageCachesAbsent": true,
+      "proof": {
+        "schema": "factory-sandbox-security-proof/v1",
+        "profile": "remote-sandbox/exe-dev/restricted-candidate-v1",
+        "observedAt": 1787209085868,
+        "image": {
+          "requestedReference": "mc-remote-candidate@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "requestedDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "providerReportedReference": "mc-remote-final-blocker:local",
+          "providerReferenceMatched": false
+        },
+        "toolchain": {
+          "nodeVersion": "v26.7.0",
+          "codexVersion": "codex-cli 0.146.0",
+          "codexBinarySha256": "sha256:2e863156ed35ecc5253b1e2f907a9143077b9f7cb51942070c61996471ff6e04",
+          "gitVersion": "git version 2.55.0",
+          "gitBinarySha256": "sha256:7127059b4ebea64f4a50fc3c64601b69a9694196f3ee0396efec6378a0b45078",
+          "busyboxVersion": "BusyBox v1.37.0",
+          "busyboxBinarySha256": "sha256:6a925a6f54ad5263762a91c25cc0a14b8093a86c2b9c1d5f8fae09ccaaeac222",
+          "toolchainInputsSha256": "sha256:76858cb0bebf67e0f9bac7ffed49e2bd83059095cf001466398b316b4b52b883",
+          "executionUid": 10001,
+          "executionGid": 10001
+        },
+        "filesystem": {
+          "repositoryOwnerUid": 10001,
+          "repositoryOwnerGid": 10001,
+          "protectedPathsReadOnly": true,
+          "packageCachesAbsent": true
+        },
+        "privilege": {
+          "noNewPrivileges": true,
+          "capabilities": {
+            "inheritable": "0000000000000000",
+            "permitted": "0000000000000000",
+            "effective": "0000000000000000",
+            "bounding": "0000000000000000",
+            "ambient": "0000000000000000"
+          },
+          "firewallMutationBlocked": true,
+          "packageManagerCommandsAbsent": [
+            "apk",
+            "apt",
+            "apt-get",
+            "dpkg",
+            "npm",
+            "npx",
+            "corepack",
+            "yarn",
+            "yarnpkg",
+            "pnpm",
+            "pnpx"
+          ]
+        },
+        "network": {
+          "enforcement": "GUEST_NFTABLES",
+          "providerEnforced": false,
+          "policyDigest": "sha256:9786bfac28a3a6ab4803c6aea27172a97b38e43ae2290945226a4ae7174530e0",
+          "allowedHttpsHosts": [
+            "openrouter.ai"
+          ],
+          "resolvedAddresses": [
+            "104.18.2.115",
+            "104.18.3.115",
+            "2606:4700::6812:273",
+            "2606:4700::6812:373"
+          ],
+          "controlExternalEndpointReachable": true,
+          "approvedEndpointReachable": true,
+          "arbitraryExternalBlocked": true,
+          "privateNetworkBlocked": true,
+          "linkLocalBlocked": true,
+          "metadataBlocked": true,
+          "unexpectedDnsBlocked": true
+        }
+      }
+    }
+  ]
+}

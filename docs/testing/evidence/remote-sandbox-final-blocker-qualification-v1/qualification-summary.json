@@ -1,0 +1,79 @@
+{
+  "schema": "mission-control-remote-sandbox-final-blocker-qualification-summary/v1",
+  "recordedAt": "2026-08-20T16:43:35Z",
+  "sourceSha": "11a51cac1e446488cddf34781cc9663b922c7684",
+  "qualificationResult": "PASS",
+  "externalChecks": "REQUIRED_ON_PR_126",
+  "image": {
+    "reference": "ghcr.io/jaydubya818/mission-control-remote-sandbox@sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+    "digest": "sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+    "platform": "linux/amd64",
+    "contentMatchesLocalQualifiedImage": true,
+    "publicPullVerified": true,
+    "provenanceVerified": true,
+    "publishedSbomSha256": "sha256:7706d0e318cd9583a04d541ac06277d84c063eca149dd081f0bc34c78f9afbfd",
+    "publishedVulnerabilityScanSha256": "sha256:9689bd3ef9530dd4803cabf4a40ee133c0c2f6bd28b6b6b5381a3eae595d1af6"
+  },
+  "vulnerabilities": {
+    "initialHigh": 7,
+    "finalCritical": 0,
+    "finalHigh": 0,
+    "finalMedium": 2,
+    "suppressionCount": 0,
+    "busyboxWgetAbsent": true
+  },
+  "egress": {
+    "providerEnforced": false,
+    "guestEnforcement": "GUEST_NFTABLES",
+    "workloadCanMutatePolicy": false,
+    "arbitraryPublicBlocked": true,
+    "rfc1918Blocked": true,
+    "linkLocalAndMetadataBlocked": true,
+    "unauthorizedDnsBlocked": true
+  },
+  "privilege": {
+    "uid": 10001,
+    "gid": 10001,
+    "noNewPrivileges": true,
+    "allCapabilitySetsEmpty": true,
+    "firewallMutationBlocked": true,
+    "packageManagersAbsent": true
+  },
+  "credentials": {
+    "attemptScopedInferenceOnly": true,
+    "managementCredentialsAbsent": true,
+    "qualifiedRevocationConfirmationBoundMs": 30000,
+    "boundedTimingEvidence": "valid through +15s; rejected by +30s",
+    "allLiveAttemptsInvalidWithinBound": true,
+    "allLiveAttemptObservedRejectionOffsetsMs": [0, 0, 0, 0]
+  },
+  "live": {
+    "canary": "PASS_FIRST_ATTEMPT_ZERO_RETRIES",
+    "strictCohort": "PASS_3_OF_3_FIRST_PASS",
+    "retries": 0,
+    "maximumConcurrentVms": 1,
+    "allExactResourcesAbsent": true,
+    "finalVmInventory": 0
+  },
+  "toolchain": {
+    "nodeVersion": "v26.7.0",
+    "codexVersion": "codex-cli 0.146.0",
+    "codexBinarySha256": "sha256:2e863156ed35ecc5253b1e2f907a9143077b9f7cb51942070c61996471ff6e04",
+    "toolchainInputsSha256": "sha256:76858cb0bebf67e0f9bac7ffed49e2bd83059095cf001466398b316b4b52b883",
+    "attemptTimeInstallationDisabled": true,
+    "mismatchFailsClosed": true
+  },
+  "performance": {
+    "canaryTotalCycleMs": 132210,
+    "strictCohortTotalCycleMs": [179391, 106514, 195051],
+    "strictCohortAverageMs": 160319,
+    "priorPreviewAverageMs": 136436,
+    "averageDeltaPercent": 17.5
+  },
+  "constraints": {
+    "qualificationOnly": true,
+    "guardedAutoEnabled": false,
+    "globalPromotion": false,
+    "mergeAuthorized": false
+  }
+}

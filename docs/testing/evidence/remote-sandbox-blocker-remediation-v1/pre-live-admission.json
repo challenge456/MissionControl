@@ -1,0 +1,24 @@
+{
+  "schema": "mission-control-remote-sandbox-pre-live-admission/v1",
+  "observedAt": "2026-08-19T22:55:00Z",
+  "criteria": {
+    "criticalVulnerabilitiesZero": true,
+    "highVulnerabilitiesZero": true,
+    "exactLocalImageAndToolchainVerified": true,
+    "workloadNonRoot": true,
+    "allCapabilitySetsZero": true,
+    "firewallMutationBlocked": true,
+    "credentialNegativeMatrixPassed": true,
+    "denyByDefaultEgressPassed": true,
+    "twoFreshInstanceIsolationPassed": true,
+    "packageInstallBlocked": true
+  },
+  "providerEnforcedEgress": false,
+  "providerLimitation": "provider-enforced egress unavailable",
+  "localAdmissionPassed": true,
+  "registryAdmissionPassed": true,
+  "registryDigest": "sha256:ce142e3f1782d921e54203c748db590dd0f2650cc12cf801002729f07bb0f4ec",
+  "liveAllocationPerformed": true,
+  "liveGateDecision": "HOLD",
+  "liveGateReason": "exe.dev normalized or failed to echo the requested digest-qualified image identity, so the restricted bootstrap could not prove exact provider image identity and failed closed before the executor."
+}

@@ -1,0 +1,1080 @@
+{
+  "schema": "remote-sandbox-hardening-live-qualification/v1",
+  "decision": "HOLD",
+  "startedAt": "2026-08-19T23:08:43.323Z",
+  "completedAt": "2026-08-19T23:09:59.868Z",
+  "qualificationRunId": "c076e12a8226",
+  "baseline": {
+    "frozenOriginMainSha": "11a51cac1e446488cddf34781cc9663b922c7684",
+    "branchHeadBeforeQualification": "0c03a6ff796bf87e458b7e4e53ad3476b78dc78e",
+    "mergeBase": "11a51cac1e446488cddf34781cc9663b922c7684",
+    "providerReadiness": {
+      "checkedAt": "2026-08-19T23:08:43.318Z",
+      "authenticated": true,
+      "vmCount": 0,
+      "maxVms": 50,
+      "liveAllocationAllowed": true,
+      "automaticIntegrationCount": 0
+    },
+    "image": "ghcr.io/jaydubya818/mission-control-remote-sandbox@sha256:ce142e3f1782d921e54203c748db590dd0f2650cc12cf801002729f07bb0f4ec",
+    "providerCapabilityConclusion": "provider-enforced egress unavailable"
+  },
+  "constraints": {
+    "exactWorkloads": [
+      "bug-fix",
+      "security-policy",
+      "data-migration"
+    ],
+    "maximumConcurrentVms": 1,
+    "maximumAttemptsPerWorkload": 1,
+    "retriesAllowed": false,
+    "qualificationOnly": true,
+    "guardedAutoEnabled": false,
+    "publicationAuthority": "CONTROL_PLANE_ONLY",
+    "acceptanceAuthority": "workOrders.accept",
+    "providerEgressBoundary": "provider-enforced egress unavailable"
+  },
+  "registryProvenance": {
+    "schema": "mission-control-remote-image-registry-provenance/v1",
+    "sourceSha": "0c03a6ff796bf87e458b7e4e53ad3476b78dc78e",
+    "workflowRunId": 32311157907,
+    "workflowUrl": "https://github.com/jaydubya818/MissionControl/actions/runs/32311157907",
+    "image": "ghcr.io/jaydubya818/mission-control-remote-sandbox@sha256:ce142e3f1782d921e54203c748db590dd0f2650cc12cf801002729f07bb0f4ec",
+    "digest": "sha256:ce142e3f1782d921e54203c748db590dd0f2650cc12cf801002729f07bb0f4ec",
+    "publicPull": {
+      "verified": true,
+      "verifiedAt": "2026-08-19T23:04:00.000Z",
+      "registryHttpStatus": 200,
+      "contentType": "application/vnd.docker.distribution.manifest.v2+json"
+    },
+    "attestation": {
+      "verified": true,
+      "count": 1,
+      "reference": "https://github.com/jaydubya818/MissionControl/attestations/sha256:ce142e3f1782d921e54203c748db590dd0f2650cc12cf801002729f07bb0f4ec"
+    },
+    "sbom": {
+      "format": "SPDX-2.3",
+      "sha256": "sha256:07f4780fafb2e77505ca94fd5c168b9c60e3692cb73a4491b7bbfc451878dc27"
+    },
+    "vulnerabilityScan": {
+      "grypeVersion": "0.117.0",
+      "critical": 0,
+      "high": 0,
+      "suppressionCount": 0,
+      "vexCount": 0,
+      "artifactSha256": "sha256:7f04faf00091de9d8ff6a0f3c24645beb952163adc00d75fd768976a0ceae249"
+    },
+    "toolchain": {
+      "nodeVersion": "v26.7.0",
+      "codexVersion": "codex-cli 0.146.0",
+      "codexBinarySha256": "sha256:2e863156ed35ecc5253b1e2f907a9143077b9f7cb51942070c61996471ff6e04",
+      "gitVersion": "git version 2.55.0",
+      "gitBinarySha256": "sha256:7127059b4ebea64f4a50fc3c64601b69a9694196f3ee0396efec6378a0b45078",
+      "busyboxVersion": "BusyBox v1.37.0",
+      "busyboxBinarySha256": "sha256:5b99e6ed2c89c6c0c31d707307de9a1405ed6b90d736a3d774d1cf16fc9c3fea",
+      "toolchainInputsSha256": "sha256:f7119d0278ae40526c3ed48b4a3eec6d927d1a003776436d251e43b2fa5f6cdd"
+    }
+  },
+  "profile": {
+    "schema": "factory-sandbox-profile/v1",
+    "profileKey": "exe-remote-sandbox-restricted-candidate-n1",
+    "version": 1,
+    "provider": "EXE_DEV",
+    "providerProfile": "individual-small",
+    "providerProfileVersion": "remote-sandbox-hardening-v1",
+    "machine": {
+      "image": "ghcr.io/jaydubya818/mission-control-remote-sandbox@sha256:ce142e3f1782d921e54203c748db590dd0f2650cc12cf801002729f07bb0f4ec",
+      "cpu": 2,
+      "memoryMb": 4096,
+      "diskGb": 20
+    },
+    "supervisor": {
+      "version": "mission-control-supervisor/v1",
+      "transport": "SSH"
+    },
+    "runtime": {
+      "maxRuntimeMs": 330000,
+      "resultPollIntervalMs": 500,
+      "resultRetentionMs": 86400000
+    },
+    "network": {
+      "egress": "RESTRICTED_ALLOWLIST",
+      "egressAllowlist": [
+        "openrouter.ai:443"
+      ],
+      "publicIngress": false,
+      "exposedPorts": []
+    },
+    "credentials": {
+      "inference": "ATTEMPT_SCOPED_OPENROUTER",
+      "repositoryAccess": "CONTROL_PLANE_SNAPSHOT",
+      "githubAuthority": "NONE",
+      "providerAuthority": "NONE"
+    },
+    "spend": {
+      "maxUsd": 0.05,
+      "enforcement": "PROVIDER_KEY_LIMIT"
+    },
+    "teardown": {
+      "terminateOnEveryTerminalState": true,
+      "verifyResourceAbsent": true,
+      "supportsResume": false
+    },
+    "preview": {
+      "mode": "DISABLED"
+    },
+    "readiness": {
+      "state": "DEGRADED",
+      "checkedAt": 1787180923319,
+      "reason": "Guest-kernel nftables enforcement is proven; provider-enforced egress unavailable.",
+      "egressEnforcementProven": true,
+      "liveCertified": true,
+      "evidenceReference": "docs/testing/evidence/remote-sandbox-blocker-remediation-v1/live-3-workload-gate.json"
+    },
+    "security": {
+      "schema": "factory-sandbox-security/v1",
+      "profile": "remote-sandbox/exe-dev/restricted-candidate-v1",
+      "qualificationOnly": true,
+      "image": {
+        "digest": "sha256:ce142e3f1782d921e54203c748db590dd0f2650cc12cf801002729f07bb0f4ec",
+        "provenanceReference": "https://github.com/jaydubya818/MissionControl/attestations/sha256:ce142e3f1782d921e54203c748db590dd0f2650cc12cf801002729f07bb0f4ec",
+        "sbomDigest": "sha256:07f4780fafb2e77505ca94fd5c168b9c60e3692cb73a4491b7bbfc451878dc27"
+      },
+      "toolchain": {
+        "nodeVersion": "v26.7.0",
+        "codexVersion": "codex-cli 0.146.0",
+        "codexBinarySha256": "sha256:2e863156ed35ecc5253b1e2f907a9143077b9f7cb51942070c61996471ff6e04",
+        "gitVersion": "git version 2.55.0",
+        "gitBinarySha256": "sha256:7127059b4ebea64f4a50fc3c64601b69a9694196f3ee0396efec6378a0b45078",
+        "busyboxVersion": "BusyBox v1.37.0",
+        "busyboxBinarySha256": "sha256:5b99e6ed2c89c6c0c31d707307de9a1405ed6b90d736a3d774d1cf16fc9c3fea",
+        "toolchainInputsSha256": "sha256:f7119d0278ae40526c3ed48b4a3eec6d927d1a003776436d251e43b2fa5f6cdd"
+      },
+      "execution": {
+        "user": "mc-attempt",
+        "uid": 10001,
+        "gid": 10001,
+        "homePath": "/var/lib/mission-control/attempt/home",
+        "temporaryPath": "/var/lib/mission-control/attempt/tmp",
+        "noNewPrivileges": true,
+        "capabilityMode": "DROP_ALL"
+      },
+      "network": {
+        "enforcement": "GUEST_NFTABLES",
+        "providerEnforced": false,
+        "allowedHttpsHosts": [
+          "openrouter.ai"
+        ],
+        "dnsMode": "CONTROL_PLANE_RESOLVE_ETC_HOSTS",
+        "denyPrivateNetworks": true,
+        "denyLinkLocal": true,
+        "denyMetadata": true,
+        "denyUnexpectedDns": true
+      }
+    },
+    "digest": "sha256:1b4a1dbd34dc8c9c6c9edd988f8d6fe05296273b5022c9f8f647aa0a92eab9a0",
+    "validation": {
+      "valid": true,
+      "dispatchable": true,
+      "readiness": "DEGRADED",
+      "errors": [],
+      "warnings": [
+        "exe.dev exposes no provider-level egress control; guest nftables enforcement is qualification-only defense in depth."
+      ],
+      "profileDigest": "sha256:1b4a1dbd34dc8c9c6c9edd988f8d6fe05296273b5022c9f8f647aa0a92eab9a0"
+    }
+  },
+  "schedule": [
+    {
+      "executionId": "hardening-bug-fix-1",
+      "workloadKey": "bug-fix"
+    },
+    {
+      "executionId": "hardening-security-policy-1",
+      "workloadKey": "security-policy"
+    },
+    {
+      "executionId": "hardening-data-migration-1",
+      "workloadKey": "data-migration"
+    }
+  ],
+  "executions": [
+    {
+      "executionId": "hardening-bug-fix-1",
+      "workloadKey": "bug-fix",
+      "workloadClass": "BUG_FIX",
+      "workloadTitle": "Correct integer-cent listing fee behavior",
+      "risk": "LOW",
+      "attemptId": "attempt-c076e12a8226-hardening-bug-fix-1",
+      "workflowRunId": "workflow-c076e12a8226-hardening-bug-fix-1",
+      "leaseId": "lease-c076e12a8226-hardening-bug-fix-1",
+      "attemptNumber": 1,
+      "retries": 0,
+      "sourceSha": "013d0be0851d2b7cc2f38835f7300e698db5087c",
+      "manifestDigest": "sha256:42036c870f8bceb0ba6cad8a9e205727c1f144600b8904953c45c16f3f5a4aae",
+      "manifest": {
+        "version": "factory-execution-manifest/v1",
+        "causation": {
+          "missionId": "mission-c076e12a8226-hardening-bug-fix-1",
+          "missionPlanId": "plan-c076e12a8226-hardening-bug-fix-1",
+          "workOrderId": "work-order-c076e12a8226-hardening-bug-fix-1",
+          "workOrderRevisionNumber": 1,
+          "workflowRunId": "workflow-c076e12a8226-hardening-bug-fix-1",
+          "attemptId": "attempt-c076e12a8226-hardening-bug-fix-1"
+        },
+        "factory": {
+          "definitionId": "factory-remote-sandbox-hardening",
+          "definitionVersionId": "factory-remote-sandbox-hardening-v1",
+          "version": 1,
+          "configurationDigest": "sha256:409d50666d74538a941428a021b53b469b674051480593393a0c63e6b0854e3b"
+        },
+        "repository": {
+          "repository": "sellerfi-hardening/bug-fix",
+          "baseSha": "013d0be0851d2b7cc2f38835f7300e698db5087c",
+          "allowedPaths": [
+            "src/**"
+          ],
+          "excludedPaths": [
+            "tests/**",
+            "package.json",
+            ".git/**"
+          ]
+        },
+        "intent": {
+          "title": "Correct integer-cent listing fee behavior",
+          "acceptanceCriterionIds": [
+            "BUG-001",
+            "BUG-002"
+          ]
+        },
+        "harness": {
+          "adapter": "codex",
+          "version": "v1",
+          "harnessId": "codex-cli",
+          "harnessVersion": "0.146.0",
+          "provider": "openrouter",
+          "model": "openai/gpt-5.1-codex-mini",
+          "executionBackend": "remote-sandbox",
+          "isolation": "WORKSPACE_WRITE",
+          "pullRequestAuthority": "CONTROL_PLANE_ONLY",
+          "timeoutMs": 300000
+        },
+        "sandbox": {
+          "profileDigest": "sha256:1b4a1dbd34dc8c9c6c9edd988f8d6fe05296273b5022c9f8f647aa0a92eab9a0",
+          "supervisorVersion": "mission-control-supervisor/v1",
+          "credentialGrants": [
+            {
+              "kind": "INFERENCE",
+              "secretValueIncluded": false,
+              "githubAuthority": "NONE",
+              "providerAuthority": "NONE"
+            }
+          ]
+        },
+        "retryPolicy": {
+          "schema": "factory-remote-retry-policy/v1",
+          "maxAttempts": 1,
+          "maxTotalWallClockMs": 330000,
+          "maxModelSpendUsd": 0.05,
+          "maxProviderResources": 1,
+          "retryableFailureClasses": []
+        }
+      },
+      "resourceName": "mc-attempt-d833fc1ad7e52fda",
+      "invocation": {
+        "command": "codex",
+        "harnessVersion": "0.146.0",
+        "args": [
+          "-a",
+          "never",
+          "-c",
+          "model_provider=\"mission-control-openrouter\"",
+          "-c",
+          "model_providers.mission-control-openrouter.name=\"OpenRouter\"",
+          "-c",
+          "model_providers.mission-control-openrouter.base_url=\"https://openrouter.ai/api/v1\"",
+          "-c",
+          "model_providers.mission-control-openrouter.env_key=\"OPENAI_API_KEY\"",
+          "-c",
+          "model_providers.mission-control-openrouter.wire_api=\"responses\"",
+          "-c",
+          "model_providers.mission-control-openrouter.supports_websockets=false",
+          "exec",
+          "--json",
+          "--ephemeral",
+          "--ignore-user-config",
+          "--ignore-rules",
+          "--sandbox",
+          "workspace-write",
+          "--color",
+          "never",
+          "-C",
+          "/var/lib/mission-control/attempt/repository",
+          "-o",
+          "/var/lib/mission-control/attempt/executor-result.json",
+          "--output-schema",
+          "/var/lib/mission-control/attempt/factory-result.schema.json",
+          "-m",
+          "openai/gpt-5.1-codex-mini",
+          "Fix the listing fee defect in src/listingFee.mjs. The fee is five percent of non-negative integer cents, rounded to the nearest cent. Preserve strict input validation. Do not modify tests or package.json. Run npm test.\n\nThis is the only Attempt. Do not assume artifacts or verification from another Attempt.\n\nReturn exactly one JSON object and no prose. Use the literal string factory-result/v1 for schema. Use exactly one uppercase status: COMPLETED, BLOCKED, or FAILED. completedAcceptanceCriterionIds, incompleteAcceptanceCriterionIds, unknownAcceptanceCriterionIds, verificationCommands, and knownRisks must always be JSON arrays of strings, including when empty. summary and nextAction must be JSON strings.\n\nWhen status is COMPLETED, every listed acceptance criterion ID must appear exactly once in completedAcceptanceCriterionIds, and incompleteAcceptanceCriterionIds and unknownAcceptanceCriterionIds must both be empty.\n\n{\"schema\":\"factory-result/v1\",\"status\":\"COMPLETED\",\"summary\":\"Implemented and tested the bounded change.\",\"completedAcceptanceCriterionIds\":[\"criterion-id\"],\"incompleteAcceptanceCriterionIds\":[],\"unknownAcceptanceCriterionIds\":[],\"verificationCommands\":[\"npm test\"],\"knownRisks\":[],\"nextAction\":\"Review the exact candidate.\"}\n\nUse only these acceptance criterion IDs: BUG-001, BUG-002.\n\nRepository mutation is limited to these approved repository-relative boundaries:\n- src/**\nDenied repository-relative boundaries:\n- tests/**\n- package.json\n- .git/**\nDo not expose credentials in output, artifacts, or logs."
+        ],
+        "outputSchemaPath": "/var/lib/mission-control/attempt/factory-result.schema.json",
+        "environmentKeys": [
+          "OPENAI_API_KEY",
+          "OPENAI_BASE_URL"
+        ],
+        "packageManagerUsed": false
+      },
+      "inventoryBefore": {
+        "checkedAt": "2026-08-19T23:08:47.120Z",
+        "authenticated": true,
+        "vmCount": 0,
+        "maxVms": 50,
+        "liveAllocationAllowed": true,
+        "automaticIntegrationCount": 0
+      },
+      "inventoryAfter": {
+        "checkedAt": "2026-08-19T23:09:14.056Z",
+        "authenticated": true,
+        "vmCount": 0,
+        "maxVms": 50,
+        "liveAllocationAllowed": true,
+        "automaticIntegrationCount": 0
+      },
+      "lifecycleEvents": [
+        {
+          "type": "SANDBOX_REQUESTED",
+          "occurredAt": 1787180927144,
+          "resourceName": "mc-attempt-d833fc1ad7e52fda",
+          "attemptId": "attempt-c076e12a8226-hardening-bug-fix-1",
+          "metadata": {
+            "provider": "EXE_DEV",
+            "profileDigest": "sha256:1b4a1dbd34dc8c9c6c9edd988f8d6fe05296273b5022c9f8f647aa0a92eab9a0",
+            "readiness": "DEGRADED"
+          }
+        },
+        {
+          "type": "SANDBOX_ALLOCATED",
+          "occurredAt": 1787180940127,
+          "resourceName": "mc-attempt-d833fc1ad7e52fda",
+          "attemptId": "attempt-c076e12a8226-hardening-bug-fix-1",
+          "metadata": {
+            "providerResourceId": "mc-attempt-d833fc1ad7e52fda"
+          }
+        },
+        {
+          "type": "SANDBOX_FAILED",
+          "occurredAt": 1787180946510,
+          "resourceName": "mc-attempt-d833fc1ad7e52fda",
+          "attemptId": "attempt-c076e12a8226-hardening-bug-fix-1",
+          "metadata": {
+            "reason": "exe.dev command failed: file:///var/lib/mission-control/attempt/restricted-bootstrap.mjs:158\nif (config.expectedImage !== config.observedProviderImage) throw new Error(\"Provider image identity does not match the frozen digest reference.\");\n                                                                 ^\n\nError: Provider image identity does not match the frozen digest reference.\n    at file:///var/lib/mission-control/attempt/restricted-bootstrap.mjs:158:66\n    at ModuleJob.run (node:internal/modules/esm/module_job:569:25)\n    at async node:internal/modules/esm/loader:650:26\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\n\nNode.js v26.7.0",
+            "failureClass": "RETRYABLE_INFRA",
+            "failureCode": "TRANSPORT_UPLOAD",
+            "failureStage": "START",
+            "retryable": true,
+            "diagnostics": {
+              "supervisorLogTail": "",
+              "supervisorProcessRunning": false
+            }
+          }
+        },
+        {
+          "type": "SANDBOX_CREDENTIAL_REVOKED",
+          "occurredAt": 1787180947678,
+          "resourceName": "mc-attempt-d833fc1ad7e52fda",
+          "attemptId": "attempt-c076e12a8226-hardening-bug-fix-1",
+          "metadata": {
+            "grantKey": "mc-attempt-2fca5dc50b7d335664d5",
+            "externalCredentialId": "1e74943ad08eaa7f68cea6c92f7be586b2e35e24e9f242663cf3098aa190765a"
+          }
+        },
+        {
+          "type": "SANDBOX_TERMINATION_REQUESTED",
+          "occurredAt": 1787180947678,
+          "resourceName": "mc-attempt-d833fc1ad7e52fda",
+          "attemptId": "attempt-c076e12a8226-hardening-bug-fix-1",
+          "metadata": {
+            "providerResourceId": "mc-attempt-d833fc1ad7e52fda"
+          }
+        },
+        {
+          "type": "SANDBOX_TERMINATED",
+          "occurredAt": 1787180950246,
+          "resourceName": "mc-attempt-d833fc1ad7e52fda",
+          "attemptId": "attempt-c076e12a8226-hardening-bug-fix-1",
+          "metadata": {
+            "confirmedAbsentAt": 1787180950246
+          }
+        }
+      ],
+      "securityProof": null,
+      "negativeMatrix": {
+        "checks": {
+          "denyByDefault": false,
+          "approvedOpenRouterHttpsReachable": false,
+          "arbitraryPublicEgressBlocked": false,
+          "rfc1918Blocked": false,
+          "linkLocalBlocked": false,
+          "metadataBlocked": false,
+          "unexpectedDnsBlocked": false,
+          "nonRootWorkload": false,
+          "noNewPrivileges": false,
+          "allCapabilitySetsEmpty": false,
+          "firewallMutationBlocked": false,
+          "packageManagersAbsent": false,
+          "packageCachesAbsent": false,
+          "protectedPathsReadOnly": false,
+          "credentialDiscoveryBlocked": true,
+          "staleCredentialRejected": true,
+          "providerAdminAuthorityAbsent": true,
+          "githubAuthorityAbsent": true,
+          "previousAttemptArtifactsAbsent": true,
+          "exactResourceDeleted": true
+        },
+        "passed": false
+      },
+      "cleanup": {
+        "credentialIssued": true,
+        "credentialRevoked": true,
+        "staleCredentialRejected": true,
+        "staleCredentialProbeStatuses": [
+          401
+        ],
+        "credentialSecretPersisted": false,
+        "resourceAbsent": true,
+        "finalVmCount": 0,
+        "passed": true
+      },
+      "performance": {
+        "allocationMs": 12983,
+        "readinessMs": 1293,
+        "startupMs": null,
+        "executionMs": null,
+        "teardownMs": null,
+        "totalCycleMs": 23102
+      },
+      "firstPassSuccess": false,
+      "failure": {
+        "class": "RETRYABLE_INFRA",
+        "code": "TRANSPORT_UPLOAD",
+        "stage": "START",
+        "retryable": true,
+        "summary": "exe.dev command failed: file:///var/lib/mission-control/attempt/restricted-bootstrap.mjs:158\nif (config.expectedImage !== config.observedProviderImage) throw new Error(\"Provider image identity does not match the frozen digest reference.\");\n                                                                 ^\n\nError: Provider image identity does not match the frozen digest reference.\n    at file:///var/lib/mission-control/attempt/restricted-bootstrap.mjs:158:66\n    at ModuleJob.run (node:internal/modules/esm/module_job:569:25)\n    at async node:internal/modules/esm/loader:650:26\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\n\nNode.js v26.7.0"
+      },
+      "error": "exe.dev command failed: file:///var/lib/mission-control/attempt/restricted-bootstrap.mjs:158\nif (config.expectedImage !== config.observedProviderImage) throw new Error(\"Provider image identity does not match the frozen digest reference.\");\n                                                                 ^\n\nError: Provider image identity does not match the frozen digest reference.\n    at file:///var/lib/mission-control/attempt/restricted-bootstrap.mjs:158:66\n    at ModuleJob.run (node:internal/modules/esm/module_job:569:25)\n    at async node:internal/modules/esm/loader:650:26\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\n\nNode.js v26.7.0",
+      "usage": null
+    },
+    {
+      "executionId": "hardening-security-policy-1",
+      "workloadKey": "security-policy",
+      "workloadClass": "SECURITY_POLICY",
+      "workloadTitle": "Fail closed when authorization context is missing",
+      "risk": "HIGH",
+      "attemptId": "attempt-c076e12a8226-hardening-security-policy-1",
+      "workflowRunId": "workflow-c076e12a8226-hardening-security-policy-1",
+      "leaseId": "lease-c076e12a8226-hardening-security-policy-1",
+      "attemptNumber": 1,
+      "retries": 0,
+      "sourceSha": "1b62234032e8b03a75f55a4bea513dff0f54880b",
+      "manifestDigest": "sha256:5e3ca18506c89719d91761a0c3173757fc02a9ceb558a145af57f13558b1ad09",
+      "manifest": {
+        "version": "factory-execution-manifest/v1",
+        "causation": {
+          "missionId": "mission-c076e12a8226-hardening-security-policy-1",
+          "missionPlanId": "plan-c076e12a8226-hardening-security-policy-1",
+          "workOrderId": "work-order-c076e12a8226-hardening-security-policy-1",
+          "workOrderRevisionNumber": 1,
+          "workflowRunId": "workflow-c076e12a8226-hardening-security-policy-1",
+          "attemptId": "attempt-c076e12a8226-hardening-security-policy-1"
+        },
+        "factory": {
+          "definitionId": "factory-remote-sandbox-hardening",
+          "definitionVersionId": "factory-remote-sandbox-hardening-v1",
+          "version": 1,
+          "configurationDigest": "sha256:409d50666d74538a941428a021b53b469b674051480593393a0c63e6b0854e3b"
+        },
+        "repository": {
+          "repository": "sellerfi-hardening/security-policy",
+          "baseSha": "1b62234032e8b03a75f55a4bea513dff0f54880b",
+          "allowedPaths": [
+            "src/**"
+          ],
+          "excludedPaths": [
+            "tests/**",
+            "package.json",
+            ".git/**"
+          ]
+        },
+        "intent": {
+          "title": "Fail closed when authorization context is missing",
+          "acceptanceCriterionIds": [
+            "SECURITY-001",
+            "SECURITY-002"
+          ]
+        },
+        "harness": {
+          "adapter": "codex",
+          "version": "v1",
+          "harnessId": "codex-cli",
+          "harnessVersion": "0.146.0",
+          "provider": "openrouter",
+          "model": "openai/gpt-5.1-codex-mini",
+          "executionBackend": "remote-sandbox",
+          "isolation": "WORKSPACE_WRITE",
+          "pullRequestAuthority": "CONTROL_PLANE_ONLY",
+          "timeoutMs": 300000
+        },
+        "sandbox": {
+          "profileDigest": "sha256:1b4a1dbd34dc8c9c6c9edd988f8d6fe05296273b5022c9f8f647aa0a92eab9a0",
+          "supervisorVersion": "mission-control-supervisor/v1",
+          "credentialGrants": [
+            {
+              "kind": "INFERENCE",
+              "secretValueIncluded": false,
+              "githubAuthority": "NONE",
+              "providerAuthority": "NONE"
+            }
+          ]
+        },
+        "retryPolicy": {
+          "schema": "factory-remote-retry-policy/v1",
+          "maxAttempts": 1,
+          "maxTotalWallClockMs": 330000,
+          "maxModelSpendUsd": 0.05,
+          "maxProviderResources": 1,
+          "retryableFailureClasses": []
+        }
+      },
+      "resourceName": "mc-attempt-22e2ecc408acf3ac",
+      "invocation": {
+        "command": "codex",
+        "harnessVersion": "0.146.0",
+        "args": [
+          "-a",
+          "never",
+          "-c",
+          "model_provider=\"mission-control-openrouter\"",
+          "-c",
+          "model_providers.mission-control-openrouter.name=\"OpenRouter\"",
+          "-c",
+          "model_providers.mission-control-openrouter.base_url=\"https://openrouter.ai/api/v1\"",
+          "-c",
+          "model_providers.mission-control-openrouter.env_key=\"OPENAI_API_KEY\"",
+          "-c",
+          "model_providers.mission-control-openrouter.wire_api=\"responses\"",
+          "-c",
+          "model_providers.mission-control-openrouter.supports_websockets=false",
+          "exec",
+          "--json",
+          "--ephemeral",
+          "--ignore-user-config",
+          "--ignore-rules",
+          "--sandbox",
+          "workspace-write",
+          "--color",
+          "never",
+          "-C",
+          "/var/lib/mission-control/attempt/repository",
+          "-o",
+          "/var/lib/mission-control/attempt/executor-result.json",
+          "--output-schema",
+          "/var/lib/mission-control/attempt/factory-result.schema.json",
+          "-m",
+          "openai/gpt-5.1-codex-mini",
+          "Fix src/authorization.mjs so canEditListing(context) fails closed. Return true only when context is an object whose role is exactly `owner` or `admin`; all missing, malformed, or other roles return false. Do not modify tests or package.json. Run npm test.\n\nThis is the only Attempt. Do not assume artifacts or verification from another Attempt.\n\nReturn exactly one JSON object and no prose. Use the literal string factory-result/v1 for schema. Use exactly one uppercase status: COMPLETED, BLOCKED, or FAILED. completedAcceptanceCriterionIds, incompleteAcceptanceCriterionIds, unknownAcceptanceCriterionIds, verificationCommands, and knownRisks must always be JSON arrays of strings, including when empty. summary and nextAction must be JSON strings.\n\nWhen status is COMPLETED, every listed acceptance criterion ID must appear exactly once in completedAcceptanceCriterionIds, and incompleteAcceptanceCriterionIds and unknownAcceptanceCriterionIds must both be empty.\n\n{\"schema\":\"factory-result/v1\",\"status\":\"COMPLETED\",\"summary\":\"Implemented and tested the bounded change.\",\"completedAcceptanceCriterionIds\":[\"criterion-id\"],\"incompleteAcceptanceCriterionIds\":[],\"unknownAcceptanceCriterionIds\":[],\"verificationCommands\":[\"npm test\"],\"knownRisks\":[],\"nextAction\":\"Review the exact candidate.\"}\n\nUse only these acceptance criterion IDs: SECURITY-001, SECURITY-002.\n\nRepository mutation is limited to these approved repository-relative boundaries:\n- src/**\nDenied repository-relative boundaries:\n- tests/**\n- package.json\n- .git/**\nDo not expose credentials in output, artifacts, or logs."
+        ],
+        "outputSchemaPath": "/var/lib/mission-control/attempt/factory-result.schema.json",
+        "environmentKeys": [
+          "OPENAI_API_KEY",
+          "OPENAI_BASE_URL"
+        ],
+        "packageManagerUsed": false
+      },
+      "inventoryBefore": {
+        "checkedAt": "2026-08-19T23:09:17.959Z",
+        "authenticated": true,
+        "vmCount": 0,
+        "maxVms": 50,
+        "liveAllocationAllowed": true,
+        "automaticIntegrationCount": 0
+      },
+      "inventoryAfter": {
+        "checkedAt": "2026-08-19T23:09:35.168Z",
+        "authenticated": true,
+        "vmCount": 0,
+        "maxVms": 50,
+        "liveAllocationAllowed": true,
+        "automaticIntegrationCount": 0
+      },
+      "lifecycleEvents": [
+        {
+          "type": "SANDBOX_REQUESTED",
+          "occurredAt": 1787180957987,
+          "resourceName": "mc-attempt-22e2ecc408acf3ac",
+          "attemptId": "attempt-c076e12a8226-hardening-security-policy-1",
+          "metadata": {
+            "provider": "EXE_DEV",
+            "profileDigest": "sha256:1b4a1dbd34dc8c9c6c9edd988f8d6fe05296273b5022c9f8f647aa0a92eab9a0",
+            "readiness": "DEGRADED"
+          }
+        },
+        {
+          "type": "SANDBOX_ALLOCATED",
+          "occurredAt": 1787180961780,
+          "resourceName": "mc-attempt-22e2ecc408acf3ac",
+          "attemptId": "attempt-c076e12a8226-hardening-security-policy-1",
+          "metadata": {
+            "providerResourceId": "mc-attempt-22e2ecc408acf3ac"
+          }
+        },
+        {
+          "type": "SANDBOX_FAILED",
+          "occurredAt": 1787180967742,
+          "resourceName": "mc-attempt-22e2ecc408acf3ac",
+          "attemptId": "attempt-c076e12a8226-hardening-security-policy-1",
+          "metadata": {
+            "reason": "exe.dev command failed: file:///var/lib/mission-control/attempt/restricted-bootstrap.mjs:158\nif (config.expectedImage !== config.observedProviderImage) throw new Error(\"Provider image identity does not match the frozen digest reference.\");\n                                                                 ^\n\nError: Provider image identity does not match the frozen digest reference.\n    at file:///var/lib/mission-control/attempt/restricted-bootstrap.mjs:158:66\n    at ModuleJob.run (node:internal/modules/esm/module_job:569:25)\n    at async node:internal/modules/esm/loader:650:26\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\n\nNode.js v26.7.0",
+            "failureClass": "RETRYABLE_INFRA",
+            "failureCode": "TRANSPORT_UPLOAD",
+            "failureStage": "START",
+            "retryable": true,
+            "diagnostics": {
+              "supervisorLogTail": "",
+              "supervisorProcessRunning": false
+            }
+          }
+        },
+        {
+          "type": "SANDBOX_CREDENTIAL_REVOKED",
+          "occurredAt": 1787180968709,
+          "resourceName": "mc-attempt-22e2ecc408acf3ac",
+          "attemptId": "attempt-c076e12a8226-hardening-security-policy-1",
+          "metadata": {
+            "grantKey": "mc-attempt-ff43e1b3ecdc2cbf475f",
+            "externalCredentialId": "80067dfc96f2f75736709d5569a6a9f045711429f1dc2544dfeac9b71c5cf895"
+          }
+        },
+        {
+          "type": "SANDBOX_TERMINATION_REQUESTED",
+          "occurredAt": 1787180968709,
+          "resourceName": "mc-attempt-22e2ecc408acf3ac",
+          "attemptId": "attempt-c076e12a8226-hardening-security-policy-1",
+          "metadata": {
+            "providerResourceId": "mc-attempt-22e2ecc408acf3ac"
+          }
+        },
+        {
+          "type": "SANDBOX_TERMINATED",
+          "occurredAt": 1787180971600,
+          "resourceName": "mc-attempt-22e2ecc408acf3ac",
+          "attemptId": "attempt-c076e12a8226-hardening-security-policy-1",
+          "metadata": {
+            "confirmedAbsentAt": 1787180971600
+          }
+        }
+      ],
+      "securityProof": null,
+      "negativeMatrix": {
+        "checks": {
+          "denyByDefault": false,
+          "approvedOpenRouterHttpsReachable": false,
+          "arbitraryPublicEgressBlocked": false,
+          "rfc1918Blocked": false,
+          "linkLocalBlocked": false,
+          "metadataBlocked": false,
+          "unexpectedDnsBlocked": false,
+          "nonRootWorkload": false,
+          "noNewPrivileges": false,
+          "allCapabilitySetsEmpty": false,
+          "firewallMutationBlocked": false,
+          "packageManagersAbsent": false,
+          "packageCachesAbsent": false,
+          "protectedPathsReadOnly": false,
+          "credentialDiscoveryBlocked": true,
+          "staleCredentialRejected": true,
+          "providerAdminAuthorityAbsent": true,
+          "githubAuthorityAbsent": true,
+          "previousAttemptArtifactsAbsent": true,
+          "exactResourceDeleted": true
+        },
+        "passed": false
+      },
+      "cleanup": {
+        "credentialIssued": true,
+        "credentialRevoked": true,
+        "staleCredentialRejected": true,
+        "staleCredentialProbeStatuses": [
+          401
+        ],
+        "credentialSecretPersisted": false,
+        "resourceAbsent": true,
+        "finalVmCount": 0,
+        "passed": true
+      },
+      "performance": {
+        "allocationMs": 3793,
+        "readinessMs": 1182,
+        "startupMs": null,
+        "executionMs": null,
+        "teardownMs": null,
+        "totalCycleMs": 13613
+      },
+      "firstPassSuccess": false,
+      "failure": {
+        "class": "RETRYABLE_INFRA",
+        "code": "TRANSPORT_UPLOAD",
+        "stage": "START",
+        "retryable": true,
+        "summary": "exe.dev command failed: file:///var/lib/mission-control/attempt/restricted-bootstrap.mjs:158\nif (config.expectedImage !== config.observedProviderImage) throw new Error(\"Provider image identity does not match the frozen digest reference.\");\n                                                                 ^\n\nError: Provider image identity does not match the frozen digest reference.\n    at file:///var/lib/mission-control/attempt/restricted-bootstrap.mjs:158:66\n    at ModuleJob.run (node:internal/modules/esm/module_job:569:25)\n    at async node:internal/modules/esm/loader:650:26\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\n\nNode.js v26.7.0"
+      },
+      "error": "exe.dev command failed: file:///var/lib/mission-control/attempt/restricted-bootstrap.mjs:158\nif (config.expectedImage !== config.observedProviderImage) throw new Error(\"Provider image identity does not match the frozen digest reference.\");\n                                                                 ^\n\nError: Provider image identity does not match the frozen digest reference.\n    at file:///var/lib/mission-control/attempt/restricted-bootstrap.mjs:158:66\n    at ModuleJob.run (node:internal/modules/esm/module_job:569:25)\n    at async node:internal/modules/esm/loader:650:26\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\n\nNode.js v26.7.0",
+      "usage": null
+    },
+    {
+      "executionId": "hardening-data-migration-1",
+      "workloadKey": "data-migration",
+      "workloadClass": "DATA_SCHEMA_MIGRATION",
+      "workloadTitle": "Migrate listing ownership with compatibility and rollback",
+      "risk": "HIGH",
+      "attemptId": "attempt-c076e12a8226-hardening-data-migration-1",
+      "workflowRunId": "workflow-c076e12a8226-hardening-data-migration-1",
+      "leaseId": "lease-c076e12a8226-hardening-data-migration-1",
+      "attemptNumber": 1,
+      "retries": 0,
+      "sourceSha": "a09426f1f06ba22b2799b4f0eef12a1c70dd5429",
+      "manifestDigest": "sha256:24ea86c811876d9c70b50c772b1c535898e543cc5d549dfc5611ec54e5fd0cee",
+      "manifest": {
+        "version": "factory-execution-manifest/v1",
+        "causation": {
+          "missionId": "mission-c076e12a8226-hardening-data-migration-1",
+          "missionPlanId": "plan-c076e12a8226-hardening-data-migration-1",
+          "workOrderId": "work-order-c076e12a8226-hardening-data-migration-1",
+          "workOrderRevisionNumber": 1,
+          "workflowRunId": "workflow-c076e12a8226-hardening-data-migration-1",
+          "attemptId": "attempt-c076e12a8226-hardening-data-migration-1"
+        },
+        "factory": {
+          "definitionId": "factory-remote-sandbox-hardening",
+          "definitionVersionId": "factory-remote-sandbox-hardening-v1",
+          "version": 1,
+          "configurationDigest": "sha256:409d50666d74538a941428a021b53b469b674051480593393a0c63e6b0854e3b"
+        },
+        "repository": {
+          "repository": "sellerfi-hardening/data-migration",
+          "baseSha": "a09426f1f06ba22b2799b4f0eef12a1c70dd5429",
+          "allowedPaths": [
+            "src/**",
+            "migrations/**"
+          ],
+          "excludedPaths": [
+            "tests/**",
+            "package.json",
+            ".git/**"
+          ]
+        },
+        "intent": {
+          "title": "Migrate listing ownership with compatibility and rollback",
+          "acceptanceCriterionIds": [
+            "MIGRATION-001",
+            "MIGRATION-002",
+            "MIGRATION-003"
+          ]
+        },
+        "harness": {
+          "adapter": "codex",
+          "version": "v1",
+          "harnessId": "codex-cli",
+          "harnessVersion": "0.146.0",
+          "provider": "openrouter",
+          "model": "openai/gpt-5.1-codex-mini",
+          "executionBackend": "remote-sandbox",
+          "isolation": "WORKSPACE_WRITE",
+          "pullRequestAuthority": "CONTROL_PLANE_ONLY",
+          "timeoutMs": 300000
+        },
+        "sandbox": {
+          "profileDigest": "sha256:1b4a1dbd34dc8c9c6c9edd988f8d6fe05296273b5022c9f8f647aa0a92eab9a0",
+          "supervisorVersion": "mission-control-supervisor/v1",
+          "credentialGrants": [
+            {
+              "kind": "INFERENCE",
+              "secretValueIncluded": false,
+              "githubAuthority": "NONE",
+              "providerAuthority": "NONE"
+            }
+          ]
+        },
+        "retryPolicy": {
+          "schema": "factory-remote-retry-policy/v1",
+          "maxAttempts": 1,
+          "maxTotalWallClockMs": 330000,
+          "maxModelSpendUsd": 0.05,
+          "maxProviderResources": 1,
+          "retryableFailureClasses": []
+        }
+      },
+      "resourceName": "mc-attempt-bb0b9e1f8a598fc9",
+      "invocation": {
+        "command": "codex",
+        "harnessVersion": "0.146.0",
+        "args": [
+          "-a",
+          "never",
+          "-c",
+          "model_provider=\"mission-control-openrouter\"",
+          "-c",
+          "model_providers.mission-control-openrouter.name=\"OpenRouter\"",
+          "-c",
+          "model_providers.mission-control-openrouter.base_url=\"https://openrouter.ai/api/v1\"",
+          "-c",
+          "model_providers.mission-control-openrouter.env_key=\"OPENAI_API_KEY\"",
+          "-c",
+          "model_providers.mission-control-openrouter.wire_api=\"responses\"",
+          "-c",
+          "model_providers.mission-control-openrouter.supports_websockets=false",
+          "exec",
+          "--json",
+          "--ephemeral",
+          "--ignore-user-config",
+          "--ignore-rules",
+          "--sandbox",
+          "workspace-write",
+          "--color",
+          "never",
+          "-C",
+          "/var/lib/mission-control/attempt/repository",
+          "-o",
+          "/var/lib/mission-control/attempt/executor-result.json",
+          "--output-schema",
+          "/var/lib/mission-control/attempt/factory-result.schema.json",
+          "-m",
+          "openai/gpt-5.1-codex-mini",
+          "Implement the approved ownership schema migration. In src/orderOwnership.mjs implement readOwnerId(record) that prefers ownerId and falls back to legacy owner. Add migrations/001-owner-id.mjs exporting migrateOwner(record) and rollbackOwner(record); each must preserve unrelated fields, move the ownership value, remove only the superseded key, and be idempotent. Do not modify tests or package.json. Run npm test.\n\nThis is the only Attempt. Do not assume artifacts or verification from another Attempt.\n\nReturn exactly one JSON object and no prose. Use the literal string factory-result/v1 for schema. Use exactly one uppercase status: COMPLETED, BLOCKED, or FAILED. completedAcceptanceCriterionIds, incompleteAcceptanceCriterionIds, unknownAcceptanceCriterionIds, verificationCommands, and knownRisks must always be JSON arrays of strings, including when empty. summary and nextAction must be JSON strings.\n\nWhen status is COMPLETED, every listed acceptance criterion ID must appear exactly once in completedAcceptanceCriterionIds, and incompleteAcceptanceCriterionIds and unknownAcceptanceCriterionIds must both be empty.\n\n{\"schema\":\"factory-result/v1\",\"status\":\"COMPLETED\",\"summary\":\"Implemented and tested the bounded change.\",\"completedAcceptanceCriterionIds\":[\"criterion-id\"],\"incompleteAcceptanceCriterionIds\":[],\"unknownAcceptanceCriterionIds\":[],\"verificationCommands\":[\"npm test\"],\"knownRisks\":[],\"nextAction\":\"Review the exact candidate.\"}\n\nUse only these acceptance criterion IDs: MIGRATION-001, MIGRATION-002, MIGRATION-003.\n\nRepository mutation is limited to these approved repository-relative boundaries:\n- src/**\n- migrations/**\nDenied repository-relative boundaries:\n- tests/**\n- package.json\n- .git/**\nDo not expose credentials in output, artifacts, or logs."
+        ],
+        "outputSchemaPath": "/var/lib/mission-control/attempt/factory-result.schema.json",
+        "environmentKeys": [
+          "OPENAI_API_KEY",
+          "OPENAI_BASE_URL"
+        ],
+        "packageManagerUsed": false
+      },
+      "inventoryBefore": {
+        "checkedAt": "2026-08-19T23:09:39.100Z",
+        "authenticated": true,
+        "vmCount": 0,
+        "maxVms": 50,
+        "liveAllocationAllowed": true,
+        "automaticIntegrationCount": 0
+      },
+      "inventoryAfter": {
+        "checkedAt": "2026-08-19T23:09:56.192Z",
+        "authenticated": true,
+        "vmCount": 0,
+        "maxVms": 50,
+        "liveAllocationAllowed": true,
+        "automaticIntegrationCount": 0
+      },
+      "lifecycleEvents": [
+        {
+          "type": "SANDBOX_REQUESTED",
+          "occurredAt": 1787180979129,
+          "resourceName": "mc-attempt-bb0b9e1f8a598fc9",
+          "attemptId": "attempt-c076e12a8226-hardening-data-migration-1",
+          "metadata": {
+            "provider": "EXE_DEV",
+            "profileDigest": "sha256:1b4a1dbd34dc8c9c6c9edd988f8d6fe05296273b5022c9f8f647aa0a92eab9a0",
+            "readiness": "DEGRADED"
+          }
+        },
+        {
+          "type": "SANDBOX_ALLOCATED",
+          "occurredAt": 1787180982553,
+          "resourceName": "mc-attempt-bb0b9e1f8a598fc9",
+          "attemptId": "attempt-c076e12a8226-hardening-data-migration-1",
+          "metadata": {
+            "providerResourceId": "mc-attempt-bb0b9e1f8a598fc9"
+          }
+        },
+        {
+          "type": "SANDBOX_FAILED",
+          "occurredAt": 1787180988474,
+          "resourceName": "mc-attempt-bb0b9e1f8a598fc9",
+          "attemptId": "attempt-c076e12a8226-hardening-data-migration-1",
+          "metadata": {
+            "reason": "exe.dev command failed: file:///var/lib/mission-control/attempt/restricted-bootstrap.mjs:158\nif (config.expectedImage !== config.observedProviderImage) throw new Error(\"Provider image identity does not match the frozen digest reference.\");\n                                                                 ^\n\nError: Provider image identity does not match the frozen digest reference.\n    at file:///var/lib/mission-control/attempt/restricted-bootstrap.mjs:158:66\n    at ModuleJob.run (node:internal/modules/esm/module_job:569:25)\n    at async node:internal/modules/esm/loader:650:26\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\n\nNode.js v26.7.0",
+            "failureClass": "RETRYABLE_INFRA",
+            "failureCode": "TRANSPORT_UPLOAD",
+            "failureStage": "START",
+            "retryable": true,
+            "diagnostics": {
+              "supervisorLogTail": "",
+              "supervisorProcessRunning": false
+            }
+          }
+        },
+        {
+          "type": "SANDBOX_CREDENTIAL_REVOKED",
+          "occurredAt": 1787180989493,
+          "resourceName": "mc-attempt-bb0b9e1f8a598fc9",
+          "attemptId": "attempt-c076e12a8226-hardening-data-migration-1",
+          "metadata": {
+            "grantKey": "mc-attempt-7bd9ae978f06eeae85e7",
+            "externalCredentialId": "2cfd861c44a2fca5fb63d0e2cdc15ed9575412c560e00e903e15b459815af7ed"
+          }
+        },
+        {
+          "type": "SANDBOX_TERMINATION_REQUESTED",
+          "occurredAt": 1787180989493,
+          "resourceName": "mc-attempt-bb0b9e1f8a598fc9",
+          "attemptId": "attempt-c076e12a8226-hardening-data-migration-1",
+          "metadata": {
+            "providerResourceId": "mc-attempt-bb0b9e1f8a598fc9"
+          }
+        },
+        {
+          "type": "SANDBOX_TERMINATED",
+          "occurredAt": 1787180992210,
+          "resourceName": "mc-attempt-bb0b9e1f8a598fc9",
+          "attemptId": "attempt-c076e12a8226-hardening-data-migration-1",
+          "metadata": {
+            "confirmedAbsentAt": 1787180992210
+          }
+        }
+      ],
+      "securityProof": null,
+      "negativeMatrix": {
+        "checks": {
+          "denyByDefault": false,
+          "approvedOpenRouterHttpsReachable": false,
+          "arbitraryPublicEgressBlocked": false,
+          "rfc1918Blocked": false,
+          "linkLocalBlocked": false,
+          "metadataBlocked": false,
+          "unexpectedDnsBlocked": false,
+          "nonRootWorkload": false,
+          "noNewPrivileges": false,
+          "allCapabilitySetsEmpty": false,
+          "firewallMutationBlocked": false,
+          "packageManagersAbsent": false,
+          "packageCachesAbsent": false,
+          "protectedPathsReadOnly": false,
+          "credentialDiscoveryBlocked": true,
+          "staleCredentialRejected": true,
+          "providerAdminAuthorityAbsent": true,
+          "githubAuthorityAbsent": true,
+          "previousAttemptArtifactsAbsent": true,
+          "exactResourceDeleted": true
+        },
+        "passed": false
+      },
+      "cleanup": {
+        "credentialIssued": true,
+        "credentialRevoked": true,
+        "staleCredentialRejected": true,
+        "staleCredentialProbeStatuses": [
+          401
+        ],
+        "credentialSecretPersisted": false,
+        "resourceAbsent": true,
+        "finalVmCount": 0,
+        "passed": true
+      },
+      "performance": {
+        "allocationMs": 3424,
+        "readinessMs": 1146,
+        "startupMs": null,
+        "executionMs": null,
+        "teardownMs": null,
+        "totalCycleMs": 13081
+      },
+      "firstPassSuccess": false,
+      "failure": {
+        "class": "RETRYABLE_INFRA",
+        "code": "TRANSPORT_UPLOAD",
+        "stage": "START",
+        "retryable": true,
+        "summary": "exe.dev command failed: file:///var/lib/mission-control/attempt/restricted-bootstrap.mjs:158\nif (config.expectedImage !== config.observedProviderImage) throw new Error(\"Provider image identity does not match the frozen digest reference.\");\n                                                                 ^\n\nError: Provider image identity does not match the frozen digest reference.\n    at file:///var/lib/mission-control/attempt/restricted-bootstrap.mjs:158:66\n    at ModuleJob.run (node:internal/modules/esm/module_job:569:25)\n    at async node:internal/modules/esm/loader:650:26\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\n\nNode.js v26.7.0"
+      },
+      "error": "exe.dev command failed: file:///var/lib/mission-control/attempt/restricted-bootstrap.mjs:158\nif (config.expectedImage !== config.observedProviderImage) throw new Error(\"Provider image identity does not match the frozen digest reference.\");\n                                                                 ^\n\nError: Provider image identity does not match the frozen digest reference.\n    at file:///var/lib/mission-control/attempt/restricted-bootstrap.mjs:158:66\n    at ModuleJob.run (node:internal/modules/esm/module_job:569:25)\n    at async node:internal/modules/esm/loader:650:26\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)\n\nNode.js v26.7.0",
+      "usage": null
+    }
+  ],
+  "aggregateNegativeMatrix": {
+    "checks": {
+      "threeWorkloadsExecuted": true,
+      "oneAttemptEach": true,
+      "sequentialEmptyInventory": true,
+      "uniqueAttemptResources": true,
+      "allAttackChecksPassed": false,
+      "allExactResourcesDeleted": true,
+      "allCredentialsRevokedAndRejected": true
+    },
+    "passed": false
+  },
+  "finalInventory": {
+    "checkedAt": "2026-08-19T23:09:59.868Z",
+    "authenticated": true,
+    "vmCount": 0,
+    "maxVms": 50,
+    "liveAllocationAllowed": true,
+    "automaticIntegrationCount": 0
+  },
+  "performance": {
+    "current": {
+      "bug-fix": {
+        "allocationMs": 12983,
+        "readinessMs": 1293,
+        "startupMs": null,
+        "executionMs": null,
+        "teardownMs": null,
+        "totalCycleMs": 23102
+      },
+      "security-policy": {
+        "allocationMs": 3793,
+        "readinessMs": 1182,
+        "startupMs": null,
+        "executionMs": null,
+        "teardownMs": null,
+        "totalCycleMs": 13613
+      },
+      "data-migration": {
+        "allocationMs": 3424,
+        "readinessMs": 1146,
+        "startupMs": null,
+        "executionMs": null,
+        "teardownMs": null,
+        "totalCycleMs": 13081
+      }
+    },
+    "priorProductionFactoryPilotV3Preview": {
+      "bugFix": {
+        "allocationMs": 3613,
+        "readinessMs": 4385,
+        "startupMs": null,
+        "executionMs": 68629,
+        "teardownMs": 3434,
+        "totalCycleMs": 88900
+      },
+      "securityPolicy": {
+        "allocationMs": 3656,
+        "readinessMs": 4419,
+        "startupMs": null,
+        "executionMs": 68886,
+        "teardownMs": 3603,
+        "totalCycleMs": 89437
+      },
+      "dataMigration": {
+        "allocationMs": 3441,
+        "readinessMs": 4269,
+        "startupMs": null,
+        "executionMs": 210716,
+        "teardownMs": 3856,
+        "totalCycleMs": 230971
+      }
+    },
+    "note": "The prior preview did not separately expose startup time; its readiness and execution values are retained without inventing a split."
+  },
+  "totalAttempts": 3,
+  "totalRetries": 0
+}

@@ -1,0 +1,32 @@
+{
+  "schema": "mission-control-exedev-capability-audit/v1",
+  "observedAt": "2026-08-19T22:47:00Z",
+  "authenticated": true,
+  "capacity": {
+    "vmCount": 0,
+    "maxVms": 50,
+    "available": true
+  },
+  "automaticIntegrations": [],
+  "interfacesInspected": [
+    "authenticated SSH help",
+    "new --help",
+    "integrations --help",
+    "https://exe.dev/docs/all",
+    "https://exe.dev/docs/cli-new",
+    "https://exe.dev/docs/api",
+    "https://exe.dev/docs/customization",
+    "https://exe.dev/docs/faq/how-exedev-works"
+  ],
+  "customImageSupported": true,
+  "networkPolicy": {
+    "networkNamespaceControlFound": false,
+    "egressFirewallFound": false,
+    "securityGroupEquivalentFound": false,
+    "privateNetworkControlFound": false,
+    "perVmProxyOrGatewayControlFound": false,
+    "providerEnforced": false,
+    "conclusion": "provider-enforced egress unavailable"
+  },
+  "guestPolicyClassification": "DEFENSE_IN_DEPTH_ONLY"
+}

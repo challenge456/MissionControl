@@ -1,0 +1,275 @@
+import { execFile } from "node:child_process";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { promisify } from "node:util";
+import { standaloneRestrictedSandboxBootstrapSource } from "../apps/orchestration-server/src/standaloneRestrictedSandboxBootstrapSource.js";
+
+const execFileAsync = promisify(execFile);
+const image = process.argv[2] ?? "mc-remote-candidate:local";
+const outputPath = process.argv[3] ? path.resolve(process.argv[3]) : null;
+const temporaryDirectory = await mkdtemp(path.join(tmpdir(), "mc-remote-sandbox-local-"));
+
+try {
+  const imageInspection = JSON.parse((await docker(["image", "inspect", image])).stdout)[0];
+  const toolchain = parseToolchain((await docker([
+    "run", "--rm", "--platform", "linux/amd64", "--entrypoint", "sh", image, "-c",
+    [
+      "set -eu",
+      "node --version",
+      "codex --version",
+      "cat /etc/mission-control/codex-binary.sha256",
+      "git --version",
+      "cat /etc/mission-control/git-binary.sha256",
+      "busybox | head -n 1 | cut -d' ' -f1-2",
+      "cat /etc/mission-control/busybox-binary.sha256",
+      "cat /etc/mission-control/toolchain-inputs.sha256",
+      "id -u mc-attempt",
+      "id -g mc-attempt",
+      "setpriv --version",
+      "nft --version",
+      "busybox --list | grep -qx kill && echo kill-present",
+      "sleep 30 & child=$!; kill -0 \"$child\"; kill -TERM \"$child\"; wait \"$child\" || true; ! kill -0 \"$child\" 2>/dev/null; echo kill-probe-passed",
+    ].join("; "),
+  ])).stdout);
+
+  const bootstrapPath = path.join(temporaryDirectory, "restricted-bootstrap.mjs");
+  const configPath = path.join(temporaryDirectory, "restricted-bootstrap.json");
+  await writeFile(bootstrapPath, standaloneRestrictedSandboxBootstrapSource(), { mode: 0o444 });
+  const qualificationConfig = {
+    security: {
+      schema: "factory-sandbox-security/v1",
+      profile: "remote-sandbox/exe-dev/restricted-candidate-v1",
+      qualificationOnly: true,
+      image: {
+        digest: `sha256:${"0".repeat(64)}`,
+        provenanceReference: "local-deterministic-qualification",
+        sbomDigest: `sha256:${"0".repeat(64)}`,
+      },
+      toolchain: {
+        nodeVersion: toolchain.nodeVersion,
+        codexVersion: toolchain.codexVersion,
+        codexBinarySha256: `sha256:${toolchain.codexBinarySha256}`,
+        gitVersion: toolchain.gitVersion,
+        gitBinarySha256: `sha256:${toolchain.gitBinarySha256}`,
+        busyboxVersion: toolchain.busyboxVersion,
+        busyboxBinarySha256: `sha256:${toolchain.busyboxBinarySha256}`,
+        toolchainInputsSha256: `sha256:${toolchain.toolchainInputsSha256}`,
+      },
+      execution: {
+        user: "mc-attempt",
+        uid: 10_001,
+        gid: 10_001,
+        homePath: "/var/lib/mission-control/attempt/home",
+        temporaryPath: "/var/lib/mission-control/attempt/tmp",
+        noNewPrivileges: true,
+        capabilityMode: "DROP_ALL",
+      },
+      network: {
+        enforcement: "GUEST_NFTABLES",
+        providerEnforced: false,
+        allowedHttpsHosts: ["openrouter.ai"],
+        dnsMode: "CONTROL_PLANE_RESOLVE_ETC_HOSTS",
+        denyPrivateNetworks: true,
+        denyLinkLocal: true,
+        denyMetadata: true,
+        denyUnexpectedDns: true,
+      },
+    },
+    requestedImage: `mc-remote-candidate@sha256:${"0".repeat(64)}`,
+    providerReportedImage: image,
+    remoteRoot: "/var/lib/mission-control/attempt",
+    repositoryRoot: "/var/lib/mission-control/attempt/repository",
+    executorResultPath: "/var/lib/mission-control/attempt/executor-result.json",
+    proofPath: "/var/lib/mission-control/attempt/security-proof.json",
+  };
+  await writeFile(configPath, JSON.stringify(qualificationConfig), { mode: 0o444 });
+
+  const failClosedMismatchChecks = {
+    imageDigest: await qualifyFailClosedMismatch(
+      "image-digest",
+      { ...qualificationConfig, requestedImage: `mc-remote-candidate@sha256:${"1".repeat(64)}` },
+      "Requested image identity does not match the frozen digest reference.",
+    ),
+    codexBinary: await qualifyFailClosedMismatch(
+      "codex-binary",
+      {
+        ...qualificationConfig,
+        security: {
+          ...qualificationConfig.security,
+          toolchain: { ...qualificationConfig.security.toolchain, codexBinarySha256: `sha256:${"2".repeat(64)}` },
+        },
+      },
+      "Observed codexBinarySha256 does not match the frozen toolchain.",
+    ),
+  };
+  const first = await qualifyFreshContainer("first");
+  const second = await qualifyFreshContainer("second");
+  const report = {
+    schema: "mission-control-remote-sandbox-local-qualification/v1",
+    observedAt: Date.now(),
+    image,
+    localImageId: imageInspection.Id,
+    platform: imageInspection.Os + "/" + imageInspection.Architecture,
+    toolchain,
+    supplyChainCertified: false,
+    providerEgressEnforced: false,
+    credentialEnvironment: {
+      present: ["OPENAI_API_KEY", "OPENAI_BASE_URL"],
+      absent: [
+        "OPENROUTER_MANAGEMENT_API_KEY",
+        "GITHUB_TOKEN",
+        "GH_TOKEN",
+        "GITHUB_APP_ID",
+        "GITHUB_APP_PRIVATE_KEY",
+        "GITHUB_APP_PRIVATE_KEY_FILE",
+        "GITHUB_APP_CLIENT_SECRET",
+        "GITHUB_WEBHOOK_SECRET",
+        "CONVEX_DEPLOY_KEY",
+        "EXEDEV_IDENTITY_FILE",
+        "EXE_TOKEN",
+        "EXE_DEV_TOKEN",
+        "ORCHESTRATION_API_TOKEN",
+        "MC_API_TOKEN",
+        "MISSION_CONTROL_SERVICE_TOKEN",
+        "MISSION_CONTROL_ACCEPTANCE_TOKEN",
+        "MISSION_CONTROL_VERIFICATION_TOKEN",
+      ],
+    },
+    failClosedMismatchChecks,
+    sequentialFreshContainers: [first, second],
+  };
+  const serializedReport = JSON.stringify(report, null, 2) + "\n";
+  if (outputPath) await writeFile(outputPath, serializedReport, { mode: 0o600 });
+  process.stdout.write(serializedReport);
+} finally {
+  await rm(temporaryDirectory, { recursive: true, force: true });
+}
+
+async function qualifyFailClosedMismatch(label: string, config: object, expectedError: string) {
+  const mismatchConfigPath = path.join(temporaryDirectory, `${label}.json`);
+  await writeFile(mismatchConfigPath, JSON.stringify(config), { mode: 0o444 });
+  try {
+    await docker([
+      "run", "--rm", "--platform", "linux/amd64", "--cap-add", "NET_ADMIN",
+      "--volume", `${temporaryDirectory}:/qualification:ro`,
+      "--entrypoint", "node", image,
+      "/qualification/restricted-bootstrap.mjs", `/qualification/${label}.json`,
+    ], 30_000);
+  } catch (error: any) {
+    const detail = `${String(error?.stdout ?? "")}\n${String(error?.stderr ?? "")}\n${String(error?.message ?? "")}`;
+    if (!detail.includes(expectedError)) throw error;
+    return { blocked: true, expectedError };
+  }
+  throw new Error(`${label} mismatch did not fail closed.`);
+}
+
+async function qualifyFreshContainer(label: string) {
+  const startedAt = Date.now();
+  const command = String.raw`
+set -eu
+test ! -e /var/lib/mission-control/attempt/previous-attempt-sentinel
+mkdir -p /var/lib/mission-control/attempt/repository
+printf 'current attempt\n' >/var/lib/mission-control/attempt/repository/current-attempt.txt
+cp /qualification/restricted-bootstrap.mjs /var/lib/mission-control/attempt/restricted-bootstrap.mjs
+cp /qualification/restricted-bootstrap.json /var/lib/mission-control/attempt/restricted-bootstrap.json
+node /var/lib/mission-control/attempt/restricted-bootstrap.mjs /var/lib/mission-control/attempt/restricted-bootstrap.json >/tmp/bootstrap-output.json
+setpriv --no-new-privs --bounding-set=-all --inh-caps=-all --ambient-caps=-all --reuid=10001 --regid=10001 --clear-groups -- sh -c '
+  test "$OPENAI_API_KEY" = "attempt-scoped-test-only"
+  test "$OPENAI_BASE_URL" = "https://openrouter.ai/api/v1"
+  test -z "\${OPENROUTER_MANAGEMENT_API_KEY:-}"
+  test -z "\${GITHUB_TOKEN:-}"
+  test -z "\${GH_TOKEN:-}"
+  test -z "\${GITHUB_APP_ID:-}"
+  test -z "\${GITHUB_APP_PRIVATE_KEY:-}"
+  test -z "\${GITHUB_APP_PRIVATE_KEY_FILE:-}"
+  test -z "\${GITHUB_APP_CLIENT_SECRET:-}"
+  test -z "\${GITHUB_WEBHOOK_SECRET:-}"
+  test -z "\${CONVEX_DEPLOY_KEY:-}"
+  test -z "\${EXEDEV_IDENTITY_FILE:-}"
+  test -z "\${EXE_TOKEN:-}"
+  test -z "\${EXE_DEV_TOKEN:-}"
+  test -z "\${ORCHESTRATION_API_TOKEN:-}"
+  test -z "\${MC_API_TOKEN:-}"
+  test -z "\${MISSION_CONTROL_SERVICE_TOKEN:-}"
+  test -z "\${MISSION_CONTROL_ACCEPTANCE_TOKEN:-}"
+  test -z "\${MISSION_CONTROL_VERIFICATION_TOKEN:-}"
+  touch /var/lib/mission-control/attempt/repository/workspace-write-succeeds
+  ! touch /etc/mission-control/forbidden-write
+  ! touch /usr/forbidden-write
+  ! command -v apk
+  ! command -v npm
+  ! command -v npx
+  ! command -v corepack
+  ! command -v yarn
+  ! command -v yarnpkg
+  ! command -v pnpm
+  ! command -v pnpx
+  command -v kill >/dev/null
+  sleep 30 & child=$!
+  kill -0 "$child"
+  kill -TERM "$child"
+  wait "$child" || true
+  ! kill -0 "$child" 2>/dev/null
+  test ! -e /root/.npm
+  test ! -e /var/lib/mission-control/attempt/home/.npm
+  test ! -e /var/lib/mission-control/attempt/home/.cache/yarn
+  test ! -e /var/lib/mission-control/attempt/home/.local/share/pnpm
+  test ! -e /var/lib/mission-control/attempt/home/.pnpm-store
+  test ! -e /var/lib/mission-control/attempt/previous-attempt-sentinel
+'
+touch /var/lib/mission-control/attempt/previous-attempt-sentinel
+cat /var/lib/mission-control/attempt/security-proof.json
+`;
+  const result = await docker([
+    "run",
+    "--rm",
+    "--platform", "linux/amd64",
+    "--cap-add", "NET_ADMIN",
+    "--env", "OPENAI_API_KEY=attempt-scoped-test-only",
+    "--env", "OPENAI_BASE_URL=https://openrouter.ai/api/v1",
+    "--volume", `${temporaryDirectory}:/qualification:ro`,
+    "--entrypoint", "sh",
+    image,
+    "-c",
+    command,
+  ], 90_000);
+  const proof = JSON.parse(result.stdout);
+  return {
+    label,
+    durationMs: Date.now() - startedAt,
+    previousAttemptArtifactAbsent: true,
+    credentialNegativeChecksPassed: true,
+    workspaceWriteAllowed: true,
+    protectedPathsReadOnly: true,
+    packageInstallBlocked: true,
+    processSignalControlPassed: true,
+    packageCachesAbsent: true,
+    proof,
+  };
+}
+
+function parseToolchain(stdout: string) {
+  const [nodeVersion, codexVersion, codexBinarySha256, gitVersion, gitBinarySha256, busyboxVersion,
+    busyboxBinarySha256, toolchainInputsSha256, uid, gid, setprivVersion, nftVersion, killApplet, killProbe] = stdout.trim().split("\n");
+  return {
+    nodeVersion,
+    codexVersion,
+    codexBinarySha256,
+    gitVersion,
+    gitBinarySha256,
+    busyboxVersion,
+    busyboxBinarySha256,
+    toolchainInputsSha256,
+    uid: Number(uid),
+    gid: Number(gid),
+    setprivVersion,
+    nftVersion,
+    killApplet,
+    killProbe,
+  };
+}
+
+async function docker(args: string[], timeout = 30_000) {
+  return await execFileAsync("docker", args, { timeout, maxBuffer: 16 * 1024 * 1024 });
+}

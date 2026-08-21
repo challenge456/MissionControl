@@ -1,0 +1,39 @@
+{
+  "schema": "mission-control-remote-sandbox-hardening-decision/v1",
+  "decision": "HOLD",
+  "decidedAt": "2026-08-19T23:09:59.868Z",
+  "imageGate": {
+    "critical": 0,
+    "high": 0,
+    "passed": true,
+    "registryDigest": "sha256:ce142e3f1782d921e54203c748db590dd0f2650cc12cf801002729f07bb0f4ec"
+  },
+  "localSecurityGate": {
+    "freshInstances": 2,
+    "passed": true
+  },
+  "liveGate": {
+    "scheduledWorkloads": 3,
+    "attempts": 3,
+    "retries": 0,
+    "firstPassSuccesses": 0,
+    "cleanupPasses": 3,
+    "staleCredentialRejections": 3,
+    "finalVmInventory": 0,
+    "passed": false,
+    "failure": "All three Attempts failed closed before executor start because the provider-reported image identity did not exactly equal the requested digest-qualified reference."
+  },
+  "providerEgress": {
+    "providerEnforced": false,
+    "conclusion": "provider-enforced egress unavailable"
+  },
+  "promotion": {
+    "remoteSandboxGloballyPromoted": false,
+    "guardedAutoEnabled": false,
+    "redReadyClaimed": false
+  },
+  "pullRequestRelationship": {
+    "pr125": "remains HOLD and preserves its original evidence",
+    "pr126": "replacement remediation draft; not mergeable while the live gate is HOLD"
+  }
+}

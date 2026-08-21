@@ -1,0 +1,35 @@
+{
+  "schema": "mission-control-remote-sandbox-remediation-validation/v1",
+  "observedAt": "2026-08-19T23:15:23.597Z",
+  "result": "PASS_WITH_LIVE_GATE_HOLD",
+  "checks": [
+    { "name": "image vulnerability gate", "result": "PASS", "detail": "Grype 0.117.0, unsuppressed 0 Critical / 0 High" },
+    { "name": "SBOM and registry provenance", "result": "PASS", "detail": "SPDX-2.3, public immutable digest, GitHub attestation" },
+    { "name": "two-instance network/privilege/credential/filesystem qualification", "result": "PASS", "detail": "2/2 fresh linux/amd64 containers" },
+    { "name": "live three-workload gate", "result": "HOLD", "detail": "0/3 first-pass; exact provider image identity failed closed before executor; 0 retries; 3/3 cleanup; final inventory 0" },
+    { "name": "focused Remote Sandbox, structured-result/retry, worker/lease/recovery, Generic Harness, Verification Factory", "result": "PASS", "detail": "75 orchestration tests" },
+    { "name": "focused work-order retry and routing compatibility", "result": "PASS", "detail": "37 tests" },
+    { "name": "pnpm run qualify:factory", "result": "PASS", "detail": "complete composed qualification" },
+    { "name": "full repository tests", "result": "PASS", "detail": "executed by qualify:factory" },
+    { "name": "TypeScript", "result": "PASS", "detail": "all configured workspaces" },
+    { "name": "lint and skill lint", "result": "PASS", "detail": "10 skills, 100/100 average" },
+    { "name": "runtime guard", "result": "PASS", "detail": "915 public Convex functions unchanged" },
+    { "name": "production build", "result": "PASS", "detail": "all configured workspaces" },
+    { "name": "orchestration smoke", "result": "PASS", "detail": "built Node ESM artifact loaded" },
+    { "name": "repository secret scan", "result": "PASS", "detail": "2467 tracked files; no credential material" },
+    { "name": "git diff --check", "result": "PASS", "detail": "no whitespace errors" }
+  ],
+  "github": {
+    "imageWorkflowRun": 32311157907,
+    "imageWorkflowConclusion": "success",
+    "ciRun": 32311174724,
+    "ciConclusion": "success",
+    "freshFinalHeadPending": true
+  },
+  "vercel": {
+    "missionControlUi": "success",
+    "missionControlMissionControlUi": "success",
+    "freshFinalHeadPending": true
+  },
+  "terminalDecision": "HOLD"
+}

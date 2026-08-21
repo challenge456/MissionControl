@@ -74,6 +74,7 @@ export interface RemoteSandboxExecutionRequest {
 export interface RemoteSandboxExecutionResult {
   bundle: SandboxResultBundle;
   allocation: SandboxAllocation;
+  diagnostics?: Record<string, unknown> | null;
   credentialRevocation?: SandboxCredentialRevocationReceipt;
   termination: SandboxTerminationReceipt;
   lifecycleEvents: SandboxLifecycleEvent[];
@@ -82,6 +83,7 @@ export interface RemoteSandboxExecutionResult {
 export interface RemoteSandboxCandidateSession {
   bundle: SandboxResultBundle;
   allocation: SandboxAllocation;
+  diagnostics?: Record<string, unknown> | null;
   lifecycleEvents: SandboxLifecycleEvent[];
   cleanup(): Promise<{
     credentialRevocation?: SandboxCredentialRevocationReceipt;
@@ -146,6 +148,7 @@ export class RemoteSandboxRuntime {
     let termination: SandboxTerminationReceipt | undefined;
     let primaryError: unknown;
     let bundle: SandboxResultBundle | undefined;
+    let diagnostics: Record<string, unknown> | null | undefined;
     let failureStage: RemoteFailureStage = "ALLOCATION";
     let resourceObservedRunning = false;
     let cleanupPromise: Promise<{ credentialRevocation?: SandboxCredentialRevocationReceipt; termination: SandboxTerminationReceipt }> | undefined;
@@ -215,6 +218,7 @@ export class RemoteSandboxRuntime {
         manifestDigest: request.manifestDigest,
         sourceSha: request.sourceSha,
         profileDigest,
+        security: request.profile.security,
         environmentDescriptor: { provider: request.profile.provider, image: request.profile.machine.image },
         repositoryArchive: request.repositoryBundle,
         supervisorSource: request.supervisorSource,
@@ -228,12 +232,18 @@ export class RemoteSandboxRuntime {
       await this.resourceObserver?.started({ allocation, processId: start.processId });
       resourceObservedRunning = Boolean(this.resourceObserver);
       await this.journal.recordAllocation(allocation);
-      await emit("SANDBOX_STARTED", { processId: start.processId });
+      await emit("SANDBOX_STARTED", {
+        processId: start.processId,
+        ...(start.securityProof ? { securityProof: start.securityProof } : {}),
+      });
       failureStage = "RESULT_READ";
       bundle = await this.waitForResult(allocation, request, executionWorkflowRunId, profileDigest, emit);
       allocation = { ...allocation, state: "RESULT_READY", resultDigest: bundle.digest };
       await this.journal.recordAllocation(allocation);
       await this.journal.recordResult(bundle);
+      diagnostics = this.provider.fetchDiagnostics
+        ? await this.provider.fetchDiagnostics(allocation).then(sanitizeDiagnostics).catch(() => null)
+        : null;
       await emit("SANDBOX_RESULT_RECEIVED", {
         resultDigest: bundle.digest,
         status: bundle.status,
@@ -290,10 +300,10 @@ export class RemoteSandboxRuntime {
     }
     if (primaryError) throw primaryError;
     if (!bundle || !allocation) throw new Error("Remote sandbox lifecycle ended without a validated result.");
-    if (options?.deferCleanup) return { bundle, allocation, lifecycleEvents, cleanup };
+    if (options?.deferCleanup) return { bundle, allocation, diagnostics, lifecycleEvents, cleanup };
     if (!termination) throw new Error("Remote sandbox lifecycle ended without a teardown receipt.");
     if (grant && !credentialRevocation) throw new Error("Remote sandbox lifecycle ended without credential revocation evidence.");
-    return { bundle, allocation, credentialRevocation, termination, lifecycleEvents };
+    return { bundle, allocation, diagnostics, credentialRevocation, termination, lifecycleEvents };
   }
 
   private async waitUntilReady(
