@@ -22,6 +22,7 @@ import {
   type PrCheckSignals,
 } from "../lib/harnessPrChecks";
 import { computeMergeGates } from "../lib/mergeGates";
+import { evaluateCiMergeAuthority } from "../lib/evidenceAuthority";
 import { fetchPullRequestCi, githubPrAttestationExpiresAt } from "../lib/githubCiIngest";
 import { mintGithubInstallationToken } from "../lib/githubAppAuth";
 import { buildFileChanges } from "../lib/runInspector";
@@ -386,6 +387,13 @@ async function upsertPrCheck(
   existingRows.sort((a: any, b: any) => b.syncedAt - a.syncedAt);
   const existing = existingRows[0];
 
+  // `ciProvider: "github"` used to be stamped on EVERY row, including
+  // CODEGEN/WORKFLOW/MANUAL rows that never touched GitHub. Combined with a
+  // `ciStatus` derived from the run's own `status === "COMPLETED"`, that made an
+  // execution claim indistinguishable from a GitHub check at the point every
+  // consumer reads it. The provider is now only named when a provider was
+  // actually involved.
+  const externallyObserved = input.source === "GITHUB";
   const doc = {
     projectId: input.projectId,
     prUrl: input.prUrl,
@@ -395,7 +403,7 @@ async function upsertPrCheck(
     title: input.title,
     ciStatus: input.ciStatus ?? (signals.testFailCount ? "FAIL" : signals.testPassCount ? "PASS" : "UNKNOWN"),
     ciRunUrl: input.ciRunUrl,
-    ciProvider: "github",
+    ciProvider: externallyObserved ? "github" : undefined,
     source: input.source,
     sourceRef: input.sourceRef,
     changeReviewLenses,
@@ -441,7 +449,7 @@ export const syncFromSources = mutation({
         source: "CODEGEN",
         sourceRef: row.requestId,
         diffText: row.diff,
-        ciStatus: row.status === "COMPLETED" ? "PASS" : row.status === "FAILED" ? "FAIL" : "PENDING",
+        ciStatus: "UNKNOWN",
       });
       synced.push(row.prUrl);
     }
@@ -502,7 +510,7 @@ export const syncFromSources = mutation({
           repoFullName: fullName,
           source: "WORKFLOW",
           sourceRef: run.runId,
-          ciStatus: run.status === "COMPLETED" ? "PASS" : run.status === "FAILED" ? "FAIL" : "PENDING",
+          ciStatus: "UNKNOWN",
         });
         synced.push(change.pullRequestUrl);
       }
@@ -565,15 +573,44 @@ export const recordMerge = mutation({
       activeVerifierCount,
       securityFindingCount: metadata?.securityFindingCount,
     });
-    const workOrder = evaluation.workOrderId ? await ctx.db.get(evaluation.workOrderId) : null;
-    if (evaluation.workOrderId && !workOrder) throw new Error("Linked WorkOrder not found");
+    if (!evaluation.workOrderId || !evaluation.workflowRunId) {
+      throw new Error("Merge recording requires exact WorkOrder and producing Attempt lineage");
+    }
+    const [workOrder, workflowRun] = await Promise.all([
+      ctx.db.get(evaluation.workOrderId),
+      ctx.db.get(evaluation.workflowRunId),
+    ]);
+    if (!workOrder || !workflowRun
+      || workflowRun.workOrderId !== workOrder._id
+      || workflowRun.projectId !== evaluation.projectId) {
+      throw new Error("Merge recording lineage is stale or outside the workspace");
+    }
+    if (!workflowRun.headSha) throw new Error("Producing Attempt has no exact candidate head");
+    const repository = workOrder.repositoryId ? await ctx.db.get(workOrder.repositoryId) : null;
+    if (!repository || repository.projectId !== evaluation.projectId || !repository.providerRepositoryId) {
+      throw new Error("Merge recording requires an exact provider repository binding");
+    }
+    // CI authority is now proven, not assumed from `ciStatus`. See
+    // lib/evidenceAuthority.ts: a workflow run reporting its own completion used
+    // to satisfy this.
+    const ciAuthority = evaluateCiMergeAuthority({
+      row: evaluation,
+      expectedHeadSha: workflowRun.headSha,
+      expectedProviderRepositoryId: repository.providerRepositoryId,
+      now: Date.now(),
+    });
     if (!mergeAuthoritySatisfied({
       ciStatus: evaluation.ciStatus ?? "UNKNOWN",
       gatesPass: gates.every((gate) => gate.passed),
       approvalStatus: workOrder?.approvalStatus,
       humanConfirmed: args.humanConfirmed,
+      ciAuthoritySatisfied: ciAuthority.satisfied,
     })) {
-      throw new Error("Passing gates, WorkOrder approval, and explicit merge confirmation are required before merge");
+      throw new Error(
+        ciAuthority.satisfied
+          ? "Passing gates, WorkOrder approval, and explicit merge confirmation are required before merge"
+          : `Merge requires external CI attestation: ${ciAuthority.detail}`,
+      );
     }
     const actorId = access.actorId;
     const mergeCommitSha = args.mergeCommitSha.trim();

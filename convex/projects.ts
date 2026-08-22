@@ -31,7 +31,7 @@ async function enforceProjectAccess(
   permission?: (typeof COMPANY_PERMISSIONS)[keyof typeof COMPANY_PERMISSIONS]
 ) {
   if (!project) throw new Error("Workspace not found.");
-  if (!(await isCompanyContextEnforced(ctx, project._id))) return null;
+  if (!(await isCompanyContextEnforced(ctx, project._id, permission ? "WRITE" : "READ"))) return null;
   if (!project.tenantId) {
     throw new Error("Workspace company assignment is incomplete. Run the tenant backfill before enabling enforcement.");
   }
@@ -373,7 +373,7 @@ export const create = mutation({
     metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
-    const globalEnforced = await isCompanyContextEnforced(ctx);
+    const globalEnforced = await isCompanyContextEnforced(ctx, undefined, "WRITE");
     if (globalEnforced) {
       if (!args.tenantId) throw new Error("Company account is required while company enforcement is enabled.");
       await requireCompanyPermission(ctx, args.tenantId, COMPANY_PERMISSIONS.CREATE_WORKSPACES);
@@ -1003,7 +1003,7 @@ export const createSoftwareFactoryProject = mutation({
     requestedBy: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const companyEnforced = await isCompanyContextEnforced(ctx);
+    const companyEnforced = await isCompanyContextEnforced(ctx, undefined, "WRITE");
     let defaultTenant;
     if (companyEnforced) {
       const manageable = (await listCompanyMemberships(ctx)).filter((membership) => membership.canManageCompany);

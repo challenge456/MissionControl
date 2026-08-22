@@ -1257,6 +1257,9 @@ async function buildVerificationLineage(input: {
     },
     isolation,
     reportCapability: "verification:report",
+    authorityStatus: verificationExecution.checks.some(
+      (check) => check.verifierId === "factory-verification-authority" && check.status === "PASS",
+    ) ? "PASS" : "FAIL",
   });
   expect(independence.passed).toBe(true);
 

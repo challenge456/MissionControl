@@ -1334,6 +1334,7 @@ export const reportVerificationInternal = internalMutation({
         lease: undefined,
         executionPhase: "TERMINAL",
         steps: reconcileTerminalWorkflowSteps(run.steps, terminal.status, failureReason, now),
+        metadata: { ...(run.metadata ?? {}), verificationSupersededAt: now },
       });
       await insertEvent(ctx, run, {
         idempotencyKey: `verification-terminal:${run.runId}:${terminal.status}`,
@@ -1428,6 +1429,7 @@ export const reportVerificationInternal = internalMutation({
       } as any,
       isolation,
       reportCapability: "verification:report",
+      authorityStatus: verificationAuthorityStatusFromPacket(packet),
     });
     const plan = verificationRun.verificationPlan;
     const requiredEvidenceById = new Map(plan.requiredEvidence.map((item: any) => [item.id, item]));
@@ -1996,6 +1998,19 @@ async function schedulePolicyV2VerificationAttempt(ctx: any, workOrder: any, sou
     verificationSubject: subject,
     verificationSubjectDigest: subject.digest,
   };
+  // Validate the frozen plan before the first write. Convex mutations do not
+  // roll back writes when a caught error occurs, so compiling after insertion
+  // alone can strand an orphan Verification Attempt.
+  compilePolicyV2VerificationPlan({
+    now,
+    workOrder,
+    sourceAttempt,
+    verificationAttemptId: "verification-attempt-precheck",
+    verificationSubject: subject,
+    factoryDefinitionId: String(definition._id),
+    factoryDefinitionVersionId: String(version._id),
+    executorInvocationId,
+  });
   const workflowRunId = await ctx.db.insert("workflowRuns", {
     tenantId: workOrder.tenantId,
     runId,
@@ -3038,4 +3053,12 @@ function optionalText(value: unknown, max: number): string | undefined {
 
 function finiteNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function verificationAuthorityStatusFromPacket(packet: any): "PASS" | "FAIL" | undefined {
+  const check = (packet?.checks ?? []).find(
+    (item: any) => item?.verifierId === "factory-verification-authority",
+  );
+  if (!check) return undefined;
+  return check.status === "PASS" ? "PASS" : "FAIL";
 }

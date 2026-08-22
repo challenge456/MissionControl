@@ -1,0 +1,36 @@
+{
+  "schema": "mission-control-governed-hardening-security/v1",
+  "observedAt": "2026-08-22T20:20:00.000Z",
+  "image": "ghcr.io/jaydubya818/mission-control-remote-sandbox@sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+  "localImageId": "sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+  "sbom": {
+    "tool": "syft 1.37.0",
+    "format": "SPDX-2.3",
+    "packageCount": 27,
+    "sha256": "sha256:f2c82c7d0bf37cc6b52287d7d19df6367709e6ac9a6bd90fe897b0c3aa3b3da2"
+  },
+  "vulnerabilityScan": {
+    "tool": "grype 0.117.0",
+    "databaseSchema": "v6.1.9",
+    "databaseBuiltAt": "2026-08-22T06:14:16Z",
+    "artifactSha256": "sha256:d848f5edfa791ff512b3ff7b63fc42d42ad202ec056cc669ffdfddff5d4fe884",
+    "critical": 0,
+    "high": 0,
+    "medium": 2,
+    "low": 0,
+    "ignored": 0,
+    "mediumFindings": [
+      { "id": "CVE-2025-60876", "package": "busybox", "version": "1.37.0-r30" },
+      { "id": "CVE-2025-60876", "package": "busybox-binsh", "version": "1.37.0-r30" }
+    ],
+    "busyboxWgetAppletAbsent": true,
+    "usrBinWgetAbsent": true
+  },
+  "dependencyGate": "PASS",
+  "repositorySecretGate": "PASS",
+  "authorizationRatchet": {
+    "baselineMainUnauthorized": 641,
+    "qualifiedBranchUnauthorized": 637,
+    "newUnauthorized": 0
+  }
+}

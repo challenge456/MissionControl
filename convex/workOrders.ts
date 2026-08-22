@@ -4198,8 +4198,26 @@ export const accept = mutation({
   handler: async (ctx, args) => {
     const workOrder = await ctx.db.get(args.workOrderId);
     if (!workOrder) throw new Error("WorkOrder not found");
+    if (args.actorType !== "HUMAN") {
+      throw new Error("WorkOrder acceptance is reserved for an authenticated human operator.");
+    }
+    if (!workOrder.projectId) {
+      throw new Error("WorkOrder acceptance requires a workspace-scoped historical record.");
+    }
+    const factoryAccess = await requireWorkspacePermission(
+      ctx,
+      workOrder.projectId,
+      FACTORY_PERMISSIONS.APPROVE,
+    );
+    if (factoryAccess.membership.mode === "DEMO") {
+      throw new Error("Anonymous demo authority cannot accept governed work.");
+    }
     const deliveryAccess = await requireAuthorizedDeliveryScope(ctx, workOrder.projectId, COMPANY_PERMISSIONS.APPROVE_DELIVERY);
+    if (!deliveryAccess) {
+      throw new Error("WorkOrder acceptance is unavailable until an authenticated operator is provisioned.");
+    }
     assertAuthorizedDeliveryRecord(deliveryAccess, workOrder);
+    const acceptActorId = factoryAccess.actorId;
     const existingEvent = await ctx.db
       .query("workOrderEvents")
       .withIndex("by_idempotency", (q) => q.eq("idempotencyKey", `${args.idempotencyKey}:accepted`))
@@ -4274,7 +4292,7 @@ export const accept = mutation({
         workflowRunId: currentVerification.verificationAttemptId,
         eventType: "WORK_ORDER_ACCEPTANCE_INELIGIBLE",
         actorType: args.actorType,
-        actorId: args.actorId,
+        actorId: acceptActorId,
         summary: `Work order is not acceptance eligible: ${currentVerification.reasons.join(" ")}`,
         idempotencyKey: `${args.idempotencyKey}:ineligible`,
         metadata: currentVerificationMetadata,
@@ -4286,7 +4304,7 @@ export const accept = mutation({
         workflowRunId: currentVerification.verificationAttemptId,
         eventType: "WORK_ORDER_ACCEPTANCE_REJECTED",
         actorType: args.actorType,
-        actorId: args.actorId,
+        actorId: acceptActorId,
         summary: `Authorized acceptance was rejected by policy-v2 verification currentness`,
         idempotencyKey: `${args.idempotencyKey}:verification-rejected`,
         metadata: currentVerificationMetadata,
@@ -4361,7 +4379,7 @@ export const accept = mutation({
         fromStatus: parentSync.fromStatus,
         toStatus: "DONE",
         actorType: args.actorType,
-        actorUserId: args.actorType === "HUMAN" ? args.actorId : undefined,
+        actorUserId: acceptActorId,
         reason: `Parent outcome synchronized from accepted WorkOrder ${workOrder._id}.`,
         validationResult: { valid: true },
         artifactsSnapshot: {
@@ -4398,7 +4416,7 @@ export const accept = mutation({
         tenantId: parentTask.tenantId,
         projectId: parentTask.projectId,
         actorType: args.actorType,
-        actorId: args.actorId,
+        actorId: acceptActorId,
         action: "TASK_TRANSITION",
         description: `Parent task synchronized: ${parentSync.fromStatus} → DONE after WorkOrder acceptance`,
         targetType: "TASK",
@@ -4418,7 +4436,7 @@ export const accept = mutation({
         projectId: parentTask.projectId,
         eventType: "TASK_TRANSITION",
         actorType: args.actorType,
-        actorId: args.actorId,
+        actorId: acceptActorId,
         relatedId: parentTransitionId,
         beforeState: { status: parentSync.fromStatus },
         afterState: { status: "DONE" },
@@ -4437,7 +4455,7 @@ export const accept = mutation({
         workflowRunId: acceptanceRun._id,
         eventType: "STATE_SYNCED",
         actorType: args.actorType,
-        actorId: args.actorId,
+        actorId: acceptActorId,
         summary: `Accepted WorkOrder synchronized parent task ${parentTask._id} to DONE`,
         idempotencyKey: `${args.idempotencyKey}:parent-state-synced`,
         metadata: {
@@ -4459,7 +4477,7 @@ export const accept = mutation({
       fromState: workOrder.state,
       toState: "DONE",
       actorType: args.actorType,
-      actorId: args.actorId,
+      actorId: acceptActorId,
       summary: `Work order accepted after approval and verification gates cleared`,
       idempotencyKey: `${args.idempotencyKey}:accepted`,
     });

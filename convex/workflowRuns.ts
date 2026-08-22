@@ -43,6 +43,21 @@ function generateRunId(): string {
   return Math.random().toString(36).substring(2, 10);
 }
 
+function markVerificationAttemptSuperseded(
+  run: { attemptPurpose?: string; metadata?: Record<string, unknown> },
+  status: string,
+  now: number,
+): { metadata: Record<string, unknown> } | null {
+  if (run.attemptPurpose !== "VERIFICATION" || status === "COMPLETED") return null;
+  if (run.metadata?.verificationSupersededAt) return null;
+  return {
+    metadata: {
+      ...(run.metadata ?? {}),
+      verificationSupersededAt: now,
+    },
+  };
+}
+
 const runEventType = v.union(
   v.literal("RUN_STARTED"),
   v.literal("EXECUTION_CLAIMED"),
@@ -1177,6 +1192,12 @@ export const createArtifact = mutation({
   handler: async (ctx, args) => {
     const run = await ctx.db.get(args.workflowRunId);
     if (!run) throw new Error("Workflow run not found");
+    const access = await requireAuthorizedDeliveryScope(
+      ctx,
+      run.projectId,
+      COMPANY_PERMISSIONS.UPDATE_DELIVERY,
+    );
+    if (!access) throw new Error("Artifact writes require an authorized workspace.");
     const result = await insertRunArtifact(ctx, {
       ...args,
       workOrderId: run.workOrderId,
@@ -1218,6 +1239,14 @@ export const linkArtifactToVerificationReceipt = mutation({
       ctx.db.get(args.verificationReceiptId),
     ]);
     if (!artifact || !receipt) throw new Error("Artifact or verification receipt not found");
+    const run = await ctx.db.get(artifact.workflowRunId);
+    if (!run) throw new Error("Workflow run not found");
+    const access = await requireAuthorizedDeliveryScope(
+      ctx,
+      run.projectId,
+      COMPANY_PERMISSIONS.UPDATE_DELIVERY,
+    );
+    if (!access) throw new Error("Artifact links require an authorized workspace.");
     if (artifact.workflowRunId !== receipt.workflowRunId || artifact.workOrderId !== receipt.workOrderId) {
       throw new Error("Artifact and verification receipt must belong to the same run and work order");
     }
@@ -1572,6 +1601,7 @@ export const requestCancellation = mutation({
 
     const steps = reconcileTerminalWorkflowSteps(run.steps, "CANCELED", reason, now);
     await ctx.db.patch(run._id, {
+      ...(markVerificationAttemptSuperseded(run, "CANCELED", now) ?? {}),
       status: "CANCELED",
       steps,
       completedAt: now,
@@ -1645,6 +1675,7 @@ export const updateStatus = mutation({
     const updates: any = {
       status: args.status,
     };
+    Object.assign(updates, markVerificationAttemptSuperseded(run, args.status, Date.now()) ?? {});
 
     if (args.failureReason !== undefined) {
       updates.failureReason = args.failureReason;

@@ -174,6 +174,17 @@ function createContext({
           ));
           return builder;
         },
+        filter: (apply: (q: any) => any) => {
+          const q = {
+            field: (field: string) => ({ field }),
+            eq: (left: { field: string }, right: unknown) => ({ operation: "eq", left, right }),
+          };
+          const condition = apply(q);
+          if (condition?.operation === "eq" && condition.left?.field) {
+            rows = rows.filter((row) => row[condition.left.field] === condition.right);
+          }
+          return builder;
+        },
         order: (direction: "asc" | "desc") => {
           const multiplier = direction === "desc" ? -1 : 1;
           rows.sort((left, right) =>
@@ -412,12 +423,23 @@ describe("Model Routing authorization", () => {
       reason: "One dispatch only",
     })).rejects.toThrow("does not permit");
 
-    const allowed = createContext({ permissions: ["factory.read", "factory.approve"] });
+    const allowed = createContext({
+      permissions: ["factory.read", "factory.approve", "delivery.approve"],
+    });
+    allowed.tables.orgMembers.push({
+      _id: "member-a",
+      _creationTime: 29,
+      tenantId: allowed.tenantId,
+      operatorId: allowed.operatorId,
+      projectAccess: [{ projectId: allowed.projectId, accessLevel: "ADMIN" }],
+      active: true,
+    });
     allowed.tables.workOrders.push({
       _id: "work-order-a",
       _creationTime: 30,
       tenantId: allowed.tenantId,
       projectId: allowed.projectId,
+      ownerMemberId: "member-a",
       title: "Guarded delivery",
       riskLevel: "MEDIUM",
     });
@@ -442,7 +464,17 @@ describe("Model Routing authorization", () => {
   });
 
   it("requires approval authority and server attribution for exact tuple pins", async () => {
-    const state = createContext({ permissions: ["factory.read", "factory.approve"] });
+    const state = createContext({
+      permissions: ["factory.read", "factory.approve", "delivery.approve"],
+    });
+    state.tables.orgMembers.push({
+      _id: "member-a",
+      _creationTime: 39,
+      tenantId: state.tenantId,
+      operatorId: state.operatorId,
+      projectAccess: [{ projectId: state.projectId, accessLevel: "ADMIN" }],
+      active: true,
+    });
     const repositoryId = "repository-a";
     const workflowId = "workflow-a";
     const versionId = "factory-version-a";
@@ -457,6 +489,7 @@ describe("Model Routing authorization", () => {
       _creationTime: 41,
       tenantId: state.tenantId,
       projectId: state.projectId,
+      ownerMemberId: "member-a",
       repositoryId,
       workflowId: "feature-dev",
       title: "Pinned delivery",

@@ -14,9 +14,10 @@ describe("PR outer-loop evaluation", () => {
   });
 
   it("never treats passing CI as approval", () => {
-    expect(mergeAuthoritySatisfied({ ciStatus: "PASS", gatesPass: true, approvalStatus: "PENDING", humanConfirmed: true })).toBe(false);
-    expect(mergeAuthoritySatisfied({ ciStatus: "PASS", gatesPass: true, approvalStatus: "APPROVED", humanConfirmed: false })).toBe(false);
-    expect(mergeAuthoritySatisfied({ ciStatus: "PASS", gatesPass: true, approvalStatus: "APPROVED", humanConfirmed: true })).toBe(true);
+    expect(mergeAuthoritySatisfied({ ciStatus: "PASS", gatesPass: true, approvalStatus: "PENDING", humanConfirmed: true, ciAuthoritySatisfied: true })).toBe(false);
+    expect(mergeAuthoritySatisfied({ ciStatus: "PASS", gatesPass: true, approvalStatus: "APPROVED", humanConfirmed: false, ciAuthoritySatisfied: true })).toBe(false);
+    expect(mergeAuthoritySatisfied({ ciStatus: "PASS", gatesPass: true, approvalStatus: "APPROVED", humanConfirmed: true, ciAuthoritySatisfied: true })).toBe(true);
+    expect(mergeAuthoritySatisfied({ ciStatus: "PASS", gatesPass: true, approvalStatus: "APPROVED", humanConfirmed: true, ciAuthoritySatisfied: false })).toBe(false);
   });
 
   it("clears only the exact prior-head CI block after a newer head passes", () => {

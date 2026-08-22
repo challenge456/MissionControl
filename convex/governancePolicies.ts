@@ -22,8 +22,8 @@ const VERIFICATION_FIRST_V1_PROFILE = {
   fullReopenOnAcceptedWorkOrderChange: true,
 } as const;
 
-async function requirePolicyAdministration(ctx: any, project: any) {
-  if (!(await isCompanyContextEnforced(ctx, project._id))) return;
+async function requirePolicyAdministration(ctx: any, project: any, access: "READ" | "WRITE") {
+  if (!(await isCompanyContextEnforced(ctx, project._id, access))) return;
   if (!project.tenantId) throw new Error("Workspace company assignment is required before configuring governance.");
   await requireWorkspaceAccess(ctx, project.tenantId, project._id, {
     permission: COMPANY_PERMISSIONS.MANAGE_WORKSPACES,
@@ -35,7 +35,7 @@ export const getActiveForProject = query({
   handler: async (ctx, args) => {
     const project = await ctx.db.get(args.projectId);
     if (!project) throw new Error("Workspace not found.");
-    await requirePolicyAdministration(ctx, project);
+    await requirePolicyAdministration(ctx, project, "READ");
     return await ctx.db
       .query("governancePolicies")
       .withIndex("by_project_active", (q) => q.eq("projectId", args.projectId).eq("active", true))
@@ -51,7 +51,7 @@ export const activateVerificationFirstV1 = mutation({
   handler: async (ctx, args) => {
     const project = await ctx.db.get(args.projectId);
     if (!project) throw new Error("Workspace not found.");
-    await requirePolicyAdministration(ctx, project);
+    await requirePolicyAdministration(ctx, project, "WRITE");
 
     const existingPolicies = await ctx.db
       .query("governancePolicies")

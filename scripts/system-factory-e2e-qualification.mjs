@@ -28,6 +28,7 @@ const steps = [
     name: "frozen dependency, advisory, credential, and release configuration gates",
     command: "pnpm",
     args: ["run", "release:security"],
+    env: { AUTHORIZATION_BASE_SHA: baseSha },
   },
   {
     name: "release hardening contract tests",

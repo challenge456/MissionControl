@@ -78,6 +78,7 @@ function validInput(): VerificationIndependenceInput {
     },
     isolation: isolation(),
     reportCapability: "verification:report",
+    authorityStatus: "PASS",
   };
 }
 
@@ -160,5 +161,21 @@ describe("server-derived verification independence", () => {
     const input = validInput() as VerificationIndependenceInput & { executorAdapter?: string };
     input.executorAdapter = "codex/v1";
     expect(deriveVerificationIndependence(input).passed).toBe(true);
+  });
+
+  it("fails closed when the verification-authority result is omitted", () => {
+    const input = validInput();
+    delete input.authorityStatus;
+    const result = deriveVerificationIndependence(input);
+    expect(result.passed).toBe(false);
+    expect(result.reasons.join(" ")).toMatch(/not reported|self-certification/);
+  });
+
+  it("rejects an explicit verification-authority failure", () => {
+    const input = validInput();
+    input.authorityStatus = "FAIL";
+    const result = deriveVerificationIndependence(input);
+    expect(result.passed).toBe(false);
+    expect(result.reasons.join(" ")).toMatch(/determine.*verdict|cannot make.*independent/);
   });
 });

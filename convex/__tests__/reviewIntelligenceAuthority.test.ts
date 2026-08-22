@@ -56,8 +56,15 @@ describe("Review Intelligence negative authority and access contract", () => {
       db: {
         get: async (id: string) => records[id] ?? null,
         query: (table: string) => {
-          if (table !== "featureFlags") throw new Error(`Unexpected query ${table}`);
-          return { collect: async () => [{ key: "control-plane.team-authorization", enabled: true, projectId: "project-a" }] };
+          if (table === "featureFlags") {
+            return { collect: async () => [{ key: "control-plane.team-authorization", enabled: true, projectId: "project-a" }] };
+          }
+          if (table === "operators") {
+            return {
+              filter: () => ({ first: async () => ({ _id: "operator-a", active: true }) }),
+            };
+          }
+          throw new Error(`Unexpected query ${table}`);
         },
       },
     } as any;

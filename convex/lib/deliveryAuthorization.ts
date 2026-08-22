@@ -2,13 +2,17 @@ import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { resolveFlag, type FlagRow } from "./flags";
 import { requireWorkspaceAccess, type CompanyPermission } from "./companyAccess";
+import {
+  authorizationRequiredFor,
+  resolveDeploymentAuthorizationMode,
+} from "./authorizationRollout";
 
 type DeliveryCtx = QueryCtx | MutationCtx;
 
 /**
- * Compatibility gate for legacy Mission/WorkOrder functions. The flag is
- * default-off, so existing callers are unchanged until an authenticated
- * company rollout is ready. Once enabled, unscoped access fails closed.
+ * Legacy delivery reads remain compatible only while no active operator has
+ * been provisioned. As soon as an operator exists, authorization is enforced
+ * regardless of the legacy flag so flag-off cannot become a permanent bypass.
  */
 export async function requireAuthorizedDeliveryScope(
   ctx: DeliveryCtx,
@@ -16,8 +20,10 @@ export async function requireAuthorizedDeliveryScope(
   permission?: CompanyPermission
 ) {
   const rows = (await ctx.db.query("featureFlags").collect()) as FlagRow[];
-  const enabled = resolveFlag(rows, "control-plane.team-authorization", projectId ?? null).enabled;
-  if (!enabled) return null;
+  const flagEnabled = resolveFlag(rows, "control-plane.team-authorization", projectId ?? null).enabled;
+  const mode = await resolveDeploymentAuthorizationMode(ctx, flagEnabled);
+  const accessKind = permission ? "WRITE" : "READ";
+  if (!authorizationRequiredFor(mode, accessKind)) return null;
   if (!projectId) throw new Error("An authorized workspace is required while team authorization is enabled.");
   const project = await ctx.db.get(projectId);
   if (!project?.tenantId) throw new Error("Workspace company assignment is incomplete.");

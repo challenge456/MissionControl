@@ -50,10 +50,17 @@ export const commandClassValidator = v.union(
   v.literal("DESTRUCTIVE"), v.literal("PUBLISH"),
 );
 
+export const evidenceIndependenceLevelValidator = v.union(
+  v.literal("ANY_VERIFICATION"),
+  v.literal("CANDIDATE_DEPENDENT_ALLOWED"),
+  v.literal("INDEPENDENT_REQUIRED"),
+);
+
 export const evidenceRequirementValidator = v.object({
   category: evidenceCategoryValidator,
   minimumCount: v.number(),
   independent: v.boolean(),
+  independenceLevel: v.optional(evidenceIndependenceLevelValidator),
 });
 
 export const acceptanceCriterionValidator = v.object({
@@ -145,6 +152,22 @@ export const verificationCheckValidator = v.object({
   })),
 });
 
+const verificationAuthoritySurfaceValidator = v.union(
+  v.literal("PACKAGE_MANIFEST"),
+  v.literal("LOCKFILE"),
+  v.literal("BUILD_SCRIPT"),
+  v.literal("TEST_CONFIG"),
+  v.literal("TEST_SOURCE"),
+  v.literal("RUNNER_CONFIG"),
+  v.literal("CI_CONFIG"),
+);
+
+export const verificationAuthorityPolicyValidator = v.object({
+  allowedSurfaceMutations: v.optional(v.array(verificationAuthoritySurfaceValidator)),
+  allowedPaths: v.optional(v.array(v.string())),
+  reason: v.optional(v.string()),
+});
+
 export const requiredVerificationRiskContractValidator = v.object({
   id: v.string(),
   description: v.string(),
@@ -158,6 +181,7 @@ const verificationContractV1Validator = v.object({
   enforcementMode: v.union(v.literal("OBSERVE_ONLY"), v.literal("ENFORCED")),
   checks: v.array(verificationCheckValidator),
   requireHumanReview: v.boolean(),
+  authorityPolicy: v.optional(verificationAuthorityPolicyValidator),
 });
 
 const verificationContractV2Validator = v.object({
@@ -170,6 +194,7 @@ const verificationContractV2Validator = v.object({
     required: v.boolean(),
     minimumBoundary: v.literal("SEPARATE_ATTEMPT"),
   }),
+  authorityPolicy: v.optional(verificationAuthorityPolicyValidator),
 });
 
 export const verificationContractValidator = v.union(

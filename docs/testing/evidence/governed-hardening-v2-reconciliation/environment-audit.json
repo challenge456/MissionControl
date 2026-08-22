@@ -1,0 +1,26 @@
+{
+  "schema": "mission-control-governed-hardening-environment-audit/v1",
+  "observedAt": "2026-08-22T19:55:00.000Z",
+  "environment": "production-read-only",
+  "activeOperators": 2,
+  "assignedRoles": 1,
+  "assignedRolesRequiringLegacyAliases": {
+    "delivery.approve": 1,
+    "delivery.dispatch": 1,
+    "delivery.verify": 1,
+    "delivery.write": 1,
+    "delivery.assign": 0
+  },
+  "authorizationFlags": [],
+  "projects": 1,
+  "projectsMissingTenant": 0,
+  "workOrders": 15,
+  "workOrdersMissingProject": 4,
+  "missions": 0,
+  "conclusion": {
+    "enforcesImmediatelyAfterDeploy": true,
+    "retainHistoricalReadCompatibility": true,
+    "retainNarrowLegacyPermissionAliases": true,
+    "productionMutated": false
+  }
+}
