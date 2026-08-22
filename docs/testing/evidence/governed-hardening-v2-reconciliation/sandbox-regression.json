@@ -1,0 +1,88 @@
+{
+  "schema": "mission-control-governed-hardening-sandbox-regression/v1",
+  "observedAt": "2026-08-22T20:15:21.387Z",
+  "image": "ghcr.io/jaydubya818/mission-control-remote-sandbox@sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+  "localImageId": "sha256:41a66f1d6f7b90618a6c58fb9a1a336ef69ab2794fc1322233e4a5d9788782b8",
+  "platform": "linux/amd64",
+  "providerEgressEnforced": false,
+  "networkEnforcement": "GUEST_NFTABLES",
+  "policyDigest": "sha256:9786bfac28a3a6ab4803c6aea27172a97b38e43ae2290945226a4ae7174530e0",
+  "toolchain": {
+    "nodeVersion": "v26.7.0",
+    "codexVersion": "codex-cli 0.146.0",
+    "codexBinarySha256": "sha256:2e863156ed35ecc5253b1e2f907a9143077b9f7cb51942070c61996471ff6e04",
+    "gitVersion": "git version 2.55.0",
+    "gitBinarySha256": "sha256:7127059b4ebea64f4a50fc3c64601b69a9694196f3ee0396efec6378a0b45078",
+    "busyboxVersion": "BusyBox v1.37.0",
+    "busyboxBinarySha256": "sha256:6a925a6f54ad5263762a91c25cc0a14b8093a86c2b9c1d5f8fae09ccaaeac222",
+    "toolchainInputsSha256": "sha256:76858cb0bebf67e0f9bac7ffed49e2bd83059095cf001466398b316b4b52b883"
+  },
+  "sequentialFreshContainers": [
+    {
+      "label": "first",
+      "durationMs": 8434,
+      "uid": 10001,
+      "gid": 10001,
+      "noNewPrivileges": true,
+      "capabilitiesEmpty": true,
+      "firewallMutationBlocked": true,
+      "packageInstallBlocked": true,
+      "processSignalControlPassed": true,
+      "protectedPathsReadOnly": true,
+      "workspaceWriteAllowed": true,
+      "credentialNegativeChecksPassed": true,
+      "previousAttemptArtifactAbsent": true,
+      "arbitraryExternalBlocked": true,
+      "privateNetworkBlocked": true,
+      "linkLocalBlocked": true,
+      "metadataBlocked": true,
+      "unexpectedDnsBlocked": true
+    },
+    {
+      "label": "second",
+      "durationMs": 8428,
+      "uid": 10001,
+      "gid": 10001,
+      "noNewPrivileges": true,
+      "capabilitiesEmpty": true,
+      "firewallMutationBlocked": true,
+      "packageInstallBlocked": true,
+      "processSignalControlPassed": true,
+      "protectedPathsReadOnly": true,
+      "workspaceWriteAllowed": true,
+      "credentialNegativeChecksPassed": true,
+      "previousAttemptArtifactAbsent": true,
+      "arbitraryExternalBlocked": true,
+      "privateNetworkBlocked": true,
+      "linkLocalBlocked": true,
+      "metadataBlocked": true,
+      "unexpectedDnsBlocked": true
+    }
+  ],
+  "credentialEnvironment": {
+    "attemptScopedPresent": ["OPENAI_API_KEY", "OPENAI_BASE_URL"],
+    "managementAndControlCredentialsAbsent": [
+      "OPENROUTER_MANAGEMENT_API_KEY",
+      "GITHUB_TOKEN",
+      "GH_TOKEN",
+      "GITHUB_APP_ID",
+      "GITHUB_APP_PRIVATE_KEY",
+      "GITHUB_APP_PRIVATE_KEY_FILE",
+      "GITHUB_APP_CLIENT_SECRET",
+      "GITHUB_WEBHOOK_SECRET",
+      "CONVEX_DEPLOY_KEY",
+      "EXEDEV_IDENTITY_FILE",
+      "EXE_TOKEN",
+      "EXE_DEV_TOKEN",
+      "ORCHESTRATION_API_TOKEN",
+      "MC_API_TOKEN",
+      "MISSION_CONTROL_SERVICE_TOKEN",
+      "MISSION_CONTROL_ACCEPTANCE_TOKEN",
+      "MISSION_CONTROL_VERIFICATION_TOKEN"
+    ]
+  },
+  "failClosedMismatchChecks": {
+    "imageDigest": true,
+    "codexBinary": true
+  }
+}

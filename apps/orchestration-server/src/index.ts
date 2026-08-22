@@ -874,12 +874,22 @@ app.post("/workorders/:workOrderId/automation-verification", async (c) => {
     const manifest = await client.query(ConvexQueries.skillAutomations.getExecutionManifest as any, { workOrderId, allowCompleted: true }) as any;
     const run = await client.query(ConvexQueries.workflowRuns.get as any, { runId: manifest.runId }) as any;
     if (run?.status !== "COMPLETED") return c.json({ error: "Independent verification requires a completed execution run" }, 409);
-    const observed = body.observedResult ?? "Completed adapter run and approved artifact hash confirmed";
-    const integrityHash = `sha256:${createHash("sha256").update(JSON.stringify({
+    if (body.status !== "PASSED" && body.status !== "FAILED") {
+      return c.json({ error: "An explicit status of PASSED or FAILED is required; it is never defaulted." }, 400);
+    }
+    const observed = typeof body.observedResult === "string" ? body.observedResult.trim() : "";
+    if (!observed) {
+      return c.json({ error: "observedResult is required: the verifier must report what it actually observed." }, 400);
+    }
+    const evidenceLocation = typeof body.evidenceLocation === "string" ? body.evidenceLocation.trim() : "";
+    if (!evidenceLocation) {
+      return c.json({ error: "evidenceLocation is required: a verdict with no retrievable evidence is not evidence." }, 400);
+    }
+    const reportBindingHash = `sha256:${createHash("sha256").update(JSON.stringify({
       workOrderId, workflowRunId: manifest.workflowRunId, definitionId: manifest.definitionId,
-      artifactHash: manifest.artifactContentHash, observed,
+      artifactHash: manifest.artifactContentHash, observed, evidenceLocation,
     })).digest("hex")}`;
-    const receiptStatus = body.status === "FAILED" ? "FAILED" : "PASSED";
+    const receiptStatus = body.status;
     const receiptResults = [];
     for (const criterion of manifest.acceptanceCriteria as any[]) {
       receiptResults.push(await client.mutation(ConvexMutations.workOrders.recordVerificationReceipt as any, {
@@ -890,7 +900,7 @@ app.post("/workorders/:workOrderId/automation-verification", async (c) => {
         verificationMethod: "TEST",
         commandOrCheck: "independent normalized-result and artifact-integrity verification",
         result: observed,
-        evidenceLocation: body.evidenceLocation ?? manifest.artifactPath,
+        evidenceLocation,
         artifactReference: manifest.artifactPath,
         verifier: "independent-automation-verifier",
         status: receiptStatus,
@@ -898,32 +908,29 @@ app.post("/workorders/:workOrderId/automation-verification", async (c) => {
           definitionId: manifest.definitionId,
           evaluationId: manifest.evaluationId,
           correlationId: manifest.correlationId,
-          independent: true,
-          integrityHash,
+          ingestedVia: "orchestration:automation-verification",
+          reportBindingHash,
           expectedResult: "Completed run using the approved immutable artifact with all acceptance criteria satisfied",
           observedResult: observed,
           recommendedFollowUp: receiptStatus === "PASSED" ? "None" : "Pause the Definition and inspect adapter evidence",
         },
       }));
     }
-    if (receiptStatus === "PASSED") {
-      await client.mutation(ConvexMutations.workOrders.accept as any, {
-        workOrderId,
-        actorType: "SYSTEM",
-        actorId: "independent-automation-verifier",
-        idempotencyKey: `automation-verifier:${manifest.workflowRunId}:accept`,
-      });
-    }
     const finalDecision = await client.mutation(ConvexMutations.skillAutomations.finalizeVerification as any, {
       workOrderId,
       workflowRunId: manifest.workflowRunId,
       receiptStatus,
-      actorId: "independent-automation-verifier",
       reason: receiptStatus === "PASSED"
         ? "Independent verification confirmed the expected result and artifact integrity"
         : body.reason ?? "Independent verification rejected the observed result",
     });
-    return c.json({ success: receiptStatus === "PASSED", receipts: receiptResults, finalDecision });
+    return c.json({
+      success: receiptStatus === "PASSED",
+      receipts: receiptResults,
+      finalDecision,
+      accepted: false,
+      acceptanceNote: "Receipts were recorded. Acceptance is a separate human-governed decision.",
+    });
   } catch (err: any) {
     return c.json({ error: safeClientError(err) }, 400);
   }
@@ -1115,19 +1122,9 @@ app.post("/workorders/:workOrderId/verification-receipts", async (c) => {
 });
 
 app.post("/workorders/:workOrderId/accept", async (c) => {
-  try {
-    const workOrderId = c.req.param("workOrderId");
-    const body = await c.req.json().catch(() => ({}));
-    const result = await client.mutation(ConvexMutations.workOrders.accept as any, {
-      workOrderId,
-      actorType: body.actorType ?? "SYSTEM",
-      actorId: body.actorId ?? "orchestration-server",
-      idempotencyKey: body.idempotencyKey ?? `orch-accept:${workOrderId}`,
-    });
-    return c.json({ success: true, result });
-  } catch (err: any) {
-    return c.json({ error: safeClientError(err) }, 400);
-  }
+  return c.json({
+    error: "Acceptance requires an authenticated human operator through the canonical workOrders.accept mutation.",
+  }, 410);
 });
 
 app.get("/workorders/:workOrderId/revisions", async (c) => {

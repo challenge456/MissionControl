@@ -52,9 +52,25 @@ export function isCompanyAdminRole(role: Doc<"roles">): boolean {
     name === "company owner" ||
     name === "admin" ||
     name === "company admin" ||
-    role.permissions.includes("settings.manage") ||
-    role.permissions.includes("projects.create")
+    role.permissions.includes(COMPANY_PERMISSIONS.MANAGE_COMPANY) ||
+    role.permissions.includes("settings.manage")
   );
+}
+
+const LEGACY_DELIVERY_PERMISSION_ALIASES: Partial<Record<CompanyPermission, string[]>> = {
+  [COMPANY_PERMISSIONS.APPROVE_DELIVERY]: ["approvals.decide", "missions.approve"],
+  [COMPANY_PERMISSIONS.DISPATCH_WORK]: ["workorders.dispatch"],
+  [COMPANY_PERMISSIONS.UPDATE_DELIVERY]: ["workorders.write", "tasks.write", "evidence.write"],
+  [COMPANY_PERMISSIONS.VERIFY_DELIVERY]: ["evidence.write", "approvals.decide"],
+  [COMPANY_PERMISSIONS.ASSIGN_DELIVERY]: ["tasks.assign"],
+};
+
+function roleGrantsDeliveryPermissionByLegacyAlias(
+  role: Doc<"roles">,
+  permission: CompanyPermission,
+): boolean {
+  return (LEGACY_DELIVERY_PERMISSION_ALIASES[permission] ?? [])
+    .some((alias) => role.permissions.includes(alias));
 }
 
 export function roleGrantsPermission(
@@ -88,11 +104,12 @@ export function roleGrantsPermission(
       permission === COMPANY_PERMISSIONS.DISPATCH_WORK ||
       permission === COMPANY_PERMISSIONS.APPROVE_DELIVERY
     ) {
-      return normalized === "workspace lead" || normalized === "product manager" || normalized === "team lead";
+      if (normalized === "workspace lead" || normalized === "product manager" || normalized === "team lead") return true;
     }
-    if (permission === COMPANY_PERMISSIONS.UPDATE_DELIVERY) return normalized === "developer" || normalized === "software engineer";
-    if (permission === COMPANY_PERMISSIONS.VERIFY_DELIVERY) return normalized === "developer" || normalized === "software engineer" || normalized === "qa" || normalized === "qa engineer";
-    return false;
+    if (permission === COMPANY_PERMISSIONS.UPDATE_DELIVERY && (normalized === "developer" || normalized === "software engineer")) return true;
+    if (permission === COMPANY_PERMISSIONS.VERIFY_DELIVERY
+      && (normalized === "developer" || normalized === "software engineer" || normalized === "qa" || normalized === "qa engineer")) return true;
+    return roleGrantsDeliveryPermissionByLegacyAlias(role, permission);
   }
   if (permission === COMPANY_PERMISSIONS.CREATE_WORKSPACES) {
     return isCompanyAdminRole(role) || role.permissions.includes("projects.create");
@@ -187,7 +204,6 @@ function roleGrantsFactoryPermission(
     ],
     [FACTORY_PERMISSIONS.APPROVE]: [
       "missions.approve",
-      "workorders.dispatch",
       "approvals.decide",
     ],
     [FACTORY_PERMISSIONS.MANAGE_AUTOMATION]: [

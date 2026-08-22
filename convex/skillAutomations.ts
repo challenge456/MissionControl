@@ -2,6 +2,8 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { AUTOMATION_ACTOR_IDENTITY_SOURCE } from "./lib/automationGovernance";
+import { COMPANY_PERMISSIONS } from "./lib/companyAccess";
+import { requireAuthorizedDeliveryScope } from "./lib/deliveryAuthorization";
 import { sha256Hex } from "./lib/harnessPrChecks";
 import {
   ADAPTER_TYPES,
@@ -532,7 +534,7 @@ export const recordExecutionResult = mutation({
   args: {
     workOrderId: v.id("workOrders"), workflowRunId: v.id("workflowRuns"),
     status: v.union(v.literal("passed"), v.literal("failed"), v.literal("timed_out"), v.literal("cancelled"), v.literal("infrastructure_error")),
-    result: v.any(), actorId: v.string(),
+    result: v.any(), actorId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const [workOrder, run] = await Promise.all([ctx.db.get(args.workOrderId), ctx.db.get(args.workflowRunId)]);
@@ -540,6 +542,15 @@ export const recordExecutionResult = mutation({
     const definitionId = workOrder.metadata?.automationDefinitionId as Id<"automationDefinitions"> | undefined;
     const definition = definitionId ? await ctx.db.get(definitionId) : null;
     if (!definition) throw new Error("Automation Definition not found");
+    const access = await requireAuthorizedDeliveryScope(
+      ctx,
+      definition.projectId,
+      COMPANY_PERMISSIONS.DISPATCH_WORK,
+    );
+    if (!access?.membership.operatorId) {
+      throw new Error("Automation execution results require an authenticated operator.");
+    }
+    const actorId = actorIdForAccess(access);
     const evaluation = await ctx.db.query("automationEvaluations")
       .withIndex("by_work_order", (q: any) => q.eq("workOrderId", workOrder._id)).order("desc").first();
     const passed = args.status === "passed";
@@ -557,7 +568,7 @@ export const recordExecutionResult = mutation({
     });
     await recordDecision(ctx, {
       projectId: definition.projectId, definitionId: definition._id,
-      type: passed ? "EXECUTION_COMPLETED" : "EXECUTION_FAILED", actorId: args.actorId,
+      type: passed ? "EXECUTION_COMPLETED" : "EXECUTION_FAILED", actorId,
       reason: passed ? "Adapter execution completed; receipt pending" : `Adapter execution ${args.status}`,
       version: definition.definitionVersion, previousState: run.status,
       newState: passed ? "AWAITING_VERIFICATION" : "FAILED", correlationId: definition.correlationId,
@@ -571,7 +582,7 @@ export const finalizeVerification = mutation({
   args: {
     workOrderId: v.id("workOrders"), workflowRunId: v.id("workflowRuns"),
     receiptStatus: v.union(v.literal("PASSED"), v.literal("FAILED"), v.literal("PENDING")),
-    actorId: v.string(), reason: v.string(),
+    reason: v.string(),
   },
   handler: async (ctx, args) => {
     const [workOrder, run] = await Promise.all([ctx.db.get(args.workOrderId), ctx.db.get(args.workflowRunId)]);
@@ -581,6 +592,15 @@ export const finalizeVerification = mutation({
     const definitionId = workOrder.metadata?.automationDefinitionId as Id<"automationDefinitions"> | undefined;
     const definition = definitionId ? await ctx.db.get(definitionId) : null;
     if (!definition) throw new Error("Automation Definition not found");
+    const access = await requireAuthorizedDeliveryScope(
+      ctx,
+      definition.projectId,
+      COMPANY_PERMISSIONS.VERIFY_DELIVERY,
+    );
+    if (!access?.membership.operatorId) {
+      throw new Error("Automation verification requires an authenticated operator.");
+    }
+    const actorId = actorIdForAccess(access);
     const evaluation = await ctx.db.query("automationEvaluations")
       .withIndex("by_work_order", (q: any) => q.eq("workOrderId", workOrder._id)).order("desc").first();
     const next = args.receiptStatus === "PASSED" ? "VERIFIED" : args.receiptStatus === "FAILED" ? "REJECTED" : "AWAITING_VERIFICATION";
@@ -591,7 +611,7 @@ export const finalizeVerification = mutation({
       health: next === "VERIFIED" ? "HEALTHY" : next === "REJECTED" ? "DEGRADED" : "ATTENTION",
       status: next === "REJECTED" ? "SUSPENDED" : definition.status,
       reliabilityState: next === "REJECTED" ? "SUSPENDED" : definition.reliabilityState,
-      pausedBy: next === "REJECTED" ? args.actorId : definition.pausedBy,
+      pausedBy: next === "REJECTED" ? actorId : definition.pausedBy,
       pausedAt: next === "REJECTED" ? now : definition.pausedAt,
       pauseReason: next === "REJECTED" ? args.reason : definition.pauseReason,
       nextRunAt: next === "REJECTED" ? undefined : definition.nextRunAt,
@@ -600,10 +620,16 @@ export const finalizeVerification = mutation({
     await recordDecision(ctx, {
       projectId: definition.projectId, definitionId: definition._id,
       type: next === "VERIFIED" ? "VERIFIED" : next === "REJECTED" ? "RECEIPT_CREATED" : "FINALIZED",
-      actorId: args.actorId, reason: args.reason, version: definition.definitionVersion,
+      actorId, reason: args.reason, version: definition.definitionVersion,
       previousState: evaluation?.status, newState: next, correlationId: definition.correlationId,
       causationId: String(args.workflowRunId), metadata: { receiptStatus: args.receiptStatus },
     });
     return { finalDecision: next };
   },
 });
+
+function actorIdForAccess(access: Awaited<ReturnType<typeof requireAuthorizedDeliveryScope>>): string {
+  const operatorId = access?.membership?.operatorId;
+  if (!operatorId) throw new Error("Authenticated operator identity is required.");
+  return String(operatorId);
+}
