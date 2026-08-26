@@ -173,6 +173,7 @@ import type * as lib_qualityGateDecision from "../lib/qualityGateDecision.js";
 import type * as lib_readOnlyRunControl from "../lib/readOnlyRunControl.js";
 import type * as lib_repetitiveTaskCandidates from "../lib/repetitiveTaskCandidates.js";
 import type * as lib_repetitiveTasks from "../lib/repetitiveTasks.js";
+import type * as lib_repositoryExecutionPolicy from "../lib/repositoryExecutionPolicy.js";
 import type * as lib_researchEvidenceBundle from "../lib/researchEvidenceBundle.js";
 import type * as lib_researchIngestionPolicy from "../lib/researchIngestionPolicy.js";
 import type * as lib_researchSourcePolicy from "../lib/researchSourcePolicy.js";
@@ -469,6 +470,7 @@ declare const fullApi: ApiFromModules<{
   "lib/readOnlyRunControl": typeof lib_readOnlyRunControl;
   "lib/repetitiveTaskCandidates": typeof lib_repetitiveTaskCandidates;
   "lib/repetitiveTasks": typeof lib_repetitiveTasks;
+  "lib/repositoryExecutionPolicy": typeof lib_repositoryExecutionPolicy;
   "lib/researchEvidenceBundle": typeof lib_researchEvidenceBundle;
   "lib/researchIngestionPolicy": typeof lib_researchIngestionPolicy;
   "lib/researchSourcePolicy": typeof lib_researchSourcePolicy;
