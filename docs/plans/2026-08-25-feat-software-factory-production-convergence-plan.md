@@ -8,6 +8,7 @@ owners:
   - platform
 source:
   - /Users/jaywest/.codex/attachments/feea0a2d-7e89-4e91-9788-7216f0eb0bec/pasted-text.txt
+  - /Users/jaywest/.codex/attachments/a396e580-b517-4b48-a681-2aefeecaef40/pasted-text.txt
 baseline_commit: b3dfcee
 ---
 
@@ -255,6 +256,11 @@ and real reviewer decisions.
 **Scope:**
 
 - Select one controlled product repository and one internal design-partner team.
+- Before the first dispatch, name the pilot incident commander and run one
+  preflight security/reliability drill with existing pause, cancel, credential
+  revocation, quarantine, evidence-preservation, and rollback controls. Use the
+  Phase 2 incident framework in a short pilot runbook; do not build the full
+  incident aggregate before the pilot.
 - Run at least ten accepted WorkOrders across bug fix, feature, refactor, and
   security/policy classes. Preserve failed Attempts and corrective work.
 - Use the full browser path: intent, Spec, Plan, approval, release, dispatch,
@@ -271,6 +277,8 @@ and real reviewer decisions.
 **Exit gate:**
 
 - [ ] Zero authority-boundary, cross-company, secret, or repository-scope escape.
+- [ ] The preflight incident drill proves a named owner, bounded containment,
+      preserved evidence, safe restoration, corrective work, and follow-up measure.
 - [ ] Every accepted WorkOrder has exact intent-to-PR evidence and a human decision.
 - [ ] All injected failures fail closed and either recover within policy or
       produce an actionable human decision packet.
@@ -788,6 +796,7 @@ above.
 
 ## Immediate next step
 
-Approve or revise the five Product Owner decisions. If approved, start only PR
-1: establish the current capability maturity ledger and documentation truth.
-Do not start another architecture subsystem in parallel.
+Review the local PR 1 documentation slice that accompanies this plan. Before
+Phase 1, approve or revise only Product Owner decisions 1 and 2: Remote Sandbox
+egress posture and the real pilot target. Decisions 3–5 should wait for their
+respective phases. Do not start another architecture subsystem in parallel.
