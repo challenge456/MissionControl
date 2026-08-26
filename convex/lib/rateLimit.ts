@@ -152,3 +152,33 @@ export const RATE_LIMIT_POLICIES = {
     windowMs: 60_000,
   },
 } as const satisfies Record<string, RateLimitPolicy>;
+
+/**
+ * Per-operator budgets for provider-backed actions.
+ *
+ * These are spend controls, not fairness controls: the key is a server-resolved
+ * operator id, so a caller cannot mint fresh buckets. An unlisted operation
+ * falls back to the conservative default rather than going unlimited — omission
+ * must not be the way past the budget.
+ */
+export const PROVIDER_BUDGET_POLICIES: Record<string, RateLimitPolicy> = {
+  "knowledge.chatWithRepo": { operation: "knowledge.chatWithRepo", limit: 30, globalLimit: 30, windowMs: 60_000 },
+  "knowledge.semanticSearch": { operation: "knowledge.semanticSearch", limit: 60, globalLimit: 60, windowMs: 60_000 },
+  "knowledge.indexDocument": { operation: "knowledge.indexDocument", limit: 20, globalLimit: 20, windowMs: 60_000 },
+  "knowledge.indexAllDocs": { operation: "knowledge.indexAllDocs", limit: 2, globalLimit: 2, windowMs: 300_000 },
+  "voice.synthesize": { operation: "voice.synthesize", limit: 20, globalLimit: 20, windowMs: 60_000 },
+  "planning.generateQuestions": { operation: "planning.generateQuestions", limit: 30, globalLimit: 30, windowMs: 60_000 },
+  "planning.generatePlanFromAnswers": { operation: "planning.generatePlanFromAnswers", limit: 30, globalLimit: 30, windowMs: 60_000 },
+  "prd.parsePrd": { operation: "prd.parsePrd", limit: 10, globalLimit: 10, windowMs: 60_000 },
+  "mission.reversePrompt": { operation: "mission.reversePrompt", limit: 30, globalLimit: 30, windowMs: 60_000 },
+  "github.syncIssues": { operation: "github.syncIssues", limit: 20, globalLimit: 20, windowMs: 60_000 },
+  "github.updateIssueStatus": { operation: "github.updateIssueStatus", limit: 60, globalLimit: 60, windowMs: 60_000 },
+};
+
+/** Fallback for an operation with no explicit policy. Deliberately tight. */
+export const DEFAULT_PROVIDER_BUDGET: RateLimitPolicy = {
+  operation: "provider.default",
+  limit: 20,
+  globalLimit: 20,
+  windowMs: 60_000,
+};
