@@ -170,6 +170,7 @@ import type * as lib_prEvaluation from "../lib/prEvaluation.js";
 import type * as lib_prdParser from "../lib/prdParser.js";
 import type * as lib_qualityContract from "../lib/qualityContract.js";
 import type * as lib_qualityGateDecision from "../lib/qualityGateDecision.js";
+import type * as lib_rateLimit from "../lib/rateLimit.js";
 import type * as lib_readOnlyRunControl from "../lib/readOnlyRunControl.js";
 import type * as lib_repetitiveTaskCandidates from "../lib/repetitiveTaskCandidates.js";
 import type * as lib_repetitiveTasks from "../lib/repetitiveTasks.js";
@@ -466,6 +467,7 @@ declare const fullApi: ApiFromModules<{
   "lib/prdParser": typeof lib_prdParser;
   "lib/qualityContract": typeof lib_qualityContract;
   "lib/qualityGateDecision": typeof lib_qualityGateDecision;
+  "lib/rateLimit": typeof lib_rateLimit;
   "lib/readOnlyRunControl": typeof lib_readOnlyRunControl;
   "lib/repetitiveTaskCandidates": typeof lib_repetitiveTaskCandidates;
   "lib/repetitiveTasks": typeof lib_repetitiveTasks;
