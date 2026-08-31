@@ -100,6 +100,20 @@ describe("containsUnredactedFactoryMemorySecret", () => {
     expect(containsUnredactedFactoryMemorySecret(redactFactoryMemoryText(raw).value)).toBe(false);
   });
 
+  it("detects fine-grained GitHub PATs, which the classic gh*_ rule cannot match", () => {
+    const finegrained = `github_pat_${"A1".repeat(11)}_${"b3".repeat(30)}`;
+
+    expect(containsUnredactedFactoryMemorySecret(finegrained)).toBe(true);
+    expect(redactFactoryMemoryText(finegrained).value).toBe("[REDACTED]");
+  });
+
+  it("detects Telegram bot tokens", () => {
+    const botToken = `8123456789:AA${"Qr7xKz".repeat(6)}`;
+
+    expect(containsUnredactedFactoryMemorySecret(botToken)).toBe(true);
+    expect(redactFactoryMemoryText(botToken).value).toBe("[REDACTED]");
+  });
+
   it("does not let the [REDACTED] marker mask adjacent live credentials", () => {
     expect(
       containsUnredactedFactoryMemorySecret(`[REDACTED]AKIAIOSFODNN7ABCDEFG[REDACTED]`), // secret-scan: allow-fixture
