@@ -5,6 +5,12 @@ Shared backlog for the autonomous scheduled jobs that operate on this repo
 work. Items under "Open" are already proposed; items under "Checked, not
 applicable" were already ruled out. Re-proposing either is a failure.
 
+> Entries here are a **hypothesis, not evidence**. Re-derive anything you are
+> about to act on, and verify every advisory identifier against
+> `https://api.github.com/advisories/<GHSA-ID>` (authenticated; an
+> unauthenticated request returns 403 and is indistinguishable from a real
+> one) before citing it.
+
 ## Open
 
 - [ ] 2026-08-22 — **Factory Learning V1: signals → clustering → improvement candidates → human review → governed experiment → promotion recommendation** — Jay's stated next value jump; the learning loop is what turns "many strong components" into a governed factory. Must not self-authorize, mutate governance, bypass verification, or become a token sink. Source: apple-note p7000.
@@ -19,12 +25,75 @@ applicable" were already ruled out. Re-proposing either is a failure.
 - [ ] 2026-08-31 — **`approvals.deny` accepts no `projectId`, so it cannot verify workspace scope** — `convex/approvals.ts` gives `approve` an optional `projectId` and checks it at line 400 (`if (args.projectId && ...)`), but `deny` has no such argument and performs no scope check at all. Both checks are also opt-in: omitting `projectId` skips them. Making the argument required is a public-interface change across the UI, orchestration server, and bot callers, so it needs a coordinated change rather than a nightly patch.
 - [ ] 2026-08-31 — **`packages/telegram-bot` has no test harness** — no `test` script and no vitest devDependency, so all 8 source files (1420 lines, including the approval command handlers) are unreachable by `pnpm run test`. Wiring vitest in would let the approval path carry regression tests; it was left alone tonight because it changes `pnpm-lock.yaml` and the root recursive test run.
 
+- [ ] 2026-09-01 — **Design proposal: consolidate secret detection onto one pattern source** — *This is a structural item. Do not close it by adding another regex.* There are currently **five independent secret-detection implementations** in this repo, and they have measurably drifted apart:
+
+  | Implementation | Patterns | Consumers |
+  | --- | --- | --- |
+  | `packages/shared/src/constants.ts` → `SECRET_PATTERNS` | 7 | `packages/shared/src/utils.ts`, `packages/policy-engine/src/allowlists.ts` |
+  | `packages/policy-engine/src/allowlists.ts` → `containsSecrets` | (uses `SECRET_PATTERNS`) | `validateToolAction` → `requiresApproval` |
+  | `convex/lib/riskClassifier.ts` → `containsSecrets` | 8, its own literal array | `classifyRisk` → RED risk → dual control |
+  | `packages/shared/src/factoryMemorySecurity.ts` | own set | factory memory redaction |
+  | `scripts/lib/repository-secret-scan.mjs` | own set | `pnpm run security:secrets` |
+
+  Measured divergence on 2026-09-01 — inputs that `convex/lib/riskClassifier.ts` escalates to RED but `packages/policy-engine/src/allowlists.ts` does **not** flag at all:
+
+  | Input | riskClassifier | policy-engine |
+  | --- | --- | --- |
+  | `{"path":"config/credentials.json"}` | RED | not flagged |
+  | `{"file":"id_rsa","type":"private_key"}` | RED | not flagged |
+  | `{"path":".env.local"}` | RED | not flagged |
+  | `{"header":"auth_header"}` | RED | not flagged |
+
+  `SECRET_PATTERNS` is missing `private[_-]?key`, `\.env`, `credentials`, and
+  `auth[_-]?header`, all four of which `riskClassifier` has. Neither detects a
+  fine-grained GitHub PAT (`github_pat_…`), which is the same gap that was
+  patched separately in `factoryMemorySecurity.ts` and
+  `repository-secret-scan.mjs` on branch `nightly/2026-08-31-improvements` —
+  two fixes for one bug class in two files, which is the signal that the
+  pattern-per-file shape is the actual defect.
+
+  Proposed shape: one exported pattern set (extend `SECRET_PATTERNS`) that all
+  five call sites consume, plus a single shared test fixture of positive and
+  negative sample strings that every consumer asserts against, so a pattern
+  added for one surface cannot silently miss another. This changes the
+  behaviour of the policy engine's approval escalation, so it needs a
+  deliberate review of the new escalations rather than a nightly patch.
+
+- [ ] 2026-09-01 — **`redactSecrets` in `packages/shared/src/utils.ts` redacts the label and leaves the value** — the function is exported from `@mission-control/shared` (`export * from "./utils.js"`) and has **zero callers today**, which is the only reason this is latent rather than live. `SECRET_PATTERNS` matches key *names*, not values, and the entries are non-global, so:
+
+  ```
+  redactSecrets("api_key=SUPERSECRETVALUE123") === "[REDACTED]=SUPER[REDACTED]VALUE123"
+  redactSecrets("token=AAA token=BBB")         === "[REDACTED]=AAA token=BBB"
+  ```
+
+  The secret survives, the label is destroyed, and only the first occurrence of
+  each pattern is replaced. Either give it value-capturing patterns with the
+  `g` flag or delete it from the public surface before something starts calling
+  it. Folded into the consolidation item above if that is done first.
+
+- [ ] 2026-09-01 — **`react-router` 6.x carries two advisories that are only patched in 7.18.0** — after moving `react-router-dom` to 6.30.6 (clears GHSA-jjmj-jmhj-qwj2), these remain and cannot be resolved on the v6 line:
+  - GHSA-wrjc-x8rr-h8h6 (medium) — `react-router >= 6.0.0, < 7.18.0`, open redirect via backslash in `<Link>`/`useNavigate`.
+  - GHSA-337j-9hxr-rhxg (medium) — `react-router >= 6.4.0, < 7.18.0`, arbitrary constructor injection via `deserializeErrors()`.
+
+  Both were verified against `https://api.github.com/advisories/<id>` (HTTP 200) on 2026-09-01. The fix is a react-router v7 migration across `apps/mission-control-ui`, which is a framework-level change and not a nightly one. **Do not downgrade `react-router-dom` below `^6.30.6`** — 6.30.4 and below are inside the GHSA-jjmj-jmhj-qwj2 range.
+
+- [ ] 2026-09-01 — **Pins sitting exactly on an advisory floor** — these are clean today but have zero headroom, so a lockfile refresh that resolves *downward* silently reintroduces a known vulnerability. Worth a guard in `pnpm run security:audit` rather than vigilance: `vite@6.4.3` (GHSA-fx2h-pf6j-xcff floor 6.4.3), `undici@7.29.0` (GHSA-4cwx-7wf7-3272 floor 7.29.0), `form-data@4.0.6` (GHSA-hmw2-7cc7-3qxx floor 4.0.6). All three are held by `pnpm.overrides` in the root `package.json`, so the override values are the thing to protect.
+
+- [ ] 2026-09-01 — **Two `esbuild` majors resolve in one lockfile** (`0.25.12` and `0.27.0`). Neither is currently vulnerable — GHSA-gv7w-rqvm-qjhr is **withdrawn** (do not "fix" it) and GHSA-g7r4-m6w7-qqqr's range is `>= 0.27.3, < 0.28.1`, so 0.27.0 sits below it and 0.25.12 is unaffected. The duplication is a footprint and drift concern, not a security one; worth deduplicating when something else touches the toolchain.
+
+- [ ] 2026-09-01 — **`infra/remote-sandbox/package-lock.json` is an npm lockfile inside a pnpm workspace** — `infra/` is not in `pnpm-workspace.yaml` (`packages/*`, `apps/*` only), so this subtree is genuinely outside the pnpm graph and the npm lockfile is not in itself wrong. It does mean its dependencies are invisible to `pnpm run security:audit` and to the root `pnpm.overrides` block, so the axios/undici/form-data floors pinned for the rest of the repo do not apply there. Decide whether to bring it into the workspace or to give it its own audit step.
 
 ## Checked, not applicable
 
 - 2026-09-02 — **`@modelcontextprotocol/sdk` CVE-2026-0621 (ReDoS, fixed 1.25.2) and CVE-2026-25536 (cross-client data leak via a shared `StreamableHTTPServerTransport` / `McpServer`, fixed 1.26.0)** — the lockfile resolves exactly `1.26.0`, i.e. the fix version, but the version check is not the point. The package is not a direct dependency of anything in the workspace: it arrives only via root devDependency `@taskmasterai/cli@1.1.4` → `fastmcp@3.33.0`, and `git grep` finds no first-party import of `@modelcontextprotocol/sdk`, `fastmcp`, `McpServer` or `StreamableHTTPServerTransport` under `apps/`, `packages/`, `convex/` or `scripts/`. There is no MCP server or transport instantiated by this codebase, so there is nothing that could be shared across clients; the only code that would run it is the Taskmaster CLI on a developer's machine.
 
 - 2026-08-22 — **Basic / Intermediate / Advanced experience toggle** — requested twice in Jay's notes (p6972: "a toggle for basic, intermediate and advanced so folks don't get overwhelmed"; p7000: "Basic gets a few high-confidence recommendations; Intermediate gets evidence/impact; Advanced gets raw traces/evals/config drift/experiment history"). **Already implemented**: `apps/mission-control-ui/src/factoryExperience/` provides `ExperienceLevelSelector`, `useFactoryExperienceLevel`, and `ProgressiveFactoryView`, with `FactoryExperienceLevel` gating in `CreateFactoryMissionDialog`, plus coverage in `tests/e2e/review-intelligence.e2e.spec.ts` and `tests/e2e/system-factory-qualification.e2e.spec.ts`. No work required.
+
+- 2026-09-01 — **Dependency advisory sweep across the watched pins** — re-derived from `pnpm-lock.yaml` and verified against the GitHub advisory API with an authenticated token. Clean, no action: `axios@1.19.0` (highest floor 1.18.0, GHSA-gcfj-64vw-6mp9), `vite@6.4.3`, `undici@7.29.0`, `form-data@4.0.6`, `react`/`react-dom@18.3.1`, `esbuild@0.25.12`/`0.27.0`, `@clerk/react@6.12.10` (GHSA-w24r-5266-9c3c affects `>= 6.0.0, <= 6.4.2` only — note the pin is 6.12.10, not the 6.4.3 an earlier brief recorded), `openai@4.104.0` (**zero npm advisories for `openai` at any version**; the 4.x→6.x drift is a currency question, not a security one), `@tailwindcss/vite@4.1.18` (zero advisories), `@testing-library/jest-dom@5.15.1` (zero advisories; old but not vulnerable). The only actionable result was `react-router-dom@6.30.4`, handled separately.
+
+- 2026-09-01 — **`GHSA-2xp9-vwfh-vxw4` / `CVE-2026-75604` "critical Next.js RCE"** — **fabricated**. `GET https://api.github.com/advisories/GHSA-2xp9-vwfh-vxw4` returns **HTTP 404 with a valid token**. This repo also has no Next.js dependency at all (the UI is Vite + React). Do not re-investigate; if it reappears in a report, the report is wrong.
+
+- 2026-09-01 — **Dual-control bypass via hardcoded `decidedByUserId`** — real on `main` today, but **already fixed in open PR #131** (`codex/v1-factory-safety-golden-path-closeout`, open since 2026-08-26). Do not re-report or re-patch; see ACTION REQUIRED notes in that PR's review. On `main`, `convex/approvals.ts#approve` takes `decidedByUserId: v.optional(v.string())` as unauthenticated free text and every UI caller hardcodes it — `"operator"` in `CommandPanel.tsx` (x3), `ApprovalsModal.tsx` (x2), `TaskDrawerTabs.tsx` (x2) and `DashboardOverview.tsx`, and `"jay"` in `CouncilView.tsx`. The dual-control guard itself is correct (`if (approval.firstDecisionByUserId === decider)`), but with only two distinct constants in the whole product one human satisfies the two-person rule for a RED action by approving once in Council View and once in any other panel. PR #131 removes the argument and derives the decider from an authenticated actor.
 
 ## Closed
 - [x] 2026-09-02 → 2026-09-02 — `/gateway/ws` bypassed orchestration-server authentication — Fixed on `nightly/2026-09-02-improvements` (PR #156): the proxy takes an `authorizeUpgrade` hook wired to `orchestrationUpgradeFailure`, the same bearer rule as `requireAuth()` (401 wrong/missing bearer, 503 in production without a token, open only in tokenless dev); refused upgrades get a real HTTP response. The Vite dev proxy now presents the bearer on `/gateway`; a production reverse proxy must do the same (documented in TROUBLESHOOTING). Chosen shape (2)-adjacent: header-based, no ticket endpoint, because the browser already never held the token — a proxy did.
