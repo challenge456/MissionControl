@@ -19,10 +19,14 @@ describe("repository secret scanner", () => {
 
   it("detects credential classes the classic GitHub rule cannot match", () => {
     const finegrained = `github_pat_${"A1".repeat(11)}_${"b3".repeat(30)}`;
+    const installation = `ghs_246813579_${"eyJ"}${"aB7_".repeat(12)}.${"cD8-".repeat(12)}.${"eF9_".repeat(12)}`;
     const telegram = `8123456789:AA${"Qr7xKz".repeat(6)}`;
 
     expect(scanTextForSecrets(finegrained)).toEqual([
       { rule: "github-fine-grained-token", line: 1 },
+    ]);
+    expect(scanTextForSecrets(installation)).toEqual([
+      { rule: "github-installation-token", line: 1 },
     ]);
     expect(scanTextForSecrets(telegram)).toEqual([{ rule: "telegram-bot-token", line: 1 }]);
     expect(JSON.stringify(scanTextForSecrets(`${finegrained}\n${telegram}`))).not.toContain(

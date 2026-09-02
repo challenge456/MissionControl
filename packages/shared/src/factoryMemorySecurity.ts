@@ -3,6 +3,9 @@ const SECRET_KEY =
 
 const SECRET_PATTERNS: RegExp[] = [
   /\bsk-(?:proj|org|live|test)?-?[a-z0-9_-]{10,}\b/gi,
+  // Stateless GitHub App installation tokens use `ghs_<app-id>_<JWT>` and
+  // therefore contain underscores, dots, and hyphens after the prefix.
+  /\bghs_[a-z0-9._-]{36,}\b/gi,
   /\bgh[pousr]_[a-z0-9]{10,}\b/gi,
   // Fine-grained GitHub PATs are `github_pat_` + base62 segments joined by `_`,
   // so the classic `gh[pousr]_[a-z0-9]+` rule above never matches them.

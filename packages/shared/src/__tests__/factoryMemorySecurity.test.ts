@@ -107,6 +107,13 @@ describe("containsUnredactedFactoryMemorySecret", () => {
     expect(redactFactoryMemoryText(finegrained).value).toBe("[REDACTED]");
   });
 
+  it("detects stateless GitHub App installation tokens", () => {
+    const installationToken = `ghs_246813579_${"eyJ"}${"aB7_".repeat(12)}.${"cD8-".repeat(12)}.${"eF9_".repeat(12)}`;
+
+    expect(containsUnredactedFactoryMemorySecret(installationToken)).toBe(true);
+    expect(redactFactoryMemoryText(installationToken).value).toBe("[REDACTED]");
+  });
+
   it("detects Telegram bot tokens", () => {
     const botToken = `8123456789:AA${"Qr7xKz".repeat(6)}`;
 

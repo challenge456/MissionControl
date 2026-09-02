@@ -13,6 +13,7 @@ const PLACEHOLDER_FRAGMENTS = [
 
 const SECRET_PATTERNS = [
   { rule: "private-key", pattern: /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----[\s\S]{32,}?-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/g },
+  { rule: "github-installation-token", pattern: /\bghs_[A-Za-z0-9._-]{36,}\b/g },
   { rule: "github-token", pattern: /\bgh[pousr]_[A-Za-z0-9]{36,}\b/g },
   // Fine-grained PATs are `github_pat_<base62>_<base62>`; the underscore
   // separators keep them outside the classic `gh[pousr]_[A-Za-z0-9]+` rule.
