@@ -15,11 +15,11 @@ Because Mission Control is under active development, users should test and deplo
 
 Please **do not report security vulnerabilities through public GitHub issues**.
 
-Mission Control executes agent-produced code in sandboxed environments and treats repository content, external text, memory, tool output, model output, and worker result payloads as untrusted data. Security vulnerabilities should therefore be reported privately so they can be investigated before details are made public.
+Mission Control executes agent-produced code in local worktrees or an explicitly configured and approved remote sandbox. It treats repository content, external text, memory, tool output, model output, and worker result payloads as untrusted data. Security vulnerabilities should therefore be reported privately so they can be investigated before details are made public.
 
 ### GitHub Private Vulnerability Reporting
 
-If GitHub Private Vulnerability Reporting is enabled for this repository, please use the **Security** tab and select **Report a vulnerability** to submit a private report.
+Use [GitHub Private Vulnerability Reporting](https://github.com/jaydubya818/MissionControl/security/advisories/new) to submit a private report.
 
 Include as much of the following information as possible:
 
@@ -31,8 +31,6 @@ Include as much of the following information as possible:
 - The affected commit, version, or branch, if known.
 
 Please avoid including live credentials, secrets, customer data, or other sensitive information in the report.
-
-If private vulnerability reporting is unavailable, contact the repository owner privately through the contact method configured for the repository rather than opening a public issue.
 
 ## Response Time
 
