@@ -15,7 +15,7 @@ Because Mission Control is under active development, users should test and deplo
 
 Please **do not report security vulnerabilities through public GitHub issues**.
 
-Mission Control executes agent-produced code in local worktrees or an explicitly configured and approved remote sandbox. It treats repository content, external text, memory, tool output, model output, and worker result payloads as untrusted data. Security vulnerabilities should therefore be reported privately so they can be investigated before details are made public.
+Mission Control executes agent-produced code in local worktrees or an explicitly configured and approved remote sandbox, currently a Preview capability. It treats repository content, external text, memory, tool output, model output, and worker result payloads as untrusted data. Security vulnerabilities should therefore be reported privately so they can be investigated before details are made public.
 
 ### GitHub Private Vulnerability Reporting
 
