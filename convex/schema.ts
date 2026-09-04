@@ -59,6 +59,7 @@ import {
   reviewActionValidator,
   reviewCorrectionCategoryValidator,
 } from "./lib/reviewIntelligenceValidators";
+import { evalControlPlaneTables } from "./lib/evalControlPlaneSchema";
 
 // ============================================================================
 // ENUMS (as union types)
@@ -6708,6 +6709,11 @@ export const schemaTablesPartTwo = {
     .index("by_factory_version", ["factoryDefinitionVersionId"]),
 
   // -------------------------------------------------------------------------
+  // EVAL CONTROL PLANE (diagnostic evidence; never acceptance authority)
+  // -------------------------------------------------------------------------
+  ...evalControlPlaneTables,
+
+  // -------------------------------------------------------------------------
   // FACTORY LEARNING (advisory projections; never acceptance authority)
   // -------------------------------------------------------------------------
   learningSignals: defineTable({
@@ -7797,7 +7803,12 @@ export const schemaTablesPartTwo = {
       v.literal("FINALIZED")
     ),
     actorId: v.string(),
-    actorIdentitySource: v.optional(v.literal("CLIENT_ASSERTED_TRUSTED_OPERATOR")),
+    actorIdentitySource: v.optional(v.union(
+      v.literal("CLIENT_ASSERTED_TRUSTED_OPERATOR"),
+      v.literal("AUTHENTICATED_OPERATOR"),
+      v.literal("LOCAL_DEMO_OPERATOR"),
+      v.literal("SYSTEM"),
+    )),
     reason: v.string(),
     policyVersion: v.string(),
     definitionVersion: v.number(),

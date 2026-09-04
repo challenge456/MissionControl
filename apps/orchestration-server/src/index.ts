@@ -22,7 +22,7 @@ import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
 import { ConvexHttpClient } from "convex/browser";
 import { createGatewayProxy } from "./gateway-proxy.js";
-import { requireAuth } from "./auth.js";
+import { orchestrationUpgradeFailure, requireAuth } from "./auth.js";
 import { ConvexActions, ConvexQueries, ConvexMutations } from "./convexCalls.js";
 import { createSignedServiceCommand } from "./serviceCommandClient.js";
 import { CoordinatorLoop } from "@mission-control/coordinator";
@@ -1421,13 +1421,10 @@ app.get("/local-inference/discover", async (c) => {
 });
 
 app.post("/local-inference/sync", async (c) => {
-  const providers = await discoverLocalInference();
-  return c.json({
-    providers,
-    synced: [],
-    authorizationRequired: true,
-    message: "Use the authenticated Model Routing control plane to approve discovered models.",
-  });
+  return c.json(
+    { error: "Local model sync requires a signed, workspace-scoped service command." },
+    501,
+  );
 });
 
 // Tier 2 context classification (LLM fallback when Tier 1 confidence is low)
@@ -1485,6 +1482,8 @@ const gatewayProxy = createGatewayProxy({
     const token = (process.env.GATEWAY_TOKEN ?? "").trim();
     return { url, token };
   },
+  // Upgrades bypass Hono, so apply the same bearer rule as requireAuth() here.
+  authorizeUpgrade: orchestrationUpgradeFailure,
   log: (msg) => console.log(`[gateway] ${msg}`),
   logError: (msg, err) => console.error(`[gateway] ${msg}`, err),
 });
